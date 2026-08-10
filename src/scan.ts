@@ -244,7 +244,11 @@ function insertUpdate(opts: {
                             state, detail, detected_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(stack, service, from_tag, to_tag) DO UPDATE SET
-         state = excluded.state, tier = excluded.tier, updated_at = excluded.updated_at`,
+         state = excluded.state, tier = excluded.tier, updated_at = excluded.updated_at,
+         -- Re-detection is a fresh observation, so the reason the row was last retired
+         -- ('pr-closed', 'newer target X') must not survive into it and be read as the
+         -- reason it is open now.
+         detail = excluded.detail`,
     )
     .run(
       opts.svc.stack,

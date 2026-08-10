@@ -79,7 +79,12 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
        LEFT JOIN verdicts v ON v.image = u.image AND v.from_tag = u.from_tag AND v.to_tag = u.to_tag
        LEFT JOIN images i ON i.stack = u.stack AND i.service = u.service
        LEFT JOIN resolutions r ON r.registry = i.registry AND r.repository = i.repository
-       WHERE pu.pr_id = ?`,
+       -- A superseded row describes an update that has been overtaken. It must not be
+       -- allowed to supply the magnitude, tier or verdict that justifies a merge: the
+       -- successor rewrites the same line, so merging this one lands a version nobody is
+       -- tracking any more. Dropping every row leaves the result empty, which refuses
+       -- below -- and a partially superseded group refuses too, which is the point.
+       WHERE pu.pr_id = ? AND u.state != 'superseded'`,
     )
     .all(prId) as {
     stack: string

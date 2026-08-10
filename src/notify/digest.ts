@@ -25,7 +25,7 @@ import { escapeHtml } from './email.ts'
  * "0 things" push is how a person learns to ignore the channel.
  */
 
-export type Category = 'opened' | 'merged' | 'deployed' | 'held' | 'drafted'
+export type Category = 'opened' | 'superseded' | 'merged' | 'deployed' | 'held' | 'drafted'
 
 export interface DigestItem {
   category: Category
@@ -42,6 +42,7 @@ export interface DigestItem {
  */
 const SECTIONS: { category: Category; heading: (n: number) => string }[] = [
   { category: 'opened', heading: (n) => `${n} pull request${s(n)} opened` },
+  { category: 'superseded', heading: (n) => `${n} superseded and closed` },
   { category: 'merged', heading: (n) => `${n} merged` },
   { category: 'deployed', heading: (n) => `${n} deployed` },
   { category: 'drafted', heading: (n) => `${n} carried drafted config changes` },

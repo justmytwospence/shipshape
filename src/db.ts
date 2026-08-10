@@ -384,7 +384,7 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     CREATE TABLE digest_items (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
       at         TEXT NOT NULL,
-      category   TEXT NOT NULL,   -- opened | merged | deployed | held | drafted
+      category   TEXT NOT NULL,   -- opened | superseded | merged | deployed | held | drafted
       stack      TEXT,
       service    TEXT,
       summary    TEXT NOT NULL,   -- one line, already human-readable

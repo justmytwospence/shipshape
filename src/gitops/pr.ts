@@ -62,6 +62,8 @@ export interface PrRunResult {
   skipped: number
   failed: number
   paused?: string
+  /** Superseded pull requests retired this pass. */
+  closed: number
 }
 
 /**
@@ -71,7 +73,7 @@ export interface PrRunResult {
 export async function runPrPass(): Promise<PrRunResult> {
   return withGitLock('pr-pass', async () => {
     const { policy } = loadPolicy()
-    const out: PrRunResult = { opened: 0, skipped: 0, failed: 0 }
+    const out: PrRunResult = { opened: 0, skipped: 0, failed: 0 , closed: 0}
 
     const setup = configured()
     if (!setup.ok) {
@@ -88,6 +90,12 @@ export async function runPrPass(): Promise<PrRunResult> {
       out.paused = sync.reason
       return out
     }
+
+    // Before anything is opened: retire the pull requests whose target was overtaken.
+    // Ordering matters twice. Any slot it frees is usable in this same pass, and the
+    // successor's eligibility check excludes updates attached to an *open* pull request
+    // -- so a corpse left open here would keep its replacement from ever being written.
+    out.closed = await closeSupersededPrs(policy)
 
     const groups = eligibleGroups(policy)
     if (groups.length === 0) return out
@@ -136,6 +144,173 @@ export async function runPrPass(): Promise<PrRunResult> {
 
     return out
   })
+}
+
+/**
+ * Retiring pull requests whose target has been overtaken.
+ *
+ * When a scan finds a newer tag for a service that already has a pull request open, it
+ * supersedes the update row and a *new* branch is cut -- the branch name carries the
+ * target tag, so the successor can never be the same ref. That leaves two pull requests
+ * rewriting the same `image:` line from the same base, of which exactly one can merge;
+ * the other is guaranteed to conflict. Left alone they accumulate, and a rolling digest
+ * leaks one per move.
+ *
+ * The successor replaces the loser rather than continuing it, so the right primitive is
+ * to close, and the comment is what makes the closure legible afterwards. A branch
+ * somebody has pushed to is never closed -- their commits are not ours to discard -- so
+ * it gets the same comment once and is then left alone.
+ */
+export interface SupersededPr {
+  id: number
+  number: number
+  branch: string
+  user_owned: number
+}
+
+/**
+ * Open pull requests for which EVERY linked update has been superseded.
+ *
+ * Every, not any: a group whose members have drifted apart still has live work in it, and
+ * closing it would discard the member that is still current. Those refuse to auto-merge
+ * instead (see the state filter in automerge.ts) and are left for a person.
+ *
+ * The first EXISTS is not redundant -- without it a pull request with no linked updates
+ * at all would satisfy the NOT EXISTS vacuously and be closed.
+ */
+export function supersededPrs(): SupersededPr[] {
+  return getDb()
+    .prepare(
+      `SELECT p.id, p.number, p.branch, p.user_owned
+       FROM prs p
+       WHERE p.state = 'open'
+         AND EXISTS (SELECT 1 FROM pr_updates pu WHERE pu.pr_id = p.id)
+         AND NOT EXISTS (
+           SELECT 1 FROM pr_updates pu JOIN updates u ON u.id = pu.update_id
+           WHERE pu.pr_id = p.id AND u.state != 'superseded')
+       ORDER BY p.number`,
+    )
+    .all() as SupersededPr[]
+}
+
+/** What overtook it: the newest live update for the same service, and its PR if open. */
+export function successorFor(prId: number): { toTag: string; number: number | null } | null {
+  return (getDb()
+    .prepare(
+      `SELECT u2.to_tag AS toTag, p2.number AS number
+       FROM pr_updates pu
+       JOIN updates u ON u.id = pu.update_id
+       JOIN updates u2 ON u2.stack = u.stack AND u2.service = u.service
+                      AND u2.state IN ('detected','pr_open','held')
+       LEFT JOIN pr_updates pu2 ON pu2.update_id = u2.id
+       LEFT JOIN prs p2 ON p2.id = pu2.pr_id AND p2.state = 'open'
+       WHERE pu.pr_id = ?
+       ORDER BY u2.id DESC
+       LIMIT 1`,
+    )
+    .get(prId) ?? null) as { toTag: string; number: number | null } | null
+}
+
+/** Marks our own note so it is written once rather than every poll. */
+const SUPERSEDED_MARK = '<!-- shipshape:superseded -->'
+
+function supersededNote(next: { toTag: string; number: number | null } | null, mine: boolean): string {
+  const to = next
+    ? next.number
+      ? `**${next.toTag}**, in #${next.number}`
+      : `**${next.toTag}**`
+    : 'a newer version'
+  return mine
+    ? `${SUPERSEDED_MARK}\nSuperseded: the target moved on to ${to}, so this pull request bumps a version nothing is tracking any more.\n\n<sub>Left open because this branch carries your commits. Rebase it onto the new target or close it — shipshape will not touch it either way.</sub>`
+    : `${SUPERSEDED_MARK}\nClosed: the target moved on to ${to}. Both change the same \`image:\` line from the same base, so only one of them can merge.\n\n<sub>Nothing is lost — the newer pull request carries this bump too.</sub>`
+}
+
+/** True when we have already said this on this pull request. */
+async function alreadyNoted(number: number): Promise<boolean> {
+  const { owner, repo } = repoParts()
+  try {
+    const { data } = await gh().rest.issues.listComments({ owner, repo, issue_number: number, per_page: 100 })
+    return data.some((c) => (c.body ?? '').includes(SUPERSEDED_MARK))
+  } catch {
+    // Unreadable comments must not cause a double-post, and must not block the close.
+    return true
+  }
+}
+
+export async function closeSupersededPrs(policy: Policy): Promise<number> {
+  if (!policy.prs.close_superseded) return 0
+  const candidates = supersededPrs()
+  if (candidates.length === 0) return 0
+
+  const { owner, repo } = repoParts()
+  const db = getDb()
+  let closed = 0
+  // ensureWorkRepo fetches over the network every call, so resolve it once and only if
+  // something actually needs its branch deleted -- a pass that finds only user-owned
+  // candidates should cost no git at all.
+  let workRepo: string | null = null
+
+  for (const pr of candidates) {
+    const next = successorFor(pr.id)
+    try {
+      if (pr.user_owned) {
+        // Their branch, their call. Say it once and leave it.
+        if (await alreadyNoted(pr.number)) continue
+        await gh().rest.issues.createComment({
+          owner,
+          repo,
+          issue_number: pr.number,
+          body: supersededNote(next, true),
+        })
+        logEvent({
+          level: 'info',
+          kind: 'pr',
+          message: `#${pr.number} is superseded but is yours`,
+          detail: 'left open; rebase it onto the new target or close it',
+        })
+        continue
+      }
+
+      await gh().rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: pr.number,
+        body: supersededNote(next, false),
+      })
+      await gh().rest.pulls.update({ owner, repo, pull_number: pr.number, state: 'closed' })
+
+      // Best effort. The pull request is closed either way, and a left-behind branch is
+      // cosmetic -- whereas failing here would retry the whole close every poll.
+      workRepo ??= await ensureWorkRepo()
+      await git(workRepo, ['push', httpsUrl(), '--delete', pr.branch], {
+        remote: true,
+        allowFail: true,
+      })
+
+      db.prepare(`UPDATE prs SET state = 'closed' WHERE id = ?`).run(pr.id)
+      closed++
+
+      const detail = next
+        ? next.number
+          ? `superseded by ${next.toTag} in #${next.number}`
+          : `superseded by ${next.toTag}`
+        : 'superseded'
+      logEvent({ level: 'info', kind: 'pr', message: `#${pr.number} closed as superseded`, detail })
+      await routine({
+        category: 'superseded',
+        summary: `#${pr.number} closed — ${detail}`,
+        url: `https://github.com/${env.githubRepo}/pull/${pr.number}`,
+      })
+    } catch (err) {
+      logEvent({
+        level: 'warn',
+        kind: 'pr',
+        message: `could not close superseded #${pr.number}`,
+        detail: (err as Error).message.slice(0, 200),
+      })
+    }
+  }
+  return closed
 }
 
 /** Pending updates that policy says deserve a PR, grouped so companions travel together. */

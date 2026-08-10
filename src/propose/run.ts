@@ -103,6 +103,9 @@ function pickCandidate(mode: string, only?: number): Candidate | null {
                            AND v.to_tag = u.to_tag AND v.error IS NULL
        WHERE p.state = 'open' AND p.scope = 'tag-only' AND p.user_owned = 0
          AND u.detail IS NOT 'rolling'
+         -- Never draft config changes onto a pull request whose target was overtaken:
+         -- the work would be for a version that is not going to be merged.
+         AND u.state != 'superseded'
          AND NOT EXISTS (SELECT 1 FROM proposals pr2 WHERE pr2.pr_id = p.id)
          ${only === undefined ? '' : 'AND p.number = ?'}
        ORDER BY p.number`,

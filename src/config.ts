@@ -203,6 +203,13 @@ export const PolicySchema = z.object({
       // false parks the engine entirely: updates are still detected and shown, but
       // nothing is pushed and no pull request is created.
       enabled: z.boolean().default(true),
+      // A pull request whose target has been overtaken is not stale work to finish, it is
+      // work that was replaced: its successor rewrites the same `image:` line from the
+      // same base, so exactly one of them can ever merge. Left open they accumulate --
+      // a rolling digest leaks one per move -- and, until the state filters below, a
+      // superseded row could still supply the tier and verdict that justified merging it.
+      // A branch someone has pushed to is never closed by this, whatever it says.
+      close_superseded: z.boolean().default(true),
     })
     .prefault({}),
   propose: z

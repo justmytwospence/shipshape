@@ -1,6 +1,7 @@
 import { execa } from 'execa'
 import { basename } from 'node:path'
 import { env } from '../config.ts'
+import { includedStacks } from '../compose/scan.ts'
 
 /**
  * Reading what Docker actually thinks, rather than what its output columns say.
@@ -48,7 +49,11 @@ export interface ServiceObservation {
  * itself. Both are normalised the way compose normalises them.
  */
 export function projectName(stack: string, repoDir = env.repoDir): string {
-  const raw = stack === 'root' ? basename(repoDir) : stack
+  // An included stack's containers carry the root project's name, so looking for them
+  // under their own would find nothing and the verifier would report "no container"
+  // for a service that is running perfectly well.
+  const root = stack === 'root' || includedStacks(repoDir).has(stack)
+  const raw = root ? basename(repoDir) : stack
   return raw.toLowerCase().replace(/[^a-z0-9_-]/g, '')
 }
 

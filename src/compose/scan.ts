@@ -27,6 +27,44 @@ function traefikPort(labels: Record<string, string>): number | null {
   return null
 }
 
+/**
+ * Stacks whose compose file the root project pulls in with `include:`.
+ *
+ * Their services belong to the ROOT compose project, not a project of their own -- the
+ * containers carry `com.docker.compose.project=<repo dir>` and their networks are
+ * defined in the root file. Two consequences, both of which have to be got right or the
+ * stack cannot be deployed at all: `-f <stack>/docker-compose.yaml` fails outright with
+ * "refers to undefined network", and looking for their containers under a project named
+ * after the stack finds nothing.
+ *
+ * Read from the file rather than hard-coded, so adding a fifth included stack needs no
+ * change here. (The repository documents the same trap in prose for humans; this is the
+ * machine-readable half.)
+ */
+export function includedStacks(repoDir: string): Set<string> {
+  const out = new Set<string>()
+  let raw: string
+  try {
+    raw = readFileSync(join(repoDir, 'docker-compose.yaml'), 'utf8')
+  } catch {
+    return out
+  }
+  let doc: { include?: unknown } | null = null
+  try {
+    doc = parseYaml(raw) as { include?: unknown }
+  } catch {
+    return out
+  }
+  for (const entry of Array.isArray(doc?.include) ? doc.include : []) {
+    const path =
+      typeof entry === 'string' ? entry : ((entry as { path?: unknown })?.path as string | undefined)
+    if (typeof path !== 'string') continue
+    const stack = path.split('/')[0]
+    if (stack && stack !== '.') out.add(stack)
+  }
+  return out
+}
+
 export interface ScannedService {
   stack: string
   service: string

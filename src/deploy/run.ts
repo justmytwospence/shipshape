@@ -2,6 +2,7 @@ import { execa } from 'execa'
 import { join } from 'node:path'
 import { env, inBlackout, loadPolicy, type Policy } from '../config.ts'
 import { httpProbe, inspectService, projectName, snapshotTarget, type ServiceSnapshot } from './probe.ts'
+import { includedStacks } from '../compose/scan.ts'
 import { DEFAULT_VERIFY, runVerify, type Verdict } from './verify.ts'
 import { getDb, logEvent } from '../db.ts'
 import { notify } from '../notify/index.ts'
@@ -53,18 +54,28 @@ export type DeployOutcome =
   | { ok: true; healthy: boolean; detail: string; verdict?: Verdict; snapshot?: ServiceSnapshot[] }
   | { ok: false; phase: DeployPhase; reason: string; stderr?: string; snapshot?: ServiceSnapshot[] }
 
-/** Services in the root compose file are addressed from the repository root. */
-function isRootStack(stack: string): boolean {
-  return stack === 'root'
+/**
+ * Stacks that are part of the root compose project rather than their own.
+ *
+ * Either the root file itself, or one it `include:`s -- pihole, traefik, ddclient and
+ * wireguard here. Both are addressed from the repository root with no `-f`, because
+ * scoping to their own file loses the networks the root defines and compose refuses the
+ * whole project.
+ */
+export function isRootStack(stack: string, repoDir = env.repoDir): boolean {
+  return stack === 'root' || includedStacks(repoDir).has(stack)
 }
 
-export function composeArgs(target: DeployTarget): { cwd: string; args: string[] } {
-  const cwd = env.repoDir
+export function composeArgs(
+  target: DeployTarget,
+  repoDir = env.repoDir,
+): { cwd: string; args: string[] } {
+  const cwd = repoDir
   // Deduped here rather than at the call site: this is the one function that turns a
   // target into a command, so it is the one place that can guarantee the executed and
   // the pasted command agree.
   const services = [...new Set(target.services)]
-  if (isRootStack(target.stack)) {
+  if (isRootStack(target.stack, repoDir)) {
     // No -f: the root compose file is the project, and its networks are defined there.
     return { cwd, args: ['compose', 'up', '-d', ...services] }
   }
@@ -74,9 +85,9 @@ export function composeArgs(target: DeployTarget): { cwd: string; args: string[]
   }
 }
 
-function removeArgs(target: DeployTarget): { cwd: string; args: string[] } {
-  const cwd = env.repoDir
-  const base = isRootStack(target.stack)
+function removeArgs(target: DeployTarget, repoDir = env.repoDir): { cwd: string; args: string[] } {
+  const cwd = repoDir
+  const base = isRootStack(target.stack, repoDir)
     ? ['compose']
     : ['compose', '-f', `${target.stack}/docker-compose.yaml`]
   return { cwd, args: [...base, 'rm', '-sf', ...new Set(target.services)] }

@@ -13,7 +13,10 @@ import { git } from './repo.ts'
  * to stand.
  */
 
-export type EditResult = { ok: true; file: string } | { ok: false; reason: string }
+export type EditResult =
+  | { ok: true; file: string }
+  /** `alreadyApplied` means the file already carries this bump: done, not broken. */
+  | { ok: false; reason: string; alreadyApplied?: boolean }
 
 export async function bumpImage(opts: {
   /** Repository root the edit happens in (the work clone). */
@@ -44,7 +47,14 @@ export async function bumpImage(opts: {
   if (node.value !== expectedOldRef) {
     return {
       ok: false,
-      reason: `${composeFile} now pins "${node.value}" for ${service}, expected "${expectedOldRef}"`,
+      // Distinguished because the two cases deserve opposite responses: the file having
+      // moved *past* this update means the work is done, while any other mismatch means
+      // something unexpected edited it and a human should look.
+      alreadyApplied: node.value === newRef,
+      reason:
+        node.value === newRef
+          ? `${composeFile} already pins "${newRef}" for ${service}`
+          : `${composeFile} now pins "${node.value}" for ${service}, expected "${expectedOldRef}"`,
     }
   }
   const range = node.range

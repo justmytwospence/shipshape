@@ -392,7 +392,14 @@ async function openPr(repoDir: string, group: UpdateGroup, policy: Policy): Prom
       expectedOldRef: oldRef,
       newRef,
     })
-    if (!edit.ok) return failGroup(group, edit.reason)
+    if (!edit.ok) {
+      // The file already carries this bump -- someone merged it, or a deploy landed it
+      // while this pass was queued. Retrying every minute for a change that has already
+      // happened is noise, so the update is retired instead. The scan reaches the same
+      // conclusion, but not until it next runs.
+      if (edit.alreadyApplied) return retireGroup(group, edit.reason)
+      return failGroup(group, edit.reason)
+    }
     files.set(file, file)
   }
 
@@ -490,6 +497,33 @@ async function pushBranch(
   })
   if (pushed.exitCode !== 0) return { ok: false, reason: pushed.stderr.slice(0, 200) }
   return { ok: true }
+}
+
+/**
+ * The update turned out to be done already.
+ *
+ * Not a failure: nothing went wrong and nothing needs a person. Superseding it stops the
+ * pull request pass reconsidering it every cycle, which it otherwise would until the
+ * next scan noticed the file had moved.
+ */
+function retireGroup(group: UpdateGroup, reason: string): boolean {
+  const db = getDb()
+  const now = new Date().toISOString()
+  const stmt = db.prepare(
+    `UPDATE updates SET state = 'superseded', detail = 'applied elsewhere', updated_at = ?
+     WHERE id = ?`,
+  )
+  db.transaction(() => {
+    for (const m of group.members) stmt.run(now, m.id)
+  })()
+  logEvent({
+    level: 'info',
+    kind: 'pr',
+    stack: group.members[0]!.stack,
+    message: 'update already applied',
+    detail: reason,
+  })
+  return false
 }
 
 function failGroup(group: UpdateGroup, reason: string): boolean {

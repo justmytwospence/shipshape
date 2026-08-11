@@ -206,6 +206,46 @@ function tail(s: unknown): string {
 }
 
 /**
+ * Services that must be recreated alongside these ones.
+ *
+ * `network_mode: service:x` is not a reference to a service, it is a pin to a container
+ * *id*: the daemon writes `container:<id>` into the dependent's host config when it
+ * starts. Recreating x gives it a new id, and the dependent is left attached to a
+ * namespace that no longer exists -- still running, still listed as up, and with no
+ * network at all. It is a uniquely quiet way to break a service, because every liveness
+ * check still passes.
+ *
+ * So a deploy that touches such a container has to bring its followers with it. Pure and
+ * driven off the scanned compose files, so the expansion is testable and does not depend
+ * on asking a daemon what is currently pinned to what.
+ */
+export function withNamespacePeers(
+  stack: string,
+  services: string[],
+  peersOf: (stack: string) => { service: string; network_mode: string | null }[],
+): string[] {
+  const all = peersOf(stack)
+  const out = [...services]
+  // One pass is enough in practice and terminates by construction: a chain of shared
+  // namespaces resolves to a single owner, and compose refuses cycles.
+  for (const target of services) {
+    for (const row of all) {
+      if (row.network_mode === `service:${target}` && !out.includes(row.service)) {
+        out.push(row.service)
+      }
+    }
+  }
+  return out
+}
+
+/** The scanned peers of a stack, for the expansion above. */
+export function stackPeers(stack: string): { service: string; network_mode: string | null }[] {
+  return getDb()
+    .prepare(`SELECT service, network_mode FROM images WHERE stack = ?`)
+    .all(stack) as { service: string; network_mode: string | null }[]
+}
+
+/**
  * The command an operator runs by hand, built from the same function the automatic path
  * executes.
  *

@@ -40,6 +40,7 @@ export const SERVICE: ScannedService = {
   deployLabel: null,
   probePort: null,
   archivePre: null,
+  networkMode: null,
   prLabel: null,
   proposeLabel: null,
   groupLabel: null,

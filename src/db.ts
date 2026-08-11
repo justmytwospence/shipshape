@@ -446,6 +446,20 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     UPDATE deploys SET status = CASE WHEN healthy = 1 THEN 'deployed' ELSE 'failed' END;
   `,
   },
+  {
+    id: '014-network-mode',
+    sql: `
+    -- Which container's network namespace this service joins, when it joins one.
+    --
+    -- A service on \`network_mode: service:vpn\` has no network of its own: the daemon
+    -- pins it to the *container id* of the one it shares with. Recreate that container
+    -- and the id changes, so the dependent keeps running attached to a namespace that no
+    -- longer exists -- alive, listed as up, and unreachable. Deploying "only the changed
+    -- service" is therefore wrong for exactly these stacks, which is why this has to be
+    -- known at deploy time rather than discovered afterwards.
+    ALTER TABLE images ADD COLUMN network_mode TEXT;
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

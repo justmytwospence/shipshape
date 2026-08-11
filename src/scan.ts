@@ -118,11 +118,11 @@ function syncInventory(services: ScannedService[]): void {
     `INSERT INTO images (stack, service, compose_file, image_ref, registry, repository,
                          current_tag, current_digest, watched, pattern, tag_include,
                          policy_label, source_label, claude_label, deploy_label,
-                         probe_port, archive_pre, unwatchable, last_seen_at)
+                         probe_port, archive_pre, network_mode, unwatchable, last_seen_at)
      VALUES (@stack, @service, @compose_file, @image_ref, @registry, @repository,
              @current_tag, @current_digest, @watched, @pattern, @tag_include,
              @policy_label, @source_label, @claude_label, @deploy_label,
-             @probe_port, @archive_pre, @unwatchable, @last_seen_at)
+             @probe_port, @archive_pre, @network_mode, @unwatchable, @last_seen_at)
      ON CONFLICT(stack, service) DO UPDATE SET
        compose_file = excluded.compose_file, image_ref = excluded.image_ref,
        registry = excluded.registry, repository = excluded.repository,
@@ -131,7 +131,8 @@ function syncInventory(services: ScannedService[]): void {
        tag_include = excluded.tag_include, policy_label = excluded.policy_label,
        source_label = excluded.source_label, claude_label = excluded.claude_label,
        deploy_label = excluded.deploy_label, probe_port = excluded.probe_port,
-       archive_pre = excluded.archive_pre, unwatchable = excluded.unwatchable,
+       archive_pre = excluded.archive_pre, network_mode = excluded.network_mode,
+       unwatchable = excluded.unwatchable,
        last_seen_at = excluded.last_seen_at`,
   )
 
@@ -155,6 +156,7 @@ function syncInventory(services: ScannedService[]): void {
         deploy_label: s.deployLabel,
         probe_port: s.probePort,
         archive_pre: s.archivePre,
+        network_mode: s.networkMode,
         unwatchable: s.unwatchable,
         last_seen_at: now,
       })

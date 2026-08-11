@@ -49,6 +49,8 @@ export interface ScannedService {
   probePort: number | null
   /** The stack's nightly dump command, if it declares one. Suggested, never run. */
   archivePre: string | null
+  /** `service:<name>` when this service shares another container's network namespace. */
+  networkMode: string | null
   /** `shipshape.pr: on-request` -- detected but never auto-PR'd; the operator opens it. */
   prLabel: string | null
   /** `shipshape.propose` -- how far a drafted config change may reach. See propose/paths. */
@@ -169,6 +171,7 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
           ? Number(probeLabel)
           : traefikPort(labels)
     const archivePre = labels['docker-volume-backup.archive-pre'] ?? null
+    const networkMode = typeof svc.network_mode === 'string' ? svc.network_mode : null
     const prLabel = label('pr')
     const proposeLabel = label('propose')
     const groupLabel = label('group')
@@ -206,6 +209,7 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
       deployLabel,
       probePort,
       archivePre,
+      networkMode,
       prLabel,
       proposeLabel,
       groupLabel,

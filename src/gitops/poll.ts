@@ -5,7 +5,7 @@ import { notify } from '../notify/index.ts'
 import { routine } from '../notify/digest.ts'
 import { withGitLock } from './repo.ts'
 import { syncMain } from './sync.ts'
-import { manualCommand, type DeployTarget } from '../deploy/run.ts'
+import { manualCommand, stackPeers, withNamespacePeers, type DeployTarget } from '../deploy/run.ts'
 import { enqueueDeploy, hasDueRechecks, hasPendingDeploys } from '../deploy/queue.ts'
 
 /**
@@ -186,7 +186,13 @@ async function onMerged(
   // missing -f.
   const target: DeployTarget = {
     stack,
-    services: [...new Set(members.map((m) => m.service))],
+    // Plus anything that shares a namespace with them: recreating the owner strands its
+    // followers on a dead one, and they go on looking perfectly healthy while it happens.
+    services: withNamespacePeers(
+      stack,
+      [...new Set(members.map((m) => m.service))],
+      stackPeers,
+    ),
     // rm-first if any member asked for it: the strategy applies to the whole compose
     // invocation, and the safer of the two wins.
     strategy: members.some((m) => deployLabelFor(m.stack, m.service) === 'rm-first')

@@ -6,7 +6,7 @@ import { routine } from '../notify/digest.ts'
 import { withGitLock } from './repo.ts'
 import { syncMain } from './sync.ts'
 import { manualCommand, type DeployTarget } from '../deploy/run.ts'
-import { enqueueDeploy, hasPendingDeploys } from '../deploy/queue.ts'
+import { enqueueDeploy, hasDueRechecks, hasPendingDeploys } from '../deploy/queue.ts'
 
 /**
  * Watching for merges.
@@ -373,6 +373,6 @@ export function pollIntervalMs(): number {
   const { policy } = loadPolicy()
   // Queued deploys count as activity: a merge with nothing else open would otherwise
   // wait out the idle interval before anything brought it up.
-  const busy = hasOpenPrs() || hasPendingDeploys()
+  const busy = hasOpenPrs() || hasPendingDeploys() || hasDueRechecks()
   return (busy ? policy.sync.poll_active_s : policy.sync.poll_idle_s) * 1000
 }

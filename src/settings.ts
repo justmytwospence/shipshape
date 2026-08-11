@@ -453,14 +453,57 @@ export const SETTINGS: SettingDef[] = [
   },
   {
     section: 'Deploys',
+    path: 'deploy.probe',
+    kind: 'enum',
+    options: ['auto', 'off'],
+    optionHelp: {
+      auto: 'ask the service over HTTP, on the port it already declares to traefik',
+      off: 'judge on container state alone',
+    },
+    defaultValue: 'auto',
+    label: 'Probe over HTTP',
+    help: '',
+    about:
+      'Barely half the containers here carry a healthcheck, and 76 services already tell traefik which port they answer on. Anything below a 500 counts as answered -- a redirect to a login page is still a service that is listening. It can only ever warn, never fail a deploy by itself.',
+  },
+  {
+    section: 'Deploys',
+    path: 'deploy.rollback',
+    kind: 'enum',
+    options: ['auto', 'suggest', 'off'],
+    optionHelp: {
+      auto: 'put the previous version back, once, then tell you whatever happened',
+      suggest: 'send the alert with the commands, and change nothing',
+      off: 'never mention rolling back',
+    },
+    defaultValue: 'auto',
+    label: 'When verification fails',
+    help: '',
+    about:
+      'Exactly one attempt: a revert commit on main, deployed and announced. There is no second try and no setting that adds one. A pull request carrying more than an image line is never reverted unattended, and a verifier that could not see the containers never triggers anything -- both fall back to asking you.',
+  },
+  {
+    section: 'Deploys',
     path: 'deploy.verify_window_s',
     kind: 'int',
-    min: 10,
-    defaultValue: '120',
-    label: 'Health window',
+    min: 30,
+    defaultValue: '300',
+    label: 'Verify window',
     help: 'seconds',
     about:
-      'How long a container must stay up and healthy before the deploy counts. Returns as soon as it is, so only a bad deploy costs the wait.',
+      'How long a deploy has to prove itself. It returns the moment every signal is good, so only a bad deploy pays the wait -- which is what lets this be long enough for a service that runs migrations on first start.',
+    advanced: true,
+  },
+  {
+    section: 'Deploys',
+    path: 'deploy.soak_s',
+    kind: 'int',
+    min: 0,
+    defaultValue: '1800',
+    label: 'Soak before verified',
+    help: 'seconds; 0 to skip',
+    about:
+      'A second look this long after a deploy passes, because the failures a window catches are the fast ones. Only after this does an update read verified. Nothing is ever rolled back at this point -- by then real state has accrued, so undoing it is your call.',
     advanced: true,
   },
 

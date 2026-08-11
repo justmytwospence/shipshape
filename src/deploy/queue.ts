@@ -250,6 +250,92 @@ export async function drainDeployQueue(): Promise<{ ran: number }> {
   return { ran }
 }
 
+/**
+ * The second look.
+ *
+ * A deploy that passed its window is `deployed`, not `verified`. The failures a window
+ * catches are the fast ones -- a container that will not start, a healthcheck that never
+ * goes green. The ones it misses are slow: a leak, a migration that half-finished, a
+ * crash on the first real request an hour later. So every passing deploy is looked at
+ * once more after the soak, and only then does the update read `verified`.
+ *
+ * Deliberately never rolls anything back. By this point real state has accrued -- a
+ * database has been migrated, files have been written -- and reverting a version that
+ * has been serving for half an hour is a decision with consequences a machine should not
+ * take alone. It alerts and hands over.
+ */
+export async function runRechecks(): Promise<{ checked: number }> {
+  const db = getDb()
+  const due = db
+    .prepare(
+      `SELECT id, pr_number, stack, services FROM deploys
+       WHERE recheck_at IS NOT NULL AND recheck_at <= ? AND status = 'deployed'`,
+    )
+    .all(new Date().toISOString()) as {
+    id: number
+    pr_number: number | null
+    stack: string
+    services: string
+  }[]
+  if (due.length === 0) return { checked: 0 }
+
+  for (const row of due) {
+    const project = projectName(row.stack)
+    const services = row.services.split(' ').filter(Boolean)
+    const obs = await Promise.all(services.map((svc) => inspectService(project, svc)))
+    const bad = obs.filter(
+      (o) => !o.found || o.health === 'unhealthy' || o.state === 'restarting' || o.state === 'exited',
+    )
+
+    db.prepare(`UPDATE deploys SET recheck_at = NULL WHERE id = ?`).run(row.id)
+
+    if (bad.length === 0) {
+      db.prepare(`UPDATE deploys SET status = 'verified' WHERE id = ?`).run(row.id)
+      markUpdates(row.id, 'verified')
+      logEvent({
+        level: 'info',
+        kind: 'deploy',
+        stack: row.stack,
+        message: `${row.stack} verified`,
+        detail: `still healthy after the soak`,
+      })
+      continue
+    }
+
+    const detail = bad.map((b) => `${b.service}: ${b.found ? b.state : 'gone'}`).join('; ')
+    db.prepare(`UPDATE deploys SET status = 'degraded', detail = ? WHERE id = ?`).run(
+      `soak failed — ${detail}`,
+      row.id,
+    )
+    logEvent({
+      level: 'error',
+      kind: 'deploy',
+      stack: row.stack,
+      message: `${row.stack} stopped being healthy after the deploy`,
+      detail,
+    })
+    await notify({
+      title: `shipshape: ${row.stack} degraded after deploying`,
+      body:
+        `#${row.pr_number} passed its verify window and has since stopped being healthy.\n\n${detail}\n\n` +
+        `Not rolled back: it has been running long enough to have changed state, so undoing it is your call.`,
+      priority: 4,
+      tags: ['rotating_light'],
+    })
+  }
+  return { checked: due.length }
+}
+
+/** True when a soak is due, which keeps the loop awake long enough to run it. */
+export function hasDueRechecks(): boolean {
+  const row = getDb()
+    .prepare(
+      `SELECT COUNT(*) c FROM deploys WHERE recheck_at IS NOT NULL AND status = 'deployed'`,
+    )
+    .get() as { c: number }
+  return row.c > 0
+}
+
 /** The pull request a deploy row belongs to. */
 function prIdFor(deployId: number): number {
   const row = getDb().prepare(`SELECT pr_id FROM deploys WHERE id = ?`).get(deployId) as

@@ -183,14 +183,31 @@ const MergingExplain: FC = () => (
 )
 
 const DeploysExplain: FC = () => (
-  <p class="sub">
-    A change is not finished when it merges; it is finished when it is running, which is
-    what happens here. The live checkout fast-forwards to the merged commit and the stack
-    comes up, then is watched until it is genuinely healthy — a container that starts and
-    exits is a failed deploy, not a completed one. <code>shipshape.deploy: rm-first</code>{' '}
-    removes and recreates rather than updating, for images whose old environment would
-    otherwise survive the bump. One stack is never brought up this way: shipshape's own.
-  </p>
+  <>
+    <p class="sub">
+      A change is not finished when it merges; it is finished when it is running and has
+      proved it. The checkout fast-forwards, the stack comes up, and then verification
+      watches — three ways, because no single one covers this lab: the container's own
+      healthcheck where the image declares one, an HTTP probe on the port the service
+      already tells traefik about, and a crash watch that needs neither. A service with
+      no healthcheck earns its pass by staying up, not by existing for one sample.
+    </p>
+    <p class="sub">
+      A deploy that passes is looked at once more after the soak, and only then reads{' '}
+      <em>verified</em>. One that fails gets exactly one rollback — the previous version,
+      restored by reverting the merge and bringing the stack back up, then announced with
+      the container's own log lines. There is no second attempt and no setting that adds
+      one; a machine that keeps trying to fix itself is worse than one that stops and
+      says so. A pull request carrying more than an image line is never reverted without
+      you, and neither is anything a verifier could not actually see.
+    </p>
+    <p class="sub">
+      The version that failed is not offered again — only a newer one, or the same one if
+      you ask for it deliberately. <code>shipshape.deploy: rm-first</code> recreates
+      rather than updating, for images whose old environment would otherwise survive the
+      bump. One stack is never brought up this way: shipshape's own.
+    </p>
+  </>
 )
 
 const NotificationsExplain: FC = () => (

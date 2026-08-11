@@ -221,6 +221,15 @@ async function onMerged(
   // job waits for the drain later this tick, by which point this has finished.
   const sync = await withGitLock('post-merge-sync', () => syncMain())
 
+  const synced = sync.status !== 'paused' && sync.status !== 'refused'
+
+  // Before the branch below, deliberately. This used to live on the happy path only, so
+  // a merge that arrived while the checkout was blocked never got its command -- and
+  // could not get it later either, because the pull request was already `merged` and
+  // `pollPrs` only ever looks at open ones. The comment does not depend on the sync
+  // having worked; it only has to say whether it did.
+  if (!auto) await commentCommand(number, stack, command, synced)
+
   if (sync.status === 'paused' || sync.status === 'refused') {
     logEvent({
       level: 'warn',
@@ -247,10 +256,8 @@ async function onMerged(
   })
 
   if (policy.deploy.mode !== 'auto') {
-    // The digest item is the record, but it arrives at 08:00 -- useless to someone who
-    // merged thirty seconds ago. The pull request is where that person is, so the
-    // command goes there too, once.
-    await commentCommand(number, stack, command)
+    // The digest item is the record; the comment above is what reaches the person who
+    // merged thirty seconds ago, rather than at 08:00 tomorrow.
     await routine({
       category: 'merged',
       stack,
@@ -305,7 +312,12 @@ const COMMAND_MARK = '<!-- shipshape:deploy-command -->'
  * pull request, and asking GitHub is both cheaper than a migration and correct if the
  * database is ever restored from a backup older than the merge.
  */
-async function commentCommand(number: number, stack: string, command: string): Promise<void> {
+async function commentCommand(
+  number: number,
+  stack: string,
+  command: string,
+  synced: boolean,
+): Promise<void> {
   const [owner, repo] = env.githubRepo.split('/') as [string, string]
   try {
     const { data } = await gh().rest.issues.listComments({
@@ -319,7 +331,9 @@ async function commentCommand(number: number, stack: string, command: string): P
     const dump = dumpHintFor(stack)
     const body = [
       COMMAND_MARK,
-      'Merged, and the checkout is synced. Bring it up with:',
+      synced
+        ? 'Merged, and the checkout is synced. Bring it up with:'
+        : 'Merged, but the checkout could not be updated — resolve that first, then:',
       '',
       '```',
       command,

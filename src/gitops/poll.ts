@@ -5,7 +5,8 @@ import { notify } from '../notify/index.ts'
 import { routine } from '../notify/digest.ts'
 import { withGitLock } from './repo.ts'
 import { syncMain } from './sync.ts'
-import { deployForPr, manualCommand, type DeployTarget } from '../deploy/run.ts'
+import { manualCommand, type DeployTarget } from '../deploy/run.ts'
+import { enqueueDeploy, hasPendingDeploys } from '../deploy/queue.ts'
 
 /**
  * Watching for merges.
@@ -178,25 +179,11 @@ async function onMerged(
     )
     .all(prId) as { id: number; stack: string; service: string; to_tag: string }[]
 
-  db.transaction(() => {
-    // The sha is recorded here because this is the only place it is offered. A deploy
-    // that has to be undone needs to revert exactly what was applied, and reconstructing
-    // that later means guessing which commit on main belonged to this pull request.
-    db.prepare(
-      `UPDATE prs SET state = 'merged', merged_at = ?, merge_commit_sha = ? WHERE id = ?`,
-    ).run(now, mergeSha, prId)
-    const mark = db.prepare(`UPDATE updates SET state = 'merged', updated_at = ? WHERE id = ?`)
-    for (const m of members) mark.run(now, m.id)
-  })()
-
-  // Land it in the live checkout so the deploy runs against merged content.
-  const sync = await withGitLock('post-merge-sync', () => syncMain())
-
   const stack = members[0]?.stack ?? 'unknown'
   const services = members.map((m) => m.service).join(' ')
-  // Built from the same target the automatic path would deploy, so what is pasted and
-  // what would have run cannot disagree -- including the rm-first step and the root
-  // stack's missing -f.
+  // Built from the same target the automatic path deploys, so what is pasted and what
+  // would have run cannot disagree -- including the rm-first step and the root stack's
+  // missing -f.
   const target: DeployTarget = {
     stack,
     services: [...new Set(members.map((m) => m.service))],
@@ -207,6 +194,26 @@ async function onMerged(
       : 'up',
   }
   const command = manualCommand(target)
+  const auto = policy.deploy.mode === 'auto'
+
+  db.transaction(() => {
+    // The sha is recorded here because this is the only place it is offered. A deploy
+    // that has to be undone needs to revert exactly what was applied, and reconstructing
+    // that later means guessing which commit on main belonged to this pull request.
+    db.prepare(
+      `UPDATE prs SET state = 'merged', merged_at = ?, merge_commit_sha = ? WHERE id = ?`,
+    ).run(now, mergeSha, prId)
+    const mark = db.prepare(`UPDATE updates SET state = 'merged', updated_at = ? WHERE id = ?`)
+    for (const m of members) mark.run(now, m.id)
+    // Inside the transaction, deliberately. If the intent were written after it, a crash
+    // in between would leave a pull request marked merged with nothing left to act on
+    // it -- which is exactly how merges used to be lost, silently and permanently.
+    if (auto) enqueueDeploy({ prId, prNumber: number, target, now })
+  })()
+
+  // Land it in the live checkout so the deploy runs against merged content. The queued
+  // job waits for the drain later this tick, by which point this has finished.
+  const sync = await withGitLock('post-merge-sync', () => syncMain())
 
   if (sync.status === 'paused' || sync.status === 'refused') {
     logEvent({
@@ -218,7 +225,7 @@ async function onMerged(
     })
     await notify({
       title: `shipshape: #${number} merged, sync blocked`,
-      body: `${sync.reason}\n\nOnce resolved, deploy with:\n${command}`,
+      body: `${sync.reason}\n\n${auto ? 'The deploy stays queued and runs once the checkout is clean.' : 'Once resolved, deploy with:'}\n${command}`,
       priority: 4,
       tags: ['warning'],
     })
@@ -248,18 +255,13 @@ async function onMerged(
     return
   }
 
-  const outcome = await deployForPr(number, target)
-
-  if (outcome.ok && outcome.healthy) {
-    await routine({
-      category: 'deployed',
-      stack,
-      summary: `#${number} merged and deployed — ${outcome.detail}`,
-      url: `https://github.com/${env.githubRepo}/pull/${number}`,
-    })
-  }
-  // Failures alert immediately from deployForPr, which knows how they failed. Nothing
-  // that went wrong ever waits for a digest.
+  logEvent({
+    level: 'info',
+    kind: 'deploy',
+    stack,
+    message: `deploy of ${stack} queued for #${number}`,
+    detail: target.services.join(', '),
+  })
 }
 
 /** The service's `shipshape.deploy` label, as recorded by the last scan. */
@@ -369,5 +371,8 @@ export function hasOpenPrs(): boolean {
 
 export function pollIntervalMs(): number {
   const { policy } = loadPolicy()
-  return (hasOpenPrs() ? policy.sync.poll_active_s : policy.sync.poll_idle_s) * 1000
+  // Queued deploys count as activity: a merge with nothing else open would otherwise
+  // wait out the idle interval before anything brought it up.
+  const busy = hasOpenPrs() || hasPendingDeploys()
+  return (busy ? policy.sync.poll_active_s : policy.sync.poll_idle_s) * 1000
 }

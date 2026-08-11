@@ -5,6 +5,7 @@ import { runAnalysisPass } from './analyze/run.ts'
 import { runProposePass } from './propose/run.ts'
 import { runAutoMerge } from './gitops/automerge.ts'
 import { pollIntervalMs, pollPrs } from './gitops/poll.ts'
+import { drainDeployQueue } from './deploy/queue.ts'
 import { runPrPass } from './gitops/pr.ts'
 import { runScan } from './scan.ts'
 import { flush as flushDigest, prune as pruneDigest } from './notify/digest.ts'
@@ -93,6 +94,9 @@ function startPrLoop(): void {
       const { policy } = loadPolicy()
       if (policy.prs.enabled && !inBlackout(policy)) {
         await pollPrs()
+        // After polling, so every merge this tick noticed is queued before any of them
+        // is acted on, and one slow verify window cannot hide the others.
+        await drainDeployQueue()
         const result = await runPrPass()
         // Analysis runs after PR creation, not before: a pull request must appear
         // whether or not the model is reachable.

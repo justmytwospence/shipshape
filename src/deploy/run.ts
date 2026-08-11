@@ -243,25 +243,52 @@ export function failureState(outcome: Extract<DeployOutcome, { ok: false }>, str
 export async function deployForPr(
   prNumber: number,
   target: DeployTarget,
+  deployId?: number,
 ): Promise<DeployOutcome> {
   const outcome = await deploy(target)
   const now = new Date().toISOString()
+  const detail = outcome.ok
+    ? outcome.detail
+    : `${outcome.reason}${outcome.stderr ? `\n${outcome.stderr}` : ''}`
+  const status = !outcome.ok ? 'failed' : outcome.healthy ? 'deployed' : 'failed'
 
-  getDb()
-    .prepare(
-      `INSERT INTO deploys (pr_number, stack, services, strategy, ok, healthy, detail, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      prNumber,
-      target.stack,
-      target.services.join(' '),
-      target.strategy,
-      outcome.ok ? 1 : 0,
-      outcome.ok && outcome.healthy ? 1 : 0,
-      outcome.ok ? outcome.detail : `${outcome.reason}${outcome.stderr ? `\n${outcome.stderr}` : ''}`,
-      now,
-    )
+  if (deployId === undefined) {
+    // No queue row: a deploy asked for directly rather than by a merge. Record it as
+    // finished history rather than inventing a job nobody will drain.
+    getDb()
+      .prepare(
+        `INSERT INTO deploys (pr_number, stack, services, strategy, ok, healthy, detail,
+                              status, started_at, finished_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        prNumber,
+        target.stack,
+        [...new Set(target.services)].join(' '),
+        target.strategy,
+        outcome.ok ? 1 : 0,
+        outcome.ok && outcome.healthy ? 1 : 0,
+        detail,
+        status,
+        now,
+        now,
+        now,
+      )
+  } else {
+    getDb()
+      .prepare(
+        `UPDATE deploys SET ok = ?, healthy = ?, detail = ?, status = ?, finished_at = ?
+         WHERE id = ?`,
+      )
+      .run(
+        outcome.ok ? 1 : 0,
+        outcome.ok && outcome.healthy ? 1 : 0,
+        detail,
+        status,
+        now,
+        deployId,
+      )
+  }
 
   if (!outcome.ok) {
     logEvent({

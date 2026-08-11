@@ -1,7 +1,7 @@
 import { env, loadPolicy } from '../config.ts'
 import { logEvent } from '../db.ts'
 import { notifyOnce, clearNotifyState, notify } from '../notify/index.ts'
-import { git, httpsUrl } from './repo.ts'
+import { authorArgs, git, httpsUrl } from './repo.ts'
 
 /**
  * Keeping the live checkout and origin in step.
@@ -202,7 +202,17 @@ async function fastForward(): Promise<{ status: 'ok' } | { status: 'failed'; rea
  * make the same bump.
  */
 async function rebaseOntoOrigin(): Promise<{ status: 'ok' } | { status: 'failed'; reason: string }> {
-  const r = await git(HOMELAB(), ['rebase', '--autostash', 'FETCH_HEAD'], { allowFail: true })
+  // The identity is not optional here. A rebase writes commits, and the container has no
+  // git identity of its own -- it runs as the host user with no ~/.gitconfig -- so
+  // without this git refuses with "Committer identity unknown" and the rebase fails
+  // every time. Every other path that writes a commit already passes these; this one did
+  // not, and the gap was invisible because divergence is rare: shipshape publishes main
+  // each cycle, so the fast-forward branch above handles almost everything. The first
+  // time a local commit and a merge on origin crossed, sync broke -- and a broken sync
+  // blocks deploys and pull requests both.
+  const r = await git(HOMELAB(), [...authorArgs(), 'rebase', '--autostash', 'FETCH_HEAD'], {
+    allowFail: true,
+  })
   if (r.exitCode === 0) return { status: 'ok' }
 
   // Leave nothing half-applied. An aborted rebase restores the exact prior state.

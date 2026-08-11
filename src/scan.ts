@@ -185,6 +185,32 @@ function liveRows(stack: string, service: string): UpdateRow[] {
     .all(stack, service) as UpdateRow[]
 }
 
+/**
+ * Has this exact upgrade already been tried and rolled back?
+ *
+ * A rollback puts the old tag back in the compose file, which means the very next scan
+ * sees the same old -> new pair it saw before and would offer it again -- reopening the
+ * pull request, re-deploying the version that just broke, and rolling it back once more,
+ * for as long as the tag stays newest. The failed row is the memory that stops that.
+ *
+ * Keyed on the exact four-tuple, so it forgets nothing and blocks nothing else: a newer
+ * tag is a different target and gets a fresh row and a normal pipeline. Only this
+ * version, the one actually observed to fail, stays refused.
+ */
+export function failedTarget(
+  stack: string,
+  service: string,
+  fromTag: string,
+  toTag: string,
+): { id: number; detail: string | null } | null {
+  return (getDb()
+    .prepare(
+      `SELECT id, detail FROM updates
+       WHERE stack = ? AND service = ? AND from_tag = ? AND to_tag = ? AND state = 'failed'`,
+    )
+    .get(stack, service, fromTag, toTag) ?? null) as { id: number; detail: string | null } | null
+}
+
 function supersede(id: number, detail: string): void {
   getDb()
     .prepare(`UPDATE updates SET state = 'superseded', detail = ?, updated_at = ? WHERE id = ?`)
@@ -323,6 +349,16 @@ async function persist(
       }
 
       if (tier === 'skip') return 'skipped'
+
+      // Already tried, already rolled back. Touch it so the row does not look abandoned
+      // and say so on the images page, but do not offer it again -- re-detecting a
+      // failure as news is how an automatic loop reapplies the thing that broke.
+      const dead = failedTarget(svc.stack, svc.service, currentTag, d.tag)
+      if (dead) {
+        db.prepare(`UPDATE updates SET updated_at = ? WHERE id = ?`).run(now, dead.id)
+        setImageStatus(svc, 'update-failed', dead.detail ?? `${d.tag} failed to deploy`)
+        return 'known-failed'
+      }
 
       insertUpdate({
         svc,

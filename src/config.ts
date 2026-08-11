@@ -292,6 +292,14 @@ export const PolicySchema = z.object({
       // window misses are the slow ones -- a leak, a crash on the first real request.
       // Only after this does an update read `verified`. 0 skips it.
       soak_s: z.number().int().min(0).default(1800),
+      // What happens when verification fails. `auto` makes exactly one attempt to put
+      // the previous version back -- a revert commit on main, deployed and announced --
+      // then stops and alerts whatever the result. There is no second try and no setting
+      // that adds one. `suggest` sends the same alert with the commands instead of
+      // acting. Auto is the default deliberately: it fires only on hard signals, and a
+      // machine allowed to break a service unattended must be able to un-break it.
+      // Ambiguous evidence always downgrades to suggest whatever this says.
+      rollback: z.enum(['auto', 'suggest', 'off']).default('auto'),
     })
     .prefault({})
     .transform((d) => ({

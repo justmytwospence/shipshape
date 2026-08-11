@@ -1,7 +1,11 @@
 import { getDb, logEvent } from '../db.ts'
-import { loadPolicy } from '../config.ts'
+import { env, loadPolicy } from '../config.ts'
 import { notify } from '../notify/index.ts'
 import { deployForPr, type DeployTarget } from './run.ts'
+import { handleFailure } from './rollback.ts'
+import { captureLogs, inspectService, projectName } from './probe.ts'
+import type { Verdict } from './verify.ts'
+import { routine } from '../notify/digest.ts'
 import { withGitLock } from '../gitops/repo.ts'
 import { syncMain } from '../gitops/sync.ts'
 
@@ -168,7 +172,52 @@ export async function drainDeployQueue(): Promise<{ ran: number }> {
     try {
       const outcome = await deployForPr(job.pr_number ?? 0, target, job.id)
       ran++
-      markUpdates(job.id, outcome.ok && outcome.healthy ? 'deployed' : 'merged')
+
+      if (outcome.ok && outcome.healthy) {
+        markUpdates(job.id, 'deployed')
+        // Passing the window is not the same as being fine. The failures a window misses
+        // are the slow ones, so nothing reads `verified` until the soak has also passed.
+        const soak = policy.deploy.soak_s
+        if (soak > 0) {
+          db.prepare(`UPDATE deploys SET recheck_at = ? WHERE id = ?`).run(
+            new Date(Date.now() + soak * 1000).toISOString(),
+            job.id,
+          )
+        } else {
+          markUpdates(job.id, 'verified')
+          db.prepare(`UPDATE deploys SET status = 'verified' WHERE id = ?`).run(job.id)
+        }
+        await routine({
+          category: 'deployed',
+          stack: job.stack,
+          summary: `#${job.pr_number} deployed — ${outcome.detail}`,
+          url: `https://github.com/${env.githubRepo}/pull/${job.pr_number}`,
+        })
+      } else if (outcome.ok && outcome.verdict?.kind === 'failed') {
+        // Verification said no. Everything from here is remediation.
+        const logs = await collectLogs(job.stack, target.services, outcome.verdict)
+        db.prepare(`UPDATE deploys SET verdict = ?, diagnosis = ? WHERE id = ?`).run(
+          JSON.stringify(outcome.verdict),
+          JSON.stringify({ logs }),
+          job.id,
+        )
+        const { rolledBack } = await handleFailure({
+          prNumber: job.pr_number ?? 0,
+          prId: prIdFor(job.id),
+          target,
+          verdict: outcome.verdict,
+          logs,
+        })
+        // Tombstone only when the tree no longer carries the change. If it still does,
+        // the update is still live and re-deploying it is a legitimate retry.
+        markUpdates(job.id, rolledBack ? 'failed' : 'merged')
+        db.prepare(`UPDATE deploys SET status = ? WHERE id = ?`).run(
+          rolledBack ? 'rolled-back' : 'failed',
+          job.id,
+        )
+      } else {
+        markUpdates(job.id, 'merged')
+      }
     } catch (err) {
       // The row stays `running` and reclaimStale will retry it once. Never rethrow:
       // one bad deploy must not abandon the rest of the queue, which is the failure
@@ -199,6 +248,46 @@ export async function drainDeployQueue(): Promise<{ ran: number }> {
     }
   }
   return { ran }
+}
+
+/** The pull request a deploy row belongs to. */
+function prIdFor(deployId: number): number {
+  const row = getDb().prepare(`SELECT pr_id FROM deploys WHERE id = ?`).get(deployId) as
+    | { pr_id: number | null }
+    | undefined
+  return row?.pr_id ?? 0
+}
+
+/**
+ * The failing service's own words.
+ *
+ * An alert that says "unhealthy" and nothing else sends the operator to a terminal to
+ * find out what every alert should already have told them. The container has been
+ * saying why the whole time; nothing was reading it.
+ */
+async function collectLogs(
+  stack: string,
+  services: string[],
+  verdict: Verdict,
+): Promise<string> {
+  const failing =
+    verdict.kind === 'failed' || verdict.kind === 'degraded'
+      ? [...new Set(verdict.findings.map((f) => f.service))]
+      : services
+  const project = projectName(stack)
+  const since = new Date(Date.now() - 10 * 60 * 1000).toISOString()
+  const parts: string[] = []
+  for (const service of failing.slice(0, 2)) {
+    const obs = await inspectService(project, service)
+    if (obs.healthLog.length > 0) {
+      parts.push(`${service} healthcheck:\n${obs.healthLog.join('\n')}`)
+    }
+    if (obs.id) {
+      const logs = await captureLogs(obs.id, since, 60).catch(() => '')
+      if (logs.trim()) parts.push(`${service}:\n${logs.trim()}`)
+    }
+  }
+  return parts.join('\n\n').slice(0, 4000)
 }
 
 /** Move every update behind a deploy row to the same lifecycle state. */

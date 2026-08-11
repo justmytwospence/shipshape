@@ -101,12 +101,17 @@ export function refuseReason(
   return null
 }
 
-export async function deploy(target: DeployTarget): Promise<DeployOutcome> {
+export async function deploy(
+  target: DeployTarget,
+  opts: { skipBlackout?: boolean } = {},
+): Promise<DeployOutcome> {
   const { policy } = loadPolicy()
   const refusal = refuseReason(target, {
     selfStack: env.selfStack,
     excluded: policy.exclude_stacks,
-    blackout: inBlackout(policy),
+    // Restoring a known-good version is remediation, not a change: the blackout exists
+    // to keep upgrades out of the small hours, not to leave a service broken until 02:30.
+    blackout: opts.skipBlackout ? false : inBlackout(policy),
   })
   if (refusal) return { ok: false, phase: 'refused', reason: refusal }
 

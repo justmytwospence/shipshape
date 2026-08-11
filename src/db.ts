@@ -395,6 +395,57 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     CREATE INDEX idx_digest_pending ON digest_items(sent_at, id);
   `,
   },
+  {
+    id: '013-verify-rollback',
+    sql: `
+    -- The sha the merge produced, so a failed deploy can revert exactly what it applied.
+    -- Captured at merge detection because GitHub hands it to us there and nowhere else:
+    -- reconstructing it later means guessing which commit on main was this pull request.
+    ALTER TABLE prs ADD COLUMN merge_commit_sha TEXT;
+
+    -- The port this service serves HTTP on, harvested from the traefik loadbalancer
+    -- label the service already declares. NULL means no probe -- either nothing is
+    -- declared or \`shipshape.probe: off\` said not to. Probing the container directly
+    -- rather than its public URL is deliberate: it bypasses the forward-auth that would
+    -- answer 302 for every protected service, and the rate limiter that would eventually
+    -- ban the prober.
+    ALTER TABLE images ADD COLUMN probe_port INTEGER;
+
+    -- The stack's own nightly dump recipe, copied from the docker-volume-backup label
+    -- it already carries. Read and suggested to a human upgrading a datastore, never
+    -- run: it was written for the backup container's context and sequencing, and
+    -- automating someone else's label without an opt-in is how the WUD trigger-string
+    -- era started.
+    ALTER TABLE images ADD COLUMN archive_pre TEXT;
+
+    -- \`deploys\` becomes the work queue as well as the record.
+    --
+    -- The queue half is what stops a merge being lost. The row is written in the same
+    -- transaction that marks the pull request merged, so a crash between "merged" and
+    -- "deployed" leaves an intent behind to retry, instead of a merge nothing will ever
+    -- act on again -- which is what happened before, silently, because the merged state
+    -- was committed first and the deploy had no try/catch anywhere on its path.
+    ALTER TABLE deploys ADD COLUMN pr_id INTEGER REFERENCES prs(id);
+    ALTER TABLE deploys ADD COLUMN status TEXT NOT NULL DEFAULT 'pending';
+      -- pending | running | deployed | verified | degraded | failed | rolled-back | error
+    ALTER TABLE deploys ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;
+    -- What was running before, per service: image digest and reference, restart count,
+    -- container id. The previous-good state has to be recorded rather than recomputed,
+    -- because by the time a deploy has failed the thing it replaced is already gone.
+    ALTER TABLE deploys ADD COLUMN snapshot TEXT;
+    ALTER TABLE deploys ADD COLUMN verdict TEXT;    -- per-service signals, JSON
+    ALTER TABLE deploys ADD COLUMN diagnosis TEXT;  -- logs, health log, model summary, JSON
+    ALTER TABLE deploys ADD COLUMN started_at TEXT;
+    ALTER TABLE deploys ADD COLUMN finished_at TEXT;
+    -- When to look again. A deploy that passed its window is not yet \`verified\`: the
+    -- failures a window misses are the slow ones.
+    ALTER TABLE deploys ADD COLUMN recheck_at TEXT;
+    CREATE INDEX idx_deploys_status ON deploys(status);
+
+    -- Rows written before this migration are finished history, not queue entries.
+    UPDATE deploys SET status = CASE WHEN healthy = 1 THEN 'deployed' ELSE 'failed' END;
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

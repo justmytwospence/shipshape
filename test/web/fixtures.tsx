@@ -38,6 +38,8 @@ export const SERVICE: ScannedService = {
   sourceLabel: null,
   claudeLabel: null,
   deployLabel: null,
+  probePort: null,
+  archivePre: null,
   prLabel: null,
   proposeLabel: null,
   groupLabel: null,

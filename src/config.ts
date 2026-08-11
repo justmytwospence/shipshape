@@ -263,13 +263,30 @@ export const PolicySchema = z.object({
     .prefault({}),
   deploy: z
     .object({
-      // auto   -- bring merged changes up on the host
-      // manual -- sync only; the notification carries the command to paste
-      // off    -- do not even sync
-      mode: z.enum(['auto', 'manual', 'off']).default('manual'),
-      health_window_s: z.number().int().positive().default(120),
+      // auto   -- bring merged changes up on the host, then verify them
+      // manual -- sync only; the command is commented on the pull request
+      //
+      // `off` is gone. It claimed "do not even sync" and never did: the sync ran
+      // unconditionally and the mode was only ever compared against `auto`, so it was a
+      // third name for `manual`. Accepted on read so no existing file breaks, folded to
+      // what it actually did. The kill-switch that genuinely stops git work is
+      // sync.push_main.
+      mode: z
+        .enum(['auto', 'manual', 'off'])
+        .default('manual')
+        .transform((v) => (v === 'off' ? ('manual' as const) : v)),
+      // How long a deploy has to prove itself. Returns the moment every signal is good,
+      // so only a bad deploy pays the wait -- which is why this can afford to be long
+      // enough for a service that runs migrations on first start. `health_window_s` is
+      // still accepted as the old spelling.
+      verify_window_s: z.number().int().positive().default(300),
+      health_window_s: z.number().int().positive().optional(),
     })
-    .prefault({}),
+    .prefault({})
+    .transform((d) => ({
+      ...d,
+      verify_window_s: d.health_window_s ?? d.verify_window_s,
+    })),
   /** Stacks the tool must never touch. Its own stack is appended unconditionally --
    *  WUD's self-update crash-loop is not a mistake worth repeating. */
   exclude_stacks: z.array(z.string()).default([]),

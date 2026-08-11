@@ -39,9 +39,17 @@ export interface DeployTarget {
   strategy: 'up' | 'rm-first'
 }
 
+/**
+ * `phase` exists because the alert text depends on it and nothing else can recover it.
+ * A plain `up` that fails leaves the old container running; the same failure after
+ * `rm -sf` leaves the service DOWN. Reporting both as "the service is running whatever
+ * it was" was false in exactly the case that needed the operator out of bed.
+ */
+export type DeployPhase = 'refused' | 'rm' | 'up' | 'verify'
+
 export type DeployOutcome =
   | { ok: true; healthy: boolean; detail: string }
-  | { ok: false; reason: string; stderr?: string }
+  | { ok: false; phase: DeployPhase; reason: string; stderr?: string }
 
 /** Services in the root compose file are addressed from the repository root. */
 function isRootStack(stack: string): boolean {
@@ -50,13 +58,17 @@ function isRootStack(stack: string): boolean {
 
 export function composeArgs(target: DeployTarget): { cwd: string; args: string[] } {
   const cwd = env.repoDir
+  // Deduped here rather than at the call site: this is the one function that turns a
+  // target into a command, so it is the one place that can guarantee the executed and
+  // the pasted command agree.
+  const services = [...new Set(target.services)]
   if (isRootStack(target.stack)) {
     // No -f: the root compose file is the project, and its networks are defined there.
-    return { cwd, args: ['compose', 'up', '-d', ...target.services] }
+    return { cwd, args: ['compose', 'up', '-d', ...services] }
   }
   return {
     cwd,
-    args: ['compose', '-f', `${target.stack}/docker-compose.yaml`, 'up', '-d', ...target.services],
+    args: ['compose', '-f', `${target.stack}/docker-compose.yaml`, 'up', '-d', ...services],
   }
 }
 
@@ -65,7 +77,7 @@ function removeArgs(target: DeployTarget): { cwd: string; args: string[] } {
   const base = isRootStack(target.stack)
     ? ['compose']
     : ['compose', '-f', `${target.stack}/docker-compose.yaml`]
-  return { cwd, args: [...base, 'rm', '-sf', ...target.services] }
+  return { cwd, args: [...base, 'rm', '-sf', ...new Set(target.services)] }
 }
 
 /**
@@ -94,7 +106,7 @@ export async function deploy(target: DeployTarget): Promise<DeployOutcome> {
     excluded: policy.exclude_stacks,
     blackout: inBlackout(policy),
   })
-  if (refusal) return { ok: false, reason: refusal }
+  if (refusal) return { ok: false, phase: 'refused', reason: refusal }
 
   const started = Date.now()
 
@@ -102,17 +114,17 @@ export async function deploy(target: DeployTarget): Promise<DeployOutcome> {
     const rm = removeArgs(target)
     const r = await execa('docker', rm.args, { cwd: rm.cwd, reject: false, timeout: 120_000 })
     if ((r.exitCode ?? 1) !== 0) {
-      return { ok: false, reason: 'could not remove the old container', stderr: tail(r.stderr) }
+      return { ok: false, phase: 'rm', reason: 'could not remove the old container', stderr: tail(r.stderr) }
     }
   }
 
   const up = composeArgs(target)
   const r = await execa('docker', up.args, { cwd: up.cwd, reject: false, timeout: 600_000 })
   if ((r.exitCode ?? 1) !== 0) {
-    return { ok: false, reason: 'compose failed', stderr: tail(r.stderr) }
+    return { ok: false, phase: 'up', reason: 'compose failed', stderr: tail(r.stderr) }
   }
 
-  const health = await settle(target, policy.deploy.health_window_s)
+  const health = await settle(target, policy.deploy.verify_window_s)
   const secs = Math.round((Date.now() - started) / 1000)
   return {
     ok: true,
@@ -189,6 +201,44 @@ function tail(s: unknown): string {
     .slice(0, 600)
 }
 
+/**
+ * The command an operator runs by hand, built from the same function the automatic path
+ * executes.
+ *
+ * It was assembled by string concatenation at the call site, which produced
+ * `-f root/docker-compose.yaml` for root-stack services -- the exact invocation
+ * composeArgs exists to avoid, since it fails with "refers to undefined network" -- and
+ * repeated a service name when a group listed it twice. Deriving it here means the
+ * pasted command and the executed one cannot drift.
+ */
+export function manualCommand(target: DeployTarget): string {
+  const lines: string[] = []
+  if (target.strategy === 'rm-first') {
+    const rm = removeArgs(target)
+    lines.push(`docker ${rm.args.join(' ')}`)
+  }
+  const up = composeArgs(target)
+  lines.push(`docker ${up.args.join(' ')}`)
+  return lines.join('\n')
+}
+
+/**
+ * What a failed deploy left behind, in the operator's terms.
+ *
+ * Only a plain `up` is safe to describe as leaving the old container in place; every
+ * other phase either removed it first or never got that far.
+ */
+export function failureState(outcome: Extract<DeployOutcome, { ok: false }>, strategy: DeployTarget['strategy']): string {
+  if (outcome.phase === 'up' && strategy === 'rm-first') {
+    return 'The old container was removed and the new one did not start — the service is DOWN.'
+  }
+  if (outcome.phase === 'rm') {
+    return 'The old container may be partly stopped; nothing was recreated.'
+  }
+  if (outcome.phase === 'refused') return 'Nothing was attempted.'
+  return 'The change is in the checkout; the service is running whatever it was.'
+}
+
 /** Run a deploy for a merged pull request and record what happened. */
 export async function deployForPr(
   prNumber: number,
@@ -221,10 +271,13 @@ export async function deployForPr(
       message: `deploy of ${target.stack} failed after #${prNumber} merged`,
       detail: `${outcome.reason}${outcome.stderr ? `\n${outcome.stderr}` : ''}`,
     })
+    const down = outcome.phase === 'up' && target.strategy === 'rm-first'
     await notify({
-      title: `shipshape: deploy failed — ${target.stack}`,
-      body: `#${prNumber} merged but ${target.services.join(', ')} did not deploy.\n\n${outcome.reason}\n\nThe change is in the checkout; the service is running whatever it was.`,
-      priority: 4,
+      title: down
+        ? `shipshape: ${target.stack} is DOWN — deploy failed`
+        : `shipshape: deploy failed — ${target.stack}`,
+      body: `#${prNumber} merged but ${target.services.join(', ')} did not deploy.\n\n${outcome.reason}\n\n${failureState(outcome, target.strategy)}\n\nRetry with:\n${manualCommand(target)}`,
+      priority: down ? 5 : 4,
       tags: ['rotating_light'],
     })
     return outcome

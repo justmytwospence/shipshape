@@ -16,6 +16,17 @@ import { parseImageRef, type ImageRef } from '../images/ref.ts'
 
 export type UnwatchableReason = 'build' | 'interpolated' | 'no-image' | 'disabled' | 'excluded'
 
+/** `traefik.http.services.<anything>.loadbalancer.server.port`, first one wins. */
+function traefikPort(labels: Record<string, string>): number | null {
+  for (const [k, v] of Object.entries(labels)) {
+    if (/^traefik\.http\.services\..+\.loadbalancer\.server\.port$/.test(k)) {
+      const n = Number(v)
+      if (Number.isInteger(n) && n > 0 && n < 65536) return n
+    }
+  }
+  return null
+}
+
 export interface ScannedService {
   stack: string
   service: string
@@ -34,6 +45,10 @@ export interface ScannedService {
   sourceLabel: string | null
   claudeLabel: string | null
   deployLabel: string | null
+  /** Port this service serves HTTP on, per its own traefik loadbalancer label. */
+  probePort: number | null
+  /** The stack's nightly dump command, if it declares one. Suggested, never run. */
+  archivePre: string | null
   /** `shipshape.pr: on-request` -- detected but never auto-PR'd; the operator opens it. */
   prLabel: string | null
   /** `shipshape.propose` -- how far a drafted config change may reach. See propose/paths. */
@@ -142,6 +157,18 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
     const sourceLabel = label('source')
     const claudeLabel = label('claude')
     const deployLabel = label('deploy')
+    // Traefik already knows which port each service answers on -- 76 of them declare it.
+    // Reusing that beats inventing a shipshape-specific one nobody would fill in, and it
+    // is the only per-service HTTP fact this repo states in a machine-readable way.
+    // `shipshape.probe: off` opts out; `shipshape.probe: <port>` overrides.
+    const probeLabel = label('probe')
+    const probePort =
+      probeLabel === 'off'
+        ? null
+        : /^\d+$/.test(probeLabel ?? '')
+          ? Number(probeLabel)
+          : traefikPort(labels)
+    const archivePre = labels['docker-volume-backup.archive-pre'] ?? null
     const prLabel = label('pr')
     const proposeLabel = label('propose')
     const groupLabel = label('group')
@@ -177,6 +204,8 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
       sourceLabel,
       claudeLabel,
       deployLabel,
+      probePort,
+      archivePre,
       prLabel,
       proposeLabel,
       groupLabel,

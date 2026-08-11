@@ -5,7 +5,7 @@ import { notify } from '../notify/index.ts'
 import { routine } from '../notify/digest.ts'
 import { withGitLock } from './repo.ts'
 import { syncMain } from './sync.ts'
-import { deployForPr, type DeployTarget } from '../deploy/run.ts'
+import { deployForPr, manualCommand, type DeployTarget } from '../deploy/run.ts'
 
 /**
  * Watching for merges.
@@ -80,7 +80,7 @@ export async function pollPrs(): Promise<PollResult> {
 
     if (data.merged_at) {
       out.merged++
-      await onMerged(pr.id, pr.number)
+      await onMerged(pr.id, pr.number, data.merge_commit_sha ?? null)
     } else {
       out.closed++
       onClosed(pr.id, pr.number)
@@ -163,7 +163,11 @@ function hasProposal(prId: number): boolean {
     .get(prId)
 }
 
-async function onMerged(prId: number, number: number): Promise<void> {
+async function onMerged(
+  prId: number,
+  number: number,
+  mergeSha: string | null,
+): Promise<void> {
   const { policy } = loadPolicy()
   const db = getDb()
   const now = new Date().toISOString()
@@ -175,7 +179,12 @@ async function onMerged(prId: number, number: number): Promise<void> {
     .all(prId) as { id: number; stack: string; service: string; to_tag: string }[]
 
   db.transaction(() => {
-    db.prepare(`UPDATE prs SET state = 'merged', merged_at = ? WHERE id = ?`).run(now, prId)
+    // The sha is recorded here because this is the only place it is offered. A deploy
+    // that has to be undone needs to revert exactly what was applied, and reconstructing
+    // that later means guessing which commit on main belonged to this pull request.
+    db.prepare(
+      `UPDATE prs SET state = 'merged', merged_at = ?, merge_commit_sha = ? WHERE id = ?`,
+    ).run(now, mergeSha, prId)
     const mark = db.prepare(`UPDATE updates SET state = 'merged', updated_at = ? WHERE id = ?`)
     for (const m of members) mark.run(now, m.id)
   })()
@@ -185,7 +194,19 @@ async function onMerged(prId: number, number: number): Promise<void> {
 
   const stack = members[0]?.stack ?? 'unknown'
   const services = members.map((m) => m.service).join(' ')
-  const command = `docker compose -f ${stack}/docker-compose.yaml up -d ${services}`
+  // Built from the same target the automatic path would deploy, so what is pasted and
+  // what would have run cannot disagree -- including the rm-first step and the root
+  // stack's missing -f.
+  const target: DeployTarget = {
+    stack,
+    services: [...new Set(members.map((m) => m.service))],
+    // rm-first if any member asked for it: the strategy applies to the whole compose
+    // invocation, and the safer of the two wins.
+    strategy: members.some((m) => deployLabelFor(m.stack, m.service) === 'rm-first')
+      ? 'rm-first'
+      : 'up',
+  }
+  const command = manualCommand(target)
 
   if (sync.status === 'paused' || sync.status === 'refused') {
     logEvent({
@@ -213,8 +234,10 @@ async function onMerged(prId: number, number: number): Promise<void> {
   })
 
   if (policy.deploy.mode !== 'auto') {
-    // Not deploying: the item carries the exact command so it is one paste rather than a
-    // lookup, even when it arrives in a digest hours later.
+    // The digest item is the record, but it arrives at 08:00 -- useless to someone who
+    // merged thirty seconds ago. The pull request is where that person is, so the
+    // command goes there too, once.
+    await commentCommand(number, stack, command)
     await routine({
       category: 'merged',
       stack,
@@ -225,16 +248,7 @@ async function onMerged(prId: number, number: number): Promise<void> {
     return
   }
 
-  const target: DeployTarget = {
-    stack,
-    services: [...new Set(members.map((m) => m.service))],
-    // rm-first if any member asked for it: the strategy applies to the whole compose
-    // invocation, and the safer of the two wins.
-    strategy: members.some((m) => deployLabelFor(m.stack, m.service) === 'rm-first')
-      ? 'rm-first'
-      : 'up',
-  }
-  const outcome = await deployForPr(number, target);
+  const outcome = await deployForPr(number, target)
 
   if (outcome.ok && outcome.healthy) {
     await routine({
@@ -272,6 +286,78 @@ function onClosed(prId: number, number: number): void {
     message: `#${number} was closed without merging`,
     detail: 'the update will be re-detected on the next scan unless the tag moves on',
   })
+}
+
+const COMMAND_MARK = '<!-- shipshape:deploy-command -->'
+
+/**
+ * Put the deploy command on the pull request, once.
+ *
+ * Marker-keyed rather than tracked in the database: the comment is a property of the
+ * pull request, and asking GitHub is both cheaper than a migration and correct if the
+ * database is ever restored from a backup older than the merge.
+ */
+async function commentCommand(number: number, stack: string, command: string): Promise<void> {
+  const [owner, repo] = env.githubRepo.split('/') as [string, string]
+  try {
+    const { data } = await gh().rest.issues.listComments({
+      owner,
+      repo,
+      issue_number: number,
+      per_page: 100,
+    })
+    if (data.some((c) => (c.body ?? '').includes(COMMAND_MARK))) return
+
+    const dump = dumpHintFor(stack)
+    const body = [
+      COMMAND_MARK,
+      'Merged, and the checkout is synced. Bring it up with:',
+      '',
+      '```',
+      command,
+      '```',
+      ...(dump
+        ? [
+            '',
+            'This stack carries a dump recipe (`docker-volume-backup.archive-pre`).',
+            'Worth running first:',
+            '',
+            '```',
+            dump,
+            '```',
+          ]
+        : []),
+    ].join('\n')
+
+    await gh().rest.issues.createComment({ owner, repo, issue_number: number, body })
+  } catch (err) {
+    // The command is also in the digest and on the dashboard. A comment that could not
+    // be written is not worth failing a merge over.
+    logEvent({
+      level: 'warn',
+      kind: 'pr',
+      message: `could not comment the deploy command on #${number}`,
+      detail: (err as Error).message.slice(0, 200),
+    })
+  }
+}
+
+/**
+ * The stack's own backup dump command, if it declared one.
+ *
+ * Read, never run: these were written for the nightly backup's context and sequencing,
+ * and running someone else's label automatically is how the WUD trigger-string era
+ * started. Suggesting it to a human about to upgrade a database is the useful half.
+ */
+function dumpHintFor(stack: string): string | null {
+  const row = getDb()
+    .prepare(
+      `SELECT service, archive_pre FROM images
+       WHERE stack = ? AND archive_pre IS NOT NULL AND archive_pre != '' LIMIT 1`,
+    )
+    .get(stack) as { service: string; archive_pre: string } | undefined
+  if (!row) return null
+  return `docker exec ${row.service} ${row.archive_pre}`
 }
 
 /** True while any shipshape PR is open, which is what decides the poll cadence. */

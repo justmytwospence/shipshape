@@ -1,6 +1,8 @@
 import { execa } from 'execa'
 import { join } from 'node:path'
-import { env, inBlackout, loadPolicy } from '../config.ts'
+import { env, inBlackout, loadPolicy, type Policy } from '../config.ts'
+import { httpProbe, inspectService, projectName, snapshotTarget, type ServiceSnapshot } from './probe.ts'
+import { DEFAULT_VERIFY, runVerify, type Verdict } from './verify.ts'
 import { getDb, logEvent } from '../db.ts'
 import { notify } from '../notify/index.ts'
 
@@ -48,8 +50,8 @@ export interface DeployTarget {
 export type DeployPhase = 'refused' | 'rm' | 'up' | 'verify'
 
 export type DeployOutcome =
-  | { ok: true; healthy: boolean; detail: string }
-  | { ok: false; phase: DeployPhase; reason: string; stderr?: string }
+  | { ok: true; healthy: boolean; detail: string; verdict?: Verdict; snapshot?: ServiceSnapshot[] }
+  | { ok: false; phase: DeployPhase; reason: string; stderr?: string; snapshot?: ServiceSnapshot[] }
 
 /** Services in the root compose file are addressed from the repository root. */
 function isRootStack(stack: string): boolean {
@@ -109,87 +111,84 @@ export async function deploy(target: DeployTarget): Promise<DeployOutcome> {
   if (refusal) return { ok: false, phase: 'refused', reason: refusal }
 
   const started = Date.now()
+  const project = projectName(target.stack)
+
+  // Before anything is replaced: what is running now. It cannot be recovered afterwards
+  // -- the container this is about to remove is the only record of it -- and it is both
+  // the rollback target and the baseline the restart counter is measured against.
+  const snapshot = await snapshotTarget(project, target.services)
 
   if (target.strategy === 'rm-first') {
     const rm = removeArgs(target)
     const r = await execa('docker', rm.args, { cwd: rm.cwd, reject: false, timeout: 120_000 })
     if ((r.exitCode ?? 1) !== 0) {
-      return { ok: false, phase: 'rm', reason: 'could not remove the old container', stderr: tail(r.stderr) }
+      return { ok: false, phase: 'rm', reason: 'could not remove the old container', stderr: tail(r.stderr), snapshot }
     }
   }
 
   const up = composeArgs(target)
   const r = await execa('docker', up.args, { cwd: up.cwd, reject: false, timeout: 600_000 })
   if ((r.exitCode ?? 1) !== 0) {
-    return { ok: false, phase: 'up', reason: 'compose failed', stderr: tail(r.stderr) }
+    return { ok: false, phase: 'up', reason: 'compose failed', stderr: tail(r.stderr), snapshot }
   }
 
-  const health = await settle(target, policy.deploy.verify_window_s)
+  const verdict = await verifyDeploy(target, project, snapshot, policy)
   const secs = Math.round((Date.now() - started) / 1000)
+  const healthy = verdict.kind === 'passed' || verdict.kind === 'degraded'
   return {
     ok: true,
-    healthy: health.healthy,
-    detail: health.healthy
-      ? `${target.services.join(', ')} up in ${secs}s`
-      : `${target.services.join(', ')} started but ${health.detail}`,
+    healthy,
+    verdict,
+    snapshot,
+    detail:
+      verdict.kind === 'passed'
+        ? `${target.services.join(', ')} up in ${secs}s`
+        : verdict.kind === 'degraded'
+          ? `${target.services.join(', ')} up in ${secs}s, with warnings — ${verdict.detail}`
+          : `${target.services.join(', ')} — ${verdict.detail}`,
   }
 }
 
-/**
- * Wait for the containers to settle, and report what they settled into.
- *
- * Returns as soon as every container is running (and healthy, where a healthcheck
- * exists) rather than sleeping the full window, so a good deploy is fast and only a bad
- * one costs the wait.
- */
-async function settle(
+/** Wire the pure verifier to the real docker, and to this service's declared probe port. */
+async function verifyDeploy(
   target: DeployTarget,
-  windowSeconds: number,
-): Promise<{ healthy: boolean; detail: string }> {
-  const deadline = Date.now() + windowSeconds * 1000
-  let last = 'no container found'
-  while (Date.now() < deadline) {
-    const states = await Promise.all(target.services.map((s) => stateOf(target.stack, s)))
-    const bad = states.filter((s) => s.state !== 'ok')
-    if (bad.length === 0) return { healthy: true, detail: 'all healthy' }
-    last = bad.map((b) => `${b.name}: ${b.detail}`).join('; ')
-    // A container that has already given up will not recover by being watched.
-    if (bad.some((b) => b.state === 'dead')) return { healthy: false, detail: last }
-    await new Promise((r) => setTimeout(r, 3000))
-  }
-  return { healthy: false, detail: `did not become healthy within ${windowSeconds}s — ${last}` }
-}
-
-async function stateOf(
-  stack: string,
-  service: string,
-): Promise<{ name: string; state: 'ok' | 'waiting' | 'dead'; detail: string }> {
-  const r = await execa(
-    'docker',
-    [
-      'ps',
-      '--all',
-      '--filter',
-      `label=com.docker.compose.service=${service}`,
-      '--format',
-      '{{.Names}}\t{{.State}}\t{{.Status}}',
-    ],
-    { reject: false, timeout: 20_000 },
+  project: string,
+  snapshot: ServiceSnapshot[],
+  policy: Policy,
+): Promise<Verdict> {
+  const db = getDb()
+  const meta = new Map(
+    target.services.map((service) => {
+      const row = db
+        .prepare(`SELECT probe_port, image_ref FROM images WHERE stack = ? AND service = ?`)
+        .get(target.stack, service) as { probe_port: number | null; image_ref: string | null } | undefined
+      return [service, row ?? { probe_port: null, image_ref: null }]
+    }),
   )
-  const line = String(r.stdout ?? '')
-    .split('\n')
-    .find((l) => l.trim())
-  if (!line) return { name: service, state: 'waiting', detail: 'no container yet' }
-  const [name, state, status] = line.split('\t')
-  if (state === 'running') {
-    if (/unhealthy/i.test(status ?? '')) return { name: name!, state: 'dead', detail: 'unhealthy' }
-    if (/health: starting/i.test(status ?? ''))
-      return { name: name!, state: 'waiting', detail: 'health starting' }
-    return { name: name!, state: 'ok', detail: status ?? 'running' }
-  }
-  if (state === 'restarting') return { name: name!, state: 'dead', detail: 'restart loop' }
-  if (state === 'exited') return { name: name!, state: 'dead', detail: status ?? 'exited' }
-  return { name: name!, state: 'waiting', detail: status ?? String(state) }
+
+  return runVerify(
+    target.services,
+    snapshot,
+    { ...DEFAULT_VERIFY, windowS: policy.deploy.verify_window_s },
+    {
+      observe: (service) => inspectService(project, service),
+      probe: async (obs) => {
+        if (policy.deploy.probe !== 'auto') return undefined
+        const port = meta.get(obs.service)?.probe_port
+        if (!port) return undefined
+        // The traefik network is where every routed service is reachable; fall back to
+        // whatever address it has if this one is not on it.
+        const ip = obs.ips['traefik'] ?? Object.values(obs.ips)[0]
+        if (!ip) return undefined
+        return httpProbe(ip, port)
+      },
+      // The compose file was already fast-forwarded, so images.image_ref is the merged
+      // pin -- what the container should have been created from.
+      expectedImageRef: (service) => meta.get(service)?.image_ref ?? null,
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+      now: () => Date.now(),
+    },
+  )
 }
 
 function tail(s: unknown): string {

@@ -281,6 +281,17 @@ export const PolicySchema = z.object({
       // still accepted as the old spelling.
       verify_window_s: z.number().int().positive().default(300),
       health_window_s: z.number().int().positive().optional(),
+      // Where a service already tells traefik which port it serves, that port is probed
+      // over HTTP during verification. Opt-out rather than opt-in because the data is
+      // declared already: 76 services get a real signal for free, in a lab where barely
+      // half the containers carry a healthcheck. Any answer below 500 counts -- a 302 to
+      // a login page or a 404 on `/` is still a service that is listening. It can only
+      // ever warn, never fail a deploy on its own.
+      probe: z.enum(['auto', 'off']).default('auto'),
+      // A second look this long after a deploy passes its window, because the failures a
+      // window misses are the slow ones -- a leak, a crash on the first real request.
+      // Only after this does an update read `verified`. 0 skips it.
+      soak_s: z.number().int().min(0).default(1800),
     })
     .prefault({})
     .transform((d) => ({

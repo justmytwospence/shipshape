@@ -1,4 +1,5 @@
 import type { FC } from 'hono/jsx'
+import { mergeLabel, type MergeGate } from '../../gitops/merge-gate.ts'
 import type { DiffResult, DiffHunk } from '../../diff.ts'
 import type { RefLinks } from '../../links.ts'
 
@@ -183,11 +184,13 @@ const short = (r: string) => {
  * which versions you were looking at. In a panel that context has to travel with it --
  * without this header the drawer is a diff with no subject.
  */
-export const DetailPanel: FC<{ row: DetailRow; repo: string; diff: string }> = ({
-  row,
-  repo,
-  diff,
-}) => (
+export const DetailPanel: FC<{
+  row: DetailRow
+  repo: string
+  diff: string
+  /** Absent when there is nothing to merge -- no open pull request, or no token. */
+  gate?: MergeGate | null
+}> = ({ row, repo, diff, gate }) => (
   <>
     <div class="detail-head">
       <div class="detail-service">
@@ -220,5 +223,48 @@ export const DetailPanel: FC<{ row: DetailRow; repo: string; diff: string }> = (
     </div>
     {/* Already-rendered HTML from the shared builder; raw because it is ours. */}
     <div dangerouslySetInnerHTML={{ __html: diff }} />
+    {gate && row.pr_number ? <MergeBar number={row.pr_number} gate={gate} /> : null}
   </>
+)
+
+/**
+ * The merge button, at the bottom of the drawer.
+ *
+ * Deliberately the last thing in a scrolling panel rather than a control in the sticky
+ * header. Reaching it means having opened one specific update and scrolled past the
+ * hunks, past any drafted changes, and past the row of links whose own comment reads
+ * "everything you might want to check before merging". That distance is the confirmation
+ * step; a dialog repeating generic text would be a weaker one, and would be the only
+ * such dialog in the application.
+ *
+ * A tag-only bump is a one-line diff, so the button is on screen without scrolling. A
+ * pull request carrying drafted or edited changes pushes it below the fold -- which is
+ * the right way round.
+ */
+export const MergeBar: FC<{ number: number; gate: MergeGate }> = ({ number, gate }) => (
+  <div class="mergebar" id={`mergebar-${number}`}>
+    {gate.blocked ? (
+      <p class="diff-note warn-text">{gate.blocked}</p>
+    ) : (
+      <>
+        {gate.warnings.map((w) => (
+          <p class="diff-note warn-text">{w}</p>
+        ))}
+        <button
+          class="btn btn-primary"
+          hx-post={`/prs/${number}/merge${gate.needsForce ? '?force=1' : ''}`}
+          hx-target={`#mergebar-${number}`}
+          hx-swap="outerHTML"
+          hx-disabled-elt="this"
+        >
+          {mergeLabel(number, gate)}
+        </button>
+        <span class="sub">
+          {gate.needsForce
+            ? 'the check above will not stop this'
+            : 'merging squashes it into main; the deploy follows whatever Deploys is set to'}
+        </span>
+      </>
+    )}
+  </div>
 )

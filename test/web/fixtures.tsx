@@ -104,6 +104,12 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
         },
         repo: 'o/r',
         diff: '<div class="diff">stub</div>',
+        // With a warning, so both the button and the warn line are covered.
+        gate: {
+          allowed: true,
+          warnings: ['the changelog review returned caution'],
+          needsForce: false,
+        },
       }),
     ),
     'scan-status': String(ScanStatus({ scan })),

@@ -28,7 +28,26 @@ export interface PollResult {
   checked: number
 }
 
-export async function pollPrs(): Promise<PollResult> {
+let pollChain: Promise<unknown> = Promise.resolve()
+
+/**
+ * Serialised, because there are now two callers.
+ *
+ * The scheduler runs this on a timer; the merge route runs it immediately so a merge
+ * made from the UI is picked up at once rather than up to a poll cycle later -- which
+ * matters most during a blackout, when the scheduler skips the loop entirely. Two
+ * overlapping passes would both see the same pull request as open, both run onMerged,
+ * and `enqueueDeploy` is a plain INSERT with no dedupe: the stack would be deployed
+ * twice. Chained rather than coalesced on purpose -- a caller that has just merged needs
+ * a pass that STARTS after its merge, not one already half way through a stale list.
+ */
+export function pollPrs(): Promise<PollResult> {
+  const run = pollChain.then(pollPass, pollPass)
+  pollChain = run.catch(() => undefined)
+  return run
+}
+
+async function pollPass(): Promise<PollResult> {
   const out: PollResult = { merged: 0, closed: 0, checked: 0 }
   if (!env.githubToken) return out
 

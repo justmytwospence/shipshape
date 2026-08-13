@@ -21,7 +21,10 @@ import {
   type PendingRow,
   type ScanInfo,
 } from './views/dashboard.tsx'
-import { DiffView, DetailPanel, type DetailRow } from './views/diff.tsx'
+import { DiffView, DetailPanel, MergeBar, type DetailRow } from './views/diff.tsx'
+import { mergeGate, type MergeFacts } from '../gitops/merge-gate.ts'
+import { pollPrs } from '../gitops/poll.ts'
+import { Octokit } from 'octokit'
 import { ImagesPage, ImagesTable, ImageRow, type StatusRow } from './views/images.tsx'
 import { COLUMNS, RowNote } from './views/layout.tsx'
 import { ActivityPage, ActivityTable, KINDS } from './views/activity.tsx'
@@ -53,6 +56,86 @@ const PENDING_SQL = `
 function missing(): { name: string; why: string }[] {
   const s = configured()
   return s.ok ? [] : s.missing
+}
+
+/**
+ * The facts the merge gate needs, straight from the database.
+ *
+ * Read here rather than passed in, because the drawer and the route both need them and
+ * they must agree: the button a person sees and the check the click runs are the same
+ * question asked twice, a few seconds apart.
+ */
+export function mergeFacts(number: number): MergeFacts {
+  const db = getDb()
+  const pr = db
+    .prepare(`SELECT id, number, state, scope, user_owned FROM prs WHERE number = ?`)
+    .get(number) as
+    | { id: number; number: number; state: string; scope: string; user_owned: number }
+    | undefined
+
+  if (!pr) {
+    return {
+      prNumber: null,
+      prState: null,
+      liveMembers: 0,
+      totalMembers: 0,
+      scope: null,
+      userOwned: false,
+      recommendation: null,
+      mergeable: null,
+      checksFailing: false,
+    }
+  }
+
+  const counts = db
+    .prepare(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN u.state != 'superseded' THEN 1 ELSE 0 END) AS live
+       FROM pr_updates pu JOIN updates u ON u.id = pu.update_id
+       WHERE pu.pr_id = ?`,
+    )
+    .get(pr.id) as { total: number; live: number | null }
+
+  // The worst verdict across the members: a group is only as safe as its least safe part.
+  const worst = db
+    .prepare(
+      `SELECT v.recommendation FROM pr_updates pu
+       JOIN updates u ON u.id = pu.update_id
+       JOIN verdicts v ON v.image = u.image AND v.from_tag = u.from_tag AND v.to_tag = u.to_tag
+       WHERE pu.pr_id = ? AND v.error IS NULL
+       ORDER BY CASE v.recommendation WHEN 'block' THEN 0 WHEN 'caution' THEN 1 ELSE 2 END
+       LIMIT 1`,
+    )
+    .get(pr.id) as { recommendation: string } | undefined
+
+  return {
+    prNumber: pr.number,
+    prState: pr.state,
+    liveMembers: counts.live ?? 0,
+    totalMembers: counts.total,
+    scope: pr.scope,
+    userOwned: pr.user_owned === 1,
+    recommendation: worst?.recommendation ?? null,
+    mergeable: null,
+    checksFailing: false,
+  }
+}
+
+/** A plain sentence where the button was. Always 200: htmx swaps nothing on a 4xx. */
+function noteBar(number: number, text: string, warn = false): string {
+  const cls = warn ? 'diff-note warn-text' : 'diff-note'
+  return `<div class="mergebar" id="mergebar-${number}"><p class="${cls}">${escapeText(text)}</p></div>`
+}
+
+let mergeOcto: Octokit | null = null
+function gh(): Octokit {
+  mergeOcto ??= new Octokit({ auth: env.githubToken })
+  return mergeOcto
+}
+
+function repoParts(): { owner: string; repo: string } {
+  const [owner, repo] = env.githubRepo.split('/') as [string, string]
+  return { owner, repo }
 }
 
 export function createApp(): Hono {
@@ -142,8 +225,12 @@ export function createApp(): Hono {
       )
       .get(id) as DetailRow | undefined
     if (!row) return c.html('<p class="sub">This update is no longer pending.</p>', 404)
+    // Only when there is a token and an open pull request: with neither, there is
+    // nothing the button could do, and an inert control is worse than none.
+    const gate =
+      env.githubToken && row.pr_number ? mergeGate(mergeFacts(row.pr_number)) : null
     return c.html(
-      DetailPanel({ row, repo: env.githubRepo, diff: diffFragment(id) }) as string,
+      DetailPanel({ row, repo: env.githubRepo, diff: diffFragment(id), gate }) as string,
     )
   })
 
@@ -225,6 +312,80 @@ export function createApp(): Hono {
    * Reachable from the System page. It was an orphan endpoint for a while -- no view
    * linked to it -- which is how its markup drifted out of step with everything else.
    */
+  /**
+   * Merge a pull request from here, rather than from GitHub.
+   *
+   * The whole point of the drawer is that everything needed to decide is already on
+   * screen -- the diff, the verdict, the links. Sending someone to GitHub to press a
+   * button, and then waiting for shipshape to notice, was the last step that left the
+   * page for no reason.
+   *
+   * Deliberately narrow. It merges and then closes the loop, and does nothing else: it
+   * writes no pull request state of its own, because `onMerged` is the only thing that
+   * may do that. Marking the row merged here would drop it out of the `state = 'open'`
+   * query that `onMerged` selects on, and the merge would be recorded with no commit
+   * sha, no updates marked, no deploy queued, and no way to ever notice again -- the
+   * exact permanent loss the deploy queue was written to eliminate.
+   */
+  app.post('/prs/:number/merge', async (c) => {
+    const number = Number(c.req.param('number'))
+    const force = c.req.query('force') === '1'
+    const { policy } = loadPolicy()
+
+    const facts = mergeFacts(number)
+    let gate = mergeGate(facts, { force })
+    if (!gate.allowed) return c.html(MergeBar({ number, gate }) as string)
+
+    try {
+      const { owner, repo } = repoParts()
+      const live = await gh().rest.pulls.get({ owner, repo, pull_number: number })
+      if (live.data.merged) {
+        return c.html(noteBar(number, `#${number} has already been merged.`))
+      }
+      // GitHub's own answer beats ours: it knows about conflicts and branch protection.
+      gate = mergeGate({ ...facts, mergeable: live.data.mergeable }, { force })
+      if (!gate.allowed) return c.html(MergeBar({ number, gate }) as string)
+      if (gate.needsForce) return c.html(MergeBar({ number, gate }) as string)
+
+      await gh().rest.pulls.merge({
+        owner,
+        repo,
+        pull_number: number,
+        merge_method: policy.merge_method,
+      })
+
+      // Recorded as an override when policy would have refused, so the decision is
+      // legible afterwards rather than indistinguishable from an automatic merge.
+      logEvent({
+        level: gate.warnings.length > 0 ? 'warn' : 'info',
+        kind: 'pr',
+        message: `#${number} merged from the dashboard`,
+        detail: gate.warnings.length > 0 ? gate.warnings.join('; ') : 'no objections',
+      })
+    } catch (err) {
+      const msg = (err as Error).message.slice(0, 200)
+      return c.html(noteBar(number, `GitHub refused the merge: ${msg}`, true))
+    }
+
+    // Close the loop now rather than waiting for the next tick: this is what captures
+    // the commit sha, marks the updates, syncs the checkout and queues the deploy.
+    // Never let a failure here report a merge that did land as a failure.
+    try {
+      await pollPrs()
+    } catch {
+      /* the scheduler will pick it up on its next pass */
+    }
+
+    return c.html(
+      noteBar(
+        number,
+        policy.deploy.mode === 'auto'
+          ? `Merged. The deploy is queued and will be verified.`
+          : `Merged. The deploy command is on the pull request.`,
+      ),
+    )
+  })
+
   app.get('/merge/preview', async (c) => {
     const r = await runAutoMerge(true)
     const { policy } = loadPolicy()

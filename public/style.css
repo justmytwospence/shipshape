@@ -1566,3 +1566,25 @@ tbody.stackgroup + tbody.stackgroup .stackhead th {
 .grid-scroll > .nothing {
   padding: 1.5rem var(--tblr-page-padding, 1rem);
 }
+
+/* --------------------------------------------------------------- merge bar */
+
+/* The last block in the detail drawer, after the diff and every link worth reading
+   first. Separated by a rule rather than a card: it is the end of the panel, not
+   another thing in it. */
+.mergebar {
+  margin-top: 1.1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* Warnings stack above the button and take the full width, so the verb that follows
+   reads as a response to them. */
+.mergebar .diff-note {
+  flex-basis: 100%;
+  margin: 0;
+}

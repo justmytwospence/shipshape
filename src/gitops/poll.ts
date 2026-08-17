@@ -219,7 +219,9 @@ async function onMerged(
       : 'up',
   }
   const command = manualCommand(target)
-  const auto = policy.deploy.mode === 'auto'
+  // Merging leads to a deploy either way; `paused` only decides whether it starts itself
+  // or waits for the operator to press the button.
+  const waits = policy.paused
 
   db.transaction(() => {
     // The sha is recorded here because this is the only place it is offered. A deploy
@@ -233,7 +235,11 @@ async function onMerged(
     // Inside the transaction, deliberately. If the intent were written after it, a crash
     // in between would leave a pull request marked merged with nothing left to act on
     // it -- which is exactly how merges used to be lost, silently and permanently.
-    if (auto) enqueueDeploy({ prId, prNumber: number, target, now })
+    // Always enqueued, inside the transaction. If the intent were conditional, a merge
+    // performed while paused would leave nothing to press Deploy on -- which is the state
+    // this deployment has been in for every merge so far: fifteen merged pull requests
+    // and an empty deploys table.
+    enqueueDeploy({ prId, prNumber: number, target, now, status: waits ? 'ready' : 'pending' })
   })()
 
   // Land it in the live checkout so the deploy runs against merged content. The queued
@@ -247,7 +253,7 @@ async function onMerged(
   // could not get it later either, because the pull request was already `merged` and
   // `pollPrs` only ever looks at open ones. The comment does not depend on the sync
   // having worked; it only has to say whether it did.
-  if (!auto) await commentCommand(number, stack, command, synced)
+  if (waits) await commentCommand(number, stack, command, synced)
 
   if (sync.status === 'paused' || sync.status === 'refused') {
     logEvent({
@@ -259,7 +265,7 @@ async function onMerged(
     })
     await notify({
       title: `shipshape: #${number} merged, sync blocked`,
-      body: `${sync.reason}\n\n${auto ? 'The deploy stays queued and runs once the checkout is clean.' : 'Once resolved, deploy with:'}\n${command}`,
+      body: `${sync.reason}\n\n${waits ? 'Once resolved, press Deploy in shipshape, or run:' : 'The deploy stays queued and runs once the checkout is clean.'}\n${command}`,
       priority: 4,
       tags: ['warning'],
     })
@@ -271,17 +277,17 @@ async function onMerged(
     kind: 'pr',
     stack,
     message: `#${number} merged and synced`,
-    detail: policy.deploy.mode === 'auto' ? 'deploying' : `deploy with: ${command}`,
+    detail: waits ? `ready to deploy, or: ${command}` : 'deploying',
   })
 
-  if (policy.deploy.mode !== 'auto') {
+  if (waits) {
     // The digest item is the record; the comment above is what reaches the person who
     // merged thirty seconds ago, rather than at 08:00 tomorrow.
     await routine({
       category: 'merged',
       stack,
-      summary: `#${number} merged — deploy with: ${command}`,
-      detail: `${stack}: ${services}\n\nDeploy with:\n${command}`,
+      summary: `#${number} merged — ready to deploy`,
+      detail: `${stack}: ${services}\n\nPress Deploy in shipshape, or run:\n${command}`,
       url: `https://github.com/${env.githubRepo}/pull/${number}`,
     })
     return

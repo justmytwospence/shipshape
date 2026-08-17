@@ -379,9 +379,9 @@ export function createApp(): Hono {
     return c.html(
       noteBar(
         number,
-        policy.deploy.mode === 'auto'
-          ? `Merged. The deploy is queued and will be verified.`
-          : `Merged. The deploy command is on the pull request.`,
+        policy.paused
+          ? `Merged. Ready to deploy — press Deploy when you are.`
+          : `Merged. The deploy is running and will be verified.`,
       ),
     )
   })
@@ -389,7 +389,7 @@ export function createApp(): Hono {
   app.get('/merge/preview', async (c) => {
     const r = await runAutoMerge(true)
     const { policy } = loadPolicy()
-    return c.html(MergePreview({ decisions: r.decisions, auto: policy.merge.auto }) as string)
+    return c.html(MergePreview({ decisions: r.decisions, auto: !policy.paused }) as string)
   })
 
   app.get('/images', (c) => {

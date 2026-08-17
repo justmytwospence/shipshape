@@ -123,6 +123,20 @@ const Window = z.string().regex(/^\d{2}:\d{2}-\d{2}:\d{2}$/)
 export const PolicySchema = z.object({
   // Must match what the GitHub repo settings actually allow, or the merge API 405s.
   merge_method: z.enum(['squash', 'merge', 'rebase']).default('squash'),
+  /**
+   * The one switch: while this is on, shipshape merges and deploys nothing on its own.
+   *
+   * Scanning, pull requests and changelog reviews carry on -- what stops is every step
+   * that would change the host without a person present. A merge *you* press still
+   * deploys, because you are there to watch it.
+   *
+   * This replaces `merge.auto` and `deploy.mode`, which were two knobs for one question
+   * and produced states nobody wanted: auto-merge with manual deploy meant the machine
+   * changed the repository unattended and then left the host running the old image until
+   * someone pasted a command. Optional here so an absent key can be told from an
+   * explicit `false`, and derived from the old pair below when it is absent.
+   */
+  paused: z.boolean().optional(),
   sync: z
     .object({
       // Kill-switch. false => the tool never pushes main, which also means it can never
@@ -230,10 +244,10 @@ export const PolicySchema = z.object({
     .prefault({}),
   merge: z
     .object({
-      // Off by default and off in this deployment: enabling the one path that can
-      // change the repository unattended is an operator decision, never a side effect
-      // of upgrading.
-      auto: z.boolean().default(false),
+      // Superseded by the top-level `paused`. Still read, so an existing file keeps its
+      // meaning, and folded into it by the transform at the end of this schema; never
+      // written back, and absent from the parsed policy every consumer sees.
+      auto: z.boolean().optional(),
       // A ceiling so a misconfiguration merges a couple of things and stops.
       max_per_run: z.number().int().min(1).max(50).default(3),
     })
@@ -271,10 +285,10 @@ export const PolicySchema = z.object({
       // third name for `manual`. Accepted on read so no existing file breaks, folded to
       // what it actually did. The kill-switch that genuinely stops git work is
       // sync.push_main.
-      mode: z
-        .enum(['auto', 'manual', 'off'])
-        .default('manual')
-        .transform((v) => (v === 'off' ? ('manual' as const) : v)),
+      // Superseded by `paused` too. Merging now always leads to a deploy: the version in
+      // git and the version running are the same claim, and a mode that syncs the file
+      // without bringing it up made them differ by default.
+      mode: z.enum(['auto', 'manual', 'off']).optional(),
       // How long a deploy has to prove itself. Returns the moment every signal is good,
       // so only a bad deploy pays the wait -- which is why this can afford to be long
       // enough for a service that runs migrations on first start. `health_window_s` is
@@ -310,6 +324,25 @@ export const PolicySchema = z.object({
    *  WUD's self-update crash-loop is not a mistake worth repeating. */
   exclude_stacks: z.array(z.string()).default([]),
 })
+  /**
+   * Fold the two old knobs into `paused`, and drop them from the type.
+   *
+   * The mapping is the conservative reading of what each pair actually did: nothing runs
+   * unattended unless the file said, in both places, that it should. Dropping the keys
+   * from the output rather than leaving them makes every stale read a type error instead
+   * of a behaviour that quietly disagrees with the switch.
+   */
+  .transform(({ merge, deploy, ...rest }) => ({
+    ...rest,
+    paused: rest.paused ?? !(merge.auto === true && deploy.mode === 'auto'),
+    merge: { max_per_run: merge.max_per_run },
+    deploy: {
+      verify_window_s: deploy.verify_window_s,
+      probe: deploy.probe,
+      soak_s: deploy.soak_s,
+      rollback: deploy.rollback,
+    },
+  }))
 
 export type Policy = z.infer<typeof PolicySchema>
 

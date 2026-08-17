@@ -322,7 +322,9 @@ export interface AutoMergeResult {
 export async function runAutoMerge(dryRun = false): Promise<AutoMergeResult> {
   const out: AutoMergeResult = { merged: 0, held: 0, decisions: [] }
   const { policy } = loadPolicy()
-  if (!policy.merge.auto && !dryRun) return out
+  // Paused means shipshape starts nothing. The preview still runs: the point of it is to
+  // show what would happen, which is exactly the question a paused operator is asking.
+  if (policy.paused && !dryRun) return out
   if (!env.githubToken) return out
 
   const open = getDb()

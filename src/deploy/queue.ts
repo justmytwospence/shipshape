@@ -39,6 +39,9 @@ const STALE_MS = 30 * 60 * 1000
 /** One retry after an interrupted attempt; the second failure is a person's problem. */
 const MAX_ATTEMPTS = 2
 
+/** Who asked for this deploy. Only `queue` ever starts on its own. */
+export type DeployTrigger = 'queue' | 'operator' | 'redeploy' | 'retry' | 'rollback'
+
 export interface DeployJob {
   id: number
   pr_number: number | null
@@ -46,6 +49,30 @@ export interface DeployJob {
   services: string
   strategy: 'up' | 'rm-first'
   attempts: number
+}
+
+/**
+ * Take ownership of a queued deploy, or find that someone else already has.
+ *
+ * Two things can start a deploy now -- the drain, and an operator pressing the button --
+ * and they must never both run compose against the same stack. The claim is the guard:
+ * a conditional UPDATE that only one caller can win, because SQLite serialises writers.
+ * Losing it is not an error, it means the deploy is already happening.
+ */
+export function claimJob(id: number): DeployJob | null {
+  const db = getDb()
+  const claimed = db
+    .prepare(
+      `UPDATE deploys SET status = 'running', attempts = attempts + 1, started_at = ?
+         WHERE id = ? AND status IN ('pending', 'ready')`,
+    )
+    .run(new Date().toISOString(), id)
+  if (claimed.changes === 0) return null
+  return db
+    .prepare(
+      `SELECT id, pr_number, stack, services, strategy, attempts FROM deploys WHERE id = ?`,
+    )
+    .get(id) as DeployJob
 }
 
 /**
@@ -59,21 +86,62 @@ export function enqueueDeploy(opts: {
   prNumber: number
   target: DeployTarget
   now: string
+  /** `ready` waits for the operator; `pending` is picked up by the next drain. */
+  status?: 'pending' | 'ready'
+  trigger?: DeployTrigger
+  updateIds?: number[]
 }): void {
-  getDb()
-    .prepare(
-      `INSERT INTO deploys (pr_number, pr_id, stack, services, strategy, ok, healthy,
-                            status, attempts, created_at)
-       VALUES (?, ?, ?, ?, ?, 0, 0, 'pending', 0, ?)`,
-    )
-    .run(
-      opts.prNumber,
-      opts.prId,
-      opts.target.stack,
-      [...new Set(opts.target.services)].join(' '),
-      opts.target.strategy,
-      opts.now,
-    )
+  const db = getDb()
+  const services = [...new Set(opts.target.services)].join(' ')
+
+  db.transaction(() => {
+    // An older intent for the same services is not work to do later, it is work that was
+    // replaced: bringing the stack up runs against whatever the checkout says now, so
+    // the earlier job would deploy this content under the wrong pull request number.
+    db.prepare(
+      `UPDATE deploys SET status = 'superseded', detail = ?, finished_at = ?
+         WHERE stack = ? AND services = ? AND status IN ('pending', 'ready')`,
+    ).run(`overtaken by #${opts.prNumber}`, opts.now, opts.target.stack, services)
+
+    const info = db
+      .prepare(
+        `INSERT INTO deploys (pr_number, pr_id, stack, services, strategy, ok, healthy,
+                              status, attempts, created_at, trigger)
+         VALUES (?, ?, ?, ?, ?, 0, 0, ?, 0, ?, ?)`,
+      )
+      .run(
+        opts.prNumber,
+        opts.prId,
+        opts.target.stack,
+        services,
+        opts.target.strategy,
+        opts.status ?? 'pending',
+        opts.now,
+        opts.trigger ?? 'queue',
+      )
+
+    linkDeployUpdates(Number(info.lastInsertRowid), opts.prId, opts.updateIds)
+  })()
+}
+
+/**
+ * Which updates this deploy carries. Derived from the pull request when there is one --
+ * and there is not always: a rolling-tag redeploy and an operator rollback both act on an
+ * update with no pull request of their own.
+ */
+export function linkDeployUpdates(deployId: number, prId?: number | null, ids?: number[]): void {
+  const db = getDb()
+  const link = db.prepare(
+    `INSERT OR IGNORE INTO deploy_updates (deploy_id, update_id) VALUES (?, ?)`,
+  )
+  const explicit = ids ?? []
+  for (const id of explicit) link.run(deployId, id)
+  if (explicit.length === 0 && prId != null) {
+    const rows = db
+      .prepare(`SELECT update_id FROM pr_updates WHERE pr_id = ?`)
+      .all(prId) as { update_id: number }[]
+    for (const r of rows) link.run(deployId, r.update_id)
+  }
 }
 
 /** True when there is queued or in-flight work, which keeps the poll loop on its fast cadence. */
@@ -133,7 +201,9 @@ export function dueJobs(limit = MAX_PER_TICK): DeployJob[] {
 
 export async function drainDeployQueue(): Promise<{ ran: number }> {
   const { policy } = loadPolicy()
-  if (policy.deploy.mode !== 'auto') return { ran: 0 }
+  // While paused nothing self-starts. Jobs enqueued before the pause stay pending and
+  // resume when it lifts; jobs enqueued during it are `ready` and wait for the button.
+  if (policy.paused) return { ran: 0 }
 
   reclaimStale()
   const jobs = dueJobs()
@@ -155,23 +225,41 @@ export async function drainDeployQueue(): Promise<{ ran: number }> {
     return { ran: 0 }
   }
 
-  const db = getDb()
   let ran = 0
-
   for (const job of jobs) {
+    // Claim rather than assume: an operator may have pressed Deploy on this very row
+    // between `dueJobs` reading it and this line.
+    const claimed = claimJob(job.id)
+    if (!claimed) continue
+    if (await runDeployJob(claimed)) ran++
+  }
+  return { ran }
+}
+
+/**
+ * Run one claimed deploy to its conclusion: bring it up, verify it, and record what
+ * happened -- including rolling it back when verification says so.
+ *
+ * The caller must have claimed the row first. Every path through here is caught: one bad
+ * deploy must never abandon the rest of the queue, which is the failure this module
+ * exists to prevent.
+ */
+export async function runDeployJob(job: DeployJob): Promise<boolean> {
+  const db = getDb()
+  const { policy } = loadPolicy()
+  let ran = false
+
+  {
     const target: DeployTarget = {
       stack: job.stack,
       services: job.services.split(' ').filter(Boolean),
       strategy: job.strategy,
     }
-    db.prepare(
-      `UPDATE deploys SET status = 'running', attempts = attempts + 1, started_at = ? WHERE id = ?`,
-    ).run(new Date().toISOString(), job.id)
     markUpdates(job.id, 'deploying')
 
     try {
       const outcome = await deployForPr(job.pr_number ?? 0, target, job.id)
-      ran++
+      ran = true
 
       if (outcome.ok && outcome.healthy) {
         markUpdates(job.id, 'deployed')
@@ -247,7 +335,7 @@ export async function drainDeployQueue(): Promise<{ ran: number }> {
       }
     }
   }
-  return { ran }
+  return ran
 }
 
 /**

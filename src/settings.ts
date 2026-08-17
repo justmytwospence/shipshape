@@ -214,6 +214,7 @@ export const SETTINGS: SettingDef[] = [
   {
     section: 'Pull requests',
     path: 'prs.enabled',
+    advanced: true,
     kind: 'bool',
     defaultValue: 'true',
     label: 'Open pull requests',
@@ -224,6 +225,7 @@ export const SETTINGS: SettingDef[] = [
   {
     section: 'Pull requests',
     path: 'prs.scope',
+    advanced: true,
     kind: 'enum',
     options: ['coexist', 'full'],
     optionHelp: {
@@ -239,6 +241,7 @@ export const SETTINGS: SettingDef[] = [
   {
     section: 'Pull requests',
     path: 'prs.max_open',
+    advanced: true,
     kind: 'int',
     min: 1,
     optional: true,
@@ -252,6 +255,7 @@ export const SETTINGS: SettingDef[] = [
   {
     section: 'Pull requests',
     path: 'prs.close_superseded',
+    advanced: true,
     kind: 'bool',
     defaultValue: 'true',
     label: 'Close superseded',
@@ -291,6 +295,7 @@ export const SETTINGS: SettingDef[] = [
   {
     section: 'Changelog review',
     path: 'claude.model',
+    advanced: true,
     kind: 'model',
     defaultValue: 'claude-haiku-4-5-20251001',
     label: 'Model',
@@ -301,6 +306,7 @@ export const SETTINGS: SettingDef[] = [
   {
     section: 'Changelog review',
     path: 'claude.min_confidence',
+    advanced: true,
     kind: 'enum',
     options: ['low', 'medium', 'high'],
     defaultValue: 'medium',
@@ -372,6 +378,7 @@ export const SETTINGS: SettingDef[] = [
   {
     section: 'Config proposals',
     path: 'propose.mode',
+    advanced: true,
     kind: 'enum',
     options: ['auto', 'manual', 'off'],
     optionHelp: {
@@ -388,6 +395,7 @@ export const SETTINGS: SettingDef[] = [
   {
     section: 'Config proposals',
     path: 'claude.code_model',
+    advanced: true,
     kind: 'model',
     defaultValue: 'claude-opus-5',
     label: 'Model',
@@ -399,17 +407,18 @@ export const SETTINGS: SettingDef[] = [
   // ------------------------------------------------------------------ Merging
   {
     section: 'Merging',
-    path: 'merge.auto',
+    path: 'paused',
     kind: 'bool',
-    defaultValue: 'false',
-    label: 'Merge without asking',
-    help: '',
+    defaultValue: 'true',
+    label: 'Pause',
+    help: 'nothing merges or deploys on its own',
     about:
-      'Only tag-only pull requests on the auto rung, patch or minor, with no verdict withholding them. Everything else still waits for you.',
+      'The one switch. Scanning, pull requests and changelog reviews carry on; what stops is every step that would change the host with nobody watching. A merge you press still deploys, because you are there. Unpausing is how an update goes from detected to running without you -- on the auto rung only, tag-only, patch or minor, with no verdict withholding it.',
   },
   {
     section: 'Merging',
     path: 'merge.max_per_run',
+    advanced: true,
     kind: 'int',
     min: 1,
     defaultValue: '3',
@@ -421,6 +430,7 @@ export const SETTINGS: SettingDef[] = [
   {
     section: 'Merging',
     path: 'model_tier.mode',
+    advanced: true,
     kind: 'enum',
     options: ['off', 'shadow', 'enforce'],
     optionHelp: {
@@ -438,22 +448,8 @@ export const SETTINGS: SettingDef[] = [
   // ---------------------------------------------------------------- Deploying
   {
     section: 'Deploys',
-    path: 'deploy.mode',
-    kind: 'enum',
-    options: ['auto', 'manual'],
-    optionHelp: {
-      auto: 'bring the change up on the host as soon as it merges, and verify it',
-      manual: 'sync the checkout; the exact command is commented on the pull request',
-    },
-    defaultValue: 'manual',
-    label: 'After a merge',
-    help: '',
-    about:
-      'Deploys run a real docker compose up -d, which re-reads the whole file. There used to be an `off` here; it promised not to sync and synced anyway, so it is gone rather than left lying.',
-  },
-  {
-    section: 'Deploys',
     path: 'deploy.probe',
+    advanced: true,
     kind: 'enum',
     options: ['auto', 'off'],
     optionHelp: {
@@ -469,6 +465,7 @@ export const SETTINGS: SettingDef[] = [
   {
     section: 'Deploys',
     path: 'deploy.rollback',
+    advanced: true,
     kind: 'enum',
     options: ['auto', 'suggest', 'off'],
     optionHelp: {
@@ -563,6 +560,7 @@ export const SETTINGS: SettingDef[] = [
   {
     section: 'Git sync',
     path: 'sync.push_main',
+    advanced: true,
     kind: 'bool',
     defaultValue: 'true',
     label: 'Publish main',

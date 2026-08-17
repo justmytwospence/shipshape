@@ -26,14 +26,29 @@ import {
   type UpdateView,
 } from '../updates/queries.ts'
 import {
+  ActivityPage,
+  DocsPage,
   InboxPage,
+  PromptsPage,
+  RawPolicyPage,
+  SettingsPage,
+  StatusPage,
   ServicePage,
   ServicesPage,
   UpdatePage,
   UpdatesList,
   UpdatesPage,
 } from './views/pages.tsx'
+import {
+  DigestPreview,
+  PromptEditor,
+  SettingsForm,
+  type SettingValue,
+  type StatusData,
+} from './views/ui/settings.tsx'
+import { Docs } from './views/ui/docs.tsx'
 import { ServiceDetail, ServicesList } from './views/ui/services.tsx'
+import { ActivityList, KINDS as ACTIVITY_KINDS, type ActivityRow } from './views/ui/activity.tsx'
 import {
   filterServices as filterServiceRows,
   serviceDetail,
@@ -41,28 +56,18 @@ import {
 } from '../updates/services.ts'
 import { setServiceLabel } from '../gitops/labels.ts'
 import { InboxBody, type InboxData } from './views/ui/inbox.tsx'
+import { MergePreview, ScanStatus } from './views/ui/parts.tsx'
 import { UpdateCard, UpdateDetail } from './views/ui/update.tsx'
 import { runPrPass } from '../gitops/pr.ts'
 import { runAnalysisPass } from '../analyze/run.ts'
 import { runProposePass } from '../propose/run.ts'
 import { runAutoMerge } from '../gitops/automerge.ts'
 import { PROMPTS, prompt, savePrompt, resetPrompt, isCustomised, type PromptName } from '../prompts/index.ts'
-import {
-  Dashboard,
-  PendingSections,
-  ScanStatus,
-  type PendingRow,
-  type ScanInfo,
-} from './views/dashboard.tsx'
 import { DiffView, DetailPanel, MergeBar, type DetailRow } from './views/diff.tsx'
 import { mergeGate, type MergeFacts } from '../gitops/merge-gate.ts'
 import { pollPrs } from '../gitops/poll.ts'
 import { Octokit } from 'octokit'
-import { ImagesPage, ImagesTable, ImageRow, type StatusRow } from './views/images.tsx'
-import { COLUMNS, RowNote } from './views/layout.tsx'
-import { ActivityPage, ActivityTable, KINDS } from './views/activity.tsx'
-import { SettingsPage, SettingsForm, RawPolicy, DigestPreview, PromptEditorFragment } from './views/settings.tsx'
-import { applySettings, SETTINGS } from '../settings.ts'
+import { applySettings, currentValue, SECTIONS, SETTINGS } from '../settings.ts'
 import { listModels } from '../analyze/models.ts'
 import { flush as flushDigest, pending as pendingDigest, render as renderDigest } from '../notify/digest.ts'
 import { activeChannels } from '../notify/index.ts'
@@ -70,7 +75,6 @@ import { configured as emailConfigured, send as sendEmail, escapeHtml as escapeT
 import { rescheduleScan, rescheduleDigest } from '../scheduler.ts'
 import { readFileSync as readFile } from 'node:fs'
 import { paths } from '../config.ts'
-import { SystemPage, MergePreview, type SpendRow, type DeployRow, type ModelTierRow } from './views/system.tsx'
 
 const PENDING_SQL = `
   SELECT u.id, u.stack, u.service, u.image, u.from_tag, u.to_tag, u.magnitude,
@@ -398,66 +402,16 @@ export function createApp(): Hono {
   })
 
   /** The pending region alone, so it can refresh itself while a scan runs. */
-  app.get('/fragments/pending', (c) => {
-    const scopeFilter = c.req.query('prscope') ?? 'all'
-    // Which tab is open travels with the request, so the 10s scan poll re-renders the
-    // bucket you are actually looking at rather than snapping back to the first one.
-    const bucket = c.req.query('bucket') ?? 'review'
-    const pending = filterByScope(
-      getDb().prepare(PENDING_SQL).all() as PendingRow[],
-      scopeFilter,
-    )
-    return c.html(
-      PendingSections({ pending, repo: env.githubRepo, scopeFilter, bucket }) as string,
-    )
-  })
-
-  /** The diff on its own. Kept alongside /detail; both call the same builder. */
-  app.get('/updates/:id/diff', (c) => c.html(diffFragment(Number(c.req.param('id')))))
-
-  /**
-   * The detail drawer's contents: the diff, plus the context the row used to supply.
-   *
-   * Same fragment builder as /updates/:id/diff -- that endpoint stays, because it is
-   * still the honest "just the diff" view and is cheap to keep. This one adds the
-   * header (service, version change, magnitude, verdict) that a panel needs when it is
-   * no longer physically attached to the row that described it.
-   */
-  app.get('/updates/:id/detail', (c) => {
-    const id = Number(c.req.param('id'))
-    const row = getDb()
-      .prepare(
-        `SELECT u.stack, u.service, u.from_tag, u.to_tag, u.magnitude, u.tier, u.state,
-                v.recommendation, v.confidence, p.number AS pr_number, p.scope AS pr_scope
-         FROM updates u
-         LEFT JOIN pr_updates pu ON pu.update_id = u.id
-         LEFT JOIN prs p ON p.id = pu.pr_id AND p.state = 'open'
-         LEFT JOIN verdicts v ON v.image = u.image AND v.from_tag = u.from_tag
-                             AND v.to_tag = u.to_tag AND v.error IS NULL
-         WHERE u.id = ?`,
-      )
-      .get(id) as DetailRow | undefined
-    if (!row) return c.html('<p class="sub">This update is no longer pending.</p>', 404)
-    // Only when there is a token and an open pull request: with neither, there is
-    // nothing the button could do, and an inert control is worse than none.
-    const gate =
-      env.githubToken && row.pr_number ? mergeGate(mergeFacts(row.pr_number)) : null
-    return c.html(
-      DetailPanel({ row, repo: env.githubRepo, diff: diffFragment(id), gate }) as string,
-    )
-  })
-
   app.post('/scan', async (c) => {
     const result = await runScanNow()
     if (result.status === 'already-running') {
       return c.html('<span class="sub">a scan is already running&hellip;</span>')
     }
-    return c.html(ScanStatus({ scan: scanInfo() }) as string)
+    return c.html(ScanStatus({ running: isScanning(), lastAt: scanInfo().lastAt }) as string)
   })
 
-  /** `?poll=0` for the mobile More sheet -- same text, no self-refreshing id. */
   app.get('/scan/status', (c) =>
-    c.html(ScanStatus({ scan: scanInfo(), poll: c.req.query('poll') !== '0' }) as string),
+    c.html(ScanStatus({ running: isScanning(), lastAt: scanInfo().lastAt }) as string),
   )
 
   /**
@@ -649,81 +603,100 @@ export function createApp(): Hono {
   app.get('/merge/preview', async (c) => {
     const r = await runAutoMerge(true)
     const { policy } = loadPolicy()
-    return c.html(MergePreview({ decisions: r.decisions, auto: !policy.paused }) as string)
+    return c.html(MergePreview({ decisions: r.decisions, paused: policy.paused }) as string)
   })
 
-  app.get('/images', (c) => {
-    const { policy } = loadPolicy()
-    const filter = c.req.query('filter') ?? 'all'
-    const q = (c.req.query('q') ?? '').trim()
-    const grouped = c.req.query('group') === 'stack'
-    const statusMap = statuses()
-    const shown = filterServices(
-      scanRepo(env.repoDir, policy.exclude_stacks),
-      filter,
-      q,
-      statusMap,
-    )
-    // htmx requests want just the table; a normal navigation wants the whole page.
-    if (c.req.header('hx-request')) {
-      return c.html(ImagesTable({ services: shown, statusMap, grouped }) as string)
+  /**
+   * The log, ordered by when a line was last seen rather than first written.
+   *
+   * A repeated message is one row with a count, so a fact that recurred all afternoon
+   * sorts by the afternoon and not by the morning it started.
+   */
+  const activityRows = (opts: {
+    kind: string
+    problems: boolean
+    q: string
+    before?: string | null
+    limit?: number
+  }): ActivityRow[] => {
+    const where: string[] = []
+    const args: (string | number)[] = []
+    if ((ACTIVITY_KINDS as readonly string[]).includes(opts.kind)) {
+      where.push('kind = ?')
+      args.push(opts.kind)
     }
-    return c.html(
-      ImagesPage({ missing: missing(), services: shown, filter, q, grouped, statusMap }) as string,
-    )
-  })
-
-  /** Re-check one service, so a label edit can be confirmed without a 150s sweep. */
-  app.post('/images/:stack/:service/check', async (c) => {
-    const { policy } = loadPolicy()
-    const stack = c.req.param('stack')
-    const service = c.req.param('service')
-    // The row swaps itself in place, so it has to be rendered in the same shape the
-    // table around it is using -- grouped rows carry no stack prefix.
-    const grouped = c.req.query('group') === 'stack'
-    const svc = scanRepo(env.repoDir, policy.exclude_stacks).find(
-      (s) => s.stack === stack && s.service === service,
-    )
-    // Five columns, not six: this row lands in the images table, which has no
-    // Analysis or PR column. It claimed six for months.
-    //
-    // 200, not 404: htmx does not swap a 4xx, so the row the operator clicked would sit
-    // there unchanged and the click would read as broken. The service being gone is an
-    // answer, and the answer belongs in the row.
-    if (!svc) {
-      c.header(
-        'HX-Trigger',
-        JSON.stringify({ toast: { level: 'warn', text: `${stack}/${service} is no longer in the compose files` } }),
+    if (opts.problems) where.push(`level IN ('warn','error')`)
+    if (opts.q) {
+      where.push(`(message LIKE ? OR IFNULL(detail,'') LIKE ? OR IFNULL(stack,'') LIKE ?)`)
+      const like = `%${opts.q}%`
+      args.push(like, like, like)
+    }
+    if (opts.before) {
+      where.push(`COALESCE(last_at, at) < ?`)
+      args.push(opts.before)
+    }
+    args.push(opts.limit ?? 100)
+    return getDb()
+      .prepare(
+        `SELECT id, at, last_at AS lastAt, count, level, kind, stack, service, message, detail
+           FROM events ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+          ORDER BY COALESCE(last_at, at) DESC LIMIT ?`,
       )
-      return c.html(RowNote({ cols: COLUMNS.images, children: 'no such service' }) as string)
-    }
-    if (svc.watched) await scanOne(svc, policy)
-    return c.html(
-      ImageRow({ svc, status: statuses().get(`${stack}/${service}`), grouped }) as string,
-    )
+      .all(...args) as ActivityRow[]
+  }
+
+  const activityQuery = (c: Context) => ({
+    kind: c.req.query('kind') ?? 'all',
+    problems: c.req.query('level') === 'problems',
+    q: c.req.query('q') ?? '',
   })
+
+  /** The link that fetches the next page, or nothing when this was the last one. */
+  const moreLink = (c: Context, rows: ActivityRow[]): string | null => {
+    if (rows.length < 100) return null
+    const last = rows[rows.length - 1]!
+    const p = new URLSearchParams({
+      kind: c.req.query('kind') ?? 'all',
+      q: c.req.query('q') ?? '',
+      before: last.lastAt ?? last.at,
+    })
+    if (c.req.query('level') === 'problems') p.set('level', 'problems')
+    return `/fragments/activity?${p.toString()}`
+  }
 
   app.get('/activity', (c) => {
-    const kind = c.req.query('kind') ?? 'all'
-    const level = c.req.query('level') ?? 'all'
-    const where: string[] = []
-    const args: string[] = []
-    if ((KINDS as readonly string[]).includes(kind)) {
-      where.push('kind = ?')
-      args.push(kind)
-    }
-    if (level === 'problems') where.push(`level IN ('warn','error')`)
-    const rows = getDb()
-      .prepare(
-        `SELECT * FROM events ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-         ORDER BY at DESC LIMIT 200`,
+    const query = activityQuery(c)
+    const rows = activityRows(query)
+    if (c.req.header('HX-Request')) {
+      return c.html(
+        ActivityList({ rows, repo: env.githubRepo, more: moreLink(c, rows) }) as string,
       )
-      .all(...args) as Record<string, unknown>[]
-    if (c.req.header('hx-request')) {
-      return c.html(ActivityTable({ rows, repo: env.githubRepo }) as string)
     }
-    return c.html(ActivityPage({ missing: missing(), rows, filter: { kind, level }, repo: env.githubRepo }) as string)
+    return c.html(
+      ActivityPage({
+        rows,
+        repo: env.githubRepo,
+        more: moreLink(c, rows),
+        ...query,
+        chrome: chrome(c),
+      }) as string,
+    )
   })
+
+  app.get('/fragments/activity', (c) => {
+    const rows = activityRows({ ...activityQuery(c), before: c.req.query('before') })
+    return c.html(ActivityList({ rows, repo: env.githubRepo, more: moreLink(c, rows) }) as string)
+  })
+
+  /** One prompt editor, rendered the same way whether saved, reset, or first shown. */
+  const promptEditor = (name: PromptName) =>
+    PromptEditor({
+      name,
+      title: PROMPTS[name].title,
+      help: PROMPTS[name].help,
+      text: prompt(name),
+      customised: isCustomised(name),
+    })
 
   const promptStates = () =>
     (Object.keys(PROMPTS) as PromptName[]).map((name) => ({
@@ -732,35 +705,144 @@ export function createApp(): Hono {
       customised: isCustomised(name),
     }))
 
-  app.get('/settings', async (c) => {
+  /**
+   * The settings, split by whether getting one wrong changes what shipshape may do.
+   *
+   * Fourteen decisions are visible; the remaining twenty-one are tuning and live behind
+   * Advanced with their defaults. The distinction is not how obscure a key is -- it is
+   * whether it moves the line between what happens on its own and what waits for you.
+   */
+  const settingGroups = (advanced: boolean) => {
     const { policy } = loadPolicy()
-    return c.html(
+    const groups: { title: string; blurb?: string; items: SettingValue[] }[] = []
+    for (const [title, blurb] of SECTIONS) {
+      const items = SETTINGS.filter(
+        (d) => d.section === title && !!d.advanced === advanced,
+      ).map((def) => ({
+        def,
+        value: currentValue(policy, def.path),
+        changed: currentValue(policy, def.path) !== def.defaultValue,
+      }))
+      if (items.length > 0) groups.push({ title, blurb: advanced ? undefined : blurb, items })
+    }
+    return groups
+  }
+
+  /** What the machine is doing and what it has spent, for the Status tab. */
+  const statusData = (): StatusData => {
+    const { policy } = loadPolicy()
+    const db = getDb()
+    const info = scanInfo()
+    const sched = scheduleInfo()
+    const month = new Date().toISOString().slice(0, 7)
+    const spend = db
+      .prepare(
+        `SELECT model, purpose, COUNT(*) AS calls, SUM(cost_usd) AS cost
+           FROM llm_calls WHERE created_at LIKE ? GROUP BY model, purpose ORDER BY cost DESC`,
+      )
+      .all(`${month}%`) as { model: string; purpose: string; calls: number; cost: number }[]
+    const spent = (
+      db
+        .prepare(`SELECT value FROM budgets WHERE key = 'claude.spend_usd' AND window = ?`)
+        .get(month) as { value: number } | undefined
+    )?.value
+
+    return {
+      version: readPackageVersion(),
+      repoDir: env.repoDir,
+      repo: env.githubRepo,
+      mergeMethod: policy.merge_method,
+      pushMain: policy.sync.push_main,
+      blackout: policy.sync.blackout,
+      scan: {
+        cron: sched.scan.cron,
+        lastAt: info.lastAt,
+        nextAt: sched.scan.nextAt,
+        durationS: info.durationS,
+      },
+      digest: { cron: sched.digest.cron, nextAt: sched.digest.nextAt },
+      credentials: [
+        { name: 'GITHUB_TOKEN', state: env.githubToken ? 'set' : 'missing' },
+        { name: 'ANTHROPIC_API_KEY', state: env.anthropicApiKey ? 'set' : 'missing' },
+        { name: 'NTFY_TOKEN', state: process.env.NTFY_URL ? 'set' : 'not in use' },
+        { name: 'SMTP_URL + MAIL_TO', state: emailConfigured() ? 'set' : 'not in use' },
+        { name: 'DOCKER_HUB_LOGIN', state: process.env.DOCKER_HUB_LOGIN ? 'set' : 'not in use' },
+      ],
+      spend: spend.map((s) => ({ ...s, cost: s.cost ?? 0 })),
+      budgetUsd: policy.claude.monthly_budget_usd,
+      spentUsd: spent ?? 0,
+      deploys: db
+        .prepare(
+          `SELECT COALESCE(finished_at, started_at, created_at) AS at, stack, services, status, trigger
+             FROM deploys ORDER BY id DESC LIMIT 12`,
+        )
+        .all() as StatusData['deploys'],
+      budgets: db
+        .prepare(`SELECT key, value, window FROM budgets ORDER BY key`)
+        .all() as StatusData['budgets'],
+    }
+  }
+
+  /** Merged updates that will not move until someone presses Deploy. */
+  const readyToDeploy = (): number =>
+    (
+      getDb()
+        .prepare(`SELECT COUNT(*) AS n FROM deploys WHERE status IN ('ready','pending')`)
+        .get() as { n: number }
+    ).n
+
+  app.get('/settings', async (c) =>
+    c.html(
       SettingsPage({
-        missing: missing(),
-        policy,
+        tab: 'general',
+        groups: settingGroups(false),
         models: await listModels(),
-        prompts: promptStates(),
-        repo: env.githubRepo,
+        readyCount: loadPolicy().policy.paused ? readyToDeploy() : 0,
+        chrome: chrome(c),
       }) as string,
-    )
-  })
+    ),
+  )
+
+  app.get('/settings/advanced', async (c) =>
+    c.html(
+      SettingsPage({
+        tab: 'advanced',
+        groups: settingGroups(true),
+        models: await listModels(),
+        chrome: chrome(c),
+      }) as string,
+    ),
+  )
+
+  app.get('/settings/status', (c) => c.html(StatusPage({ data: statusData(), chrome: chrome(c) }) as string))
+
+  app.get('/settings/prompts', (c) =>
+    c.html(
+      PromptsPage({
+        // Called rather than written as JSX: this module is .ts, and the components
+        // return nodes either way.
+        editors: promptStates().map((s) => promptEditor(s.name)),
+        chrome: chrome(c),
+      }) as string,
+    ),
+  )
+
+  app.get('/docs', (c) => c.html(DocsPage({ sections: Docs({}), chrome: chrome(c) }) as string))
 
   /** Prompts live in the database, not policy.yaml -- saved and reset on their own. */
   app.post('/settings/prompt/:name', async (c) => {
     const name = c.req.param('name') as PromptName
     if (!(name in PROMPTS)) return c.text('unknown prompt', 404)
     const form = await c.req.parseBody()
-    savePrompt(name, typeof form.body === 'string' ? form.body : '')
-    const state = { name, body: prompt(name), customised: isCustomised(name) }
-    return c.html(PromptEditorFragment({ state }) as string)
+    savePrompt(name, typeof form.text === 'string' ? form.text : '')
+    return c.html(promptEditor(name) as string)
   })
 
   app.post('/settings/prompt/:name/reset', (c) => {
     const name = c.req.param('name') as PromptName
     if (!(name in PROMPTS)) return c.text('unknown prompt', 404)
     resetPrompt(name)
-    const state = { name, body: prompt(name), customised: false }
-    return c.html(PromptEditorFragment({ state }) as string)
+    return c.html(promptEditor(name) as string)
   })
 
   app.post('/settings', async (c) => {
@@ -774,9 +856,25 @@ export function createApp(): Hono {
     // A schedule change should not wait for the old schedule to fire before applying.
     if (result.ok && result.applied.includes('scan.cron')) rescheduleScan()
     if (result.ok && result.applied.includes('notify.cron')) rescheduleDigest()
-    const { policy } = loadPolicy()
-    return c.html(SettingsForm({ policy, models: await listModels(), result }) as string)
+    const advanced = c.req.path.endsWith('/advanced')
+    return c.html(
+      SettingsForm({
+        groups: settingGroups(advanced),
+        models: await listModels(),
+        advanced,
+        readyCount: loadPolicy().policy.paused ? readyToDeploy() : 0,
+        banner: result.ok
+          ? result.applied.length
+            ? { level: 'info', text: `Saved: ${result.applied.join(', ')}. Committed to git.` }
+            : null
+          : { level: 'error', text: result.errors.join(' ') },
+      }) as string,
+    )
   })
+
+  // The same handler: which page it came from decides which half of the settings it can
+  // write, so a save on one tab cannot silently reset the other.
+  app.post('/settings/advanced', async (c) => app.fetch(new Request(new URL('/settings', c.req.url), c.req.raw)))
 
   /**
    * What the next digest would say, and a way to send it now.
@@ -786,18 +884,13 @@ export function createApp(): Hono {
    * sends it.
    */
   app.get('/settings/digest', (c) => {
-    const { policy } = loadPolicy()
     const rows = pendingDigest()
+    const message = renderDigest(rows)
     return c.html(
       DigestPreview({
-        rows,
-        message: renderDigest(rows),
-        policy,
-        channels: {
-          alert: activeChannels('alert'),
-          routine: activeChannels('routine'),
-        },
-        emailConfigured: emailConfigured(),
+        title: message?.title ?? null,
+        body: message?.body ?? null,
+        count: rows.length,
       }) as string,
     )
   })
@@ -837,57 +930,20 @@ export function createApp(): Hono {
 
 
   app.get('/settings/raw', (c) => {
+    let text: string
     try {
-      return c.html(RawPolicy({ missing: missing(), text: readFile(paths.policy, 'utf8') }) as string)
+      text = readFile(paths.policy, 'utf8')
     } catch (err) {
-      return c.html(RawPolicy({ text: '', error: (err as Error).message }) as string)
+      text = `policy.yaml could not be read: ${(err as Error).message}`
     }
+    return c.html(RawPolicyPage({ text, chrome: chrome(c) }) as string)
   })
 
-  app.get('/system', (c) => {
-    const { policy, error } = loadPolicy()
-    const budgets = getDb().prepare(`SELECT * FROM budgets`).all() as Record<string, unknown>[]
-    // Itemised from the per-call ledger: a single total says how much, never why.
-    const spend = getDb()
-      .prepare(
-        `SELECT model, purpose, COUNT(*) AS calls, SUM(cost_usd) AS cost,
-                SUM(input_tokens + cache_write_tokens + cache_read_tokens) AS tokens_in,
-                SUM(output_tokens) AS tokens_out,
-                SUM(cache_read_tokens) AS cached
-         FROM llm_calls
-         WHERE created_at >= ?
-         GROUP BY model, purpose ORDER BY cost DESC`,
-      )
-      .all(new Date().toISOString().slice(0, 7) + '-01') as SpendRow[]
-    const deploys = getDb()
-      .prepare(
-        `SELECT stack, services, strategy, ok, healthy, detail, created_at
-         FROM deploys ORDER BY id DESC LIMIT 15`,
-      )
-      .all() as DeployRow[]
-    // The track record for model-decided updates: what it would have done, and why not
-    // when it declined.
-    const modelTier = getDb()
-      .prepare(
-        `SELECT stack, service, from_tag, to_tag, magnitude, static_tier,
-                promote, reason, enforced, created_at
-         FROM model_tier_decisions ORDER BY id DESC LIMIT 25`,
-      )
-      .all() as ModelTierRow[]
-    return c.html(
-      SystemPage({ missing: missing(),
-        policy,
-        policyError: error,
-        budgets,
-        spend,
-        deploys,
-        modelTier,
-        version: readPackageVersion(),
-        blackout: inBlackout(policy),
-        scan: scanInfo(),
-      }) as string,
-    )
-  })
+  // Old addresses, kept as redirects: a bookmark or a link in a months-old digest
+  // should land on the page that replaced it rather than a 404.
+  app.get('/system', (c) => c.redirect('/settings/status', 301))
+  app.get('/images', (c) => c.redirect('/services', 301))
+
 
   return app
 }
@@ -974,47 +1030,11 @@ function diffFragment(id: number): string {
   )
 }
 
-function statuses(): Map<string, StatusRow> {
-  const rows = getDb()
-    .prepare(
-      // One join for every row's source repo, rather than a lookup per rendered cell.
-      `SELECT i.stack, i.service, i.last_status, i.last_detail, i.constrained_from,
-              r.source_url
-       FROM images i
-       LEFT JOIN resolutions r ON r.registry = i.registry AND r.repository = i.repository`,
-    )
-    .all() as StatusRow[]
-  return new Map(rows.map((s) => [`${s.stack}/${s.service}`, s]))
-}
-
-function filterServices(
-  services: ScannedService[],
-  filter: string,
-  q: string,
-  statusMap: Map<string, StatusRow>,
-): ScannedService[] {
-  const needle = q.toLowerCase()
-  return services.filter((s) => {
-    if (filter === 'watched' && !s.watched) return false
-    if (filter === 'unlabelled' && (s.watched || s.unwatchable)) return false
-    if (filter === 'unwatchable' && !s.unwatchable) return false
-    if (filter === 'attention' && !statusMap.get(`${s.stack}/${s.service}`)?.last_status) return false
-    if (!needle) return true
-    return `${s.stack} ${s.service} ${s.imageRaw ?? ''}`.toLowerCase().includes(needle)
-  })
-}
-
-/**
- * Rows without a pull request are never "edited" -- there is nothing to have edited --
- * so they stay visible under both All and Tag only.
- */
-function filterByScope(rows: PendingRow[], filter: string): PendingRow[] {
-  if (filter === 'edited') return rows.filter((r) => r.pr_scope === 'modified')
-  if (filter === 'proposed') return rows.filter((r) => r.pr_scope === 'proposed')
-  if (filter === 'tag-only') {
-    return rows.filter((r) => r.pr_scope !== 'modified' && r.pr_scope !== 'proposed')
-  }
-  return rows
+interface ScanInfo {
+  lastAt: string | null
+  durationS: number | null
+  counts: Record<string, number> | null
+  running: boolean
 }
 
 function scanInfo(): ScanInfo {

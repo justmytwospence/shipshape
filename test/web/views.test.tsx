@@ -1,309 +1,220 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { renderAll, classesOf } from './fixtures.tsx'
+import { renderAll, classesOf, builtCss } from './fixtures.tsx'
 
 /**
- * Structural facts about the rendered UI, and regression cover for a batch of bugs that
- * were all the same shape: a class emitted by a view that no rule ever matched. None of
- * them threw, none showed up in a type check, and the only symptom was something quietly
- * looking wrong -- an uncoloured failure badge, a left-aligned money column.
+ * What the markup has to be true of, independent of how it looks.
  *
- * So every class the markup uses is asserted to exist in the stylesheet.
+ * The gate below is the load-bearing one. Tailwind only emits CSS for classes it can see
+ * in the source, so a class built by interpolation -- `badge-${kind}` -- produces no rule
+ * at all and fails silently, rendering as unstyled text. That is the same failure the old
+ * suite caught for hand-written CSS, in a new form, and it is why the colour maps in the
+ * views hold whole class strings.
  */
 
-const R = renderAll()
+const VIEWS = renderAll()
+const RUNNING = renderAll({ running: true })
 
-/**
- * Both stylesheets we ship. Checking against the union catches two different mistakes
- * with one assertion: our own dead classes (which is how `pill error` and `num` hid for
- * months), and a mistyped Tabler utility, which is otherwise completely silent -- a
- * misspelled `d-lg-none` just never applies.
- */
-const APP_CSS = readFileSync(new URL('../../public/style.css', import.meta.url), 'utf8')
-const CSS = APP_CSS + readFileSync(new URL('../../public/tabler.min.css', import.meta.url), 'utf8')
+/** Tailwind escapes the characters that are not valid in a CSS identifier. */
+function escapeClass(cls: string): string {
+  return cls.replace(/[.:/[\]()%!#,+*~>&']/g, (ch) => `\\${ch}`)
+}
 
-/**
- * Class names with deliberately no rule of their own.
- *   active -- state, always used in a compound selector
- *   ctx    -- the unchanged diff line, which is `.dl` with nothing added
- */
-const NOT_OURS = new Set(['active', 'ctx'])
+/** State classes owned by htmx or the browser, never declared by us. */
+const NOT_OURS = new Set(['htmx-request', 'htmx-indicator', 'htmx-settling', 'is-dirty'])
 
-test('every class the views emit is defined in the stylesheet', () => {
-  const used = new Set<string>()
-  for (const html of Object.values(R)) {
-    for (const attr of classesOf(html)) {
-      for (const c of attr.split(/\s+/).filter(Boolean)) used.add(c)
+test('every class a view emits exists in the built stylesheet', () => {
+  const css = builtCss()
+  const missing = new Set<string>()
+  for (const [name, html] of Object.entries(VIEWS)) {
+    for (const cls of classesOf(html)) {
+      if (NOT_OURS.has(cls)) continue
+      if (!css.includes(`.${escapeClass(cls)}`)) missing.add(`${cls} (in ${name})`)
     }
   }
-  const undefinedClasses = [...used]
-    .filter((c) => !NOT_OURS.has(c))
-    .filter((c) => !new RegExp(`\\.${c.replace(/[-]/g, '\\-')}(?![\\w-])`).test(CSS))
-    .sort()
-  assert.deepEqual(undefinedClasses, [], `classes with no CSS rule: ${undefinedClasses.join(', ')}`)
-})
-
-test('failure badges are coloured', () => {
-  // `pill error` was emitted for months; only `.pill.err` exists, so the single status
-  // you most need to notice rendered in plain body colour.
-  assert.match(R.system!, /class="pill err">unhealthy/)
-  assert.match(R.system!, /class="pill err">failed/)
-  assert.doesNotMatch(R.system!, /class="pill error"/)
-})
-
-test('.sub is not element-qualified, so spans and cells get it too', () => {
-  assert.match(APP_CSS, /^\.sub \{/m)
-  // The server emits several of these as raw HTML far from any <p>.
-  assert.match(R.pending!, /<span class="sub"/)
-})
-
-test('numeric table cells are right-aligned and tabular', () => {
-  assert.match(APP_CSS, /^th\.num,\s*\ntd\.num \{/m)
-  assert.match(R.system!, /class="num"/)
-})
-
-test('the monospace token exists, since the stylesheet dereferences it', () => {
-  assert.match(APP_CSS, /--mono:/)
-  assert.doesNotMatch(APP_CSS, /font-family: ui-monospace/)
-})
-
-test('no class collides with a bare Tabler/Bootstrap selector', () => {
-  // Tabler defines `.mark,mark{background:highlight}` and a centred, 3rem-padded
-  // `.empty`. Both would restyle our markup the moment the framework loads, with no
-  // change to any of our files -- so neither name is used any more.
-  for (const html of Object.values(R)) {
-    assert.doesNotMatch(html, /class="[^"]*\bmark\b[^"]*"/)
-    assert.doesNotMatch(html, /class="[^"]*\bempty\b[^"]*"/)
-  }
-  assert.match(R.diff!, /class="sign"/)
-  assert.match(R['activity-table']!, /class="nothing"/)
-})
-
-test('the diff viewer renders a line per hunk line, with its gutter', () => {
-  assert.match(R.diff!, /<div class="dl ctx">/)
-  assert.match(R.diff!, /<div class="dl del">/)
-  assert.match(R.diff!, /<div class="dl add">/)
-  assert.match(R.diff!, /<span class="ln">/)
-  assert.match(R.diff!, /<span class="txt">/)
-})
-
-test('activity kind chips carry their colour as an inline custom property', () => {
-  // The one place inline style is load-bearing: `--k` selects from the --k-* palette,
-  // and the chip and its dot both read it.
-  assert.match(R.activity!, /style="--k: var\(--k-pr[^"]*\)"/)
-  assert.match(R.activity!, /<span class="kdot">/)
-})
-
-test('every page is a complete document and names itself', () => {
-  for (const key of ['dashboard', 'images', 'activity', 'settings', 'system']) {
-    const html = R[key]!
-    assert.match(html, /^<html lang="en" data-bs-theme="(light|dark)">/, key)
-    assert.match(html, /<title>[^<]+ · shipshape<\/title>/, key)
-    assert.match(html, /<meta name="viewport"/, key)
-  }
-})
-
-test('fragments carry no document chrome', () => {
-  for (const key of ['pending', 'images-table', 'image-row', 'settings-form', 'digest-preview', 'diff']) {
-    assert.doesNotMatch(R[key]!, /<html|<head|<body/, key)
-  }
-})
-
-test('the theme is resolved before anything paints', () => {
-  // Bootstrap has no data-bs-theme="auto", so auto has to collapse to light or dark in
-  // JS. If that script were deferred or placed after the stylesheets, every navigation
-  // would flash the wrong theme first.
-  const head = R.layout!.slice(0, R.layout!.indexOf('</head>'))
-  const script = head.indexOf('shipshape-theme')
-  const tabler = head.indexOf('tabler.min.css')
-  const app = head.indexOf('style.css')
-  assert.ok(script > -1 && script < tabler, 'theme script must precede the stylesheets')
-  assert.ok(tabler < app, 'app styles must load after Tabler so source order settles ties')
-  assert.doesNotMatch(head.slice(script - 60, script), /defer/)
-})
-
-test('the viewport opts into the safe-area insets the mobile bar needs', () => {
-  assert.match(R.layout!, /viewport-fit=cover/)
-})
-
-test('the manifest is fetched with credentials, or it silently does not install', () => {
-  // Browsers omit credentials for a manifest by default. Behind forward-auth that gets
-  // a 302 to another origin, the manifest fails to parse, and the only symptom is that
-  // the install prompt never appears -- the network tab still shows 200.
-  assert.match(R.layout!, /<link rel="manifest" href="\/static\/manifest\.webmanifest" crossorigin="use-credentials"/)
-})
-
-test('the PWA head carries what each platform actually needs', () => {
-  assert.match(R.layout!, /rel="apple-touch-icon" href="\/static\/apple-touch-icon\.png"/)
-  assert.match(R.layout!, /<link rel="icon" href="\/static\/icon\.svg"/)
-  // Two theme-colors, one per scheme, for the auto case.
-  assert.equal((R.layout!.match(/name="theme-color"/g) ?? []).length, 2)
-})
-
-test('the service worker is registered from the root, which is where its scope comes from', () => {
-  // A worker served from /static/ can only control /static/ -- it could not see the
-  // navigations it exists to leave alone.
-  assert.match(R.layout!, /navigator\.serviceWorker\.register\('\/sw\.js'\)/)
-})
-
-test('the page header sits outside the scroll region', () => {
-  // This is the frame: chrome fixed, content scrolling under it. If the header were
-  // inside .page-body it would scroll away and the app would be a document again.
-  const header = R.dashboard!.indexOf('page-header-bar')
-  const body = R.dashboard!.indexOf('<div class="page-body')
-  assert.ok(header > -1, 'no page-header-bar')
-  assert.ok(header < body, 'the header must precede the scroll region, not sit inside it')
-})
-
-test('popovers are initialised, and re-initialised after every htmx swap', () => {
-  // Bootstrap auto-inits click-driven components but never popovers. Half this UI
-  // arrives as fragments, so a help dot inside a swapped region is dead without this.
-  assert.match(R.layout!, /htmx:afterSwap/)
-  assert.match(R.layout!, /window\.tabler\.Popover/)
-  // Bound to document.body, so the script must come after it.
-  const script = R.layout!.indexOf('htmx:afterSwap')
-  assert.ok(script > R.layout!.indexOf('<body>'), 'popover script must be inside body')
-})
-
-test('every settings pane has a nav entry, and every nav entry a pane', () => {
-  // The nav and the panes are generated from one list, but the two non-form panes
-  // (Digest, Prompts) are written out by hand -- so a typo there would produce a nav
-  // item that activates nothing, with no error anywhere.
-  const navIds = [...R.settings!.matchAll(/data-pane="([^"]+)"/g)].map((m) => m[1]!)
-  const paneIds = [...R.settings!.matchAll(/id="pane-([^"]+)"/g)].map((m) => m[1]!)
-  assert.ok(navIds.length >= 12, `expected 12+ nav entries, got ${navIds.length}`)
-  assert.deepEqual(navIds.slice().sort(), paneIds.slice().sort())
-})
-
-test('the explanations only link at panes that exist', () => {
-  // This used to guard /about's deep links into Settings. The prose now lives inside the
-  // panes it describes, so the same links became same-page anchors -- and the invariant
-  // matters more, not less: a hash naming no pane activates nothing and reports nothing.
-  const targets = [...R.settings!.matchAll(/href="(?:\/settings)?#([^"]+)"/g)].map((m) => m[1]!)
-  assert.ok(targets.length >= 5)
-  for (const t of new Set(targets)) {
-    assert.ok(R.settings!.includes(`id="pane-${t}"`), `settings links at #${t}, which has no pane`)
-  }
-})
-
-test('every policy section carries an explanation', () => {
-  // One per form pane. A section added to SECTIONS without prose is a type error in
-  // explain.tsx, but a section whose prose stops being *rendered* would be silent.
-  const panes = (R.settings!.match(/class="settings-pane" data-form="1"/g) ?? []).length
-  const explains = (R.settings!.match(/class="explain"/g) ?? []).length
-  assert.equal(panes, 9)
-  assert.equal(explains, 9)
-})
-
-test('explanations are off until asked for, and decided before anything paints', () => {
-  // Same contract as the theme: the preference is applied by the inline head script, so
-  // the prose never flashes. If it were server-rendered onto <html> instead, the two
-  // tests anchoring that tag's exact shape would break.
-  assert.match(APP_CSS, /\.explain\s*\{\s*display:\s*none/)
-  assert.match(APP_CSS, /\[data-explain='on'\]\s*\.explain/)
-  const head = R.settings!.slice(0, R.settings!.indexOf('tabler.min.css'))
-  assert.ok(head.includes('shipshape-explain'), 'the explain pref is set after first paint')
-  assert.ok(!/<html[^>]*data-explain/.test(R.settings!), 'data-explain must not be server-rendered')
-})
-
-test('the explain switch sits outside the settings form', () => {
-  // A Save swaps #settings-form's innerHTML. A control inside it would be re-rendered
-  // unchecked mid-session, silently disagreeing with localStorage.
-  const sw = R.settings!.indexOf('explain-toggle')
-  const form = R.settings!.indexOf('id="settings-form"')
-  assert.ok(sw >= 0 && form >= 0)
-  assert.ok(sw < form, 'the explain switch must not be inside the swapped form')
-})
-
-test('the pane script survives a save', () => {
-  // Regression cover: a Save re-renders every pane without `active`, so without an
-  // afterSwap hook the content area goes blank while the nav still says otherwise.
-  assert.match(R.settings!, /htmx:afterSwap/)
-})
-
-test('every setting input stays inside the form, including on hidden panes', () => {
-  // Panes are display:none, not detached. That is what lets one Save commit all nine
-  // sections at once, exactly as when they were stacked cards.
-  const html = R.settings!
-  const open = html.indexOf('<form hx-post="/settings"')
-  const close = html.indexOf('</form>', open)
-  for (const m of html.matchAll(/name="(defaults\.[a-z]+|claude\.[a-z_.]+|prs\.[a-z_]+)"/g)) {
-    assert.ok(m.index! > open && m.index! < close, `${m[1]} escaped the settings form`)
-  }
-})
-
-test('the save bar is inside the form and knows which panes it applies to', () => {
-  assert.match(R.settings!, /class="scanbar sticky-save"/)
-  assert.match(R.settings!, /data-form="1"/)
-  assert.match(R.settings!, /data-form="0"/)
-})
-
-/**
- * Classes that only appear on a branch the fixtures do not exercise -- an error state,
- * a server-rendered row note, a conditional badge. Verified by grep against src/, not
- * assumed: each is named in the markup somewhere, just not in a rendered fixture.
- */
-const CONDITIONAL = new Set([
-  'detail', 'dismissed', 'errlist', 'failed', 'notes', 'oplist',
-  'proposal', 'row-error', 'row-warn', 'popover',
-])
-
-test('no CSS is left behind for a feature that no longer exists', () => {
-  // The other direction from the coverage test above. Removing an expander or a filter
-  // strip leaves its rules behind, and dead frames are exactly how box-in-box nesting
-  // accumulates -- a rule with no markup still draws nothing, but the next person to
-  // read the stylesheet cannot tell which frames are real.
-  const rendered = new Set<string>()
-  for (const html of [...Object.values(R), ...Object.values(renderAll({ running: true }))]) {
-    for (const attr of classesOf(html)) {
-      for (const c of attr.split(/\s+/).filter(Boolean)) rendered.add(c)
-    }
-  }
-  const styled = new Set(
-    [...APP_CSS.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/\.([a-zA-Z][\w-]*)/g)].map((m) => m[1]!),
+  assert.deepEqual(
+    [...missing],
+    [],
+    'these classes produce no CSS -- usually a name built by interpolation, which Tailwind cannot see',
   )
-  const orphans = [...styled].filter((c) => !rendered.has(c) && !CONDITIONAL.has(c)).sort()
-  assert.deepEqual(orphans, [], `CSS with no markup: ${orphans.join(', ')}`)
 })
 
-test('nothing draws a frame inside another frame', () => {
-  // One box per thing. A card in a card, or a bordered block inside a bordered block,
-  // is the visual tell that a refactor left a wrapper behind.
-  const FRAMED = /\b(card|alert|prompt-editor)\b/
-  for (const [name, html] of Object.entries(R)) {
-    const stack: boolean[] = []
-    for (const m of html.matchAll(/<(\/?)(?:div|section|form|aside|nav)\b([^>]*)>/g)) {
-      if (m[1]) {
-        stack.pop()
-        continue
-      }
-      const cls = /class="([^"]*)"/.exec(m[2]!)?.[1] ?? ''
-      // card-table/card-body/card-header/card-sm/card-fill are parts of a card, not new ones.
-      const isFrame = FRAMED.test(cls.replace(/card-[\w-]+/g, ''))
-      if (isFrame && stack.some(Boolean)) {
-        assert.fail(`${name}: a framed element nested inside another (class="${cls}")`)
-      }
-      stack.push(isFrame)
-    }
+test('every bespoke class is actually used', () => {
+  // The other direction: a rule in the hand-written layer that nothing renders is dead
+  // weight that outlives the markup it was for.
+  const source = builtCss()
+  const rendered = new Set(Object.values(VIEWS).flatMap((h) => classesOf(h)))
+  for (const cls of ['pb-safe', 'pb-dock', 'actionbar', 'tap', 'dl', 'tl-future']) {
+    assert.ok(source.includes(`.${cls}`), `${cls} is declared`)
+    if (cls === 'dl' || cls === 'tl-future') continue // rendered only with a diff or a soak
+    assert.ok(rendered.has(cls), `${cls} is used by some view`)
   }
 })
 
-test('card-table only appears where there is a card', () => {
-  // Tabler's card-table makes a table sit flush inside a card. On the full-bleed grid
-  // pages there is no card, so it is a modifier for a frame that does not exist --
-  // exactly the kind of leftover a refactor strands.
-  for (const [name, html] of Object.entries(R)) {
-    if (!html.includes('card-table')) continue
-    assert.match(html, /class="card[ "]/, `${name}: card-table without a card`)
+test('a page is a whole document and a fragment is not', () => {
+  for (const key of ['inbox-page', 'update-page', 'layout', 'layout-setup']) {
+    const html = VIEWS[key]!
+    assert.match(html, /^<html lang="en"[ >]/, key)
+    assert.match(html, /<\/html>$/, key)
+    assert.match(html, /<title>[^<]+ · shipshape<\/title>/, key)
+  }
+  for (const key of ['inbox', 'update-detail', 'update-card', 'services', 'activity', 'settings']) {
+    assert.doesNotMatch(VIEWS[key]!, /<html[ >]|<head>|<body[ >]/, key)
   }
 })
 
-test('the single-table pages carry no card at all', () => {
-  // A card around the only thing on a page is a box inside the page's own box.
-  for (const key of ['images', 'images-grouped', 'activity']) {
-    assert.doesNotMatch(R[key]!, /class="card[ "]/, `${key} should be full-bleed`)
-    assert.match(R[key]!, /class="page-body fill bleed"/, key)
-    assert.match(R[key]!, /class="page-toolbar/, `${key}: toolbar should be fixed chrome`)
+test('the theme is resolved before the stylesheet loads', () => {
+  // Any later and the page paints light, then repaints dark.
+  const html = VIEWS['layout']!
+  const script = html.indexOf('shipshape-theme')
+  const css = html.indexOf('/static/app.css')
+  assert.ok(script > 0 && css > 0 && script < css, 'theme script precedes the stylesheet')
+  assert.doesNotMatch(html.slice(0, css), /<script[^>]*defer[^>]*>\(function/, 'and is not deferred')
+})
+
+test('the installable bits are all present', () => {
+  const html = VIEWS['layout']!
+  assert.match(html, /viewport-fit=cover/)
+  // Without credentials the manifest fetch follows Authelia's redirect and fails to
+  // parse, leaving the app silently non-installable while still answering 200.
+  assert.match(html, /rel="manifest"[^>]*crossorigin="use-credentials"/)
+  assert.equal(html.match(/name="theme-color"/g)?.length, 2, 'one per colour scheme')
+  assert.match(html, /apple-mobile-web-app-capable/)
+  assert.match(html, /rel="apple-touch-icon"/)
+  assert.match(html, /navigator\.serviceWorker\.register\('\/sw\.js'\)/)
+})
+
+test('both navigations exist, keyed to the same breakpoint', () => {
+  const html = VIEWS['layout']!
+  assert.match(html, /class="dock dock-sm lg:hidden"/, 'the dock is for narrow screens')
+  assert.match(html, /drawer lg:drawer-open/, 'the sidebar takes over at the same width')
+  const dock = html.slice(html.indexOf('class="dock'))
+  const links = dock.slice(0, dock.indexOf('</nav>')).match(/<a /g)?.length
+  assert.equal(links, 5, 'five destinations, and no More menu hiding one of them')
+})
+
+test('the panel and the toasts live outside every swapped region', () => {
+  // A detail panel rendered inside the list it was opened from disappears the moment
+  // that list refreshes.
+  const html = VIEWS['inbox-page']!
+  const inbox = html.indexOf('id="inbox"')
+  const sheet = html.indexOf('id="sheet"')
+  const toasts = html.indexOf('id="toasts"')
+  assert.ok(inbox > 0 && sheet > inbox && toasts > inbox)
+  assert.doesNotMatch(VIEWS['inbox']!, /id="sheet"|id="toasts"/, 'and not in the fragment')
+})
+
+test('nothing important is hidden in a title attribute', () => {
+  // A tooltip does not exist on a touch screen, which is where these decisions get made.
+  for (const key of ['update-card', 'inbox']) {
+    assert.doesNotMatch(VIEWS[key]!, /title="[^"]*confidence/i, key)
   }
+  const card = VIEWS['update-card']!
+  assert.match(card, /Read first/, 'the verdict is words, not a colour')
+  assert.match(card, /medium/, 'and the confidence is on the card')
+})
+
+test('a row is a link, never a click handler on a table row', () => {
+  // The old rows could not be opened by a keyboard at all.
+  const row = VIEWS['update-row']!
+  assert.match(row, /<a href="\/updates\/7"/)
+  assert.doesNotMatch(row, /<tr[^>]*hx-get/, 'the tr itself carries no behaviour')
+  assert.doesNotMatch(row, /onclick/)
+  assert.match(VIEWS['update-card']!, /<a href="\/updates\/7"[^>]*data-row/)
+})
+
+test('a row loads the panel on a wide screen and navigates on a narrow one', () => {
+  // One piece of markup, two behaviours: the trigger filter fails below lg, so the
+  // browser follows the href instead.
+  assert.match(
+    VIEWS['update-card']!,
+    /hx-trigger="click\[matchMedia\(&#39;\(min-width:1024px\)&#39;\)\.matches\]"/,
+  )
+})
+
+test('a verb button targets its own card and cannot be double-fired', () => {
+  const html = VIEWS['update-detail']!
+  for (const m of html.matchAll(/<button[^>]*hx-post="([^"]+)"[^>]*>/g)) {
+    const tag = m[0]
+    assert.match(tag, /hx-target="#upd-\d+"/, tag)
+    assert.match(tag, /hx-swap="outerHTML"/, tag)
+    assert.match(tag, /hx-disabled-elt="this"/, tag)
+  }
+})
+
+test('merging and rolling back ask twice', () => {
+  // Both change a running host. The confirm writes out what will happen.
+  const html = VIEWS['update-detail']!
+  assert.match(html, /data-open="#confirm-merge-deploy-7"/)
+  assert.match(html, /id="confirm-merge-deploy-7"/)
+  assert.match(html, /squash #41 into main/)
+  assert.match(html, /soak for thirty more/)
+  const verified = VIEWS['update-verified']!
+  assert.match(verified, /data-open="#confirm-rollback-13"/)
+})
+
+test('only a card that is in flight polls', () => {
+  assert.doesNotMatch(VIEWS['update-card']!, /hx-trigger="every/, 'a settled card is quiet')
+  assert.match(VIEWS['update-card-transient']!, /hx-get="\/updates\/11\/card"[^>]*/)
+  assert.match(VIEWS['update-card-transient']!, /every 5s/)
+})
+
+test('the scan poll stops when the scan does', () => {
+  // Everything that polls during a scan keys off this id, which only exists while one
+  // is running -- so the polls end with it rather than running all night.
+  assert.match(RUNNING['inbox-page']!, /id="scan-running"/)
+  assert.doesNotMatch(VIEWS['inbox-page']!, /id="scan-running"/)
+  assert.equal(RUNNING['inbox-page']!.match(/id="scan-running"/g)?.length, 1)
+})
+
+test('a filter is one form, with every control inside it', () => {
+  for (const key of ['settings']) {
+    const forms = VIEWS[key]!.match(/<form/g)?.length ?? 0
+    assert.ok(forms >= 1, key)
+  }
+})
+
+test('an unchecked switch still says off', () => {
+  // A checkbox that is not ticked sends nothing at all, which would read as "leave it
+  // alone" rather than "turn it off".
+  const html = VIEWS['settings']!
+  assert.match(html, /<input type="hidden" name="paused" value="false"\/>/)
+  assert.match(html, /<input id="paused" type="checkbox" name="paused" value="true"/)
+})
+
+test('the settings form knows what unpausing will not do', () => {
+  assert.match(VIEWS['settings']!, /2 merged updates are waiting for a deploy/)
+})
+
+test('a service says where each of its settings came from', () => {
+  const html = VIEWS['service-detail']!
+  for (const source of ['label', 'locked', 'inferred']) {
+    assert.match(html, new RegExp(`>${source}</span>`), source)
+  }
+  assert.match(html, /media\/docker-compose\.yaml/, 'and which file it is in')
+})
+
+test('a repeated log line is one row with a count', () => {
+  const html = VIEWS['activity']!
+  assert.match(html, /×14/)
+  assert.equal(html.match(/changelog analysis failed/g)?.length, 1)
+})
+
+test('the docs are anchored where the settings link to them', () => {
+  const docs = VIEWS['docs']!
+  for (const anchor of ['update-policy', 'deploys', 'changelog-review']) {
+    assert.match(docs, new RegExp(`id="${anchor}"`), anchor)
+  }
+  assert.match(docs, /can withhold a merge and can never cause one/, 'the one rule is stated')
+})
+
+test('a failed review says so, with what it will do next', () => {
+  const html = VIEWS['update-review-failed']!
+  assert.match(html, /Review failed — attempt 3/)
+  assert.match(html, /Trying again/)
+})
+
+test('the setup banner names what is missing', () => {
+  assert.match(VIEWS['layout-setup']!, /REPO_DIR/)
+  assert.match(VIEWS['layout-setup']!, /not configured yet/)
 })

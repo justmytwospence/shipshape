@@ -178,6 +178,58 @@ export function relative(iso: string): string {
   return ms >= 0 ? `${span} ago` : `in ${span}`
 }
 
+/**
+ * The scan chip, which is also the poll's on switch.
+ *
+ * The `scan-running` id exists only while a scan is in flight, and other regions key
+ * their polling off it -- so when the scan ends the id goes with it, and every poll that
+ * depended on it stops rather than running all night.
+ */
+export const ScanStatus: FC<{ running: boolean; lastAt: string | null }> = ({
+  running,
+  lastAt,
+}) =>
+  running ? (
+    <span
+      id="scan-running"
+      class="text-info inline-flex items-center gap-1 text-xs"
+      hx-get="/scan/status"
+      hx-trigger="every 3s"
+      hx-swap="outerHTML"
+    >
+      <span class="loading loading-ring loading-xs" /> scanning…
+    </span>
+  ) : (
+    <span class="text-xs opacity-60">{lastAt ? `scanned ${relative(lastAt)}` : 'idle'}</span>
+  )
+
+/** What the merge engine would decide right now, asked of the code that does the merging. */
+export const MergePreview: FC<{
+  decisions: { number: number; merge: boolean; reason?: string }[]
+  paused: boolean
+}> = ({ decisions, paused }) => (
+  <div class="card-body gap-2 p-4 text-sm">
+    {paused ? (
+      <p class="text-xs opacity-60">
+        Paused, so none of this happens on its own — this is what would, if it were not.
+      </p>
+    ) : null}
+    {decisions.length === 0 ? (
+      <p class="opacity-60">No open pull requests.</p>
+    ) : (
+      decisions.map((d) => (
+        <div class="flex items-baseline gap-2">
+          <span class="font-mono text-xs">#{d.number}</span>
+          <span class={`badge badge-xs badge-soft ${d.merge ? 'badge-success' : 'badge-neutral'}`}>
+            {d.merge ? 'would merge' : 'held'}
+          </span>
+          {d.reason ? <span class="text-xs opacity-60">{d.reason}</span> : null}
+        </div>
+      ))
+    )}
+  </div>
+)
+
 export const EmptyState: FC<{ icon: IconName; title: string; hint?: string }> = ({
   icon,
   title,

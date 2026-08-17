@@ -18,7 +18,7 @@
  * attached.
  */
 
-const VERSION = 'shipshape-static-v1'
+const VERSION = 'shipshape-static-v2'
 
 /**
  * Precached on install. Deliberately short and hand-checked against what is actually in
@@ -26,9 +26,8 @@ const VERSION = 'shipshape-static-v1'
  * middleware intercepts 402-599 and substitutes a ~57 KB HTML page.
  */
 const PRECACHE = [
-  '/static/tabler.min.css',
-  '/static/style.css',
-  '/static/tabler.min.js',
+  '/static/app.css',
+  '/static/app.js',
   '/static/htmx.min.js',
   '/static/icon.svg',
   '/static/icon-192.png',

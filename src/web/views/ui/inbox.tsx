@@ -1,6 +1,6 @@
 import type { FC } from 'hono/jsx'
 import { Icon, type IconName } from './icon.tsx'
-import { Change, EmptyState, Relative, ServiceName } from './parts.tsx'
+import { Change, EmptyState, Relative, ScanStatus, ServiceName } from './parts.tsx'
 import { UpdateCard } from './update.tsx'
 import type { AttentionItem, AttentionKind, RecentItem, UpdateView } from '../../../updates/queries.ts'
 
@@ -78,9 +78,9 @@ export const StatusStrip: FC<{ scan: InboxData['scan'] }> = ({ scan }) => (
   <div class="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs opacity-70">
     <span>
       {scan.running ? (
-        <span class="text-info inline-flex items-center gap-1">
-          <span class="loading loading-ring loading-xs" /> scanning…
-        </span>
+        // The id lives here and nowhere else: every poll that should stop when the scan
+        // stops keys off it, so it must be exactly as durable as the scan itself.
+        <ScanStatus running lastAt={null} />
       ) : scan.lastAt ? (
         <>
           last scan <Relative at={new Date(scan.lastAt).toISOString()} />

@@ -4,6 +4,19 @@ import { InboxBody, StatusStrip, type InboxData } from './ui/inbox.tsx'
 import { UpdateCard, UpdateDetail, UpdateRow } from './ui/update.tsx'
 import { EmptyState } from './ui/parts.tsx'
 import {
+  RawPolicy,
+  SettingsForm,
+  SettingsTabs,
+  StatusBody,
+  type SettingValue,
+  type StatusData,
+} from './ui/settings.tsx'
+import {
+  ActivityList,
+  ActivityToolbar,
+  type ActivityRow,
+} from './ui/activity.tsx'
+import {
   ServiceDetail,
   ServicesList,
   ServicesToolbar,
@@ -73,13 +86,13 @@ export const UpdatesToolbar: FC<{ stage: StageFilter; q: string }> = ({ stage, q
           type="radio"
           name="stage"
           value={s.key}
-          class="btn btn-sm"
+          class="btn btn-sm tap md:min-h-8"
           aria-label={s.label}
           checked={s.key === stage}
         />
       ))}
     </div>
-    <label class="input input-sm w-full max-w-56">
+    <label class="input input-sm tap w-full max-w-56 md:min-h-8">
       <input
         type="search"
         name="q"
@@ -219,5 +232,111 @@ export const UpdatePage: FC<{
     theme={chrome.theme}
   >
     <UpdateDetail update={update} milestones={milestones} warnings={warnings} diff={diff} />
+  </Layout>
+)
+
+export const ActivityPage: FC<{
+  rows: ActivityRow[]
+  repo: string
+  kind: string
+  problems: boolean
+  q: string
+  more?: string | null
+  chrome: PageChrome
+}> = ({ rows, repo, kind, problems, q, more, chrome }) => (
+  <Layout
+    title="Activity"
+    nav="activity"
+    paused={chrome.paused}
+    missing={chrome.missing}
+    theme={chrome.theme}
+    toolbar={<ActivityToolbar kind={kind} problems={problems} q={q} />}
+  >
+    <div id="activity-list">
+      <ActivityList rows={rows} repo={repo} more={more} />
+    </div>
+  </Layout>
+)
+
+export const SettingsPage: FC<{
+  tab: string
+  groups: { title: string; blurb?: string; items: SettingValue[] }[]
+  models?: string[]
+  banner?: { level: 'info' | 'error'; text: string } | null
+  readyCount?: number
+  chrome: PageChrome
+}> = ({ tab, groups, models, banner, readyCount, chrome }) => (
+  <Layout
+    title="Settings"
+    nav="settings"
+    paused={chrome.paused}
+    missing={chrome.missing}
+    theme={chrome.theme}
+    toolbar={<SettingsTabs active={tab} />}
+    subtitle={
+      tab === 'advanced' ? 'Tuning. Correct out of the box.' : 'What happens without you.'
+    }
+  >
+    <SettingsForm
+      groups={groups}
+      models={models}
+      banner={banner}
+      advanced={tab === 'advanced'}
+      readyCount={readyCount}
+    />
+  </Layout>
+)
+
+export const StatusPage: FC<{ data: StatusData; chrome: PageChrome }> = ({ data, chrome }) => (
+  <Layout
+    title="Status"
+    nav="settings"
+    paused={chrome.paused}
+    missing={chrome.missing}
+    theme={chrome.theme}
+    toolbar={<SettingsTabs active="status" />}
+    subtitle="What shipshape is doing, and what it has spent."
+  >
+    <StatusBody data={data} />
+  </Layout>
+)
+
+export const PromptsPage: FC<{ editors: unknown; chrome: PageChrome }> = ({ editors, chrome }) => (
+  <Layout
+    title="Prompts"
+    nav="settings"
+    paused={chrome.paused}
+    missing={chrome.missing}
+    theme={chrome.theme}
+    toolbar={<SettingsTabs active="prompts" />}
+    subtitle="What the model is asked. Editing one is rarely the answer."
+  >
+    <div class="flex flex-col gap-4">{editors}</div>
+  </Layout>
+)
+
+export const RawPolicyPage: FC<{ text: string; chrome: PageChrome }> = ({ text, chrome }) => (
+  <Layout
+    title="policy.yaml"
+    nav="settings"
+    back={{ href: '/settings', label: 'Settings' }}
+    paused={chrome.paused}
+    missing={chrome.missing}
+    theme={chrome.theme}
+  >
+    <RawPolicy text={text} />
+  </Layout>
+)
+
+export const DocsPage: FC<{ sections: unknown; chrome: PageChrome }> = ({ sections, chrome }) => (
+  <Layout
+    title="How it works"
+    nav="settings"
+    back={{ href: '/settings', label: 'Settings' }}
+    paused={chrome.paused}
+    missing={chrome.missing}
+    theme={chrome.theme}
+  >
+    <div class="prose prose-sm max-w-3xl">{sections}</div>
   </Layout>
 )

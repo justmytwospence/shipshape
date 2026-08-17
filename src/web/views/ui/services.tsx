@@ -54,13 +54,13 @@ export const ServicesToolbar: FC<{ filter: string; q: string; grouped: boolean }
           type="radio"
           name="filter"
           value={f.key}
-          class="btn btn-sm"
+          class="btn btn-sm tap md:min-h-8"
           aria-label={f.label}
           checked={f.key === filter}
         />
       ))}
     </div>
-    <label class="input input-sm w-full max-w-56">
+    <label class="input input-sm tap w-full max-w-56 md:min-h-8">
       <input
         type="search"
         name="q"
@@ -70,7 +70,7 @@ export const ServicesToolbar: FC<{ filter: string; q: string; grouped: boolean }
         class="grow"
       />
     </label>
-    <label class="label cursor-pointer gap-2 text-sm">
+    <label class="label tap cursor-pointer gap-2 text-sm md:min-h-8">
       <input
         type="checkbox"
         name="group"
@@ -109,7 +109,7 @@ export const ServiceRow: FC<{ svc: ServiceRowData; grouped?: boolean }> = ({ svc
         hx-swap="innerHTML"
         hx-trigger="click[matchMedia('(min-width:1024px)').matches]"
         hx-indicator="#busy"
-        class="focus-visible:outline-primary min-w-0 flex-1 focus-visible:outline-2"
+        class="focus-visible:outline-primary tap flex min-w-0 flex-1 flex-col justify-center focus-visible:outline-2"
       >
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
           {grouped ? (

@@ -181,7 +181,7 @@ export const UpdateCard: FC<{ update: UpdateView; target?: string }> = ({ update
             hx-swap="innerHTML"
             hx-trigger="click[matchMedia('(min-width:1024px)').matches]"
             hx-indicator="#busy"
-            class="focus-visible:outline-primary min-w-0 flex-1 focus-visible:outline-2 focus-visible:outline-offset-2"
+            class="focus-visible:outline-primary tap flex min-w-0 flex-1 flex-col justify-center focus-visible:outline-2 focus-visible:outline-offset-2"
           >
             <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
               <ServiceName stack={update.stack} service={update.service} />
@@ -214,7 +214,7 @@ export const UpdateRow: FC<{ update: UpdateView; target?: string }> = ({ update,
         hx-swap="innerHTML"
         hx-trigger="click[matchMedia('(min-width:1024px)').matches]"
         hx-indicator="#busy"
-        class="focus-visible:outline-primary block truncate focus-visible:outline-2"
+        class="focus-visible:outline-primary tap flex items-center truncate focus-visible:outline-2"
       >
         <ServiceName stack={update.stack} service={update.service} />
       </a>

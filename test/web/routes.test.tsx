@@ -30,8 +30,27 @@ before(async () => {
 
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const PAGES = ['/', '/images', '/images?group=stack', '/activity', '/settings', '/settings/raw', '/system']
-const FRAGMENTS = ['/fragments/pending', '/scan/status', '/settings/digest']
+const PAGES = [
+  '/',
+  '/updates',
+  '/services',
+  '/services?group=stack',
+  '/activity',
+  '/settings',
+  '/settings/advanced',
+  '/settings/status',
+  '/settings/prompts',
+  '/settings/raw',
+  '/docs',
+]
+const FRAGMENTS = [
+  '/fragments/inbox',
+  '/fragments/updates',
+  '/fragments/services',
+  '/fragments/activity',
+  '/scan/status',
+  '/settings/digest',
+]
 
 test('/about is gone, not moved', async () => {
   // It was absorbed into /settings behind the Explain switch. Deliberately a 404 rather
@@ -60,7 +79,7 @@ test('every fragment returns a bare fragment, never a whole document', async () 
   for (const path of FRAGMENTS) {
     const res = await app.request(path)
     assert.equal(res.status, 200, path)
-    assert.doesNotMatch(await res.text(), /<html/, path)
+    assert.doesNotMatch(await res.text(), /<html[ >]|<head>|<body[ >]/, path)
   }
 })
 
@@ -70,16 +89,24 @@ test('the unconfigured deployment gets setup instructions, not a crash', async (
   assert.match(html, /REPO_DIR/)
 })
 
-test('a row fragment spans exactly the columns of the table it lands in', async () => {
-  // This comes back as a raw HTML string far from the table that defines the columns,
-  // so the count is asserted here rather than trusted. Five, not six: the images table
-  // has no Analysis or PR column, and this claimed six for months.
-  const imagesCols = 5 // Service, Image, Tag, Status, action
+test('the old addresses still land somewhere', async () => {
+  // A bookmark, or a link in a months-old digest. A redirect costs nothing and a 404
+  // costs the operator a search.
+  for (const [from, to] of [
+    ['/images', '/services'],
+    ['/system', '/settings/status'],
+  ]) {
+    const res = await app.request(from)
+    assert.equal(res.status, 301, from)
+    assert.equal(res.headers.get('location'), to, from)
+  }
+})
 
-  const missing = await app.request('/images/nope/nope/check', { method: 'POST' })
-  assert.equal(missing.status, 200, 'htmx does not swap a 4xx, so the answer arrives as 200')
-  assert.match(await missing.text(), new RegExp(`colspan="${imagesCols}"`))
-  assert.match(missing.headers.get('HX-Trigger') ?? '', /no longer in the compose files/)
+test('checking one service answers even when it has been removed', async () => {
+  // htmx swaps nothing on a 4xx, so a 404 here would read as a button that did nothing.
+  const res = await app.request('/services/nope/nope/check', { method: 'POST' })
+  assert.equal(res.status, 200)
+  assert.match(res.headers.get('HX-Trigger') ?? '', /no longer here/)
 })
 
 test('an operator verb always answers, whether or not it was allowed', async () => {

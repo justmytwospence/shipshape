@@ -1,184 +1,373 @@
-import { loadPolicy, type Policy } from '../../src/config.ts'
-import { Layout } from '../../src/web/views/layout.tsx'
-import { Dashboard, PendingSections, ScanStatus, type PendingRow } from '../../src/web/views/dashboard.tsx'
-import { ImagesPage, ImagesTable, ImageRow } from '../../src/web/views/images.tsx'
-import { ActivityPage, ActivityTable } from '../../src/web/views/activity.tsx'
-import { SettingsPage, SettingsForm, PromptEditorFragment, DigestPreview, RawPolicy } from '../../src/web/views/settings.tsx'
-import { SystemPage } from '../../src/web/views/system.tsx'
-import { DiffView, DetailPanel } from '../../src/web/views/diff.tsx'
-import type { ScannedService } from '../../src/compose/scan.ts'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { InboxBody } from '../../src/web/views/ui/inbox.tsx'
+import { UpdateCard, UpdateDetail, UpdateRow } from '../../src/web/views/ui/update.tsx'
+import { ServiceDetail, ServicesList } from '../../src/web/views/ui/services.tsx'
+import { ActivityList } from '../../src/web/views/ui/activity.tsx'
+import { SettingsForm, StatusBody } from '../../src/web/views/ui/settings.tsx'
+import { Docs } from '../../src/web/views/ui/docs.tsx'
+import { Layout } from '../../src/web/views/ui/shell.tsx'
+import { InboxPage, UpdatePage } from '../../src/web/views/pages.tsx'
+import type { UpdateView, Milestone } from '../../src/updates/queries.ts'
 
 /**
- * Rendering every view without a database, a token, or a network.
+ * Every view, rendered without a database, a token or a network.
  *
- * hono/jsx components are plain functions returning a stringifiable object, so the whole
- * UI can be asserted on structurally. That is the point of this file: the app's
- * behaviour is carried by htmx attributes and by markup shape -- a `<tr>` that stops
- * being a `<tr>`, a `<details>` that becomes a div -- and none of that is visible to
- * the type checker or to any test that only exercises the server.
+ * hono/jsx components are plain functions returning something stringifiable, so the
+ * tests call them directly. The fixtures below cover the states that are easy to get
+ * wrong precisely because they are rare: a review that failed, a deploy in flight, an
+ * update nobody can act on any more.
  */
 
-/** Defaults, via the same path the app uses when policy.yaml is absent. */
-export const POLICY: Policy = loadPolicy().policy
+const now = new Date().toISOString()
+const ago = (h: number) => new Date(Date.now() - h * 3600_000).toISOString()
 
-export const SERVICE: ScannedService = {
-  stack: 'demo',
-  service: 'svc',
-  composeFile: 'demo/docker-compose.yaml',
-  imageRaw: 'nginx:1.0.0',
-  ref: { registry: 'docker.io', repository: 'library/nginx', tag: '1.0.0', digest: null, raw: 'nginx:1.0.0' },
-  labels: {},
-  profiles: [],
-  hasBuild: false,
-  watched: true,
-  unwatchable: null,
-  pattern: 'semver',
-  tagInclude: null,
-  policyLabel: null,
-  sourceLabel: null,
-  claudeLabel: null,
-  deployLabel: null,
-  probePort: null,
-  archivePre: null,
-  networkMode: null,
-  prLabel: null,
-  proposeLabel: null,
-  groupLabel: null,
-  wud: { watch: null, tagInclude: null, gated: false, link: null },
+export function update(over: Partial<UpdateView> = {}): UpdateView {
+  return {
+    id: 7,
+    stack: 'media',
+    service: 'jellyfin',
+    image: 'jellyfin/jellyfin',
+    fromTag: '10.9.11',
+    toTag: '10.10.3',
+    magnitude: 'minor',
+    tier: 'manual',
+    state: 'pr_open',
+    detail: null,
+    rolling: false,
+    detectedAt: ago(30),
+    updatedAt: ago(2),
+    ackedAt: null,
+    pr: {
+      number: 41,
+      state: 'open',
+      scope: 'tag-only',
+      userOwned: false,
+      mergeCommitSha: null,
+      url: 'https://github.com/you/repo/pull/41',
+    },
+    verdict: {
+      recommendation: 'caution',
+      confidence: 'medium',
+      severity: 'medium',
+      summary: 'Transcoding defaults changed; hardware acceleration must be re-selected.',
+      breakingChanges: ['The `hwaccel` config key was renamed'],
+      migrationSteps: ['Re-select the hardware acceleration device after upgrading'],
+      sources: ['https://github.com/jellyfin/jellyfin/releases/tag/v10.10.3'],
+      model: 'claude-haiku-4-5',
+      createdAt: ago(20),
+      error: null,
+      attempts: 0,
+      nextAttemptAt: null,
+    },
+    deploy: null,
+    actions: ['merge-deploy', 'propose', 'skip'],
+    primary: 'merge-deploy',
+    transient: false,
+    ...over,
+  }
 }
 
-export const PENDING: PendingRow[] = [
+export const UPDATES: Record<string, UpdateView> = {
+  waiting: update(),
+  held: update({
+    id: 8,
+    state: 'held',
+    service: 'postgres',
+    magnitude: 'major',
+    pr: null,
+    verdict: null,
+    actions: ['open-pr', 'skip'],
+    primary: 'open-pr',
+  }),
+  rolling: update({
+    id: 9,
+    state: 'detected',
+    detail: 'rolling',
+    rolling: true,
+    service: 'actual',
+    magnitude: 'digest',
+    pr: null,
+    verdict: null,
+    actions: ['redeploy', 'skip'],
+    primary: 'redeploy',
+  }),
+  ready: update({
+    id: 10,
+    state: 'merged',
+    deploy: {
+      id: 3,
+      status: 'ready',
+      trigger: 'queue',
+      startedAt: null,
+      finishedAt: null,
+      recheckAt: null,
+      detail: null,
+    },
+    actions: ['deploy'],
+    primary: 'deploy',
+  }),
+  deploying: update({
+    id: 11,
+    state: 'deploying',
+    deploy: {
+      id: 4,
+      status: 'running',
+      trigger: 'operator',
+      startedAt: now,
+      finishedAt: null,
+      recheckAt: null,
+      detail: null,
+    },
+    actions: [],
+    primary: null,
+    transient: true,
+  }),
+  reviewFailed: update({
+    id: 12,
+    verdict: {
+      recommendation: null,
+      confidence: null,
+      severity: null,
+      summary: null,
+      breakingChanges: [],
+      migrationSteps: [],
+      sources: [],
+      model: null,
+      createdAt: ago(4),
+      error: 'the changelog could not be fetched (404)',
+      attempts: 3,
+      nextAttemptAt: new Date(Date.now() + 3600_000).toISOString(),
+    },
+    actions: ['rerun-review', 'merge-deploy', 'skip'],
+    primary: 'rerun-review',
+  }),
+  verified: update({
+    id: 13,
+    state: 'verified',
+    pr: {
+      number: 22,
+      state: 'merged',
+      scope: 'tag-only',
+      userOwned: false,
+      mergeCommitSha: 'abc1234',
+      url: 'https://github.com/you/repo/pull/22',
+    },
+    deploy: {
+      id: 5,
+      status: 'verified',
+      trigger: 'queue',
+      startedAt: ago(3),
+      finishedAt: ago(2),
+      recheckAt: null,
+      detail: 'jellyfin up in 14s',
+    },
+    actions: ['rollback'],
+    primary: 'rollback',
+  }),
+}
+
+export const MILESTONES: Milestone[] = [
+  { at: ago(30), kind: 'detected', label: 'minor update detected', detail: '10.9.11 → 10.10.3' },
+  { at: ago(29), kind: 'pr', label: 'pull request #41 opened' },
   {
-    id: 1, stack: 'demo', service: 'svc', image: 'nginx:1.0.0',
-    from_tag: '1.0.0', to_tag: '1.1.0', magnitude: 'minor', tier: 'manual',
-    state: 'pr_open', detail: null, pr_number: 7,
-    recommendation: 'approve', confidence: 'high', pr_scope: 'tag-only',
+    at: ago(20),
+    kind: 'review',
+    label: 'reviewed: caution at medium confidence',
+    detail: 'Transcoding defaults changed.',
   },
+  { at: null, kind: 'verified', label: 'verified, if it is still healthy', future: true },
+]
+
+const SERVICE = {
+  stack: 'media',
+  service: 'jellyfin',
+  image: 'jellyfin/jellyfin',
+  tag: '10.9.11',
+  watched: true,
+  unwatchable: null,
+  lastStatus: null,
+  lastDetail: null,
+  constrainedFrom: null,
+  lastSeenAt: ago(6),
+}
+
+const CHROME = { paused: true, missing: [] }
+
+const SETTING_GROUPS = [
   {
-    id: 2, stack: 'db', service: 'postgres', image: 'postgres:16',
-    from_tag: '16', to_tag: '17', magnitude: 'major', tier: 'held',
-    state: 'held', detail: null, pr_number: null,
-    recommendation: null, confidence: null, pr_scope: null,
-  },
-  {
-    id: 3, stack: 'roll', service: 'latest-svc', image: 'x:latest',
-    from_tag: 'latest@aaa', to_tag: 'latest@bbb', magnitude: 'digest', tier: 'manual',
-    state: 'detected', detail: 'rolling', pr_number: null,
-    recommendation: null, confidence: null, pr_scope: null,
+    title: 'Update policy',
+    blurb: 'How much happens without you.',
+    items: [
+      {
+        def: {
+          path: 'defaults.patch',
+          kind: 'enum' as const,
+          label: 'Patch',
+          help: 'x.y.Z',
+          options: ['auto', 'manual', 'on-request', 'skip'],
+          defaultValue: 'auto',
+          section: 'Update policy' as never,
+        },
+        value: 'auto',
+        changed: false,
+      },
+      {
+        def: {
+          path: 'paused',
+          kind: 'bool' as const,
+          label: 'Pause',
+          help: 'nothing merges or deploys on its own',
+          defaultValue: 'true',
+          section: 'Merging' as never,
+        },
+        value: 'true',
+        changed: false,
+      },
+    ],
   },
 ]
 
-const SCAN_IDLE = { lastAt: '2026-08-04T03:00:00.000Z', durationS: 12, counts: { update: 1 }, running: false }
-const SCAN_RUNNING = { lastAt: null, durationS: null, counts: null, running: true }
+const STATUS = {
+  version: '0.1.0',
+  repoDir: '/srv/compose',
+  repo: 'you/repo',
+  mergeMethod: 'squash',
+  pushMain: true,
+  blackout: ['00:45-02:30'],
+  scan: { cron: '0 0 3 * * *', lastAt: ago(9), nextAt: null, durationS: 156 },
+  digest: { cron: '0 0 8 * * *', nextAt: null },
+  credentials: [{ name: 'GITHUB_TOKEN', state: 'set' as const }],
+  spend: [{ model: 'claude-haiku-4-5', purpose: 'verdict', calls: 34, cost: 3.63 }],
+  budgetUsd: 10,
+  spentUsd: 8.03,
+  deploys: [
+    { at: ago(2), stack: 'media', services: 'jellyfin', status: 'verified', trigger: 'queue' },
+  ],
+  budgets: [{ key: 'dockerhub.pulls', value: 200, window: '200;w=3600' }],
+}
 
-/**
- * Every view, rendered. Keyed so a failure names the page.
- *
- * `running` renders the scanning variant of anything that has one -- that is the state
- * the `#scan-running` id contract lives in, and it is invisible at rest.
- */
+const ACTIVITY = [
+  {
+    id: 1,
+    at: ago(26),
+    lastAt: ago(2),
+    count: 14,
+    level: 'warn' as const,
+    kind: 'analysis',
+    stack: 'media',
+    service: 'jellyfin',
+    message: 'changelog analysis failed',
+    detail: '404 fetching the changelog',
+  },
+  {
+    id: 2,
+    at: ago(3),
+    lastAt: null,
+    count: 1,
+    level: 'info' as const,
+    kind: 'pr',
+    stack: null,
+    service: null,
+    message: 'opened #41: jellyfin 10.9.11 -> 10.10.3',
+    detail: null,
+  },
+]
+
+const INBOX = {
+  needsYou: [
+    { kind: 'pr-waiting' as const, update: UPDATES.waiting! },
+    { kind: 'on-request' as const, update: UPDATES.held! },
+    { kind: 'rolling-moved' as const, update: UPDATES.rolling! },
+    { kind: 'ready-to-deploy' as const, update: UPDATES.ready! },
+    { kind: 'review-failed' as const, update: UPDATES.reviewFailed! },
+  ],
+  recent: [
+    {
+      at: ago(1),
+      kind: 'verified' as const,
+      stack: 'media',
+      service: 'jellyfin',
+      fromTag: '10.9.10',
+      toTag: '10.9.11',
+      updateId: 13,
+      prNumber: 22,
+      detail: null,
+    },
+  ],
+  parked: [UPDATES.waiting!],
+  scan: { lastAt: Date.now() - 9 * 3600_000, nextAt: null, running: false, watched: 118 },
+}
+
+/** Every view, keyed, for the tests that sweep across all of them. */
 export function renderAll(opts: { running?: boolean } = {}): Record<string, string> {
-  const scan = opts.running ? SCAN_RUNNING : SCAN_IDLE
-  const statusMap = new Map()
+  const scan = { ...INBOX.scan, running: !!opts.running }
+  const inbox = { ...INBOX, scan }
   return {
-    layout: String(Layout({ title: 'T', path: '/', children: 'body' })),
+    'inbox-page': String(InboxPage({ data: inbox, chrome: CHROME })),
+    inbox: String(InboxBody({ data: inbox })),
+    'update-page': String(
+      UpdatePage({
+        update: UPDATES.waiting!,
+        milestones: MILESTONES,
+        warnings: ['the changelog review returned caution'],
+        chrome: CHROME,
+      }),
+    ),
+    'update-detail': String(
+      UpdateDetail({ update: UPDATES.waiting!, milestones: MILESTONES, warnings: [] }),
+    ),
+    'update-card': String(UpdateCard({ update: UPDATES.waiting! })),
+    'update-card-transient': String(UpdateCard({ update: UPDATES.deploying! })),
+    'update-row': `<table><tbody>${String(UpdateRow({ update: UPDATES.waiting! }))}</tbody></table>`,
+    'update-verified': String(
+      UpdateDetail({ update: UPDATES.verified!, milestones: MILESTONES }),
+    ),
+    'update-review-failed': String(
+      UpdateDetail({ update: UPDATES.reviewFailed!, milestones: MILESTONES }),
+    ),
+    services: String(ServicesList({ services: [SERVICE], grouped: false })),
+    'services-grouped': String(ServicesList({ services: [SERVICE], grouped: true })),
+    'service-detail': String(
+      ServiceDetail({
+        data: {
+          svc: SERVICE,
+          composeFile: 'media/docker-compose.yaml',
+          config: [
+            { key: 'policy', value: 'manual', source: 'label' },
+            { key: 'major', value: 'manual', source: 'locked' },
+            { key: 'pattern', value: 'semver', source: 'inferred' },
+          ],
+          history: [UPDATES.waiting!],
+          canEdit: true,
+        },
+      }),
+    ),
+    activity: String(ActivityList({ rows: ACTIVITY, repo: 'you/repo', more: null })),
+    settings: String(SettingsForm({ groups: SETTING_GROUPS, readyCount: 2 })),
+    status: String(StatusBody({ data: STATUS })),
+    docs: String(Docs({})),
+    layout: String(Layout({ title: 'Inbox', nav: 'inbox', paused: true, children: 'x' })),
     'layout-setup': String(
-      Layout({ title: 'T', path: '/', missing: [{ name: 'REPO_DIR', why: 'because' }], children: 'x' }),
-    ),
-    dashboard: String(
-      Dashboard({
-        policy: POLICY, services: [SERVICE], pending: PENDING,
-        recent: [{ at: '2026-08-04T03:00:00Z', kind: 'scan', message: 'scan complete' }],
-        blackout: false, scan, repo: 'o/r',
-      }),
-    ),
-    pending: String(PendingSections({ pending: PENDING, repo: 'o/r' })),
-    // The bucket that carries a row action, which the default one does not.
-    'pending-held': String(PendingSections({ pending: PENDING, repo: 'o/r', bucket: 'held' })),
-    'detail-panel': String(
-      DetailPanel({
-        row: {
-          stack: 'demo', service: 'svc', from_tag: '1.0.0', to_tag: '1.1.0',
-          magnitude: 'minor', tier: 'manual', state: 'pr_open',
-          recommendation: 'approve', confidence: 'high', pr_number: 7, pr_scope: 'tag-only',
-        },
-        repo: 'o/r',
-        diff: '<div class="diff">stub</div>',
-        // With a warning, so both the button and the warn line are covered.
-        gate: {
-          allowed: true,
-          warnings: ['the changelog review returned caution'],
-          needsForce: false,
-        },
-      }),
-    ),
-    'scan-status': String(ScanStatus({ scan })),
-    images: String(ImagesPage({ services: [SERVICE], filter: 'all', q: '', grouped: false, statusMap })),
-    'images-grouped': String(ImagesPage({ services: [SERVICE], filter: 'all', q: '', grouped: true, statusMap })),
-    'images-table': String(ImagesTable({ services: [SERVICE], statusMap })),
-    'image-row': String(ImageRow({ svc: SERVICE })),
-    activity: String(
-      ActivityPage({
-        rows: [{ at: '2026-08-04T03:00:00Z', kind: 'pr', level: 'info', message: 'opened #7', stack: 'demo', service: 'svc', detail: null }],
-        filter: { kind: 'all', level: 'all' }, repo: 'o/r',
-      }),
-    ),
-    'activity-table': String(ActivityTable({ rows: [], repo: 'o/r' })),
-    settings: String(
-      SettingsPage({ policy: POLICY, models: ['claude-x'], prompts: PROMPTS, repo: 'o/r' }),
-    ),
-    'settings-form': String(SettingsForm({ policy: POLICY, models: [] })),
-    'prompt-fragment': String(PromptEditorFragment({ state: PROMPTS[0]! })),
-    'digest-preview': String(
-      DigestPreview({
-        rows: [{ at: '2026-08-04T03:00:00Z' }],
-        message: { title: 't', body: 'b' },
-        policy: POLICY,
-        channels: { alert: ['ntfy'], routine: ['email'] },
-        emailConfigured: true,
-      }),
-    ),
-    'digest-empty': String(
-      DigestPreview({
-        rows: [], message: null, policy: POLICY,
-        channels: { alert: [], routine: [] }, emailConfigured: false,
-      }),
-    ),
-    'raw-policy': String(RawPolicy({ text: 'merge_method: squash' })),
-    system: String(
-      SystemPage({
-        policy: POLICY, budgets: [], version: '0.1.0', blackout: false, scan,
-        spend: [{ model: 'm', purpose: 'verdict', calls: 2, cost: 0.5, tokens_in: 1000, tokens_out: 100, cached: 500 }],
-        deploys: [
-          { stack: 'demo', services: 'svc', strategy: 'up', ok: 0, healthy: 0, detail: 'boom', created_at: '2026-08-04T03:00:00Z' },
-          // Started but not healthy -- the outcome that looks fine and is not.
-          { stack: 'demo', services: 'svc2', strategy: 'rm-first', ok: 1, healthy: 0, detail: 'restart loop', created_at: '2026-08-04T03:01:00Z' },
-          { stack: 'demo', services: 'svc3', strategy: 'up', ok: 1, healthy: 1, detail: 'up in 4s', created_at: '2026-08-04T03:02:00Z' },
-        ],
-        modelTier: [],
-      }),
-    ),
-    diff: String(
-      DiffView({
-        result: {
-          hunks: [{ file: 'demo/docker-compose.yaml', header: '@@ -1 +1 @@', lines: [
-            { kind: 'ctx', no: 1, text: 'services:' },
-            { kind: 'del', no: 2, text: '  image: nginx:1.0.0' },
-            { kind: 'add', no: null, text: '  image: nginx:1.1.0' },
-          ] }],
-        },
-        prNumber: 7, prUrl: 'https://x/7', prScope: 'tag-only', canPropose: true,
+      Layout({
+        title: 'Inbox',
+        nav: 'inbox',
+        missing: [{ name: 'REPO_DIR', why: 'the checkout to watch' }],
+        children: 'x',
       }),
     ),
   }
 }
 
-const PROMPTS = [
-  { name: 'verdict' as const, body: 'you are a reviewer', customised: false },
-  { name: 'proposal' as const, body: 'you are an editor', customised: true },
-]
-
-/** Every `class="..."` value in a document, in order. The Stage 1 identity gate. */
+/** Every class any view emits, for the gate that checks they all exist in the CSS. */
 export function classesOf(html: string): string[] {
-  return [...html.matchAll(/class="([^"]*)"/g)].map((m) => m[1]!)
+  const out: string[] = []
+  for (const m of html.matchAll(/class="([^"]*)"/g)) {
+    out.push(...m[1]!.split(/\s+/).filter(Boolean))
+  }
+  return out
+}
+
+export function builtCss(): string {
+  return readFileSync(join(process.cwd(), 'public', 'app.css'), 'utf8')
 }

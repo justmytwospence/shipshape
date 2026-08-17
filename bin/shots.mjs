@@ -154,6 +154,11 @@ const PROBE_JS = `(() => {
     if (r.width === 0 && r.height === 0) continue
     const s = getComputedStyle(el)
     if (s.visibility === 'hidden' || s.display === 'none') continue
+    // A link inside a sentence is text, and text is not a tap target -- flagging every
+    // one of them buries the controls that genuinely are too small to hit.
+    // An inline link is text, wherever it sits. Flagging every one of them buries the
+    // controls that genuinely are too small to hit.
+    if (el.tagName === 'A' && s.display.indexOf('inline') === 0) continue
     if (r.height < 44 || r.width < 24) {
       small.push((el.tagName.toLowerCase()) + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\\s+/).slice(0,2).join('.') : '') + ' ' + Math.round(r.width) + 'x' + Math.round(r.height))
     }

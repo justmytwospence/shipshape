@@ -1,6 +1,6 @@
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { configured, env, loadPolicy, inBlackout } from '../config.ts'
@@ -10,7 +10,12 @@ import { buildUpdateDiff, type DiffHunk } from '../diff.ts'
 import { parseImageRef } from '../images/ref.ts'
 import { refLinks } from '../links.ts'
 import { isScanning, scanOne } from '../scan.ts'
-import { runScanNow } from '../scheduler.ts'
+import { runScanNow, scheduleInfo } from '../scheduler.ts'
+import { setState } from '../updates/state.ts'
+import { actionsFor, refusalFor } from '../updates/actions.ts'
+import { contextFor, runVerb, type VerbResult } from '../updates/verbs.ts'
+import { runPrPass } from '../gitops/pr.ts'
+import { runAnalysisPass } from '../analyze/run.ts'
 import { runProposePass } from '../propose/run.ts'
 import { runAutoMerge } from '../gitops/automerge.ts'
 import { PROMPTS, prompt, savePrompt, resetPrompt, isCustomised, type PromptName } from '../prompts/index.ts'
@@ -247,18 +252,41 @@ export function createApp(): Hono {
     c.html(ScanStatus({ scan: scanInfo(), poll: c.req.query('poll') !== '0' }) as string),
   )
 
-  /** Rolling-tag movement acknowledged: nothing to change in git, so just clear it. */
+  /**
+   * Every operator verb answers the same way: 200, a sentence, and the update's own
+   * fragment. htmx swaps nothing on a 4xx, so a refusal that returned one would look like
+   * a button that did nothing -- and the honest answer to "that is no longer available"
+   * is the reason, not an error page.
+   */
+  const verbReply = (c: Context, id: number, r: VerbResult) => {
+    c.header(
+      'HX-Trigger',
+      JSON.stringify({ toast: { level: r.ok ? 'info' : 'warn', text: r.message } }),
+    )
+    if (!c.req.header('HX-Request')) return c.redirect(`/updates/${id}`, 303)
+    return c.html(noteBar(id, r.message, !r.ok))
+  }
+
+  /** Not this version. A dismissal is durable: the next scan must not offer it again. */
   app.post('/updates/:id/dismiss', (c) => {
     const id = Number(c.req.param('id'))
-    getDb()
-      .prepare(
-        `UPDATE updates SET state = 'superseded', detail = 'dismissed', updated_at = ?
-         WHERE id = ? AND state IN ('detected','held')`,
-      )
-      .run(new Date().toISOString(), id)
-    return c.html(
-      RowNote({ cols: COLUMNS.pending, cls: 'dismissed', children: 'dismissed' }) as string,
-    )
+    const found = contextFor(id)
+    if (!found) return verbReply(c, id, { ok: false, message: 'that update no longer exists' })
+    if (!actionsFor(found.ctx).includes('skip')) {
+      return verbReply(c, id, { ok: false, message: refusalFor('skip', found.ctx) })
+    }
+    setState(id, 'skipped', 'dismissed')
+    logEvent({
+      level: 'info',
+      kind: 'pr',
+      stack: found.row.stack,
+      service: found.row.service,
+      message: `${found.row.from_tag} -> ${found.row.to_tag} dismissed by the operator`,
+    })
+    return verbReply(c, id, {
+      ok: true,
+      message: 'Skipped. It will not be offered again unless you ask for it.',
+    })
   })
 
   /**
@@ -268,11 +296,10 @@ export function createApp(): Hono {
    */
   app.post('/updates/:id/open-pr', (c) => {
     const id = Number(c.req.param('id'))
-    const row = getDb()
-      .prepare(`SELECT stack, service FROM updates WHERE id = ? AND state = 'held'`)
-      .get(id) as { stack: string; service: string } | undefined
-    if (!row) {
-      return c.html(RowNote({ cols: COLUMNS.pending, children: 'no longer held' }) as string)
+    const found = contextFor(id)
+    if (!found) return verbReply(c, id, { ok: false, message: 'that update no longer exists' })
+    if (!actionsFor(found.ctx).includes('open-pr')) {
+      return verbReply(c, id, { ok: false, message: refusalFor('open-pr', found.ctx) })
     }
     getDb()
       .prepare(
@@ -282,16 +309,41 @@ export function createApp(): Hono {
     logEvent({
       level: 'info',
       kind: 'pr',
-      stack: row.stack,
-      service: row.service,
+      stack: found.row.stack,
+      service: found.row.service,
       message: 'held update released for PR by operator',
     })
-    return c.html(
-      RowNote({
-        cols: COLUMNS.pending,
-        children: 'queued \u2014 a PR opens on the next cycle',
-      }) as string,
-    )
+    // Ask for it now rather than at some point in the next ten minutes. The button said
+    // "open a pull request"; a wait with no feedback reads as nothing having happened.
+    void runPrPass().catch(() => {})
+    return verbReply(c, id, { ok: true, message: 'Opening a pull request\u2026' })
+  })
+
+  /** Bring up a merge that has been waiting, run it again, put it back, or say you saw it. */
+  for (const verb of ['deploy', 'redeploy', 'retry', 'rollback', 'ack'] as const) {
+    app.post(`/updates/:id/${verb}`, async (c) => {
+      const id = Number(c.req.param('id'))
+      return verbReply(c, id, await runVerb(id, verb))
+    })
+  }
+
+  /** Read the changelog again: for a review that failed, or one that never ran. */
+  app.post('/updates/:id/rerun-review', (c) => {
+    const id = Number(c.req.param('id'))
+    const found = contextFor(id)
+    if (!found) return verbReply(c, id, { ok: false, message: 'that update no longer exists' })
+    if (!actionsFor(found.ctx).includes('rerun-review')) {
+      return verbReply(c, id, { ok: false, message: refusalFor('rerun-review', found.ctx) })
+    }
+    // Clear the backoff rather than the row: the attempt count is the history of how hard
+    // this changelog has been to read, and an operator asking is not attempt one.
+    getDb()
+      .prepare(
+        `UPDATE verdicts SET next_attempt_at = NULL WHERE image = ? AND from_tag = ? AND to_tag = ?`,
+      )
+      .run(found.row.image, found.row.from_tag, found.row.to_tag)
+    void runAnalysisPass(1).catch(() => {})
+    return verbReply(c, id, { ok: true, message: 'Reading the changelog again\u2026' })
   })
 
   /** Draft config changes for one pull request on demand. */
@@ -426,8 +478,16 @@ export function createApp(): Hono {
     )
     // Five columns, not six: this row lands in the images table, which has no
     // Analysis or PR column. It claimed six for months.
+    //
+    // 200, not 404: htmx does not swap a 4xx, so the row the operator clicked would sit
+    // there unchanged and the click would read as broken. The service being gone is an
+    // answer, and the answer belongs in the row.
     if (!svc) {
-      return c.html(RowNote({ cols: COLUMNS.images, children: 'no such service' }) as string, 404)
+      c.header(
+        'HX-Trigger',
+        JSON.stringify({ toast: { level: 'warn', text: `${stack}/${service} is no longer in the compose files` } }),
+      )
+      return c.html(RowNote({ cols: COLUMNS.images, children: 'no such service' }) as string)
     }
     if (svc.watched) await scanOne(svc, policy)
     return c.html(

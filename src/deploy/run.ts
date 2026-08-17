@@ -40,6 +40,12 @@ export interface DeployTarget {
   services: string[]
   /** `rm-first` when any service asked for it. */
   strategy: 'up' | 'rm-first'
+  /**
+   * Pull before bringing it up. Only a rolling tag needs this: `up -d` reuses the image
+   * it already has, so re-deploying `latest` without a pull brings up the same bits and
+   * reports success -- which for a moved rolling tag is the one thing it must not do.
+   */
+  pull?: boolean
 }
 
 /**
@@ -83,6 +89,19 @@ export function composeArgs(
     cwd,
     args: ['compose', '-f', `${target.stack}/docker-compose.yaml`, 'up', '-d', ...services],
   }
+}
+
+/**
+ * `compose pull` for the same target, so the command that runs and the command the pull
+ * request suggests are built by the same function rather than resembling each other.
+ */
+export function pullArgs(
+  target: DeployTarget,
+  repoDir = env.repoDir,
+): { cwd: string; args: string[] } {
+  const up = composeArgs(target, repoDir)
+  const head = up.args.slice(0, up.args.indexOf('up'))
+  return { cwd: up.cwd, args: [...head, 'pull', ...new Set(target.services)] }
 }
 
 function removeArgs(target: DeployTarget, repoDir = env.repoDir): { cwd: string; args: string[] } {
@@ -139,6 +158,14 @@ export async function deploy(
     const r = await execa('docker', rm.args, { cwd: rm.cwd, reject: false, timeout: 120_000 })
     if ((r.exitCode ?? 1) !== 0) {
       return { ok: false, phase: 'rm', reason: 'could not remove the old container', stderr: tail(r.stderr), snapshot }
+    }
+  }
+
+  if (target.pull) {
+    const pu = pullArgs(target)
+    const p = await execa('docker', pu.args, { cwd: pu.cwd, reject: false, timeout: 600_000 })
+    if ((p.exitCode ?? 1) !== 0) {
+      return { ok: false, phase: 'up', reason: 'could not pull the new image', stderr: tail(p.stderr), snapshot }
     }
   }
 
@@ -268,6 +295,10 @@ export function stackPeers(stack: string): { service: string; network_mode: stri
  */
 export function manualCommand(target: DeployTarget): string {
   const lines: string[] = []
+  if (target.pull) {
+    const pu = pullArgs(target)
+    lines.push(`docker ${pu.args.join(' ')}`)
+  }
   if (target.strategy === 'rm-first') {
     const rm = removeArgs(target)
     lines.push(`docker ${rm.args.join(' ')}`)

@@ -244,7 +244,10 @@ export async function drainDeployQueue(): Promise<{ ran: number }> {
  * deploy must never abandon the rest of the queue, which is the failure this module
  * exists to prevent.
  */
-export async function runDeployJob(job: DeployJob): Promise<boolean> {
+export async function runDeployJob(
+  job: DeployJob,
+  opts: { pull?: boolean } = {},
+): Promise<boolean> {
   const db = getDb()
   const { policy } = loadPolicy()
   let ran = false
@@ -254,6 +257,7 @@ export async function runDeployJob(job: DeployJob): Promise<boolean> {
       stack: job.stack,
       services: job.services.split(' ').filter(Boolean),
       strategy: job.strategy,
+      pull: opts.pull,
     }
     markUpdates(job.id, 'deploying')
 

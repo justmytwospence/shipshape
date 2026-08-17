@@ -25,6 +25,10 @@ let deferTimer: NodeJS.Timeout | null = null
 let digestJob: Cron | null = null
 let digestExpression = ''
 
+/** When the deferred scan or the next poll tick is due, for the UI to show. */
+let deferredScanAt: string | null = null
+let nextTickAt: string | null = null
+
 export function startScheduler(): void {
   const setup = configured()
   if (!setup.ok) {
@@ -125,10 +129,13 @@ function startPrLoop(): void {
         detail: (err as Error).message,
       })
     } finally {
-      setTimeout(() => void tick(), pollIntervalMs()).unref?.()
+      const wait = pollIntervalMs()
+      nextTickAt = new Date(Date.now() + wait).toISOString()
+      setTimeout(() => void tick(), wait).unref?.()
     }
   }
   // Give the first scan a moment before touching git.
+  nextTickAt = new Date(Date.now() + 20_000).toISOString()
   setTimeout(() => void tick(), 20_000).unref?.()
 }
 
@@ -166,11 +173,42 @@ async function fire(): Promise<void> {
       detail: `retrying in ${Math.round(delayMs / 60_000)}m`,
     })
     if (deferTimer) clearTimeout(deferTimer)
+    deferredScanAt = new Date(Date.now() + delayMs).toISOString()
     deferTimer = setTimeout(() => void fire(), delayMs)
     return
   }
 
+  deferredScanAt = null
   await runScanSafely('cron')
+}
+
+/**
+ * What the clocks are about to do.
+ *
+ * The schedules were only ever visible as "last scan 9h ago", which answers a different
+ * question from the one an operator actually asks -- whether to wait or press the button.
+ * croner knows the answer; nothing exported it.
+ */
+export function scheduleInfo(): {
+  scan: { cron: string; nextAt: string | null; deferred: boolean }
+  digest: { cron: string; nextAt: string | null }
+  prLoop: { nextTickAt: string | null }
+} {
+  const { policy } = loadPolicy()
+  return {
+    scan: {
+      cron: policy.scan.cron,
+      // A deferral is the honest answer while one is pending: the cron says 03:00, the
+      // blackout says not yet.
+      nextAt: deferredScanAt ?? job?.nextRun()?.toISOString() ?? null,
+      deferred: deferredScanAt !== null,
+    },
+    digest: {
+      cron: policy.notify.cron,
+      nextAt: policy.notify.routine === 'digest' ? (digestJob?.nextRun()?.toISOString() ?? null) : null,
+    },
+    prLoop: { nextTickAt },
+  }
 }
 
 /** Rebuild the cron job, so a schedule edited in the UI applies immediately. */

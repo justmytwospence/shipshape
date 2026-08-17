@@ -68,20 +68,39 @@ test('the unconfigured deployment gets setup instructions, not a crash', async (
 })
 
 test('a row fragment spans exactly the columns of the table it lands in', async () => {
-  // These come back as raw HTML strings far from the tables that define the columns,
-  // so the count is asserted here rather than trusted.
-  const dashboardCols = 6 // Service, Change, Kind, Analysis, PR, action
+  // This comes back as a raw HTML string far from the table that defines the columns,
+  // so the count is asserted here rather than trusted. Five, not six: the images table
+  // has no Analysis or PR column, and this claimed six for months.
   const imagesCols = 5 // Service, Image, Tag, Status, action
 
-  const dismissed = await (await app.request('/updates/1/dismiss', { method: 'POST' })).text()
-  assert.match(dismissed, new RegExp(`colspan="${dashboardCols}"`), dismissed)
-
-  const held = await (await app.request('/updates/1/open-pr', { method: 'POST' })).text()
-  assert.match(held, new RegExp(`colspan="${dashboardCols}"`), held)
-
   const missing = await app.request('/images/nope/nope/check', { method: 'POST' })
-  assert.equal(missing.status, 404)
+  assert.equal(missing.status, 200, 'htmx does not swap a 4xx, so the answer arrives as 200')
   assert.match(await missing.text(), new RegExp(`colspan="${imagesCols}"`))
+  assert.match(missing.headers.get('HX-Trigger') ?? '', /no longer in the compose files/)
+})
+
+test('an operator verb always answers, whether or not it was allowed', async () => {
+  // htmx swaps nothing on a 4xx: a refusal that returned one would look like a button
+  // that did nothing. Every verb replies 200 with a sentence, and says which it was in
+  // the toast rather than in the status code.
+  for (const verb of ['dismiss', 'open-pr', 'deploy', 'redeploy', 'retry', 'rollback', 'ack', 'rerun-review']) {
+    const res = await app.request(`/updates/9999/${verb}`, {
+      method: 'POST',
+      headers: { 'HX-Request': 'true' },
+    })
+    assert.equal(res.status, 200, verb)
+    const trigger = JSON.parse(res.headers.get('HX-Trigger') ?? '{}')
+    assert.equal(trigger.toast?.level, 'warn', verb)
+    assert.match(trigger.toast?.text ?? '', /no longer exists/, verb)
+    assert.doesNotMatch(await res.text(), /<html/, `${verb} answers with a fragment`)
+  }
+})
+
+test('a verb asked for outside htmx lands on the update, not on a fragment', async () => {
+  // A form post from a phone with no JavaScript still has to end up somewhere readable.
+  const res = await app.request('/updates/9999/deploy', { method: 'POST' })
+  assert.equal(res.status, 303)
+  assert.equal(res.headers.get('location'), '/updates/9999')
 })
 
 test('the health endpoint stays plain JSON for the container healthcheck', async () => {

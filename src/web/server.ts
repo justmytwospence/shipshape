@@ -158,6 +158,23 @@ export function mergeFacts(number: number): MergeFacts {
   }
 }
 
+/**
+ * A toast, delivered in a header.
+ *
+ * HTTP headers are ByteString: a character above 255 throws when it is set, which takes
+ * the whole response with it. The messages here are written in English prose and contain
+ * em dashes, so this is not hypothetical -- pressing Deploy returned a 500 rather than a
+ * sentence. JSON's own \uXXXX escapes keep the payload valid and pure ASCII, and the
+ * browser parses the dash back out at the other end.
+ */
+function toastHeader(c: Context, level: 'info' | 'warn' | 'error', text: string): void {
+  const json = JSON.stringify({ toast: { level, text } })
+  c.header(
+    'HX-Trigger',
+    json.replace(/[\u0080-\uffff]/g, (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`),
+  )
+}
+
 /** A plain sentence where the button was. Always 200: htmx swaps nothing on a 4xx. */
 function noteBar(number: number, text: string, warn = false): string {
   const cls = warn ? 'diff-note warn-text' : 'diff-note'
@@ -354,10 +371,7 @@ export function createApp(): Hono {
     if (svc?.watched) await scanOne(svc, policy)
     const data = serviceDetail(stack, service)
     if (!data) {
-      c.header(
-        'HX-Trigger',
-        JSON.stringify({ toast: { level: 'warn', text: `${stack}/${service} is no longer here` } }),
-      )
+      toastHeader(c, 'warn', `${stack}/${service} is no longer here`)
       return c.html('')
     }
     // The card, not the row: this comes back into either, and the card is the superset.
@@ -384,10 +398,7 @@ export function createApp(): Hono {
       key,
       value: raw === '' ? null : raw,
     })
-    c.header(
-      'HX-Trigger',
-      JSON.stringify({ toast: { level: result.ok ? 'info' : 'warn', text: result.message } }),
-    )
+    toastHeader(c, result.ok ? 'info' : 'warn', result.message)
     if (!c.req.header('HX-Request')) return c.redirect(`/services/${stack}/${service}`, 303)
     const data = serviceDetail(stack, service)
     return c.html(data ? (ServiceDetail({ data }) as string) : '')
@@ -421,10 +432,7 @@ export function createApp(): Hono {
    * is the reason, not an error page.
    */
   const verbReply = (c: Context, id: number, r: VerbResult) => {
-    c.header(
-      'HX-Trigger',
-      JSON.stringify({ toast: { level: r.ok ? 'info' : 'warn', text: r.message } }),
-    )
+    toastHeader(c, r.ok ? 'info' : 'warn', r.message)
     if (!c.req.header('HX-Request')) return c.redirect(`/updates/${id}`, 303)
     return c.html(noteBar(id, r.message, !r.ok))
   }

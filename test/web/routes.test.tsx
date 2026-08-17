@@ -138,3 +138,32 @@ test('the health endpoint stays plain JSON for the container healthcheck', async
   assert.equal(res.status, 200)
   assert.deepEqual(await res.json(), { ok: true })
 })
+
+test('a toast survives the punctuation the messages are written with', async () => {
+  // HTTP headers are ByteString: a character above 255 throws when it is set, and takes
+  // the response with it. These messages are English prose full of em dashes, so this
+  // shipped as a 500 the first time anyone pressed Deploy.
+  const res = await app.request('/updates/1/deploy', {
+    method: 'POST',
+    headers: { 'HX-Request': 'true' },
+  })
+  assert.equal(res.status, 200)
+  const header = res.headers.get('HX-Trigger') ?? ''
+  // eslint-disable-next-line no-control-regex
+  assert.ok(!/[^\x00-\xff]/.test(header), 'the header is bytes a header can carry')
+  assert.doesNotThrow(() => JSON.parse(header), 'and still parses as JSON')
+})
+
+test('every message a verb can produce fits in a header', async () => {
+  // The escaping is done once, centrally; this is the check that nothing bypasses it.
+  for (const verb of ['deploy', 'redeploy', 'retry', 'rollback', 'ack', 'dismiss', 'open-pr']) {
+    const res = await app.request(`/updates/1/${verb}`, {
+      method: 'POST',
+      headers: { 'HX-Request': 'true' },
+    })
+    const header = res.headers.get('HX-Trigger') ?? ''
+    assert.ok(!/[^\x00-\xff]/.test(header), verb)
+    const parsed = JSON.parse(header) as { toast?: { text?: string } }
+    assert.ok(parsed.toast?.text, verb)
+  }
+})

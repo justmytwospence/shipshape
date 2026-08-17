@@ -151,6 +151,16 @@ for (const k of [
 }
 Object.assign(env, {
   SHIPSHAPE_UI_DEV: '1',
+  // The one thing the sandbox could still reach.
+  //
+  // Deleting the tokens stops it talking to GitHub and the model, and the scratch
+  // checkout stops it committing anywhere real -- but the docker socket belongs to the
+  // host, so pressing Deploy in a dev server would run `compose up` against live
+  // containers. Most services here name their containers explicitly, so that would not
+  // even land in a separate project: it would recreate the real one. Point the daemon at
+  // a socket that does not exist and every deploy path fails loudly and harmlessly,
+  // which is also a more honest thing to click on than a button that quietly works.
+  DOCKER_HOST: 'unix:///nonexistent/docker.sock',
   DATA_DIR: DATA,
   REPO_DIR: CHECKOUT,
   // A display string only: with no token nothing can act on it, and PR links render.

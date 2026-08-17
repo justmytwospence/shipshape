@@ -460,6 +460,75 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     ALTER TABLE images ADD COLUMN network_mode TEXT;
   `,
   },
+  {
+    id: '015-operator-verbs',
+    sql: `
+    -- Who asked for this deploy. The queue is no longer the only thing that starts one:
+    -- an operator can press Deploy, redeploy a rolling tag, retry a failure, or roll a
+    -- version back, and the difference matters when reading history.
+    ALTER TABLE deploys ADD COLUMN trigger TEXT NOT NULL DEFAULT 'queue';
+
+    -- Which updates a deploy carried. This was derived from the pull request, which
+    -- works only while every deploy has one -- a redeploy of a rolling tag and an
+    -- operator rollback do not, so the link has to be stored rather than inferred.
+    CREATE TABLE deploy_updates (
+      deploy_id INTEGER NOT NULL REFERENCES deploys(id) ON DELETE CASCADE,
+      update_id INTEGER NOT NULL REFERENCES updates(id) ON DELETE CASCADE,
+      PRIMARY KEY (deploy_id, update_id)
+    );
+    INSERT OR IGNORE INTO deploy_updates (deploy_id, update_id)
+      SELECT d.id, pu.update_id FROM deploys d
+      JOIN pr_updates pu ON pu.pr_id = d.pr_id
+      WHERE d.pr_id IS NOT NULL;
+
+    -- "I have seen this" for the states that otherwise sit in the inbox forever: a
+    -- failure, a rollback, a service that came up degraded.
+    ALTER TABLE updates ADD COLUMN acked_at TEXT;
+
+    -- A dismissal used to be a kind of supersession, which made it indistinguishable
+    -- from "a newer version replaced it" and, worse, let the next scan re-offer it.
+    -- It is its own terminal state now.
+    UPDATE updates SET state = 'skipped' WHERE state = 'superseded' AND detail = 'dismissed';
+
+    -- Analysis retries. A permanently failing (image, from, to) was retried on every
+    -- poll cycle forever: 852 of the 3,776 events in this database are one repeated
+    -- "changelog analysis failed" line.
+    ALTER TABLE verdicts ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE verdicts ADD COLUMN next_attempt_at TEXT;
+    UPDATE verdicts SET attempts = 1 WHERE error IS NOT NULL;
+
+    -- Repetition is a count, not N rows. Two messages account for 83% of this log
+    -- ("holding N update(s)" 2,266 times, "changelog analysis failed" 852), which is
+    -- enough noise to make the activity page useless for the thing it is for.
+    ALTER TABLE events ADD COLUMN count INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE events ADD COLUMN last_at TEXT;
+    CREATE INDEX idx_events_dedupe ON events(kind, message);
+
+    -- Fold the existing floods into their earliest row.
+    UPDATE events SET
+      count = (SELECT COUNT(*) FROM events e2
+               WHERE e2.kind = events.kind AND e2.message = events.message
+                 AND IFNULL(e2.stack,'') = IFNULL(events.stack,'')
+                 AND IFNULL(e2.service,'') = IFNULL(events.service,'')),
+      last_at = (SELECT MAX(e2.at) FROM events e2
+                 WHERE e2.kind = events.kind AND e2.message = events.message
+                   AND IFNULL(e2.stack,'') = IFNULL(events.stack,'')
+                   AND IFNULL(e2.service,'') = IFNULL(events.service,''))
+    WHERE (message LIKE 'holding % update(s)%' OR message = 'changelog analysis failed')
+      AND id IN (
+        SELECT MIN(id) FROM events
+        WHERE message LIKE 'holding % update(s)%' OR message = 'changelog analysis failed'
+        GROUP BY kind, message, IFNULL(stack,''), IFNULL(service,'')
+      );
+    DELETE FROM events
+    WHERE (message LIKE 'holding % update(s)%' OR message = 'changelog analysis failed')
+      AND id NOT IN (
+        SELECT MIN(id) FROM events
+        WHERE message LIKE 'holding % update(s)%' OR message = 'changelog analysis failed'
+        GROUP BY kind, message, IFNULL(stack,''), IFNULL(service,'')
+      );
+  `,
+  },
 ]
 
 function migrate(d: Db): void {
@@ -482,6 +551,9 @@ function migrate(d: Db): void {
 export type EventLevel = 'info' | 'warn' | 'error'
 export type EventKind = 'scan' | 'sync' | 'pr' | 'analysis' | 'deploy' | 'policy' | 'system'
 
+/** Repeats of the same message inside this window bump a counter instead of adding a row. */
+const COALESCE_MS = 24 * 60 * 60 * 1000
+
 export function logEvent(e: {
   level: EventLevel
   kind: EventKind
@@ -490,13 +562,34 @@ export function logEvent(e: {
   service?: string
   detail?: string
 }): void {
-  getDb()
+  const now = new Date()
+  const db = getDb()
+
+  // The same sentence, over and over, is one fact with a count -- not news each time. A
+  // loop that reports "holding 13 updates" every poll cycle wrote 2,266 rows here and
+  // buried everything that happened once.
+  const recent = db
     .prepare(
+      `SELECT id, count, COALESCE(last_at, at) AS seen_at FROM events
+       WHERE kind = ? AND message = ? AND level = ?
+         AND IFNULL(stack,'') = ? AND IFNULL(service,'') = ? AND IFNULL(detail,'') = ?
+       ORDER BY id DESC LIMIT 1`,
+    )
+    .get(e.kind, e.message, e.level, e.stack ?? '', e.service ?? '', e.detail ?? '') as
+    | { id: number; count: number; seen_at: string }
+    | undefined
+
+  if (recent && now.getTime() - Date.parse(recent.seen_at) < COALESCE_MS) {
+    db.prepare(`UPDATE events SET count = count + 1, last_at = ? WHERE id = ?`).run(
+      now.toISOString(),
+      recent.id,
+    )
+  } else {
+    db.prepare(
       `INSERT INTO events (at, level, kind, stack, service, message, detail)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      new Date().toISOString(),
+    ).run(
+      now.toISOString(),
       e.level,
       e.kind,
       e.stack ?? null,
@@ -504,6 +597,7 @@ export function logEvent(e: {
       e.message,
       e.detail ?? null,
     )
+  }
   const tag = `[${e.kind}]${e.stack ? ` ${e.stack}/${e.service ?? ''}` : ''}`
   const line = `${tag} ${e.message}${e.detail ? ` -- ${e.detail}` : ''}`
   if (e.level === 'error') console.error(line)

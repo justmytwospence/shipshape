@@ -53,9 +53,18 @@ export async function runAnalysisPass(limit = 3): Promise<AnalysisRun> {
          WHERE v.image = u.image AND v.from_tag = u.from_tag AND v.to_tag = u.to_tag
            AND v.error IS NULL
        )
+       -- A failure that will fail again is not work. Without this, one unreachable
+       -- changelog is retried on every poll cycle for as long as the pull request is
+       -- open, which is where 852 identical log lines came from.
+       AND NOT EXISTS (
+         SELECT 1 FROM verdicts v
+         WHERE v.image = u.image AND v.from_tag = u.from_tag AND v.to_tag = u.to_tag
+           AND v.error IS NOT NULL
+           AND v.next_attempt_at IS NOT NULL AND v.next_attempt_at > ?
+       )
        LIMIT ?`,
     )
-    .all(limit) as {
+    .all(new Date().toISOString(), limit) as {
     image: string
     from_tag: string
     to_tag: string
@@ -158,23 +167,47 @@ function recordVerdict(
     )
 }
 
+/**
+ * When to try a failed analysis again: 15 minutes, then four times that each attempt,
+ * capped at a day. Most failures are a rate limit or a flaky fetch and clear on the
+ * second try; the rest are permanent, and the cap is what stops them costing a call an
+ * hour forever.
+ */
+export function nextAttemptAt(attempts: number, now = Date.now()): string {
+  const backoffMs = Math.min(15 * 60_000 * 4 ** Math.max(0, attempts - 1), 24 * 60 * 60_000)
+  return new Date(now + backoffMs).toISOString()
+}
+
 function recordFailure(
   row: { image: string; from_tag: string; to_tag: string },
   error: string,
 ): void {
-  getDb()
-    .prepare(
-      `INSERT INTO verdicts (image, from_tag, to_tag, error, created_at)
-       VALUES (?, ?, ?, ?, ?)
+  const db = getDb()
+  const prior = db
+    .prepare(`SELECT attempts FROM verdicts WHERE image = ? AND from_tag = ? AND to_tag = ?`)
+    .get(row.image, row.from_tag, row.to_tag) as { attempts: number } | undefined
+  const attempts = (prior?.attempts ?? 0) + 1
+
+  db.prepare(
+    `INSERT INTO verdicts (image, from_tag, to_tag, error, created_at, attempts, next_attempt_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(image, from_tag, to_tag) DO UPDATE SET
-         error = excluded.error, created_at = excluded.created_at`,
-    )
-    .run(row.image, row.from_tag, row.to_tag, error.slice(0, 400), new Date().toISOString())
+         error = excluded.error, created_at = excluded.created_at,
+         attempts = excluded.attempts, next_attempt_at = excluded.next_attempt_at`,
+  ).run(
+    row.image,
+    row.from_tag,
+    row.to_tag,
+    error.slice(0, 400),
+    new Date().toISOString(),
+    attempts,
+    nextAttemptAt(attempts),
+  )
   logEvent({
     level: 'warn',
     kind: 'analysis',
     message: 'changelog analysis failed',
-    detail: `${row.image} ${row.from_tag} -> ${row.to_tag}: ${error.slice(0, 160)}`,
+    detail: `${row.image} ${row.from_tag} -> ${row.to_tag} (attempt ${attempts}): ${error.slice(0, 140)}`,
   })
 }
 

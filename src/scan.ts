@@ -6,6 +6,7 @@ import { checkDigest, shortDigest, type DigestCheck } from './digests.ts'
 import { tierFor } from './policy.ts'
 import type { TagInfo } from './registry/index.ts'
 import type { Magnitude } from './versions/patterns.ts'
+import { LIVE_STATES, REFUSED_STATES, sqlIn } from './updates/state.ts'
 
 /**
  * The nightly (or on-demand) sweep: read the compose files, ask each registry what
@@ -167,7 +168,7 @@ function syncInventory(services: ScannedService[]): void {
 
 // ------------------------------------------------------------------ persistence
 
-const LIVE_STATES = `('detected','pr_open','held')`
+const LIVE_IN = sqlIn(LIVE_STATES)
 
 interface UpdateRow {
   id: number
@@ -182,7 +183,7 @@ function liveRows(stack: string, service: string): UpdateRow[] {
   return getDb()
     .prepare(
       `SELECT id, from_tag, to_tag, state, magnitude, tier FROM updates
-       WHERE stack = ? AND service = ? AND state IN ${LIVE_STATES}`,
+       WHERE stack = ? AND service = ? AND state IN ${LIVE_IN}`,
     )
     .all(stack, service) as UpdateRow[]
 }
@@ -199,19 +200,27 @@ function liveRows(stack: string, service: string): UpdateRow[] {
  * tag is a different target and gets a fresh row and a normal pipeline. Only this
  * version, the one actually observed to fail, stays refused.
  */
-export function failedTarget(
+export function refusedTarget(
   stack: string,
   service: string,
   fromTag: string,
   toTag: string,
-): { id: number; detail: string | null } | null {
+): { id: number; state: string; detail: string | null } | null {
   return (getDb()
     .prepare(
-      `SELECT id, detail FROM updates
-       WHERE stack = ? AND service = ? AND from_tag = ? AND to_tag = ? AND state = 'failed'`,
+      `SELECT id, state, detail FROM updates
+       WHERE stack = ? AND service = ? AND from_tag = ? AND to_tag = ?
+         AND state IN ${sqlIn(REFUSED_STATES)}`,
     )
-    .get(stack, service, fromTag, toTag) ?? null) as { id: number; detail: string | null } | null
+    .get(stack, service, fromTag, toTag) ?? null) as {
+    id: number
+    state: string
+    detail: string | null
+  } | null
 }
+
+/** @deprecated the tombstone is no longer only about failure; use {@link refusedTarget}. */
+export const failedTarget = refusedTarget
 
 function supersede(id: number, detail: string): void {
   getDb()
@@ -352,14 +361,19 @@ async function persist(
 
       if (tier === 'skip') return 'skipped'
 
-      // Already tried, already rolled back. Touch it so the row does not look abandoned
-      // and say so on the images page, but do not offer it again -- re-detecting a
-      // failure as news is how an automatic loop reapplies the thing that broke.
-      const dead = failedTarget(svc.stack, svc.service, currentTag, d.tag)
+      // Already answered: rolled back, or dismissed by hand. Touch it so the row does not
+      // look abandoned and say so on the services page, but do not offer it again --
+      // re-detecting a refusal as news is how an automatic loop reapplies the thing that
+      // broke, and how "no thanks" lasts only until the next scan.
+      const dead = refusedTarget(svc.stack, svc.service, currentTag, d.tag)
       if (dead) {
         db.prepare(`UPDATE updates SET updated_at = ? WHERE id = ?`).run(now, dead.id)
-        setImageStatus(svc, 'update-failed', dead.detail ?? `${d.tag} failed to deploy`)
-        return 'known-failed'
+        const why =
+          dead.state === 'skipped'
+            ? (dead.detail ?? `${d.tag} was dismissed`)
+            : (dead.detail ?? `${d.tag} failed to deploy`)
+        setImageStatus(svc, dead.state === 'skipped' ? 'dismissed' : 'update-failed', why)
+        return dead.state === 'skipped' ? 'dismissed' : 'known-failed'
       }
 
       insertUpdate({
@@ -469,6 +483,16 @@ function persistDigest(svc: ScannedService, c: DigestCheck, policy: Policy): str
       for (const r of existing) supersede(r.id, 'newer digest')
 
       if (tier === 'skip') return 'skipped'
+      // Same refusal memory as a tag bump: a digest move that was dismissed or rolled
+      // back must not come back on the next sweep.
+      const refused = refusedTarget(svc.stack, svc.service, fromTag, toTag)
+      if (refused) {
+        getDb().prepare(`UPDATE updates SET updated_at = ? WHERE id = ?`).run(
+          new Date().toISOString(),
+          refused.id,
+        )
+        return refused.state === 'skipped' ? 'dismissed' : 'known-failed'
+      }
       insertUpdate({
         svc,
         fromTag,

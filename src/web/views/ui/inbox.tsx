@@ -139,7 +139,7 @@ export const InboxBody: FC<{ data: InboxData }> = ({ data }) => {
                 <Icon name={GROUPS[kind].icon} class="size-4 opacity-70" />
                 {GROUPS[kind].title}
               </h2>
-              <span class="badge badge-sm badge-neutral badge-soft">{items.length}</span>
+              <span class="badge badge-sm badge-ghost">{items.length}</span>
             </header>
             <p class="mb-2 text-xs opacity-60">{GROUPS[kind].hint}</p>
             <div class="flex flex-col gap-2">

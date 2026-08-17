@@ -85,7 +85,7 @@ export const ServicesToolbar: FC<{ filter: string; q: string; grouped: boolean }
 
 function statusOf(s: ServiceRowData): { label: string; cls: string; detail?: string | null } {
   if (s.lastStatus) return { label: s.lastStatus, cls: 'badge-error', detail: s.lastDetail }
-  if (s.unwatchable) return { label: s.unwatchable, cls: 'badge-neutral' }
+  if (s.unwatchable) return { label: s.unwatchable, cls: 'badge-ghost' }
   if (s.watched) {
     return s.constrainedFrom
       ? { label: 'pinned', cls: 'badge-warning', detail: `${s.constrainedFrom} available` }
@@ -209,10 +209,10 @@ export interface ServiceDetailData {
 
 const SOURCE_CLS: Record<Provenance, string> = {
   label: 'badge-primary',
-  default: 'badge-neutral',
-  inferred: 'badge-neutral',
-  locked: 'badge-neutral',
-  none: 'badge-neutral',
+  default: 'badge-ghost',
+  inferred: 'badge-ghost',
+  locked: 'badge-ghost',
+  none: 'badge-ghost',
 }
 
 const RUNGS = [

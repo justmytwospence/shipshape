@@ -21,8 +21,8 @@
     }
   ],
   "shortcuts": [
-    { "name": "Images", "url": "/images" },
-    { "name": "Activity", "url": "/activity" },
-    { "name": "Settings", "url": "/settings" }
+    { "name": "Updates", "url": "/updates" },
+    { "name": "Services", "url": "/services" },
+    { "name": "Activity", "url": "/activity" }
   ]
 }

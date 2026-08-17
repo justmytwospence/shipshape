@@ -214,7 +214,7 @@ export interface StatusData {
 const CRED_CLS: Record<string, string> = {
   set: 'badge-success',
   missing: 'badge-error',
-  'not in use': 'badge-neutral',
+  'not in use': 'badge-ghost',
 }
 
 const DEPLOY_CLS: Record<string, string> = {
@@ -225,9 +225,9 @@ const DEPLOY_CLS: Record<string, string> = {
   'rolled-back': 'badge-error',
   error: 'badge-error',
   ready: 'badge-info',
-  pending: 'badge-neutral',
+  pending: 'badge-ghost',
   running: 'badge-info',
-  superseded: 'badge-neutral',
+  superseded: 'badge-ghost',
 }
 
 const KV: FC<{ rows: [string, unknown][] }> = ({ rows }) => (

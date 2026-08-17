@@ -20,12 +20,12 @@ import type { UpdateView } from '../../../updates/queries.ts'
 const MAGNITUDE: Record<string, string> = {
   major: 'badge-error',
   minor: 'badge-warning',
-  patch: 'badge-neutral',
-  digest: 'badge-neutral',
+  patch: 'badge-ghost',
+  digest: 'badge-ghost',
 }
 
 export const MagnitudeBadge: FC<{ value: string }> = ({ value }) => (
-  <span class={`badge badge-sm badge-soft ${MAGNITUDE[value] ?? 'badge-neutral'}`}>{value}</span>
+  <span class={`badge badge-sm badge-soft ${MAGNITUDE[value] ?? 'badge-ghost'}`}>{value}</span>
 )
 
 /** What an update is doing, in the words used everywhere else. */
@@ -35,9 +35,9 @@ export function stageOf(u: UpdateView): { label: string; cls: string; live?: boo
     case 'detected':
       return u.rolling
         ? { label: 'Rolling tag moved', cls: 'badge-warning' }
-        : { label: 'Detected', cls: 'badge-neutral' }
+        : { label: 'Detected', cls: 'badge-ghost' }
     case 'held':
-      return { label: 'Held on request', cls: 'badge-neutral' }
+      return { label: 'Held on request', cls: 'badge-ghost' }
     case 'pr_open':
       return { label: 'Waiting on you', cls: 'badge-warning' }
     case 'merged':
@@ -57,9 +57,9 @@ export function stageOf(u: UpdateView): { label: string; cls: string; live?: boo
         ? { label: 'Rolled back', cls: 'badge-error' }
         : { label: 'Failed', cls: 'badge-error' }
     case 'skipped':
-      return { label: 'Skipped', cls: 'badge-neutral' }
+      return { label: 'Skipped', cls: 'badge-ghost' }
     case 'superseded':
-      return { label: 'Superseded', cls: 'badge-neutral' }
+      return { label: 'Superseded', cls: 'badge-ghost' }
   }
 }
 

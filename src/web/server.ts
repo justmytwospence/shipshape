@@ -25,7 +25,21 @@ import {
   type StageFilter,
   type UpdateView,
 } from '../updates/queries.ts'
-import { InboxPage, UpdatePage, UpdatesList, UpdatesPage } from './views/pages.tsx'
+import {
+  InboxPage,
+  ServicePage,
+  ServicesPage,
+  UpdatePage,
+  UpdatesList,
+  UpdatesPage,
+} from './views/pages.tsx'
+import { ServiceDetail, ServicesList } from './views/ui/services.tsx'
+import {
+  filterServices as filterServiceRows,
+  serviceDetail,
+  serviceRows,
+} from '../updates/services.ts'
+import { setServiceLabel } from '../gitops/labels.ts'
 import { InboxBody, type InboxData } from './views/ui/inbox.tsx'
 import { UpdateCard, UpdateDetail } from './views/ui/update.tsx'
 import { runPrPass } from '../gitops/pr.ts'
@@ -292,6 +306,87 @@ export function createApp(): Hono {
         diff: updateDiff(id),
       }) as string,
     )
+  })
+
+  app.get('/services', (c) => {
+    const filter = c.req.query('filter') ?? 'all'
+    const q = c.req.query('q') ?? ''
+    const grouped = c.req.query('group') === 'stack'
+    const services = filterServiceRows(serviceRows(), { filter, q })
+    if (c.req.header('HX-Request')) {
+      return c.html(ServicesList({ services, grouped }) as string)
+    }
+    return c.html(ServicesPage({ services, filter, q, grouped, chrome: chrome(c) }) as string)
+  })
+
+  app.get('/fragments/services', (c) => {
+    const services = filterServiceRows(serviceRows(), {
+      filter: c.req.query('filter') ?? 'all',
+      q: c.req.query('q') ?? '',
+    })
+    return c.html(ServicesList({ services, grouped: c.req.query('group') === 'stack' }) as string)
+  })
+
+  app.get('/services/:stack/:service', (c) => {
+    const data = serviceDetail(c.req.param('stack'), c.req.param('service'))
+    if (!data) return c.notFound()
+    return c.html(ServicePage({ data, chrome: chrome(c) }) as string)
+  })
+
+  app.get('/services/:stack/:service/panel', (c) => {
+    const data = serviceDetail(c.req.param('stack'), c.req.param('service'))
+    if (!data) return c.html('<p class="text-sm opacity-60">That service is no longer here.</p>')
+    return c.html(ServiceDetail({ data }) as string)
+  })
+
+  /** Re-check one service now, rather than waiting for a sweep that takes 156 seconds. */
+  app.post('/services/:stack/:service/check', async (c) => {
+    const { policy } = loadPolicy()
+    const stack = c.req.param('stack')
+    const service = c.req.param('service')
+    const svc = scanRepo(env.repoDir, policy.exclude_stacks).find(
+      (s) => s.stack === stack && s.service === service,
+    )
+    if (svc?.watched) await scanOne(svc, policy)
+    const data = serviceDetail(stack, service)
+    if (!data) {
+      c.header(
+        'HX-Trigger',
+        JSON.stringify({ toast: { level: 'warn', text: `${stack}/${service} is no longer here` } }),
+      )
+      return c.html('')
+    }
+    // The card, not the row: this comes back into either, and the card is the superset.
+    return c.html(ServiceDetail({ data }) as string)
+  })
+
+  /**
+   * Change what happens to this service without you, by writing the label into its
+   * compose file and committing it.
+   *
+   * The file in git stays the source of truth -- which is the whole reason a browser may
+   * edit it at all -- so this refuses on a dirty file rather than folding a hand-edit
+   * into shipshape's commit.
+   */
+  app.post('/services/:stack/:service/labels', async (c) => {
+    const stack = c.req.param('stack')
+    const service = c.req.param('service')
+    const body = await c.req.parseBody()
+    const key = String(body.key ?? 'policy') as 'policy' | 'watch'
+    const raw = String(body.value ?? '')
+    const result = await setServiceLabel({
+      stack,
+      service,
+      key,
+      value: raw === '' ? null : raw,
+    })
+    c.header(
+      'HX-Trigger',
+      JSON.stringify({ toast: { level: result.ok ? 'info' : 'warn', text: result.message } }),
+    )
+    if (!c.req.header('HX-Request')) return c.redirect(`/services/${stack}/${service}`, 303)
+    const data = serviceDetail(stack, service)
+    return c.html(data ? (ServiceDetail({ data }) as string) : '')
   })
 
   /** One card, for a row that is refreshing itself while a deploy runs. */

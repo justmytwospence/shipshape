@@ -12,16 +12,15 @@
   themes: false;
 }
 
-/* ---------------------------------------------------------------- directions
+/* -------------------------------------------------------------------- theme
  *
- * Two candidate looks, both light and dark, selected by `data-theme`. The one that is
- * not chosen gets deleted rather than left as an option: a tool with a theme picker for
- * its own identity has not decided what it looks like.
+ * An instrument panel: flat surfaces, hairline rules, one restrained sea blue, tabular
+ * figures, and nothing casting a shadow. Dark is a slate rather than a black, because
+ * this is read at night and pure black next to a white badge is a flashbulb.
  *
- * bridge  -- an instrument panel. Flat surfaces, hairline rules, one restrained sea
- *            blue, tabular figures, nothing casting a shadow.
- * logbook -- a ship's log. Warm paper, ink, generous curves, a serif for the labels,
- *            lamplight rather than a backlight in the dark.
+ * A second candidate -- warm paper, ink and lamplight -- was built alongside this one and
+ * deleted after they were compared on real rows. A tool that keeps a picker for its own
+ * identity has not decided what it looks like.
  */
 
 @plugin 'daisyui/theme' {
@@ -90,72 +89,6 @@
   --border: 1px;
   --depth: 0;
   --noise: 0;
-}
-
-@plugin 'daisyui/theme' {
-  name: 'logbook';
-  color-scheme: light;
-  --color-base-100: oklch(97.5% 0.012 80);
-  --color-base-200: oklch(94% 0.018 78);
-  --color-base-300: oklch(89% 0.026 76);
-  --color-base-content: oklch(30% 0.03 50);
-  --color-primary: oklch(38% 0.09 30);
-  --color-primary-content: oklch(96% 0.01 70);
-  --color-secondary: oklch(50% 0.06 60);
-  --color-secondary-content: oklch(97% 0.01 70);
-  --color-accent: oklch(50% 0.09 160);
-  --color-accent-content: oklch(97% 0.01 160);
-  --color-neutral: oklch(40% 0.03 55);
-  --color-neutral-content: oklch(96% 0.012 75);
-  --color-info: oklch(50% 0.09 240);
-  --color-info-content: oklch(97% 0.01 240);
-  --color-success: oklch(50% 0.11 150);
-  --color-success-content: oklch(97% 0.02 150);
-  --color-warning: oklch(62% 0.12 70);
-  --color-warning-content: oklch(97% 0.02 70);
-  --color-error: oklch(50% 0.18 28);
-  --color-error-content: oklch(97% 0.02 28);
-  --radius-selector: 1rem;
-  --radius-field: 0.5rem;
-  --radius-box: 1rem;
-  --size-selector: 0.25rem;
-  --size-field: 0.25rem;
-  --border: 1.5px;
-  --depth: 1;
-  --noise: 1;
-}
-
-@plugin 'daisyui/theme' {
-  name: 'logbook-dark';
-  color-scheme: dark;
-  --color-base-100: oklch(24% 0.02 60);
-  --color-base-200: oklch(21% 0.018 60);
-  --color-base-300: oklch(18% 0.016 60);
-  --color-base-content: oklch(86% 0.03 80);
-  --color-primary: oklch(78% 0.11 70);
-  --color-primary-content: oklch(20% 0.04 60);
-  --color-secondary: oklch(70% 0.06 60);
-  --color-secondary-content: oklch(20% 0.03 60);
-  --color-accent: oklch(75% 0.09 165);
-  --color-accent-content: oklch(20% 0.04 165);
-  --color-neutral: oklch(30% 0.02 60);
-  --color-neutral-content: oklch(88% 0.02 80);
-  --color-info: oklch(75% 0.09 235);
-  --color-info-content: oklch(20% 0.05 235);
-  --color-success: oklch(76% 0.11 150);
-  --color-success-content: oklch(20% 0.05 150);
-  --color-warning: oklch(84% 0.14 85);
-  --color-warning-content: oklch(24% 0.06 70);
-  --color-error: oklch(72% 0.14 28);
-  --color-error-content: oklch(20% 0.06 28);
-  --radius-selector: 1rem;
-  --radius-field: 0.5rem;
-  --radius-box: 1rem;
-  --size-selector: 0.25rem;
-  --size-field: 0.25rem;
-  --border: 1.5px;
-  --depth: 1;
-  --noise: 1;
 }
 
 @theme {

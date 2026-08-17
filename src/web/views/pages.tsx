@@ -3,6 +3,13 @@ import { Layout } from './ui/shell.tsx'
 import { InboxBody, StatusStrip, type InboxData } from './ui/inbox.tsx'
 import { UpdateCard, UpdateDetail, UpdateRow } from './ui/update.tsx'
 import { EmptyState } from './ui/parts.tsx'
+import {
+  ServiceDetail,
+  ServicesList,
+  ServicesToolbar,
+  type ServiceDetailData,
+  type ServiceRowData,
+} from './ui/services.tsx'
 import type { Milestone, StageFilter, UpdateView } from '../../updates/queries.ts'
 
 /**
@@ -155,6 +162,44 @@ export const UpdatesPage: FC<{
         )}
       </aside>
     </div>
+  </Layout>
+)
+
+export const ServicesPage: FC<{
+  services: ServiceRowData[]
+  filter: string
+  q: string
+  grouped: boolean
+  chrome: PageChrome
+}> = ({ services, filter, q, grouped, chrome }) => (
+  <Layout
+    title="Services"
+    nav="services"
+    paused={chrome.paused}
+    missing={chrome.missing}
+    theme={chrome.theme}
+    toolbar={<ServicesToolbar filter={filter} q={q} grouped={grouped} />}
+    subtitle={`${services.length} shown`}
+  >
+    <div id="services-list">
+      <ServicesList services={services} grouped={grouped} />
+    </div>
+  </Layout>
+)
+
+export const ServicePage: FC<{ data: ServiceDetailData; chrome: PageChrome }> = ({
+  data,
+  chrome,
+}) => (
+  <Layout
+    title={data.svc.service}
+    nav="services"
+    back={{ href: '/services', label: 'Services' }}
+    paused={chrome.paused}
+    missing={chrome.missing}
+    theme={chrome.theme}
+  >
+    <ServiceDetail data={data} />
   </Layout>
 )
 

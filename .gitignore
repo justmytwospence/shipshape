@@ -9,3 +9,6 @@ dist/
 # Scratch: UI dev sandbox (database snapshot + throwaway checkout) and screenshots.
 .dev/
 .shots/
+
+# Built by `npm run css` from src/styles/app.css.
+public/app.css

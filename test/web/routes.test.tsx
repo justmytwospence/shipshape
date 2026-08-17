@@ -46,7 +46,10 @@ test('every page returns a whole document', async () => {
     const res = await app.request(path)
     assert.equal(res.status, 200, path)
     const html = await res.text()
-    assert.match(html, /^<html lang="en" data-bs-theme="(light|dark)">/, path)
+    // No theme attribute is asserted: the shell resolves it in an inline script before
+    // first paint and leaves the attribute off entirely for `auto`, so that daisyUI's own
+    // prefers-dark rule applies. Pinning it server-side would defeat that.
+    assert.match(html, /^<html lang="en"[ >]/, path)
     assert.match(html, /<\/html>$/, path)
   }
 })

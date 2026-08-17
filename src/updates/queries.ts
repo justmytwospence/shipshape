@@ -375,8 +375,8 @@ export function inboxRecent(hours = 24, limit = 20): RecentItem[] {
 
   const opened = db
     .prepare(
-      `SELECT p.created_at AS at, 'opened' AS kind, u.stack, u.service, u.from_tag, u.to_tag,
-              u.id AS update_id, p.number AS pr_number, NULL AS detail
+      `SELECT p.created_at AS at, 'opened' AS kind, u.stack, u.service, u.from_tag AS fromTag, u.to_tag AS toTag,
+              u.id AS updateId, p.number AS prNumber, NULL AS detail
          FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id JOIN updates u ON u.id = pu.update_id
         WHERE p.created_at >= ?`,
     )
@@ -384,8 +384,8 @@ export function inboxRecent(hours = 24, limit = 20): RecentItem[] {
 
   const merged = db
     .prepare(
-      `SELECT p.merged_at AS at, 'merged' AS kind, u.stack, u.service, u.from_tag, u.to_tag,
-              u.id AS update_id, p.number AS pr_number, NULL AS detail
+      `SELECT p.merged_at AS at, 'merged' AS kind, u.stack, u.service, u.from_tag AS fromTag, u.to_tag AS toTag,
+              u.id AS updateId, p.number AS prNumber, NULL AS detail
          FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id JOIN updates u ON u.id = pu.update_id
         WHERE p.merged_at >= ?`,
     )
@@ -397,8 +397,8 @@ export function inboxRecent(hours = 24, limit = 20): RecentItem[] {
               CASE d.status WHEN 'verified' THEN 'verified' WHEN 'degraded' THEN 'degraded'
                             WHEN 'rolled-back' THEN 'rolled-back'
                             WHEN 'deployed' THEN 'deployed' ELSE 'failed' END AS kind,
-              u.stack, u.service, u.from_tag, u.to_tag, u.id AS update_id,
-              d.pr_number, d.detail
+              u.stack, u.service, u.from_tag AS fromTag, u.to_tag AS toTag,
+              u.id AS updateId, d.pr_number AS prNumber, d.detail
          FROM deploys d JOIN deploy_updates du ON du.deploy_id = d.id
          JOIN updates u ON u.id = du.update_id
         WHERE d.finished_at >= ? AND d.status NOT IN ('pending','ready','running','superseded')`,
@@ -409,8 +409,8 @@ export function inboxRecent(hours = 24, limit = 20): RecentItem[] {
     .prepare(
       `SELECT u.updated_at AS at,
               CASE u.state WHEN 'skipped' THEN 'skipped' ELSE 'superseded' END AS kind,
-              u.stack, u.service, u.from_tag, u.to_tag, u.id AS update_id,
-              NULL AS pr_number, u.detail
+              u.stack, u.service, u.from_tag AS fromTag, u.to_tag AS toTag,
+              u.id AS updateId, NULL AS prNumber, u.detail
          FROM updates u
         WHERE u.updated_at >= ? AND u.state IN ('skipped','superseded')`,
     )

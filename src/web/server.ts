@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono, type Context } from 'hono'
+import { raw } from 'hono/html'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { configured, env, loadPolicy, inBlackout } from '../config.ts'
@@ -14,6 +15,19 @@ import { runScanNow, scheduleInfo } from '../scheduler.ts'
 import { setState } from '../updates/state.ts'
 import { actionsFor, refusalFor } from '../updates/actions.ts'
 import { contextFor, runVerb, type VerbResult } from '../updates/verbs.ts'
+import {
+  inboxNeedsYou,
+  inboxParked,
+  inboxRecent,
+  listUpdates,
+  updateTimeline,
+  updateView,
+  type StageFilter,
+  type UpdateView,
+} from '../updates/queries.ts'
+import { InboxPage, UpdatePage, UpdatesList, UpdatesPage } from './views/pages.tsx'
+import { InboxBody, type InboxData } from './views/ui/inbox.tsx'
+import { UpdateCard, UpdateDetail } from './views/ui/update.tsx'
 import { runPrPass } from '../gitops/pr.ts'
 import { runAnalysisPass } from '../analyze/run.ts'
 import { runProposePass } from '../propose/run.ts'
@@ -167,26 +181,125 @@ export function createApp(): Hono {
     return c.body(swSource())
   })
 
-  app.get('/', (c) => {
-    const { policy, error } = loadPolicy()
-    const db = getDb()
-    const services = scanRepo(env.repoDir, policy.exclude_stacks)
-    const pending = db.prepare(PENDING_SQL).all() as PendingRow[]
-    const recent = db
-      .prepare(`SELECT * FROM events ORDER BY at DESC LIMIT 10`)
-      .all() as Record<string, unknown>[]
+  /** Everything a page needs to draw its own frame. */
+  const chrome = (c?: Context) => ({
+    paused: loadPolicy().policy.paused,
+    missing: missing(),
+    // `?theme=logbook` renders one page in a candidate look without changing anyone's
+    // preference, so two directions can be compared on real rows.
+    theme: c?.req.query('theme'),
+  })
+
+  /**
+   * What the merge gate would object to, as sentences.
+   *
+   * These are warnings, not refusals -- the gate blocks on three facts and warns on the
+   * rest -- so they belong beside the button rather than instead of it.
+   */
+  const mergeWarnings = (u: UpdateView): string[] => {
+    if (!u.pr || u.pr.state !== 'open' || !env.githubToken) return []
+    try {
+      return mergeGate(mergeFacts(u.pr.number)).warnings
+    } catch {
+      return []
+    }
+  }
+
+  /** The diff, when there is one to show. */
+  const updateDiff = (id: number): unknown => {
+    try {
+      const html = diffFragment(id)
+      return html ? raw(html) : null
+    } catch {
+      return null
+    }
+  }
+
+  const inboxData = (): InboxData => {
+    const info = scanInfo()
+    return {
+      needsYou: inboxNeedsYou(),
+      recent: inboxRecent(24),
+      parked: inboxParked(),
+      scan: {
+        lastAt: info.lastAt ? Date.parse(info.lastAt) : null,
+        nextAt: scheduleInfo().scan.nextAt,
+        running: info.running,
+        watched: (
+          getDb().prepare(`SELECT COUNT(*) AS n FROM images WHERE watched = 1`).get() as {
+            n: number
+          }
+        ).n,
+      },
+    }
+  }
+
+  app.get('/', (c) => c.html(InboxPage({ data: inboxData(), chrome: chrome(c) }) as string))
+
+  /** The worklist alone, for the poll that runs while a scan is in flight. */
+  app.get('/fragments/inbox', (c) => c.html(InboxBody({ data: inboxData() }) as string))
+
+  app.get('/updates', (c) => {
+    const stage = (c.req.query('stage') ?? 'open') as StageFilter
+    const q = c.req.query('q') ?? ''
+    const updates = listUpdates({ stage, q })
+    if (c.req.header('HX-Request')) {
+      return c.html(UpdatesList({ updates, twoPane: true }) as string)
+    }
+    return c.html(UpdatesPage({ updates, stage, q, chrome: chrome(c) }) as string)
+  })
+
+  app.get('/fragments/updates', (c) => {
+    const stage = (c.req.query('stage') ?? 'open') as StageFilter
+    const q = c.req.query('q') ?? ''
+    return c.html(UpdatesList({ updates: listUpdates({ stage, q }), twoPane: true }) as string)
+  })
+
+  /**
+   * One update, addressable.
+   *
+   * The old detail was an offcanvas with no URL: it could not be linked to, shared,
+   * bookmarked, or closed with the back button, and a notification had nowhere in the
+   * app to point at.
+   */
+  app.get('/updates/:id', (c) => {
+    const id = Number(c.req.param('id'))
+    const update = updateView(id)
+    if (!update) return c.notFound()
     return c.html(
-      Dashboard({ missing: missing(),
-        policy,
-        policyError: error,
-        services,
-        pending,
-        recent,
-        blackout: inBlackout(policy),
-        scan: scanInfo(),
-        repo: env.githubRepo,
+      UpdatePage({
+        update,
+        milestones: updateTimeline(id),
+        warnings: mergeWarnings(update),
+        diff: updateDiff(id),
+        chrome: chrome(c),
       }) as string,
     )
+  })
+
+  /** The same content, for the panel beside the list on a wide screen. */
+  app.get('/updates/:id/panel', (c) => {
+    const id = Number(c.req.param('id'))
+    const update = updateView(id)
+    if (!update) {
+      return c.html('<p class="text-sm opacity-60">That update no longer exists.</p>')
+    }
+    return c.html(
+      UpdateDetail({
+        update,
+        milestones: updateTimeline(id),
+        warnings: mergeWarnings(update),
+        diff: updateDiff(id),
+      }) as string,
+    )
+  })
+
+  /** One card, for a row that is refreshing itself while a deploy runs. */
+  app.get('/updates/:id/card', (c) => {
+    const id = Number(c.req.param('id'))
+    const update = updateView(id)
+    if (!update) return c.html('')
+    return c.html(UpdateCard({ update }) as string)
   })
 
   /** The pending region alone, so it can refresh itself while a scan runs. */

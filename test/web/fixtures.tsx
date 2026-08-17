@@ -5,7 +5,6 @@ import { UpdateCard, UpdateDetail, UpdateRow } from '../../src/web/views/ui/upda
 import { ServiceDetail, ServicesList } from '../../src/web/views/ui/services.tsx'
 import { ActivityList } from '../../src/web/views/ui/activity.tsx'
 import { SettingsForm, StatusBody } from '../../src/web/views/ui/settings.tsx'
-import { Docs } from '../../src/web/views/ui/docs.tsx'
 import { Layout } from '../../src/web/views/ui/shell.tsx'
 import { InboxPage, UpdatePage } from '../../src/web/views/pages.tsx'
 import type { UpdateView, Milestone } from '../../src/updates/queries.ts'
@@ -197,7 +196,10 @@ const CHROME = { paused: true, missing: [] }
 const SETTING_GROUPS = [
   {
     title: 'Update policy',
-    blurb: 'How much happens without you.',
+    prose: [
+      'One axis — how much happens without you — answered by default from how large the version jump is.',
+      'Majors and digest moves always wait for a person, whatever these say.',
+    ],
     items: [
       {
         def: {
@@ -346,7 +348,6 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
     activity: String(ActivityList({ rows: ACTIVITY, repo: 'you/repo', more: null })),
     settings: String(SettingsForm({ groups: SETTING_GROUPS, readyCount: 2 })),
     status: String(StatusBody({ data: STATUS })),
-    docs: String(Docs({})),
     layout: String(Layout({ title: 'Inbox', nav: 'inbox', paused: true, children: 'x' })),
     'layout-setup': String(
       Layout({

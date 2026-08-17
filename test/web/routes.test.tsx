@@ -39,9 +39,7 @@ const PAGES = [
   '/settings',
   '/settings/advanced',
   '/settings/status',
-  '/settings/prompts',
   '/settings/raw',
-  '/docs',
 ]
 const FRAGMENTS = [
   '/fragments/inbox',

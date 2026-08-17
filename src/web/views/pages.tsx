@@ -260,12 +260,14 @@ export const ActivityPage: FC<{
 
 export const SettingsPage: FC<{
   tab: string
-  groups: { title: string; blurb?: string; items: SettingValue[] }[]
+  groups: { title: string; prose?: string[]; items: SettingValue[] }[]
   models?: string[]
   banner?: { level: 'info' | 'error'; text: string } | null
   readyCount?: number
+  /** Rendered after the fields: the prompt editors, on Advanced. */
+  extra?: unknown
   chrome: PageChrome
-}> = ({ tab, groups, models, banner, readyCount, chrome }) => (
+}> = ({ tab, groups, models, banner, readyCount, extra, chrome }) => (
   <Layout
     title="Settings"
     nav="settings"
@@ -284,6 +286,7 @@ export const SettingsPage: FC<{
       advanced={tab === 'advanced'}
       readyCount={readyCount}
     />
+    {extra ? <div class="mt-6 flex flex-col gap-4">{extra}</div> : null}
   </Layout>
 )
 
@@ -301,20 +304,6 @@ export const StatusPage: FC<{ data: StatusData; chrome: PageChrome }> = ({ data,
   </Layout>
 )
 
-export const PromptsPage: FC<{ editors: unknown; chrome: PageChrome }> = ({ editors, chrome }) => (
-  <Layout
-    title="Prompts"
-    nav="settings"
-    paused={chrome.paused}
-    missing={chrome.missing}
-    theme={chrome.theme}
-    toolbar={<SettingsTabs active="prompts" />}
-    subtitle="What the model is asked. Editing one is rarely the answer."
-  >
-    <div class="flex flex-col gap-4">{editors}</div>
-  </Layout>
-)
-
 export const RawPolicyPage: FC<{ text: string; chrome: PageChrome }> = ({ text, chrome }) => (
   <Layout
     title="policy.yaml"
@@ -325,18 +314,5 @@ export const RawPolicyPage: FC<{ text: string; chrome: PageChrome }> = ({ text, 
     theme={chrome.theme}
   >
     <RawPolicy text={text} />
-  </Layout>
-)
-
-export const DocsPage: FC<{ sections: unknown; chrome: PageChrome }> = ({ sections, chrome }) => (
-  <Layout
-    title="How it works"
-    nav="settings"
-    back={{ href: '/settings', label: 'Settings' }}
-    paused={chrome.paused}
-    missing={chrome.missing}
-    theme={chrome.theme}
-  >
-    <div class="prose prose-sm max-w-3xl">{sections}</div>
   </Layout>
 )

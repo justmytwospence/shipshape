@@ -200,12 +200,14 @@ test('a repeated log line is one row with a count', () => {
   assert.equal(html.match(/changelog analysis failed/g)?.length, 1)
 })
 
-test('the docs are anchored where the settings link to them', () => {
-  const docs = VIEWS['docs']!
-  for (const anchor of ['update-policy', 'deploys', 'changelog-review']) {
-    assert.match(docs, new RegExp(`id="${anchor}"`), anchor)
-  }
-  assert.match(docs, /can withhold a merge and can never cause one/, 'the one rule is stated')
+test('a settings section explains itself, without linking away', () => {
+  // The prose was a separate page for a while, which meant answering "what does this
+  // actually do" cost a page load and a scroll back to the control you were looking at.
+  const html = VIEWS['settings']!
+  assert.match(html, /how much happens without you/i, 'the section says what it is for')
+  assert.match(html, /always wait for a person/, 'including the part that surprises people')
+  assert.doesNotMatch(html, /Learn more/, 'and does not send you elsewhere for it')
+  assert.doesNotMatch(html, /href="\/docs/, 'there is no separate docs page to send you to')
 })
 
 test('a failed review says so, with what it will do next', () => {

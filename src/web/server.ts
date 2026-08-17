@@ -27,9 +27,7 @@ import {
 } from '../updates/queries.ts'
 import {
   ActivityPage,
-  DocsPage,
   InboxPage,
-  PromptsPage,
   RawPolicyPage,
   SettingsPage,
   StatusPage,
@@ -46,7 +44,6 @@ import {
   type SettingValue,
   type StatusData,
 } from './views/ui/settings.tsx'
-import { Docs } from './views/ui/docs.tsx'
 import { ServiceDetail, ServicesList } from './views/ui/services.tsx'
 import { ActivityList, KINDS as ACTIVITY_KINDS, type ActivityRow } from './views/ui/activity.tsx'
 import {
@@ -68,6 +65,7 @@ import { mergeGate, type MergeFacts } from '../gitops/merge-gate.ts'
 import { pollPrs } from '../gitops/poll.ts'
 import { Octokit } from 'octokit'
 import { applySettings, currentValue, SECTIONS, SETTINGS } from '../settings.ts'
+import { SECTION_PROSE } from '../settings/prose.ts'
 import { listModels } from '../analyze/models.ts'
 import { flush as flushDigest, pending as pendingDigest, render as renderDigest } from '../notify/digest.ts'
 import { activeChannels } from '../notify/index.ts'
@@ -173,6 +171,12 @@ function toastHeader(c: Context, level: 'info' | 'warn' | 'error', text: string)
     'HX-Trigger',
     json.replace(/[\u0080-\uffff]/g, (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`),
   )
+}
+
+/** Push needs both a topic and, on a deny-all server, a token; either alone is not set up. */
+function ntfyState(): 'set' | 'missing' | 'not in use' {
+  if (!process.env.NTFY_URL && !process.env.NTFY_TOKEN) return 'not in use'
+  return process.env.NTFY_URL && process.env.NTFY_TOPIC ? 'set' : 'missing'
 }
 
 /** A plain sentence where the button was. Always 200: htmx swaps nothing on a 4xx. */
@@ -722,8 +726,8 @@ export function createApp(): Hono {
    */
   const settingGroups = (advanced: boolean) => {
     const { policy } = loadPolicy()
-    const groups: { title: string; blurb?: string; items: SettingValue[] }[] = []
-    for (const [title, blurb] of SECTIONS) {
+    const groups: { title: string; prose?: string[]; items: SettingValue[] }[] = []
+    for (const [title] of SECTIONS) {
       const items = SETTINGS.filter(
         (d) => d.section === title && !!d.advanced === advanced,
       ).map((def) => ({
@@ -731,7 +735,12 @@ export function createApp(): Hono {
         value: currentValue(policy, def.path),
         changed: currentValue(policy, def.path) !== def.defaultValue,
       }))
-      if (items.length > 0) groups.push({ title, blurb: advanced ? undefined : blurb, items })
+      // The prose belongs with the decisions. On Advanced these are tuning knobs whose
+      // own `about` text is the explanation, and repeating the section essay there would
+      // bury them.
+      if (items.length > 0) {
+        groups.push({ title, prose: advanced ? undefined : SECTION_PROSE[title], items })
+      }
     }
     return groups
   }
@@ -772,7 +781,7 @@ export function createApp(): Hono {
       credentials: [
         { name: 'GITHUB_TOKEN', state: env.githubToken ? 'set' : 'missing' },
         { name: 'ANTHROPIC_API_KEY', state: env.anthropicApiKey ? 'set' : 'missing' },
-        { name: 'NTFY_TOKEN', state: process.env.NTFY_URL ? 'set' : 'not in use' },
+        { name: 'NTFY_URL + NTFY_TOKEN', state: ntfyState() },
         { name: 'SMTP_URL + MAIL_TO', state: emailConfigured() ? 'set' : 'not in use' },
         { name: 'DOCKER_HUB_LOGIN', state: process.env.DOCKER_HUB_LOGIN ? 'set' : 'not in use' },
       ],
@@ -788,6 +797,7 @@ export function createApp(): Hono {
       budgets: db
         .prepare(`SELECT key, value, window FROM budgets ORDER BY key`)
         .all() as StatusData['budgets'],
+      sandbox: !!process.env.SHIPSHAPE_UI_DEV,
     }
   }
 
@@ -817,6 +827,9 @@ export function createApp(): Hono {
         tab: 'advanced',
         groups: settingGroups(true),
         models: await listModels(),
+        // The prompts are tuning of the same kind: rarely the answer, and dangerous to
+        // reach for first. They were a tab of their own, which oversold them.
+        extra: promptStates().map((st) => promptEditor(st.name)),
         chrome: chrome(c),
       }) as string,
     ),
@@ -824,20 +837,6 @@ export function createApp(): Hono {
 
   app.get('/settings/status', (c) => c.html(StatusPage({ data: statusData(), chrome: chrome(c) }) as string))
 
-  app.get('/settings/prompts', (c) =>
-    c.html(
-      PromptsPage({
-        // Called rather than written as JSX: this module is .ts, and the components
-        // return nodes either way.
-        editors: promptStates().map((s) => promptEditor(s.name)),
-        chrome: chrome(c),
-      }) as string,
-    ),
-  )
-
-  app.get('/docs', (c) => c.html(DocsPage({ sections: Docs({}), chrome: chrome(c) }) as string))
-
-  /** Prompts live in the database, not policy.yaml -- saved and reset on their own. */
   app.post('/settings/prompt/:name', async (c) => {
     const name = c.req.param('name') as PromptName
     if (!(name in PROMPTS)) return c.text('unknown prompt', 404)

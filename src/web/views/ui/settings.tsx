@@ -22,7 +22,6 @@ export const SETTINGS_TABS = [
   { key: 'general', href: '/settings', label: 'General' },
   { key: 'advanced', href: '/settings/advanced', label: 'Advanced' },
   { key: 'status', href: '/settings/status', label: 'Status' },
-  { key: 'prompts', href: '/settings/prompts', label: 'Prompts' },
 ] as const
 
 export const SettingsTabs: FC<{ active: string }> = ({ active }) => (
@@ -37,9 +36,6 @@ export const SettingsTabs: FC<{ active: string }> = ({ active }) => (
         {t.label}
       </a>
     ))}
-    <a role="tab" href="/docs" class="tab tap md:min-h-8">
-      Docs
-    </a>
   </div>
 )
 
@@ -125,34 +121,43 @@ const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) 
   )
 }
 
-const Section: FC<{ title: string; blurb?: string; items: SettingValue[]; models?: string[] }> = ({
-  title,
-  blurb,
-  items,
-  models,
-}) => (
-  <section class="card card-border bg-base-100">
+const Section: FC<{
+  title: string
+  prose?: string[]
+  items: SettingValue[]
+  models?: string[]
+}> = ({ title, prose, items, models }) => (
+  <section id={slug(title)} class="card card-border bg-base-100">
     <div class="card-body gap-0 p-4">
-      <div class="mb-1 flex items-baseline justify-between gap-3">
-        <h2 class="text-sm font-semibold">{title}</h2>
-        <a href={`/docs#${slug(title)}`} class="link link-hover shrink-0 text-xs opacity-60">
-          Learn more →
-        </a>
-      </div>
-      {blurb ? <p class="mb-2 text-xs opacity-60">{blurb}</p> : null}
-      {items.map((item) => (
-        <Field item={item} models={models} />
+      <h2 class="text-sm font-semibold">{title}</h2>
+      {/* The explanation lives here rather than behind a link. It was a separate page
+          for a while, which meant answering "what does this actually do" cost a page
+          load and a scroll back to the control you were looking at. */}
+      {prose?.map((para) => (
+        <p class="mt-1.5 text-xs leading-relaxed opacity-70">{withCode(para)}</p>
       ))}
+      <div class="mt-3">
+        {items.map((item) => (
+          <Field item={item} models={models} />
+        ))}
+      </div>
     </div>
   </section>
 )
+
+/** Backticks in the prose are label and key names, and should look like ones. */
+function withCode(text: string): unknown[] {
+  return text.split(/`([^`]+)`/g).map((part, i) =>
+    i % 2 === 1 ? <code class="bg-base-200 rounded px-1 font-mono">{part}</code> : part,
+  )
+}
 
 export function slug(title: string): string {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, '-')
 }
 
 export const SettingsForm: FC<{
-  groups: { title: string; blurb?: string; items: SettingValue[] }[]
+  groups: { title: string; prose?: string[]; items: SettingValue[] }[]
   models?: string[]
   banner?: { level: 'info' | 'error'; text: string } | null
   advanced?: boolean
@@ -181,7 +186,7 @@ export const SettingsForm: FC<{
       </p>
     ) : null}
     {groups.map((g) => (
-      <Section title={g.title} blurb={g.blurb} items={g.items} models={models} />
+      <Section title={g.title} prose={g.prose} items={g.items} models={models} />
     ))}
     <div class="actionbar bg-base-100/95 border-base-300 flex items-center gap-3 border-t py-3 backdrop-blur lg:static lg:border-0 lg:bg-transparent lg:backdrop-blur-none">
       <button type="submit" class="btn btn-primary btn-sm tap">
@@ -209,6 +214,8 @@ export interface StatusData {
   spentUsd: number
   deploys: { at: string | null; stack: string; services: string; status: string; trigger: string }[]
   budgets: { key: string; value: number; window: string | null }[]
+  /** True in the sandbox dev server, where the credentials are deliberately absent. */
+  sandbox?: boolean
 }
 
 const CRED_CLS: Record<string, string> = {
@@ -245,6 +252,17 @@ const KV: FC<{ rows: [string, unknown][] }> = ({ rows }) => (
 
 export const StatusBody: FC<{ data: StatusData }> = ({ data }) => (
   <div class="flex flex-col gap-5">
+    {data.sandbox ? (
+      <div class="alert alert-info alert-soft py-2 text-sm">
+        {/* Otherwise every credential reads "missing" and the page looks like a broken
+            deployment rather than a sandbox that was built not to be able to act. */}
+        <span>
+          <strong class="font-medium">This is a sandbox.</strong> The credentials below were
+          removed on purpose, the scheduler never started, and the docker socket points
+          nowhere — so nothing you press here can reach GitHub, the model, or a container.
+        </span>
+      </div>
+    ) : null}
     <section>
       <h2 class="mb-2 text-xs font-medium tracking-wide uppercase opacity-60">Clocks</h2>
       <KV
@@ -272,7 +290,10 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => (
 
     <section>
       <h2 class="mb-2 text-xs font-medium tracking-wide uppercase opacity-60">Credentials</h2>
-      <p class="mb-2 text-xs opacity-60">Presence only — values are never read into the UI.</p>
+      <p class="mb-2 text-xs opacity-60">
+        Presence only — values are never read into the UI.
+        {data.sandbox ? ' In the sandbox they are all absent by design.' : ''}
+      </p>
       <div class="card card-border bg-base-100">
         <div class="card-body gap-0 p-0">
           {data.credentials.map((cred) => (

@@ -242,7 +242,8 @@ const PausedBanner: FC = () => (
     <span>
       <strong class="font-medium">Paused.</strong> Nothing merges or deploys on its own.
     </span>
-    <a href="/settings" class="link ml-auto shrink-0">
+    {/* Straight to the switch, not to the top of a page it sits halfway down. */}
+    <a href="/settings#pause" class="link ml-auto shrink-0">
       Change
     </a>
   </div>

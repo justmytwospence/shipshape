@@ -127,7 +127,7 @@ const Section: FC<{
   items: SettingValue[]
   models?: string[]
 }> = ({ title, prose, items, models }) => (
-  <section id={slug(title)} class="card card-border bg-base-100">
+  <section id={slug(title)} class="card card-border bg-base-100 scroll-mt-20">
     <div class="card-body gap-0 p-4">
       <h2 class="text-sm font-semibold">{title}</h2>
       {/* The explanation lives here rather than behind a link. It was a separate page

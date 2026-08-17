@@ -102,6 +102,11 @@ export interface SettingDef {
  * and applySettings iterates SETTINGS rather than this, so policy.yaml is untouched.
  */
 export const SECTIONS = [
+  // First, because it is the switch the whole model hangs on. It lived under "Merging"
+  // for a while, which was wrong twice over: it governs deploys as well, and it sat
+  // halfway down a long page, so the banner that says "Paused -- Change" landed you at
+  // the top of Settings with no sign of where to go.
+  ['Pause', 'The one switch: whether anything happens without you.'],
   ['Scanning', 'When shipshape asks the registries what exists.'],
   [
     'Update policy',
@@ -406,7 +411,7 @@ export const SETTINGS: SettingDef[] = [
 
   // ------------------------------------------------------------------ Merging
   {
-    section: 'Merging',
+    section: 'Pause',
     path: 'paused',
     kind: 'bool',
     defaultValue: 'true',

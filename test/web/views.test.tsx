@@ -220,3 +220,9 @@ test('the setup banner names what is missing', () => {
   assert.match(VIEWS['layout-setup']!, /REPO_DIR/)
   assert.match(VIEWS['layout-setup']!, /not configured yet/)
 })
+
+test('the banner points at the switch, not at the top of the page it sits on', () => {
+  // "Paused — Change" used to land you at the top of Settings with the switch halfway
+  // down it, which reads exactly like a link that did nothing.
+  assert.match(VIEWS['layout']!, /href="\/settings#pause"/)
+})

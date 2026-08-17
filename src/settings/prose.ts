@@ -14,6 +14,10 @@ import type { SectionName } from '../settings.ts'
  * `about`, which sits under the control it concerns.
  */
 export const SECTION_PROSE: Record<SectionName, string[]> = {
+  Pause: [
+    'While this is on, shipshape merges and deploys nothing on its own. It still scans, opens pull requests and reads changelogs; what waits is every step that would change this host with nobody watching.',
+    'A merge you press still deploys, because you are there to watch it. That is the whole distinction: not a switch between safe and unsafe, but one between the machine choosing the moment and you choosing it.',
+  ],
   Scanning: [
     'Everything starts with a sweep of the compose files, asking each registry which tags exist that you are not running. Only services carrying `shipshape.watch` are asked about, and comparing tags at all means knowing their shape, which is inferred from the pinned tag unless a label says otherwise.',
     'The files in git are the source, never the running containers. A label edit lands on the next scan with nothing recreated, and a container whose labels were baked months ago cannot disagree with the file that describes it.',

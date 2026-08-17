@@ -263,16 +263,17 @@ notify:
   cron: "0 0 8 * * *"         # when the digest goes out; empty ones are never sent
   ntfy: all                   # all | alerts | routine | off
   email: all                  # ...per channel, so push and mail can differ
+paused: true                  # nothing merges or deploys on its own. Off means it does.
 merge:
-  auto: false                 # the only unattended write path. Off.
   max_per_run: 3
 model_tier:
   mode: shadow                # off | shadow | enforce
 propose:
   mode: auto                  # auto | manual | off
 deploy:
-  mode: manual                # auto | manual | off
-  health_window_s: 120
+  verify_window_s: 300        # how long a deploy has to prove itself
+  soak_s: 1800                # a second look before it reads verified
+  rollback: auto              # auto | suggest | off
 scan:
   cron: "0 0 3 * * *"         # seconds first
 ```
@@ -321,10 +322,14 @@ disables pull requests.
 ## Status
 
 Working today: detection across every registry, digest watching, grouped pull requests,
-changelog analysis with merge/hold verdicts, drafted config changes, a deploy engine,
-an auto-merge engine, and a web UI. The two engines that can act unattended —
-`merge.auto` and `deploy.mode: auto` — ship off, because turning one on should be a
-decision rather than a consequence of upgrading.
+changelog analysis with merge/hold verdicts, drafted config changes, a deploy engine
+with verification, soak and rollback, an auto-merge engine, and a web UI you can run the
+whole thing from -- including the phone.
+
+`paused: true` ships on, because turning the unattended path on should be a decision
+rather than a consequence of upgrading. Paused, shipshape still scans, opens pull
+requests and reads changelogs; what waits for you is every step that would change the
+host. `merge.auto` and `deploy.mode` are still read and fold into it.
 
 ## Licence
 

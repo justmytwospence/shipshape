@@ -36,6 +36,7 @@ import {
   UpdatesPage,
   type Detail,
 } from './views/pages.tsx'
+import type { Chrome } from './views/ui/shell.tsx'
 import { ctxString, listHref, readCtx, type ListCtx } from './ctx.ts'
 import {
   DigestPreview,
@@ -215,13 +216,49 @@ export function createApp(): Hono {
   })
 
   /** Everything a page needs to draw its own frame. */
-  const chrome = (c?: Context) => ({
-    paused: loadPolicy().policy.paused,
-    missing: missing(),
-    // `?theme=logbook` renders one page in a candidate look without changing anyone's
-    // preference, so two directions can be compared on real rows.
-    theme: c?.req.query('theme'),
-  })
+  const chrome = (c?: Context): Chrome => {
+    const info = scanInfo()
+    return {
+      paused: loadPolicy().policy.paused,
+      missing: missing(),
+      // `?theme=logbook` renders one page in a candidate look without changing anyone's
+      // preference, so two directions can be compared on real rows.
+      theme: c?.req.query('theme'),
+      counts: navCounts(),
+      scan: { lastAt: info.lastAt, nextAt: scheduleInfo().scan.nextAt, running: info.running },
+    }
+  }
+
+  /**
+   * The numbers beside the destinations. Cheap on purpose -- three counts, no views
+   * built -- because they render on every page. The Inbox count is the shapes
+   * attentionKind() looks for, counted rather than built; if the two ever disagree, the
+   * list is right and this is the one to fix.
+   */
+  const navCounts = (): NonNullable<Chrome['counts']> => {
+    const db = getDb()
+    const one = (sql: string) => (db.prepare(sql).get() as { n: number }).n
+    return {
+      inbox: one(
+        `SELECT COUNT(*) AS n FROM updates u
+          LEFT JOIN deploys d ON d.id = (
+            SELECT du.deploy_id FROM deploy_updates du WHERE du.update_id = u.id
+             ORDER BY du.deploy_id DESC LIMIT 1)
+         WHERE u.state IN ('pr_open','held')
+            OR (u.state = 'detected' AND u.detail = 'rolling')
+            OR (u.state = 'merged' AND d.status IN ('ready','pending'))
+            OR (u.state = 'merged' AND d.status IN ('failed','error') AND u.acked_at IS NULL)
+            OR (u.state = 'failed' AND u.acked_at IS NULL)
+            OR (d.status = 'degraded' AND u.acked_at IS NULL)`,
+      ),
+      updates: one(
+        `SELECT COUNT(*) AS n FROM updates WHERE state IN ('detected','held','pr_open','merged')`,
+      ),
+      attention: one(
+        `SELECT COUNT(*) AS n FROM images WHERE last_status IS NOT NULL OR constrained_from IS NOT NULL`,
+      ),
+    }
+  }
 
   /**
    * What the merge gate would object to, as sentences.
@@ -524,9 +561,13 @@ export function createApp(): Hono {
   /** The pending region alone, so it can refresh itself while a scan runs. */
   app.post('/scan', async (c) => {
     const result = await runScanNow()
-    if (result.status === 'already-running') {
-      return c.html('<span class="sub">a scan is already running&hellip;</span>')
-    }
+    toastHeader(
+      c,
+      'info',
+      result.status === 'already-running'
+        ? 'A scan is already running.'
+        : 'Scanning. The list refreshes itself as results come in.',
+    )
     return c.html(ScanStatus({ running: isScanning(), lastAt: scanInfo().lastAt }) as string)
   })
 

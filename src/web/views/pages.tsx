@@ -1,5 +1,5 @@
 import type { FC } from 'hono/jsx'
-import { Layout, Split } from './ui/shell.tsx'
+import { Layout, Split, type Chrome } from './ui/shell.tsx'
 import { InboxAside, InboxList, ScanControls, type InboxData } from './ui/inbox.tsx'
 import { UpdateRow } from './ui/update.tsx'
 import { EmptyState, ListCount, Search, Tabs } from './ui/parts.tsx'
@@ -31,12 +31,7 @@ import type { StageFilter, UpdateView } from '../../updates/queries.ts'
  * something the server drew whole.
  */
 
-export interface PageChrome {
-  paused: boolean
-  missing: { name: string; why: string }[]
-  /** A `?theme=` preview, for putting two candidate looks beside each other. */
-  theme?: string
-}
+export type PageChrome = Chrome
 
 /** A filled pane, and what the phone bar says while it is the page. */
 export interface Detail {
@@ -61,9 +56,7 @@ export const InboxPage: FC<{
     detail={!!detail}
     actions={<ScanControls scan={data.scan} />}
     count={<ListCount n={data.needsYou.length} />}
-    paused={chrome.paused}
-    missing={chrome.missing}
-    theme={chrome.theme}
+    chrome={chrome}
   >
     <Split
       list={<InboxList data={data} selectedId={selectedId} />}
@@ -147,9 +140,7 @@ export const UpdatesPage: FC<{
     detail={!!detail}
     toolbar={<UpdatesToolbar stage={stage} q={q} magnitude={magnitude} />}
     count={<ListCount n={updates.length} />}
-    paused={chrome.paused}
-    missing={chrome.missing}
-    theme={chrome.theme}
+    chrome={chrome}
   >
     <Split
       list={
@@ -187,9 +178,7 @@ export const ServicesPage: FC<{
     detail={!!detail}
     toolbar={<ServicesToolbar filter={filter} q={q} grouped={grouped} />}
     count={<ListCount n={services.length} />}
-    paused={chrome.paused}
-    missing={chrome.missing}
-    theme={chrome.theme}
+    chrome={chrome}
   >
     <Split
       list={
@@ -221,9 +210,7 @@ export const ActivityPage: FC<{
   <Layout
     title="Activity"
     nav="activity"
-    paused={chrome.paused}
-    missing={chrome.missing}
-    theme={chrome.theme}
+    chrome={chrome}
     toolbar={<ActivityToolbar kind={kind} problems={problems} q={q} />}
     count={<ListCount n={rows.length} />}
   >
@@ -254,16 +241,14 @@ export const SettingsPage: FC<{
   <Layout
     title="Settings"
     nav="settings"
-    paused={chrome.paused}
-    missing={chrome.missing}
-    theme={chrome.theme}
+    chrome={chrome}
     toolbar={<SettingsTabs active={tab} />}
   >
     <Split
       variant="nav"
       list={<SettingsNav sections={groups.map((g) => g.title)} extra={extraNav} />}
       pane={
-        <div class="flex flex-col">
+        <div class="flex flex-col lg:max-w-5xl">
           <SettingsForm
             groups={groups}
             models={models}
@@ -282,9 +267,7 @@ export const StatusPage: FC<{ data: StatusData; chrome: PageChrome }> = ({ data,
   <Layout
     title="Status"
     nav="settings"
-    paused={chrome.paused}
-    missing={chrome.missing}
-    theme={chrome.theme}
+    chrome={chrome}
     toolbar={<SettingsTabs active="status" />}
   >
     <Split variant="wide" list={<StatusBody data={data} />} />
@@ -297,9 +280,7 @@ export const RawPolicyPage: FC<{ text: string; chrome: PageChrome }> = ({ text, 
     section="Settings · policy.yaml"
     nav="settings"
     back={{ href: '/settings', label: 'Settings' }}
-    paused={chrome.paused}
-    missing={chrome.missing}
-    theme={chrome.theme}
+    chrome={chrome}
   >
     <Split variant="wide" list={<RawPolicy text={text} />} />
   </Layout>

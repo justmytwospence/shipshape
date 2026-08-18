@@ -198,7 +198,12 @@ const SERVICE = {
   policy: 'manual',
 }
 
-const CHROME = { paused: true, missing: [] }
+const CHROME = {
+  paused: true,
+  missing: [],
+  counts: { inbox: 5, updates: 12, attention: 2 },
+  scan: { lastAt: ago(9), nextAt: null, running: false },
+}
 
 const SETTING_GROUPS = [
   {
@@ -312,6 +317,8 @@ const INBOX = {
 export function renderAll(opts: { running?: boolean } = {}): Record<string, string> {
   const scan = { ...INBOX.scan, running: !!opts.running }
   const inbox = { ...INBOX, scan }
+  // The frame's own copy of the clock: the sidebar's chip is the poll's on-switch.
+  const CH = { ...CHROME, scan: { ...CHROME.scan, running: !!opts.running } }
   const list = [UPDATES.waiting!, UPDATES.held!, UPDATES.ready!]
   const detail = (u: UpdateView, ctx: string, listHref: string, warnings: string[] = []) =>
     UpdateDetail({ update: u, milestones: MILESTONES, warnings, ctx, listHref })
@@ -328,11 +335,11 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
   }
   return {
     // pages
-    'inbox-page': String(InboxPage({ data: inbox, chrome: CHROME })),
+    'inbox-page': String(InboxPage({ data: inbox, chrome: CH })),
     'inbox-detail-page': String(
       InboxPage({
         data: inbox,
-        chrome: CHROME,
+        chrome: CH,
         selectedId: 7,
         detail: {
           pane: detail(UPDATES.waiting!, 'list=inbox', '/'),
@@ -348,7 +355,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
         q: '',
         magnitude: 'all',
         ctx: 'list=updates&stage=open',
-        chrome: CHROME,
+        chrome: CH,
       }),
     ),
     'update-page': String(
@@ -358,7 +365,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
         q: '',
         magnitude: 'all',
         ctx: 'list=updates&stage=open',
-        chrome: CHROME,
+        chrome: CH,
         selectedId: 7,
         detail: {
           pane: detail(UPDATES.waiting!, 'list=updates&stage=open', '/updates', [
@@ -376,7 +383,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
         q: '',
         grouped: false,
         ctx: 'list=services',
-        chrome: CHROME,
+        chrome: CH,
       }),
     ),
     'service-page': String(
@@ -386,7 +393,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
         q: '',
         grouped: false,
         ctx: 'list=services',
-        chrome: CHROME,
+        chrome: CH,
         selected: { stack: 'media', service: 'jellyfin' },
         detail: {
           pane: ServiceDetail({ data: serviceData, ctx: 'list=services', listHref: '/services' }),
@@ -403,11 +410,11 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
         problems: false,
         q: '',
         more: null,
-        chrome: CHROME,
+        chrome: CH,
       }),
     ),
     'settings-page': String(
-      SettingsPage({ tab: 'general', groups: SETTING_GROUPS, readyCount: 2, chrome: CHROME }),
+      SettingsPage({ tab: 'general', groups: SETTING_GROUPS, readyCount: 2, chrome: CH }),
     ),
     // fragments
     inbox: String(InboxList({ data: inbox })),
@@ -432,12 +439,15 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
     activity: String(ActivityList({ rows: ACTIVITY, repo: 'you/repo', more: null })),
     settings: String(SettingsForm({ groups: SETTING_GROUPS, readyCount: 2 })),
     status: String(StatusBody({ data: STATUS })),
-    layout: String(Layout({ title: 'Inbox', nav: 'inbox', paused: true, children: 'x' })),
+    layout: String(Layout({ title: 'Inbox', nav: 'inbox', chrome: CH, children: 'x' })),
     'layout-setup': String(
       Layout({
         title: 'Inbox',
         nav: 'inbox',
-        missing: [{ name: 'REPO_DIR', why: 'the checkout to watch' }],
+        chrome: {
+          paused: false,
+          missing: [{ name: 'REPO_DIR', why: 'the checkout to watch' }],
+        },
         children: 'x',
       }),
     ),

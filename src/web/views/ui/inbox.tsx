@@ -1,6 +1,6 @@
 import type { FC } from 'hono/jsx'
 import { Icon, type IconName } from './icon.tsx'
-import { Change, EmptyState, Relative, ScanStatus, ServiceName } from './parts.tsx'
+import { Change, EmptyState, Relative, ServiceName } from './parts.tsx'
 import { GroupHeader, UpdateRow } from './update.tsx'
 import type { AttentionItem, AttentionKind, RecentItem, UpdateView } from '../../../updates/queries.ts'
 
@@ -74,35 +74,26 @@ export interface InboxData {
   scan: { lastAt: number | null; nextAt: string | null; running: boolean; watched: number }
 }
 
-/** The scan chip and the Scan-now button, for the toolbar. */
+/**
+ * The Scan-now button, for the toolbar. Its answer lands in the sidebar's scan chip
+ * (`#scan-status`), which is the poll's on-switch; the toast says it started.
+ */
 export const ScanControls: FC<{ scan: InboxData['scan'] }> = ({ scan }) => (
-  <>
-    <span id="scan-status" class="hidden text-xs opacity-70 lg:inline">
-      {scan.running ? (
-        <ScanStatus running lastAt={null} />
-      ) : scan.lastAt ? (
-        <>
-          scanned <Relative at={new Date(scan.lastAt).toISOString()} />
-        </>
-      ) : (
-        'never scanned'
-      )}
-    </span>
-    <button
-      type="button"
-      class="btn btn-ghost btn-sm tap gap-1"
-      hx-post="/scan"
-      hx-target="#scan-status"
-      hx-swap="innerHTML"
-      hx-disabled-elt="this"
-      hx-indicator="#busy"
-      aria-label="Scan now"
-      title="Scan now"
-    >
-      <Icon name="refresh" class="size-3.5" />
-      <span class="hidden lg:inline">Scan now</span>
-    </button>
-  </>
+  <button
+    type="button"
+    class="btn btn-ghost btn-sm tap gap-1"
+    hx-post="/scan"
+    hx-target="#scan-status"
+    hx-swap="innerHTML"
+    hx-disabled-elt="this"
+    hx-indicator="#busy"
+    aria-label="Scan now"
+    title="Scan now"
+    disabled={scan.running || undefined}
+  >
+    <Icon name="refresh" class="size-3.5" />
+    <span class="hidden lg:inline">{scan.running ? 'Scanning…' : 'Scan now'}</span>
+  </button>
 )
 
 /** The list: groups of rows, worst first, with sticky headers. */
@@ -175,9 +166,9 @@ export const InboxList: FC<{ data: InboxData; selectedId?: number }> = ({ data, 
   )
 }
 
-const RecentList: FC<{ recent: RecentItem[] }> = ({ recent }) => (
+const RecentList: FC<{ recent: RecentItem[]; hint?: string }> = ({ recent, hint }) => (
   <section>
-    <GroupHeader title="Recently" />
+    <GroupHeader title="Recently" hint={hint} />
     {recent.length === 0 ? (
       <p class="px-3 py-3 text-xs opacity-60">Nothing has happened in the last day.</p>
     ) : (
@@ -213,29 +204,8 @@ const RecentList: FC<{ recent: RecentItem[] }> = ({ recent }) => (
 
 /** What the pane shows when nothing is selected: the night's history and the clocks. */
 export const InboxAside: FC<{ data: InboxData }> = ({ data }) => (
-  <div>
-    <div class="border-base-300 flex h-10 items-center gap-4 border-b px-4 text-xs opacity-70">
-      <span>
-        {/* Plain text here, not the chip: the chip's id is the poll's on-switch and must
-            exist exactly once, in the toolbar. */}
-        {data.scan.running ? (
-          <span class="text-info">scanning…</span>
-        ) : data.scan.lastAt ? (
-          <>
-            last scan <Relative at={new Date(data.scan.lastAt).toISOString()} />
-          </>
-        ) : (
-          'never scanned'
-        )}
-      </span>
-      {data.scan.nextAt && !data.scan.running ? (
-        <span>
-          next <Relative at={data.scan.nextAt} />
-        </span>
-      ) : null}
-      <span>{data.scan.watched} watched</span>
-    </div>
-    <RecentList recent={data.recent} />
+  <div class="lg:max-w-4xl">
+    <RecentList recent={data.recent} hint="what happened without you, last 24 hours" />
   </div>
 )
 

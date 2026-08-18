@@ -295,7 +295,7 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => (
         </span>
       </div>
     ) : null}
-    <div class="grid gap-x-8 gap-y-5 p-4 lg:grid-cols-2">
+    <div class="grid gap-x-8 gap-y-5 p-4 lg:max-w-6xl lg:grid-cols-2">
       <section>
         <H>Clocks</H>
         <KV

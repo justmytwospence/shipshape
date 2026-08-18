@@ -1,5 +1,6 @@
 import type { FC, PropsWithChildren } from 'hono/jsx'
 import { Icon, type IconName } from './icon.tsx'
+import { Relative, ScanStatus } from './parts.tsx'
 import { version } from '../../version.ts'
 
 /**
@@ -50,6 +51,20 @@ const SW_SCRIPT = `if ('serviceWorker' in navigator) {
  */
 const HTMX_CONFIG = '{"historyCacheSize":0,"refreshOnHistoryMiss":true}'
 
+/**
+ * What every page needs to draw its frame: the state of the machine, for the sidebar's
+ * status block and the phone's banner, and the numbers the navigation carries.
+ */
+export interface Chrome {
+  paused: boolean
+  missing: { name: string; why: string }[]
+  /** A `?theme=` preview, overriding the stored preference. Nothing writes it. */
+  theme?: string
+  /** What the sidebar counts beside each destination. */
+  counts?: { inbox: number; updates: number; attention: number }
+  scan?: { lastAt: string | null; nextAt: string | null; running: boolean }
+}
+
 export interface LayoutProps {
   /** The document title and the phone bar's title. */
   title: string
@@ -64,10 +79,7 @@ export interface LayoutProps {
   toolbar?: unknown
   /** "56 shown", updated out-of-band when a filter changes. */
   count?: unknown
-  paused?: boolean
-  missing?: { name: string; why: string }[]
-  /** A `?theme=` preview, overriding the stored preference. Nothing writes it. */
-  theme?: string
+  chrome?: Chrome
   /**
    * Below lg this document is a detail page: the phone bar carries a back link and the
    * toolbar row is not drawn, because the list it filters is not on screen. At lg the
@@ -84,12 +96,14 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
   actions,
   toolbar,
   count,
-  paused,
-  missing,
-  theme,
+  chrome,
   detail,
   children,
-}) => (
+}) => {
+  const theme = chrome?.theme
+  const paused = !!chrome?.paused
+  const missing = chrome?.missing ?? []
+  return (
   <html lang="en" data-theme={theme} data-theme-pinned={theme ? 'true' : undefined}>
     <head>
       <meta charset="utf-8" />
@@ -155,7 +169,7 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
             </div>
           </header>
 
-          {missing && missing.length > 0 ? <SetupBanner missing={missing} /> : null}
+          {missing.length > 0 ? <SetupBanner missing={missing} /> : null}
           {paused ? <PausedBanner /> : null}
 
           <main id="main" class="pb-dock flex min-h-0 flex-1 flex-col lg:pb-0">
@@ -167,29 +181,7 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
 
         <aside class="drawer-side z-30">
           <label for="nav-drawer" aria-label="close" class="drawer-overlay" />
-          <div class="bg-base-100 border-base-300 flex h-full w-56 flex-col border-r">
-            <a href="/" class="px-4 py-3 text-sm font-semibold tracking-tight">
-              shipshape
-            </a>
-            <ul class="menu menu-xs w-full flex-1 gap-0.5 px-2">
-              {NAV.map((n) => (
-                <li>
-                  <a
-                    href={n.href}
-                    class={n.key === nav ? 'menu-active font-medium' : ''}
-                    aria-current={n.key === nav ? 'page' : undefined}
-                  >
-                    <Icon name={n.icon} />
-                    {n.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-            <div class="border-base-300 flex items-center justify-between gap-2 border-t px-3 py-2">
-              <ThemeToggle />
-              <span class="font-mono text-xs opacity-50">v{version()}</span>
-            </div>
-          </div>
+          <Sidebar nav={nav} chrome={chrome} />
         </aside>
       </div>
 
@@ -205,7 +197,130 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
       <script src="/static/app.js" defer />
     </body>
   </html>
-)
+  )
+}
+
+/**
+ * The rail.
+ *
+ * A distinct surface (base-200) the full height of the window, so it reads as the
+ * application's chrome and not as a list that happens to be on the left. The brand row is
+ * the toolbar's height, so the two top borders meet in one line across the window. The
+ * destinations are body-size, not menu-xs -- the navigation should never be smaller than
+ * what it navigates -- and carry the numbers that answer "is there anything for me"
+ * before a click. What is left below them is the state of the machine: whether it acts
+ * on its own right now, and when it last looked and will look again. That used to be a
+ * full-width banner on every page; a mode is not an alert.
+ */
+const Sidebar: FC<{ nav: NavKey | null; chrome?: Chrome }> = ({ nav, chrome }) => {
+  const counts = chrome?.counts
+  const badge = (n: number | undefined, tone: 'primary' | 'warning' | 'ghost') =>
+    n ? (
+      <span
+        class={`badge badge-xs ml-auto font-mono tabular-nums ${
+          tone === 'primary'
+            ? 'badge-primary badge-soft'
+            : tone === 'warning'
+              ? 'badge-warning badge-soft'
+              : 'badge-ghost'
+        }`}
+      >
+        {n}
+      </span>
+    ) : null
+  const count = (key: NavKey) => {
+    switch (key) {
+      case 'inbox':
+        return badge(counts?.inbox, 'primary')
+      case 'updates':
+        return badge(counts?.updates, 'ghost')
+      case 'services':
+        return badge(counts?.attention, 'warning')
+      default:
+        return null
+    }
+  }
+  return (
+    <div class="bg-base-200 border-base-300 flex h-full w-60 flex-col border-r">
+      <a href="/" class="border-base-300 flex h-10 shrink-0 items-center gap-2 border-b px-3">
+        <img src="/static/icon.svg" alt="" class="size-5 rounded" />
+        <span class="text-sm font-semibold tracking-tight">shipshape</span>
+      </a>
+      <nav aria-label="Primary" class="flex flex-col gap-0.5 p-2">
+        {NAV.map((n) => (
+          <a
+            href={n.href}
+            aria-current={n.key === nav ? 'page' : undefined}
+            class="hover:bg-base-300/60 aria-[current=page]:bg-base-300 aria-[current=page]:font-medium flex h-8 items-center gap-2.5 rounded-md px-2 text-sm"
+          >
+            <Icon name={n.icon} class="size-4 opacity-70" />
+            {n.label}
+            {count(n.key)}
+          </a>
+        ))}
+      </nav>
+      <div class="flex-1" />
+      <SidebarStatus chrome={chrome} />
+      <div class="border-base-300 flex items-center gap-2 border-t px-3 py-2">
+        <ThemeToggle />
+        <button
+          type="button"
+          class="btn btn-ghost btn-xs px-1.5"
+          data-open="#shortcuts"
+          aria-label="Keyboard shortcuts"
+          title="Keyboard shortcuts"
+        >
+          <kbd class="kbd kbd-xs">?</kbd>
+        </button>
+        <span class="ml-auto font-mono text-xs opacity-50">v{version()}</span>
+      </div>
+    </div>
+  )
+}
+
+/** Whether it acts on its own right now, and the scan clock. One glance, every page. */
+const SidebarStatus: FC<{ chrome?: Chrome }> = ({ chrome }) => {
+  if (!chrome) return null
+  const scan = chrome.scan
+  return (
+    <div class="border-base-300 flex flex-col gap-1 border-t px-3 py-2.5 text-xs">
+      <div class="flex items-center gap-2">
+        {chrome.paused ? (
+          <span class="badge badge-warning badge-soft badge-sm gap-1">
+            <Icon name="pause" class="size-3" />
+            Paused
+          </span>
+        ) : (
+          <span class="badge badge-success badge-soft badge-sm gap-1">
+            <Icon name="check" class="size-3" />
+            Running
+          </span>
+        )}
+        <a href="/settings#pause" class="link link-hover ml-auto opacity-70">
+          Change
+        </a>
+      </div>
+      <p class="opacity-70">
+        {chrome.paused ? 'Nothing merges or deploys on its own.' : 'Merges what policy allows.'}
+      </p>
+      {scan ? (
+        <p class="flex flex-wrap items-center gap-x-1.5 opacity-70">
+          {/* The chip is the poll's on-switch (`#scan-running` while a scan is in flight)
+              and what "Scan now" swaps its answer into, so it lives here, once, on every
+              page, rather than in the Inbox toolbar. */}
+          <span id="scan-status">
+            <ScanStatus running={scan.running} lastAt={scan.lastAt} />
+          </span>
+          {scan.nextAt && !scan.running ? (
+            <span>
+              · next <Relative at={scan.nextAt} />
+            </span>
+          ) : null}
+        </p>
+      ) : null}
+    </div>
+  )
+}
 
 /**
  * The list and the pane.
@@ -284,7 +399,7 @@ const ThemeToggle: FC = () => (
 )
 
 const PausedBanner: FC = () => (
-  <div class="alert alert-warning alert-soft shrink-0 rounded-none border-x-0 border-t-0 py-1 text-xs">
+  <div class="alert alert-warning alert-soft shrink-0 rounded-none border-x-0 border-t-0 py-1 text-xs lg:hidden">
     <Icon name="pause" class="size-3.5" />
     <span>
       <strong class="font-medium">Paused.</strong> Nothing merges or deploys on its own.

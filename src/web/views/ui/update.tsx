@@ -345,7 +345,7 @@ export const VerdictBlock: FC<{ update: UpdateView }> = ({ update }) => {
   }
   return (
     <section class="border-base-300 border-t px-4 py-3">
-      <div class={`border-l-2 pl-3 ${accent} flex flex-col gap-2`}>
+      <div class={`border-l-2 pl-3 ${accent} flex max-w-[80ch] flex-col gap-2`}>
         <VerdictChip update={update} long />
         {v.summary ? <p class="text-sm leading-relaxed">{v.summary}</p> : null}
         {v.breakingChanges.length > 0 ? (
@@ -515,7 +515,7 @@ export const UpdateDetail: FC<{
   const target = `#upd-${update.id}-detail`
   const reply = `view=detail${ctx ? `&${ctx}` : ''}`
   return (
-    <div id={`upd-${update.id}-detail`} class="flex flex-col">
+    <div id={`upd-${update.id}-detail`} class="flex flex-col lg:max-w-4xl">
       <header class="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pt-3 pb-2">
         {fromService ? (
           <a

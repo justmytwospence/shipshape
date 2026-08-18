@@ -268,7 +268,7 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
   hp.set('service', svc.service)
   const historyCtx = hp.toString()
   return (
-    <div id={cardId} class="flex flex-col">
+    <div id={cardId} class="flex flex-col lg:max-w-4xl">
       <header class="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pt-3 pb-2">
         <h2 class="text-sm font-semibold">
           <ServiceName stack={svc.stack} service={svc.service} />

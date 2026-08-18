@@ -49,13 +49,20 @@ host's network (CDP stays bound to 127.0.0.1):
 
 ```
 docker run -d --rm --name ss-chrome --network host --shm-size=1g \
+  -v "$PWD/bin/shots-fonts.conf:/etc/fonts/local.conf:ro" \
   gcr.io/zenika-hub/alpine-chrome:124 --no-sandbox --disable-gpu \
   --disable-dev-shm-usage --remote-debugging-port=9222 --hide-scrollbars about:blank
 ```
 
+(The fonts file matters: without it the image resolves every family to a CJK face and
+the text renders letter-spaced, which looks like a layout bug and is not.)
+
 Each shot runs layout probes and the contact sheet flags them: horizontal overflow,
-nested scroll regions, and interactive targets under 44px. Treat a new flag as a
-regression. `.shots/baseline` is the pre-redesign UI — keep it.
+nested scroll regions and interactive targets under 44px on the **phone** shots, and
+`rowsVisible` — how many list rows fit on screen — on all of them. Treat a new flag as
+a regression, and a drop in `rowsVisible` on a list page as one too (Inbox, Updates and
+Services should show 20+ rows at 1440×900 and ~15 on a phone). `.shots/baseline` is the
+pre-redesign UI — keep it.
 
 **Polypane** is the better tool when the operator is at their Mac, because it shows every
 breakpoint at once and it is a real browser with a real session. It runs there, not here,
@@ -82,11 +89,33 @@ daisyUI 5 on Tailwind v4 (`src/styles/app.css` → `public/app.css`, built by `n
 - **Class names must be literal in the source.** Tailwind only emits what it can see, so
   `` `badge-${kind}` `` silently produces no CSS. Keep whole class strings in maps.
   `test/web/views.test.tsx` fails the build on any class that is not in the built CSS.
-- Dialogs are `<dialog>` (`modal modal-bottom md:modal-end`), never a checkbox drawer:
+- **It is an application frame, not a page.** At `lg` the viewport is the frame: sidebar,
+  one toolbar row, then a list and a detail pane (`Split` in `shell.tsx`) that scroll
+  independently. Below `lg` the same DOM is an ordinary document — only the page scrolls,
+  a row navigates to its own URL, and the toolbar's filter strip scrolls sideways. So
+  every fixed height and every `overflow-*` on the frame is `lg:`-prefixed; a test fails
+  on any that is not.
+- **Detail lives in `#pane`; confirmations are still `<dialog>`s.** A row is `<a href
+  data-row hx-get=…/panel hx-target="#pane" hx-push-url=…>`; the URL it pushes carries
+  `?list=…` and the filters, and `/updates/:id?list=…` renders the same page turned
+  inside out (list beside a filled pane; pane alone on a phone), so back and reload
+  always land on something the server drew whole (`historyCacheSize: 0`). Which of the
+  two behaviours a click gets is decided by a capture-phase listener in `app.js` — not by
+  a `click[matchMedia(…)]` trigger filter, because htmx cancels an anchor's default
+  action *before* it evaluates the filter, which left the phone with rows that did
+  nothing.
+- Density is the point. 13px body / 11px small (`@theme` in `app.css`; the root stays
+  16px so daisyUI's control sizes hold), 36px rows at `lg` and ~48px two-line rows on a
+  phone, dividers rather than a card per item, sticky 28px group headers, filters as
+  `tabs tabs-box tabs-xs` radios (never the hover-reveal `filter`). A verb pressed in a
+  row asks for the row back (`?view=row&list=…`); pressed in the pane, the pane
+  (`view=detail`) — the sentence goes in the toast.
+- Dialogs are `<dialog>` (`modal modal-bottom sm:modal-middle`), never a checkbox drawer:
   focus trap, Escape and backdrop dismissal come free and work on iOS.
-- The phone is the primary target: 44px minimum touch targets, `env(safe-area-inset-*)`
-  honoured at the bottom (dock, action bar, sheet) and the sides in landscape, and no
-  information that exists only in a `title` attribute — touch has no hover.
+- The phone is the primary target: 44px touch targets (`.tap`, which relaxes at `lg`),
+  `env(safe-area-inset-*)` honoured at the bottom (dock, action bar) and the sides in
+  landscape, and no information that exists only in a `title` attribute — touch has no
+  hover.
 - The theme is resolved before first paint by a small inline script from
   `localStorage['shipshape-theme']` (`auto | light | dark`); `auto` removes `data-theme`
   and lets daisyUI's `--prefersdark` follow the OS.
@@ -97,12 +126,15 @@ daisyUI 5 on Tailwind v4 (`src/styles/app.css` → `public/app.css`, built by `n
 ## htmx contracts
 
 Some behaviour depends on markup *shape*, which the type checker cannot see and a restyle
-breaks silently. `test/web/htmx-contract.test.tsx` encodes those invariants — read it
+breaks silently. `test/web/views.test.tsx` and `test/web/routes.test.tsx` encode those invariants — read them
 before touching views. The load-bearing ones:
 
 - A row is an `<a href>` that htmx upgrades on desktop; never a `<tr>` with a handler.
-- The detail dialog and the toast container live **outside** every polled or swapped
-  region, or a swap deletes the element mid-interaction.
+- The pane (`#pane`) and the toast container live **outside** every polled or swapped
+  region, or a swap deletes the element mid-interaction; there is exactly one of each per
+  page and none in a fragment.
+- The row and the pane for the same update have different ids (`upd-N`, `upd-N-detail`);
+  a verb's `hx-target` is whichever it sits in.
 - Polling attributes are only rendered while the thing is actually in flight, so the poll
   stops itself.
 - htmx does not swap on a 4xx: an action that fails returns 200 with the unchanged

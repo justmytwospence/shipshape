@@ -21,11 +21,12 @@ server on 127.0.0.1 and the deployed container's address; CDP stays on 127.0.0.1
 
 ```
 docker run -d --rm --name ss-chrome --network host --shm-size=1g \
+  -v "$PWD/bin/shots-fonts.conf:/etc/fonts/local.conf:ro" \
   gcr.io/zenika-hub/alpine-chrome:124 --no-sandbox --disable-gpu \
   --disable-dev-shm-usage --remote-debugging-port=9222 --hide-scrollbars about:blank
 ```
 
-If Polypane *is* up, prefer it for interactive states (drawer open, dialog, keyboard
+If Polypane *is* up, prefer it for interactive states (pane filled, dialog, keyboard
 focus) through the `chrome-devtools` MCP server — it is a real browser at every
 breakpoint at once. It is also the operator's own session: look, don't click through
 merges, deploys or rollbacks.
@@ -61,12 +62,15 @@ detail:
 | Flag | What it means | Usually |
 |---|---|---|
 | `horizontalOverflow` | the document is wider than the viewport | a `nowrap` table or a fixed width on a phone |
-| `nestedScroll` (>1 scroller) | scroll regions inside scroll regions | a fixed-height card inside a scrolling page — hostile on touch |
-| `smallTargets` | interactive elements under 44px tall | icon buttons, link-styled buttons, dense table actions |
+| `nestedScroll` (>1 scroller, phone only) | scroll regions inside scroll regions | an `overflow-y-auto` or fixed height that lost its `lg:` prefix |
+| `smallTargets` (phone only) | interactive elements under 44px tall (40 for tabs) | icon buttons, link-styled buttons, dense row actions |
+| `rowsVisible` | `[data-row]` elements on screen | should be 20+ on a list page at 1440×900, ~15 on a phone; a drop is a regression |
 
 A flag that was not there before is a regression. On the phone shots also check by eye:
 is the primary action reachable without scrolling sideways; is anything hidden behind the
-dock; does the sheet clear the home indicator.
+dock; does the action bar clear the home indicator. On the desktop shots: does the list
+fill its column, is the pane showing what the selected row is about, do the columns of
+neighbouring rows line up.
 
 ## 5. Checklist before reporting done
 

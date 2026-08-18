@@ -159,20 +159,39 @@ const PROBE_JS = `(() => {
     // An inline link is text, wherever it sits. Flagging every one of them buries the
     // controls that genuinely are too small to hit.
     if (el.tagName === 'A' && s.display.indexOf('inline') === 0) continue
-    if (r.height < 44 || r.width < 24) {
+    // Inside a closed <details>: not on screen, whatever the box model says.
+    if (el.closest('details:not([open])') && !el.closest('summary')) continue
+    // A checkbox, radio or text field inside (or named by) a label: the label is the
+    // target, and it is measured on its own turn.
+    if (el.tagName === 'INPUT') {
+      var lbl = el.closest('label') || (el.id && document.querySelector('label[for="' + el.id + '"]'))
+      if (lbl) continue
+    }
+    // A segmented control's tabs are 40px, on purpose: they fill the toolbar row.
+    var min = el.closest('[role=tablist]') ? 40 : 44
+    if (r.height < min || r.width < 24) {
       small.push((el.tagName.toLowerCase()) + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\\s+/).slice(0,2).join('.') : '') + ' ' + Math.round(r.width) + 'x' + Math.round(r.height))
     }
   }
   const scrollers = []
   for (const el of document.querySelectorAll('*')) {
+    if (el.tagName === 'TEXTAREA') continue // scrolls by nature
     const s = getComputedStyle(el)
     if ((s.overflowY === 'auto' || s.overflowY === 'scroll') && el.scrollHeight > el.clientHeight + 2) {
       scrollers.push((el.tagName.toLowerCase()) + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\\s+/).slice(0,2).join('.') : ''))
     }
   }
+  // How dense the list is: rows with any part on screen. The whole point of the
+  // application frame was to get this from 7 to 20.
+  var rowsVisible = 0
+  for (const el of document.querySelectorAll('[data-row]')) {
+    const r = el.getBoundingClientRect()
+    if (r.height > 0 && r.top < innerHeight && r.bottom > 0) rowsVisible++
+  }
   return {
     title: document.title,
     theme: doc.getAttribute('data-bs-theme') || doc.getAttribute('data-theme') || '(none)',
+    rowsVisible: rowsVisible,
     docScrollWidth: doc.scrollWidth,
     innerWidth: innerWidth,
     horizontalOverflow: doc.scrollWidth > innerWidth + 1,
@@ -211,6 +230,14 @@ async function shoot(sess, { url, viewport, scheme, theme, full }) {
   await sleep(200)
 
   const probes = await sess.evaluate(PROBE_JS)
+  // Two rules are phone rules. On a desktop the list and the pane are meant to be two
+  // scrollers, and controls are sized for a pointer; flagging either there is noise
+  // that buries the real regressions.
+  if (probes && !viewport.mobile) {
+    probes.nestedScroll = false
+    probes.smallTargetCount = 0
+    probes.smallTargets = []
+  }
   const opts = { format: 'png' }
   if (full) {
     const m = await sess.send('Page.getLayoutMetrics')
@@ -239,6 +266,7 @@ function contactSheet({ label, base, rows, compare }) {
     if (r.probes?.horizontalOverflow) flags.push('<b class="bad">horizontal overflow</b>')
     if (r.probes?.nestedScroll) flags.push(`<b class="warn">${r.probes.verticalScrollers.length} scroll regions</b>`)
     if (r.probes?.smallTargetCount) flags.push(`<b class="warn">${r.probes.smallTargetCount} small targets</b>`)
+    if (r.probes?.rowsVisible) flags.push(`${r.probes.rowsVisible} rows visible`)
     if (r.error) flags.push(`<b class="bad">${r.error}</b>`)
     const img = (l, f) => `<figure><figcaption>${l}</figcaption><img loading="lazy" src="${f}"></figure>`
     return `<div class="cell">
@@ -331,6 +359,7 @@ for (const route of args.routes) {
             p.horizontalOverflow ? 'OVERFLOW' : '',
             p.nestedScroll ? `${p.verticalScrollers.length} scrollers` : '',
             p.smallTargetCount ? `${p.smallTargetCount} small` : '',
+            p.rowsVisible ? `${p.rowsVisible} rows` : '',
           ]
             .filter(Boolean)
             .join(' ')

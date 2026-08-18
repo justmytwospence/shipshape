@@ -21,7 +21,7 @@ export function serviceRows(): ServiceRowData[] {
     getDb()
       .prepare(
         `SELECT stack, service, repository, current_tag, watched, unwatchable,
-                last_status, last_detail, constrained_from, last_seen_at
+                last_status, last_detail, constrained_from, last_seen_at, policy_label
            FROM images ORDER BY stack, service`,
       )
       .all() as {
@@ -35,6 +35,7 @@ export function serviceRows(): ServiceRowData[] {
       last_detail: string | null
       constrained_from: string | null
       last_seen_at: string | null
+      policy_label: string | null
     }[]
   ).map((r) => ({
     stack: r.stack,
@@ -47,6 +48,7 @@ export function serviceRows(): ServiceRowData[] {
     lastDetail: r.last_detail,
     constrainedFrom: r.constrained_from,
     lastSeenAt: r.last_seen_at,
+    policy: r.policy_label,
   }))
 }
 

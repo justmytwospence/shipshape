@@ -93,6 +93,23 @@
 
 @theme {
   --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  /*
+   * The type scale, tightened. 13px body and 11px small is the density of a tool that
+   * lists a hundred things, not of a page that presents six. Done here rather than by
+   * shrinking the root font size, because every daisyUI control height is rem-based and
+   * would collapse with it -- and every existing `text-xs` would need re-tiering.
+   */
+  --text-xs: 0.6875rem;
+  --text-xs--line-height: 1.4;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.45;
+}
+
+@layer base {
+  body {
+    font-size: var(--text-sm);
+    line-height: 1.45;
+  }
 }
 
 @layer components {
@@ -115,17 +132,54 @@
   .pb-dock {
     padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
   }
-  /* The action bar sits above the dock rather than under it. */
+  /* The action bar sits above the dock on a phone. On a desktop it pins to the top of
+   * the pane instead, so a long changelog never puts the decision off screen either way. */
   .actionbar {
     position: sticky;
     bottom: calc(4rem + env(safe-area-inset-bottom));
     z-index: 10;
   }
+  @media (width >= 64rem) {
+    .actionbar {
+      top: 0;
+      bottom: auto;
+    }
+  }
+  /* A form's save bar stays at the bottom on both: above the dock, or at the foot of the
+   * pane it scrolls in. */
+  .savebar {
+    position: sticky;
+    bottom: calc(4rem + env(safe-area-inset-bottom));
+    z-index: 10;
+  }
+  @media (width >= 64rem) {
+    .savebar {
+      bottom: 0;
+    }
+  }
 
-  /* A touch target you can actually hit. 16px icon buttons are not one. */
+  /* A touch target you can actually hit. 16px icon buttons are not one. 44px is a rule
+   * about fingers, not about width, so it lifts where there is a pointer. */
   .tap {
     min-height: 2.75rem;
     min-width: 2.75rem;
+  }
+  @media (width >= 64rem) {
+    .tap {
+      min-height: 0;
+      min-width: 0;
+    }
+  }
+
+  /* A row of controls that scrolls sideways on a phone with no scrollbar showing. Its
+   * overflow-y is hidden on purpose so it never reads as a vertical scroller. */
+  .scroll-x {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  .scroll-x::-webkit-scrollbar {
+    display: none;
   }
 
   /* ------------------------------------------------------------------ a diff

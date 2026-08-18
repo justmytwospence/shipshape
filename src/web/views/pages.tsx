@@ -1,36 +1,34 @@
 import type { FC } from 'hono/jsx'
-import { Layout } from './ui/shell.tsx'
-import { InboxBody, StatusStrip, type InboxData } from './ui/inbox.tsx'
-import { UpdateCard, UpdateDetail, UpdateRow } from './ui/update.tsx'
-import { EmptyState } from './ui/parts.tsx'
+import { Layout, Split } from './ui/shell.tsx'
+import { InboxAside, InboxList, ScanControls, type InboxData } from './ui/inbox.tsx'
+import { UpdateRow } from './ui/update.tsx'
+import { EmptyState, ListCount, Search, Tabs } from './ui/parts.tsx'
 import {
   RawPolicy,
   SettingsForm,
+  SettingsNav,
   SettingsTabs,
   StatusBody,
   type SettingValue,
   type StatusData,
 } from './ui/settings.tsx'
+import { ActivityList, ActivityToolbar, type ActivityRow } from './ui/activity.tsx'
 import {
-  ActivityList,
-  ActivityToolbar,
-  type ActivityRow,
-} from './ui/activity.tsx'
-import {
-  ServiceDetail,
   ServicesList,
   ServicesToolbar,
-  type ServiceDetailData,
   type ServiceRowData,
 } from './ui/services.tsx'
-import type { Milestone, StageFilter, UpdateView } from '../../updates/queries.ts'
+import type { StageFilter, UpdateView } from '../../updates/queries.ts'
 
 /**
  * The pages, assembled from the parts.
  *
- * Each one renders as a whole document or as a fragment of itself, because htmx swaps
- * the fragment and a full navigation needs the document -- and on a phone every list row
- * is a real link to a real page, so both paths have to exist for the same content.
+ * Every list page is the same shape: a toolbar, a list, and a pane. On a desktop all
+ * three are on screen at once and a row fills the pane; on a phone the list is the page
+ * and a row navigates to its own. A `detail` turns the same page inside out -- the pane
+ * is filled, the row is marked, and below lg only the pane renders -- which is what a
+ * direct load of `/updates/7?list=inbox` produces, so back and reload always land on
+ * something the server drew whole.
  */
 
 export interface PageChrome {
@@ -40,27 +38,42 @@ export interface PageChrome {
   theme?: string
 }
 
-export const InboxPage: FC<{ data: InboxData; chrome: PageChrome }> = ({ data, chrome }) => (
+/** A filled pane, and what the phone bar says while it is the page. */
+export interface Detail {
+  pane: unknown
+  title: string
+  back: { href: string; label: string }
+}
+
+// ------------------------------------------------------------------- inbox
+
+export const InboxPage: FC<{
+  data: InboxData
+  chrome: PageChrome
+  selectedId?: number
+  detail?: Detail
+}> = ({ data, chrome, selectedId, detail }) => (
   <Layout
-    title="Inbox"
+    title={detail?.title ?? 'Inbox'}
+    section="Inbox"
     nav="inbox"
+    back={detail?.back}
+    detail={!!detail}
+    actions={<ScanControls scan={data.scan} />}
+    count={<ListCount n={data.needsYou.length} />}
     paused={chrome.paused}
     missing={chrome.missing}
     theme={chrome.theme}
-    subtitle={summarise(data)}
   >
-    <StatusStrip scan={data.scan} />
-    <InboxBody data={data} />
+    <Split
+      list={<InboxList data={data} selectedId={selectedId} />}
+      pane={detail?.pane ?? <InboxAside data={data} />}
+      mode={detail ? 'detail' : 'list'}
+    />
   </Layout>
 )
 
-function summarise(data: InboxData): string {
-  const n = data.needsYou.length
-  if (n === 0) return 'Nothing is waiting on you'
-  const kinds = new Set(data.needsYou.map((i) => i.kind))
-  const bad = [...kinds].some((k) => k === 'deploy-failed' || k === 'rolled-back' || k === 'degraded')
-  return `${n} waiting on you${bad ? ' — something is broken' : ''}`
-}
+// ----------------------------------------------------------------- updates
 
 const STAGES: { key: StageFilter; label: string }[] = [
   { key: 'open', label: 'Open' },
@@ -70,80 +83,49 @@ const STAGES: { key: StageFilter; label: string }[] = [
   { key: 'all', label: 'All' },
 ]
 
-export const UpdatesToolbar: FC<{ stage: StageFilter; q: string }> = ({ stage, q }) => (
+const MAGNITUDES = [
+  { key: 'all', label: 'Any size' },
+  { key: 'major', label: 'Major' },
+  { key: 'minor', label: 'Minor' },
+  { key: 'patch', label: 'Patch' },
+  { key: 'digest', label: 'Digest' },
+]
+
+/** The filter asks the page itself for its list, so the URL it pushes reloads whole. */
+export const UpdatesToolbar: FC<{ stage: StageFilter; q: string; magnitude: string }> = ({
+  stage,
+  q,
+  magnitude,
+}) => (
   <form
-    class="flex flex-wrap items-center gap-2"
-    hx-get="/fragments/updates"
+    class="flex shrink-0 items-center gap-2"
+    hx-get="/updates"
     hx-target="#updates-list"
     hx-swap="innerHTML"
     hx-push-url="true"
     hx-trigger="change, input changed delay:250ms from:[data-search], search from:[data-search]"
     hx-indicator="#busy"
   >
-    <div class="filter">
-      {STAGES.map((s) => (
-        <input
-          type="radio"
-          name="stage"
-          value={s.key}
-          class="btn btn-sm tap md:min-h-8"
-          aria-label={s.label}
-          checked={s.key === stage}
-        />
-      ))}
-    </div>
-    <label class="input input-sm tap w-full max-w-56 md:min-h-8">
-      <input
-        type="search"
-        name="q"
-        value={q}
-        data-search
-        placeholder="service, stack or image"
-        class="grow"
-      />
-    </label>
+    <Tabs name="stage" value={stage} options={STAGES} label="Stage" />
+    <Tabs name="magnitude" value={magnitude} options={MAGNITUDES} label="Size" />
+    <Search value={q} placeholder="service, stack or image" />
   </form>
 )
 
-export const UpdatesList: FC<{ updates: UpdateView[]; twoPane?: boolean }> = ({
+export const UpdatesList: FC<{ updates: UpdateView[]; ctx: string; selectedId?: number }> = ({
   updates,
-  twoPane,
+  ctx,
+  selectedId,
 }) => {
   if (updates.length === 0) {
     return <EmptyState icon="check" title="Nothing here." hint="Try another filter." />
   }
-  const target = twoPane ? '#pane' : '#sheet-body'
   return (
-    <>
-      {/* Cards on a phone, a table where there is room for one. Two renderings of the
-          same rows rather than a table that pretends to work at 390px. */}
-      <div class="flex flex-col gap-2 lg:hidden">
-        {updates.map((u) => (
-          <UpdateCard update={u} target={target} />
-        ))}
-      </div>
-      <div class="hidden overflow-x-auto lg:block">
-        <table class="table table-sm">
-          <thead>
-            <tr>
-              <th scope="col">Service</th>
-              <th scope="col">Change</th>
-              <th scope="col">Size</th>
-              <th scope="col">Review</th>
-              <th scope="col">Stage</th>
-              <th scope="col" class="text-right">
-                Updated
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {updates.map((u) => (
-              <UpdateRow update={u} target={target} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </>
+    <div class="divide-base-300 divide-y">
+      {updates.map((u) => (
+        <UpdateRow update={u} ctx={ctx} selected={u.id === selectedId} showStage />
+      ))}
+    </div>
   )
 }
 
@@ -151,89 +133,81 @@ export const UpdatesPage: FC<{
   updates: UpdateView[]
   stage: StageFilter
   q: string
+  magnitude: string
+  ctx: string
   chrome: PageChrome
-  pane?: unknown
-}> = ({ updates, stage, q, chrome, pane }) => (
+  selectedId?: number
+  detail?: Detail
+}> = ({ updates, stage, q, magnitude, ctx, chrome, selectedId, detail }) => (
   <Layout
-    title="Updates"
+    title={detail?.title ?? 'Updates'}
+    section="Updates"
     nav="updates"
+    back={detail?.back}
+    detail={!!detail}
+    toolbar={<UpdatesToolbar stage={stage} q={q} magnitude={magnitude} />}
+    count={<ListCount n={updates.length} />}
     paused={chrome.paused}
     missing={chrome.missing}
     theme={chrome.theme}
-    toolbar={<UpdatesToolbar stage={stage} q={q} />}
-    subtitle={`${updates.length} shown`}
   >
-    <div class="flex gap-6">
-      <div id="updates-list" class="min-w-0 flex-1">
-        <UpdatesList updates={updates} twoPane />
-      </div>
-      {/* The detail lives beside the list on a wide screen and is its own page on a
-          phone, so the same row link works either way. */}
-      <aside id="pane" class="hidden w-[26rem] shrink-0 xl:block">
-        {pane ?? (
-          <div class="text-sm opacity-50">Select an update to see what the review said.</div>
-        )}
-      </aside>
-    </div>
+    <Split
+      list={
+        <div id="updates-list">
+          <UpdatesList updates={updates} ctx={ctx} selectedId={selectedId} />
+        </div>
+      }
+      pane={
+        detail?.pane ?? (
+          <EmptyState icon="updates" title="Select an update" hint="What the review said, and what you can do about it, shows here." />
+        )
+      }
+      mode={detail ? 'detail' : 'list'}
+    />
   </Layout>
 )
+
+// ---------------------------------------------------------------- services
 
 export const ServicesPage: FC<{
   services: ServiceRowData[]
   filter: string
   q: string
   grouped: boolean
+  ctx: string
   chrome: PageChrome
-}> = ({ services, filter, q, grouped, chrome }) => (
+  selected?: { stack: string; service: string } | null
+  detail?: Detail
+}> = ({ services, filter, q, grouped, ctx, chrome, selected, detail }) => (
   <Layout
-    title="Services"
+    title={detail?.title ?? 'Services'}
+    section="Services"
     nav="services"
-    paused={chrome.paused}
-    missing={chrome.missing}
-    theme={chrome.theme}
+    back={detail?.back}
+    detail={!!detail}
     toolbar={<ServicesToolbar filter={filter} q={q} grouped={grouped} />}
-    subtitle={`${services.length} shown`}
-  >
-    <div id="services-list">
-      <ServicesList services={services} grouped={grouped} />
-    </div>
-  </Layout>
-)
-
-export const ServicePage: FC<{ data: ServiceDetailData; chrome: PageChrome }> = ({
-  data,
-  chrome,
-}) => (
-  <Layout
-    title={data.svc.service}
-    nav="services"
-    back={{ href: '/services', label: 'Services' }}
+    count={<ListCount n={services.length} />}
     paused={chrome.paused}
     missing={chrome.missing}
     theme={chrome.theme}
   >
-    <ServiceDetail data={data} />
+    <Split
+      list={
+        <div id="services-list">
+          <ServicesList services={services} grouped={grouped} ctx={ctx} selected={selected} />
+        </div>
+      }
+      pane={
+        detail?.pane ?? (
+          <EmptyState icon="services" title="Select a service" hint="Where each of its settings came from, and its history, show here." />
+        )
+      }
+      mode={detail ? 'detail' : 'list'}
+    />
   </Layout>
 )
 
-export const UpdatePage: FC<{
-  update: UpdateView
-  milestones: Milestone[]
-  warnings?: string[]
-  diff?: unknown
-  chrome: PageChrome
-}> = ({ update, milestones, warnings, diff, chrome }) => (
-  <Layout
-    title={update.service}
-    nav="updates"
-    back={{ href: '/updates', label: 'Updates' }}
-    paused={chrome.paused}
-    missing={chrome.missing}
-    theme={chrome.theme}
-  >
-    <UpdateDetail update={update} milestones={milestones} warnings={warnings} diff={diff} />
-  </Layout>
-)
+// ---------------------------------------------------------------- activity
 
 export const ActivityPage: FC<{
   rows: ActivityRow[]
@@ -251,12 +225,20 @@ export const ActivityPage: FC<{
     missing={chrome.missing}
     theme={chrome.theme}
     toolbar={<ActivityToolbar kind={kind} problems={problems} q={q} />}
+    count={<ListCount n={rows.length} />}
   >
-    <div id="activity-list">
-      <ActivityList rows={rows} repo={repo} more={more} />
-    </div>
+    <Split
+      variant="wide"
+      list={
+        <div id="activity-list">
+          <ActivityList rows={rows} repo={repo} more={more} />
+        </div>
+      }
+    />
   </Layout>
 )
+
+// ---------------------------------------------------------------- settings
 
 export const SettingsPage: FC<{
   tab: string
@@ -266,8 +248,9 @@ export const SettingsPage: FC<{
   readyCount?: number
   /** Rendered after the fields: the prompt editors, on Advanced. */
   extra?: unknown
+  extraNav?: { href: string; label: string }[]
   chrome: PageChrome
-}> = ({ tab, groups, models, banner, readyCount, extra, chrome }) => (
+}> = ({ tab, groups, models, banner, readyCount, extra, extraNav, chrome }) => (
   <Layout
     title="Settings"
     nav="settings"
@@ -275,18 +258,23 @@ export const SettingsPage: FC<{
     missing={chrome.missing}
     theme={chrome.theme}
     toolbar={<SettingsTabs active={tab} />}
-    subtitle={
-      tab === 'advanced' ? 'Tuning. Correct out of the box.' : 'What happens without you.'
-    }
   >
-    <SettingsForm
-      groups={groups}
-      models={models}
-      banner={banner}
-      advanced={tab === 'advanced'}
-      readyCount={readyCount}
+    <Split
+      variant="nav"
+      list={<SettingsNav sections={groups.map((g) => g.title)} extra={extraNav} />}
+      pane={
+        <div class="flex flex-col">
+          <SettingsForm
+            groups={groups}
+            models={models}
+            banner={banner}
+            advanced={tab === 'advanced'}
+            readyCount={readyCount}
+          />
+          {extra ? <div class="flex flex-col">{extra}</div> : null}
+        </div>
+      }
     />
-    {extra ? <div class="mt-6 flex flex-col gap-4">{extra}</div> : null}
   </Layout>
 )
 
@@ -298,21 +286,21 @@ export const StatusPage: FC<{ data: StatusData; chrome: PageChrome }> = ({ data,
     missing={chrome.missing}
     theme={chrome.theme}
     toolbar={<SettingsTabs active="status" />}
-    subtitle="What shipshape is doing, and what it has spent."
   >
-    <StatusBody data={data} />
+    <Split variant="wide" list={<StatusBody data={data} />} />
   </Layout>
 )
 
 export const RawPolicyPage: FC<{ text: string; chrome: PageChrome }> = ({ text, chrome }) => (
   <Layout
     title="policy.yaml"
+    section="Settings · policy.yaml"
     nav="settings"
     back={{ href: '/settings', label: 'Settings' }}
     paused={chrome.paused}
     missing={chrome.missing}
     theme={chrome.theme}
   >
-    <RawPolicy text={text} />
+    <Split variant="wide" list={<RawPolicy text={text} />} />
   </Layout>
 )

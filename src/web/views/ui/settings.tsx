@@ -25,12 +25,12 @@ export const SETTINGS_TABS = [
 ] as const
 
 export const SettingsTabs: FC<{ active: string }> = ({ active }) => (
-  <div role="tablist" class="tabs tabs-box tabs-sm w-fit">
+  <div role="tablist" class="tabs tabs-box tabs-xs w-fit shrink-0 flex-nowrap p-0.5">
     {SETTINGS_TABS.map((t) => (
       <a
         role="tab"
         href={t.href}
-        class={`tab tap md:min-h-8 ${t.key === active ? 'tab-active' : ''}`}
+        class={`tab min-h-10 whitespace-nowrap lg:min-h-0 ${t.key === active ? 'tab-active' : ''}`}
         aria-selected={t.key === active ? 'true' : 'false'}
       >
         {t.label}
@@ -39,18 +39,57 @@ export const SettingsTabs: FC<{ active: string }> = ({ active }) => (
   </div>
 )
 
+/**
+ * The section list beside the form on a desktop. Anchors scroll the pane natively; the
+ * sections carry `scroll-mt` so a heading lands under the toolbar rather than behind it.
+ */
+export const SettingsNav: FC<{ sections: string[]; extra?: { href: string; label: string }[] }> = ({
+  sections,
+  extra,
+}) => (
+  <ul class="menu menu-xs w-full px-2 py-2">
+    {sections.map((title) => (
+      <li>
+        <a href={`#${slug(title)}`}>{title}</a>
+      </li>
+    ))}
+    {extra && extra.length > 0 ? (
+      <>
+        <li class="menu-title pt-2">Prompts</li>
+        {extra.map((e) => (
+          <li>
+            <a href={e.href}>{e.label}</a>
+          </li>
+        ))}
+      </>
+    ) : null}
+  </ul>
+)
+
 const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) => {
   const { def, value, changed } = item
   const id = def.path.replace(/\./g, '-')
+  const help = [
+    def.locked ?? def.help,
+    def.about,
+    !def.locked && changed ? `Default: ${def.defaultLabel ?? def.defaultValue}.` : '',
+  ]
+    .filter(Boolean)
+    .map((part) => String(part).trim())
+    // `help` is a fragment ("x.y.Z"), `about` a sentence. Run together they read as one
+    // broken sentence, so they are joined rather than concatenated.
+    .map((part) => (/[.!?]$/.test(part) ? part : `${part}.`))
+    .join(' ')
   return (
-    <fieldset class="fieldset border-base-300 border-b py-3 last:border-0">
-      <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <label for={id} class="min-w-40 text-sm font-medium">
-          {def.label}
-        </label>
-        <div class="min-w-0 flex-1">
+    <fieldset class="fieldset border-base-300 grid grid-cols-1 gap-x-4 gap-y-1 border-t py-2 first:border-t-0 lg:grid-cols-[11rem_minmax(0,1fr)] lg:items-start">
+      <label for={id} class="flex min-h-8 items-center gap-2 text-sm font-medium">
+        {def.label}
+        {changed ? <span class="badge badge-xs badge-primary badge-soft">changed</span> : null}
+      </label>
+      <div class="min-w-0">
+        <div class="flex min-h-8 items-center">
           {def.locked ? (
-            <span class="font-mono text-sm opacity-70">{value}</span>
+            <span class="font-mono text-xs opacity-70">{value}</span>
           ) : def.kind === 'bool' ? (
             <>
               {/* An unchecked checkbox sends nothing at all, which would read as "no
@@ -62,12 +101,12 @@ const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) 
                 type="checkbox"
                 name={def.path}
                 value="true"
-                class="toggle toggle-md md:toggle-sm"
+                class="toggle toggle-sm"
                 checked={value === 'true'}
               />
             </>
           ) : def.kind === 'enum' && def.options ? (
-            <select id={id} name={def.path} class="select select-sm tap w-full max-w-xs md:min-h-8">
+            <select id={id} name={def.path} class="select select-sm tap w-full max-w-xs">
               {def.options.map((o) => (
                 <option value={o} selected={o === value}>
                   {o}
@@ -82,7 +121,7 @@ const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) 
                 name={def.path}
                 value={value}
                 list={`${id}-models`}
-                class="input input-sm tap w-full max-w-xs font-mono md:min-h-8"
+                class="input input-sm tap w-full max-w-xs font-mono"
               />
               <datalist id={`${id}-models`}>
                 {(models ?? []).map((m) => (
@@ -96,27 +135,12 @@ const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) 
               name={def.path}
               value={value}
               inputmode={def.kind === 'int' || def.kind === 'number' ? 'decimal' : undefined}
-              class={`input input-sm tap w-full max-w-xs md:min-h-8 ${def.kind === 'cron' || def.kind === 'windows' ? 'font-mono' : ''}`}
+              class={`input input-sm tap w-full max-w-xs ${def.kind === 'cron' || def.kind === 'windows' ? 'font-mono' : ''}`}
             />
           )}
         </div>
-        {changed ? <span class="badge badge-xs badge-primary badge-soft">changed</span> : null}
+        {help ? <p class="mt-0.5 max-w-prose text-xs opacity-60">{help}</p> : null}
       </div>
-      {def.help || def.locked || def.about ? (
-        <p class="mt-1 text-xs opacity-60">
-          {/* `help` is a fragment ("x.y.Z"), `about` a sentence. Run together they read as
-              one broken sentence, so they are joined rather than concatenated. */}
-          {[
-            def.locked ?? def.help,
-            def.about,
-            !def.locked && changed ? `Default: ${def.defaultLabel ?? def.defaultValue}.` : '',
-          ]
-            .filter(Boolean)
-            .map((part) => String(part).trim())
-            .map((part) => (/[.!?]$/.test(part) ? part : `${part}.`))
-            .join(' ')}
-        </p>
-      ) : null}
     </fieldset>
   )
 }
@@ -127,20 +151,26 @@ const Section: FC<{
   items: SettingValue[]
   models?: string[]
 }> = ({ title, prose, items, models }) => (
-  <section id={slug(title)} class="card card-border bg-base-100 scroll-mt-20">
-    <div class="card-body gap-0 p-4">
-      <h2 class="text-sm font-semibold">{title}</h2>
-      {/* The explanation lives here rather than behind a link. It was a separate page
-          for a while, which meant answering "what does this actually do" cost a page
-          load and a scroll back to the control you were looking at. */}
+  <section
+    id={slug(title)}
+    class="border-base-300 scroll-mt-2 border-t px-4 py-3 first:border-t-0 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] lg:grid-rows-[auto_1fr] lg:gap-x-8"
+  >
+    <h2 class="text-sm font-semibold lg:col-start-1 lg:row-start-1">{title}</h2>
+    {/* The explanation lives here rather than behind a link. It was a separate page for
+        a while, which meant answering "what does this actually do" cost a page load and
+        a scroll back to the control you were looking at. Beside the fields at lg, above
+        them on a phone. */}
+    <div class="lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:pt-0.5">
       {prose?.map((para) => (
-        <p class="mt-1.5 text-xs leading-relaxed opacity-70">{withCode(para)}</p>
+        <p class="mt-1 max-w-prose text-xs leading-relaxed opacity-60 lg:mt-0 lg:mb-2">
+          {withCode(para)}
+        </p>
       ))}
-      <div class="mt-3">
-        {items.map((item) => (
-          <Field item={item} models={models} />
-        ))}
-      </div>
+    </div>
+    <div class="mt-2 lg:col-start-1 lg:row-start-2 lg:mt-1">
+      {items.map((item) => (
+        <Field item={item} models={models} />
+      ))}
     </div>
   </section>
 )
@@ -170,17 +200,17 @@ export const SettingsForm: FC<{
     hx-target="#settings-form"
     hx-swap="outerHTML"
     hx-indicator="#busy"
-    class="flex flex-col gap-4"
+    class="flex flex-col"
   >
     {banner ? (
       <div
-        class={`alert alert-soft py-2 text-sm ${banner.level === 'error' ? 'alert-error' : 'alert-success'}`}
+        class={`alert alert-soft rounded-none border-x-0 border-t-0 py-1.5 text-xs ${banner.level === 'error' ? 'alert-error' : 'alert-success'}`}
       >
         {banner.text}
       </div>
     ) : null}
     {readyCount ? (
-      <p class="text-xs opacity-60">
+      <p class="border-base-300 border-b px-4 py-2 text-xs opacity-60">
         {readyCount} merged {readyCount === 1 ? 'update is' : 'updates are'} waiting for a
         deploy. Unpausing does not start them — press Deploy on each.
       </p>
@@ -188,7 +218,7 @@ export const SettingsForm: FC<{
     {groups.map((g) => (
       <Section title={g.title} prose={g.prose} items={g.items} models={models} />
     ))}
-    <div class="actionbar bg-base-100/95 border-base-300 flex items-center gap-3 border-t py-3 backdrop-blur lg:static lg:border-0 lg:bg-transparent lg:backdrop-blur-none">
+    <div class="savebar bg-base-100/95 border-base-300 flex items-center gap-3 border-t px-4 py-2 backdrop-blur">
       <button type="submit" class="btn btn-primary btn-sm tap">
         Save changes
       </button>
@@ -238,22 +268,24 @@ const DEPLOY_CLS: Record<string, string> = {
 }
 
 const KV: FC<{ rows: [string, unknown][] }> = ({ rows }) => (
-  <div class="card card-border bg-base-100">
-    <div class="card-body gap-0 p-0">
-      {rows.map(([k, v]) => (
-        <div class="border-base-300 flex items-center gap-3 border-b px-3 py-2 text-sm last:border-0">
-          <span class="w-40 shrink-0 opacity-70">{k}</span>
-          <span class="min-w-0 flex-1 font-mono text-xs break-all">{v}</span>
-        </div>
-      ))}
-    </div>
+  <div class="divide-base-300 border-base-300 divide-y border-y text-xs">
+    {rows.map(([k, v]) => (
+      <div class="flex min-h-7 items-center gap-3">
+        <span class="w-28 shrink-0 opacity-70">{k}</span>
+        <span class="min-w-0 flex-1 font-mono break-all">{v}</span>
+      </div>
+    ))}
   </div>
 )
 
+const H: FC<{ children?: unknown }> = ({ children }) => (
+  <h2 class="mb-1.5 text-xs font-medium tracking-wide uppercase opacity-60">{children}</h2>
+)
+
 export const StatusBody: FC<{ data: StatusData }> = ({ data }) => (
-  <div class="flex flex-col gap-5">
+  <div>
     {data.sandbox ? (
-      <div class="alert alert-info alert-soft py-2 text-sm">
+      <div class="alert alert-info alert-soft rounded-none border-x-0 border-t-0 py-1.5 text-xs">
         {/* Otherwise every credential reads "missing" and the page looks like a broken
             deployment rather than a sandbox that was built not to be able to act. */}
         <span>
@@ -263,99 +295,93 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => (
         </span>
       </div>
     ) : null}
-    <section>
-      <h2 class="mb-2 text-xs font-medium tracking-wide uppercase opacity-60">Clocks</h2>
-      <KV
-        rows={[
-          [
-            'last scan',
-            data.scan.lastAt ? (
-              <>
-                <Relative at={data.scan.lastAt} />
-                {data.scan.durationS ? ` · took ${data.scan.durationS}s` : ''}
-              </>
-            ) : (
-              'never'
-            ),
-          ],
-          [
-            'next scan',
-            data.scan.nextAt ? <Relative at={data.scan.nextAt} /> : `${data.scan.cron} (not scheduled)`,
-          ],
-          ['next digest', data.digest.nextAt ? <Relative at={data.digest.nextAt} /> : 'off'],
-          ['quiet hours', data.blackout.length ? data.blackout.join(', ') : 'none'],
-        ]}
-      />
-    </section>
+    <div class="grid gap-x-8 gap-y-5 p-4 lg:grid-cols-2">
+      <section>
+        <H>Clocks</H>
+        <KV
+          rows={[
+            [
+              'last scan',
+              data.scan.lastAt ? (
+                <>
+                  <Relative at={data.scan.lastAt} />
+                  {data.scan.durationS ? ` · took ${data.scan.durationS}s` : ''}
+                </>
+              ) : (
+                'never'
+              ),
+            ],
+            [
+              'next scan',
+              data.scan.nextAt ? <Relative at={data.scan.nextAt} /> : `${data.scan.cron} (not scheduled)`,
+            ],
+            ['next digest', data.digest.nextAt ? <Relative at={data.digest.nextAt} /> : 'off'],
+            ['quiet hours', data.blackout.length ? data.blackout.join(', ') : 'none'],
+          ]}
+        />
+      </section>
 
-    <section>
-      <h2 class="mb-2 text-xs font-medium tracking-wide uppercase opacity-60">Credentials</h2>
-      <p class="mb-2 text-xs opacity-60">
-        Presence only — values are never read into the UI.
-        {data.sandbox ? ' In the sandbox they are all absent by design.' : ''}
-      </p>
-      <div class="card card-border bg-base-100">
-        <div class="card-body gap-0 p-0">
+      <section>
+        <H>Credentials</H>
+        <div class="divide-base-300 border-base-300 divide-y border-y text-xs">
           {data.credentials.map((cred) => (
-            <div class="border-base-300 flex items-center gap-3 border-b px-3 py-2 text-sm last:border-0">
-              <span class="min-w-0 flex-1 font-mono text-xs">{cred.name}</span>
+            <div class="flex min-h-7 items-center gap-3">
+              <span class="min-w-0 flex-1 font-mono">{cred.name}</span>
               <span class={`badge badge-xs badge-soft ${CRED_CLS[cred.state]}`}>{cred.state}</span>
             </div>
           ))}
         </div>
-      </div>
-    </section>
+        <p class="mt-1 text-xs opacity-50">
+          Presence only — values are never read into the UI.
+          {data.sandbox ? ' In the sandbox they are all absent by design.' : ''}
+        </p>
+      </section>
 
-    <section>
-      <h2 class="mb-2 text-xs font-medium tracking-wide uppercase opacity-60">
-        Changelog review, this month
-      </h2>
-      <div class="card card-border bg-base-100">
-        <div class="card-body gap-2 p-4">
-          <div class="flex items-baseline justify-between text-sm">
-            <span>
-              ${data.spentUsd.toFixed(2)} of ${data.budgetUsd.toFixed(2)}
-            </span>
-            <span class="text-xs opacity-60">
-              {data.budgetUsd > 0 ? Math.round((data.spentUsd / data.budgetUsd) * 100) : 0}%
-            </span>
-          </div>
-          <progress
-            class="progress progress-primary w-full"
-            value={String(data.spentUsd)}
-            max={String(Math.max(data.budgetUsd, data.spentUsd))}
-          />
-          {data.spend.map((s) => (
-            <div class="flex items-baseline justify-between text-xs opacity-70">
-              <span class="font-mono">{s.model}</span>
-              <span>
-                {s.purpose} · {s.calls} calls · ${s.cost.toFixed(2)}
+      <section>
+        <H>Changelog review, this month</H>
+        <div class="flex items-baseline justify-between text-sm">
+          <span>
+            ${data.spentUsd.toFixed(2)} of ${data.budgetUsd.toFixed(2)}
+          </span>
+          <span class="text-xs opacity-60">
+            {data.budgetUsd > 0 ? Math.round((data.spentUsd / data.budgetUsd) * 100) : 0}%
+          </span>
+        </div>
+        <progress
+          class="progress progress-primary my-1 w-full"
+          value={String(data.spentUsd)}
+          max={String(Math.max(data.budgetUsd, data.spentUsd))}
+        />
+        <div class="divide-base-300 border-base-300 divide-y border-y text-xs">
+          {data.spend.map((sp) => (
+            <div class="flex min-h-7 items-center justify-between gap-3">
+              <span class="min-w-0 truncate font-mono">{sp.model}</span>
+              <span class="shrink-0 opacity-70">
+                {sp.purpose} · {sp.calls} calls · ${sp.cost.toFixed(2)}
               </span>
             </div>
           ))}
-          <p class="text-xs opacity-50">
-            Reaching the budget pauses reviews and drafting. It never stops a pull request
-            opening.
-          </p>
         </div>
-      </div>
-    </section>
-
-    <section>
-      <h2 class="mb-2 text-xs font-medium tracking-wide uppercase opacity-60">Recent deploys</h2>
-      {data.deploys.length === 0 ? (
-        <p class="text-sm opacity-60">
-          Nothing has been deployed by shipshape yet. A merge queues one; while it is
-          paused, the button starts it.
+        <p class="mt-1 text-xs opacity-50">
+          Reaching the budget pauses reviews and drafting. It never stops a pull request
+          opening.
         </p>
-      ) : (
-        <div class="card card-border bg-base-100">
-          <div class="card-body gap-0 p-0">
+      </section>
+
+      <section>
+        <H>Recent deploys</H>
+        {data.deploys.length === 0 ? (
+          <p class="text-xs opacity-60">
+            Nothing has been deployed by shipshape yet. A merge queues one; while it is
+            paused, the button starts it.
+          </p>
+        ) : (
+          <div class="divide-base-300 border-base-300 divide-y border-y text-xs">
             {data.deploys.map((d) => (
-              <div class="border-base-300 flex items-center gap-3 border-b px-3 py-2 text-sm last:border-0">
-                <span class="min-w-0 flex-1">
+              <div class="flex min-h-7 items-center gap-3">
+                <span class="min-w-0 flex-1 truncate">
                   <span class="font-medium">{d.stack}</span>
-                  <span class="ml-2 font-mono text-xs opacity-60">{d.services}</span>
+                  <span class="ml-2 font-mono opacity-60">{d.services}</span>
                 </span>
                 {d.trigger !== 'queue' ? (
                   <span class="badge badge-xs badge-ghost">{d.trigger}</span>
@@ -367,48 +393,44 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => (
               </div>
             ))}
           </div>
+        )}
+      </section>
+
+      <section>
+        <H>This deployment</H>
+        <KV
+          rows={[
+            ['version', data.version],
+            ['checkout', data.repoDir],
+            ['repository', data.repo],
+            ['merge method', data.mergeMethod],
+            ['publishes main', String(data.pushMain)],
+          ]}
+        />
+      </section>
+
+      <section>
+        <H>Counters</H>
+        <KV rows={data.budgets.map((b) => [b.key, `${b.value}${b.window ? ` (${b.window})` : ''}`])} />
+      </section>
+
+      <section class="lg:col-span-2">
+        <H>What would merge on its own</H>
+        <div
+          class="border-base-300 border-y"
+          hx-get="/merge/preview"
+          hx-trigger="load"
+          hx-swap="innerHTML"
+        >
+          <div class="py-2 text-xs opacity-60">checking…</div>
         </div>
-      )}
-    </section>
-
-    <section>
-      <h2 class="mb-2 text-xs font-medium tracking-wide uppercase opacity-60">This deployment</h2>
-      <KV
-        rows={[
-          ['version', data.version],
-          ['checkout', data.repoDir],
-          ['repository', data.repo],
-          ['merge method', data.mergeMethod],
-          ['publishes main', String(data.pushMain)],
-        ]}
-      />
-    </section>
-
-    <section>
-      <h2 class="mb-2 text-xs font-medium tracking-wide uppercase opacity-60">Counters</h2>
-      <KV rows={data.budgets.map((b) => [b.key, `${b.value}${b.window ? ` (${b.window})` : ''}`])} />
-    </section>
-
-    <section>
-      <h2 class="mb-2 text-xs font-medium tracking-wide uppercase opacity-60">
-        What would merge on its own
-      </h2>
-      <div
-        class="card card-border bg-base-100"
-        hx-get="/merge/preview"
-        hx-trigger="load"
-        hx-swap="innerHTML"
-      >
-        <div class="card-body p-4 text-sm opacity-60">checking…</div>
-      </div>
-    </section>
+      </section>
+    </div>
   </div>
 )
 
 export const RawPolicy: FC<{ text: string }> = ({ text }) => (
-  <pre class="bg-base-100 border-base-300 overflow-x-auto rounded border p-4 font-mono text-xs">
-    {text}
-  </pre>
+  <pre class="p-4 font-mono text-xs break-words whitespace-pre-wrap">{text}</pre>
 )
 
 export const PromptEditor: FC<{
@@ -418,45 +440,43 @@ export const PromptEditor: FC<{
   text: string
   customised: boolean
 }> = ({ name, title, help, text, customised }) => (
-  <div id={`prompt-${name}`} class="card card-border bg-base-100">
-    <div class="card-body gap-2 p-4">
-      <div class="flex items-center gap-2">
-        <h2 class="text-sm font-semibold">{title}</h2>
-        <span class={`badge badge-xs badge-soft ${customised ? 'badge-primary' : 'badge-neutral'}`}>
-          {customised ? 'edited' : 'default'}
-        </span>
-      </div>
-      <p class="text-xs opacity-60">{help}</p>
-      <form
-        hx-post={`/settings/prompt/${name}`}
-        hx-target={`#prompt-${name}`}
-        hx-swap="outerHTML"
-        hx-indicator="#busy"
-        class="flex flex-col gap-2"
-      >
-        <textarea name="text" rows={14} class="textarea w-full font-mono text-xs">
-          {text}
-        </textarea>
-        <div class="flex items-center gap-2">
-          <button type="submit" class="btn btn-primary btn-sm tap">
-            Save prompt
-          </button>
-          {customised ? (
-            <button
-              type="button"
-              class="btn btn-ghost btn-sm tap"
-              hx-post={`/settings/prompt/${name}/reset`}
-              hx-target={`#prompt-${name}`}
-              hx-swap="outerHTML"
-            >
-              Reset to default
-            </button>
-          ) : null}
-          <span class="text-xs opacity-50">Takes effect on the next call.</span>
-        </div>
-      </form>
+  <section id={`prompt-${name}`} class="border-base-300 scroll-mt-2 border-t px-4 py-3">
+    <div class="flex items-center gap-2">
+      <h2 class="text-sm font-semibold">{title}</h2>
+      <span class={`badge badge-xs badge-soft ${customised ? 'badge-primary' : 'badge-ghost'}`}>
+        {customised ? 'edited' : 'default'}
+      </span>
     </div>
-  </div>
+    <p class="mt-1 max-w-prose text-xs opacity-60">{help}</p>
+    <form
+      hx-post={`/settings/prompt/${name}`}
+      hx-target={`#prompt-${name}`}
+      hx-swap="outerHTML"
+      hx-indicator="#busy"
+      class="mt-2 flex flex-col gap-2"
+    >
+      <textarea name="text" rows={12} class="textarea textarea-sm w-full font-mono text-xs">
+        {text}
+      </textarea>
+      <div class="flex items-center gap-2">
+        <button type="submit" class="btn btn-primary btn-sm tap">
+          Save prompt
+        </button>
+        {customised ? (
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm tap"
+            hx-post={`/settings/prompt/${name}/reset`}
+            hx-target={`#prompt-${name}`}
+            hx-swap="outerHTML"
+          >
+            Reset to default
+          </button>
+        ) : null}
+        <span class="text-xs opacity-50">Takes effect on the next call.</span>
+      </div>
+    </form>
+  </section>
 )
 
 export const DigestPreview: FC<{ title: string | null; body: string | null; count: number }> = ({

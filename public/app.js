@@ -1,9 +1,9 @@
 /**
  * Everything the interface needs beyond htmx, which is not much.
  *
- * Four jobs: remember the theme, show what an action did, open the detail panel after
- * its content arrives, and let a keyboard work the queue. No framework, no build step --
- * this file is served as written.
+ * Four jobs: remember the theme, show what an action did, mark which row the pane is
+ * showing, and let a keyboard work the queue. No framework, no build step -- this file
+ * is served as written.
  */
 ;(function () {
   'use strict'
@@ -102,51 +102,86 @@
     }
   })
 
-  // The panel opens once its content has landed, not before: an empty sheet sliding up
-  // and filling in afterwards reads as a stutter, and on a slow request as a bug.
-  document.body.addEventListener('htmx:afterSwap', function (e) {
-    if (e.target && e.target.id === 'sheet-body') {
-      var sheet = document.getElementById('sheet')
-      if (sheet && sheet.showModal && !sheet.open) sheet.showModal()
-    }
-  })
+  // ------------------------------------------------------------------- rows
+  //
+  // A row is a link that htmx upgrades to fill the pane. On a phone there is no pane, so
+  // the link has to be left alone to navigate -- and that cannot be a `click[...]`
+  // filter on the trigger, because htmx cancels an anchor's default action before it
+  // evaluates the filter. This runs in the capture phase, ahead of htmx's own listener
+  // on the element, and stops the event reaching it; the browser then follows the href.
+  var wide = matchMedia('(min-width:1024px)')
+  document.addEventListener(
+    'click',
+    function (e) {
+      if (wide.matches) return
+      var row = e.target.closest('[data-row]')
+      if (row) e.stopPropagation()
+    },
+    true,
+  )
 
-  var sheet = document.getElementById('sheet')
-  if (sheet) {
-    sheet.addEventListener('close', function () {
-      var body = document.getElementById('sheet-body')
-      if (body) body.innerHTML = ''
+  // --------------------------------------------------------------- selection
+  //
+  // The pane shows one row's detail; that row is `aria-current`. The server marks it on
+  // a direct load, and after a row fills the pane the URL says which one it is, so the
+  // mark follows the URL: on load, after every swap, and after every push. A list that
+  // polls itself keeps the mark the same way, since a redrawn row starts unmarked.
+  function markSelected() {
+    var path = location.pathname
+    document.querySelectorAll('[data-row]').forEach(function (r) {
+      var href = r.getAttribute('href') || ''
+      var at = href.indexOf('?')
+      if (at !== -1) href = href.slice(0, at)
+      if (href === path) r.setAttribute('aria-current', 'true')
+      else r.removeAttribute('aria-current')
     })
   }
+  addEventListener('DOMContentLoaded', markSelected)
+  document.body.addEventListener('htmx:afterSettle', markSelected)
+  document.body.addEventListener('htmx:pushedIntoHistory', markSelected)
 
   // ---------------------------------------------------------------- keyboard
   //
-  // A backlog of eight is a lot of pointing. j/k move, Enter opens, m does the thing the
-  // row's button says, s skips. Nothing here fires while typing.
+  // A backlog of eight is a lot of pointing. j/k move a cursor through the rows and, on
+  // a desktop, fill the pane with the row it lands on; Enter opens it; m does the thing
+  // the pane's button says, s skips. Nothing here fires while typing.
   function rows() {
     return Array.prototype.slice.call(document.querySelectorAll('[data-row]'))
   }
-  function focused() {
+  function cursor() {
+    var el = document.activeElement
+    if (el && el.hasAttribute && el.hasAttribute('data-row')) return el
     return document.querySelector('[data-row][aria-current="true"]')
   }
+  var loadTimer = null
   function focus(el) {
-    rows().forEach(function (r) {
-      r.removeAttribute('aria-current')
-    })
     if (!el) return
-    el.setAttribute('aria-current', 'true')
     el.focus({ preventScroll: true })
     el.scrollIntoView({ block: 'nearest' })
+    // Fill the pane once the cursor rests, not on every keypress through the list.
+    if (wide.matches && window.htmx) {
+      clearTimeout(loadTimer)
+      loadTimer = setTimeout(function () {
+        if (document.activeElement === el) el.click()
+      }, 200)
+    }
   }
   function move(delta) {
     var all = rows()
     if (!all.length) return
-    var at = all.indexOf(focused())
+    var at = all.indexOf(cursor())
     focus(all[Math.max(0, Math.min(all.length - 1, at === -1 ? 0 : at + delta))])
   }
+  // The pane's buttons first -- it shows the row you are looking at -- then the cursor
+  // row's inline button.
   function click(selector) {
-    var scope = focused() || document
-    var el = scope.querySelector(selector) || document.querySelector('[data-panel] ' + selector)
+    var pane = document.querySelector('[data-panel]')
+    var el = (pane && pane.querySelector(selector)) || null
+    if (!el) {
+      var row = cursor()
+      var wrap = row && row.parentElement
+      el = wrap ? wrap.querySelector(selector) : null
+    }
     if (el) el.click()
   }
 
@@ -177,9 +212,9 @@
         move(-1)
         break
       case 'Enter':
-        if (focused()) {
+        if (cursor()) {
           e.preventDefault()
-          focused().click()
+          cursor().click()
         }
         break
       case 'm':

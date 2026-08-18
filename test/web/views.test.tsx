@@ -1,5 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { renderAll, classesOf, builtCss } from './fixtures.tsx'
 
 /**
@@ -15,9 +17,33 @@ import { renderAll, classesOf, builtCss } from './fixtures.tsx'
 const VIEWS = renderAll()
 const RUNNING = renderAll({ running: true })
 
+const PAGES = [
+  'inbox-page',
+  'inbox-detail-page',
+  'updates-page',
+  'update-page',
+  'services-page',
+  'service-page',
+  'activity-page',
+  'settings-page',
+  'layout',
+  'layout-setup',
+]
+const FRAGMENTS = [
+  'inbox',
+  'inbox-aside',
+  'update-detail',
+  'update-row',
+  'services',
+  'service-detail',
+  'activity',
+  'settings',
+  'status',
+]
+
 /** Tailwind escapes the characters that are not valid in a CSS identifier. */
 function escapeClass(cls: string): string {
-  return cls.replace(/[.:/[\]()%!#,+*~>&']/g, (ch) => `\\${ch}`)
+  return cls.replace(/[.:/[\]()%!#,+*~>&'=]/g, (ch) => `\\${ch}`)
 }
 
 /** State classes owned by htmx or the browser, never declared by us. */
@@ -44,7 +70,7 @@ test('every bespoke class is actually used', () => {
   // weight that outlives the markup it was for.
   const source = builtCss()
   const rendered = new Set(Object.values(VIEWS).flatMap((h) => classesOf(h)))
-  for (const cls of ['pb-safe', 'pb-dock', 'actionbar', 'tap', 'dl', 'tl-future']) {
+  for (const cls of ['pb-safe', 'pb-dock', 'actionbar', 'savebar', 'tap', 'scroll-x', 'dl', 'tl-future']) {
     assert.ok(source.includes(`.${cls}`), `${cls} is declared`)
     if (cls === 'dl' || cls === 'tl-future') continue // rendered only with a diff or a soak
     assert.ok(rendered.has(cls), `${cls} is used by some view`)
@@ -52,13 +78,13 @@ test('every bespoke class is actually used', () => {
 })
 
 test('a page is a whole document and a fragment is not', () => {
-  for (const key of ['inbox-page', 'update-page', 'layout', 'layout-setup']) {
+  for (const key of PAGES) {
     const html = VIEWS[key]!
     assert.match(html, /^<html lang="en"[ >]/, key)
     assert.match(html, /<\/html>$/, key)
     assert.match(html, /<title>[^<]+ · shipshape<\/title>/, key)
   }
-  for (const key of ['inbox', 'update-detail', 'update-card', 'services', 'activity', 'settings']) {
+  for (const key of FRAGMENTS) {
     assert.doesNotMatch(VIEWS[key]!, /<html[ >]|<head>|<body[ >]/, key)
   }
 })
@@ -93,52 +119,105 @@ test('both navigations exist, keyed to the same breakpoint', () => {
   assert.equal(links, 5, 'five destinations, and no More menu hiding one of them')
 })
 
-test('the panel and the toasts live outside every swapped region', () => {
-  // A detail panel rendered inside the list it was opened from disappears the moment
-  // that list refreshes.
-  const html = VIEWS['inbox-page']!
-  const inbox = html.indexOf('id="inbox"')
-  const sheet = html.indexOf('id="sheet"')
-  const toasts = html.indexOf('id="toasts"')
-  assert.ok(inbox > 0 && sheet > inbox && toasts > inbox)
-  assert.doesNotMatch(VIEWS['inbox']!, /id="sheet"|id="toasts"/, 'and not in the fragment')
+test('back and forward are reloads, not snapshots', () => {
+  // The lists poll, so a cached snapshot restores stale rows; an inner scroller cannot
+  // be restored anyway; and a 149-row page runs into the localStorage quota.
+  assert.match(VIEWS['layout']!, /name="htmx-config" content="\{[^"]*&quot;historyCacheSize&quot;:0/)
+})
+
+test('the pane and the toasts live outside every swapped region', () => {
+  // A pane rendered inside the list it was opened from disappears the moment that list
+  // refreshes -- and there is exactly one of each, or a swap by id picks the wrong one.
+  for (const key of ['inbox-page', 'updates-page', 'services-page']) {
+    const html = VIEWS[key]!
+    const list = html.indexOf('id="list"')
+    const pane = html.indexOf('id="pane"')
+    const toasts = html.indexOf('id="toasts"')
+    assert.ok(list > 0 && pane > list && toasts > pane, key)
+    assert.equal(html.match(/id="pane"/g)?.length, 1, `${key}: one pane`)
+    assert.equal(html.match(/id="toasts"/g)?.length, 1, `${key}: one toast host`)
+  }
+  for (const key of ['inbox', 'update-detail', 'services']) {
+    assert.doesNotMatch(VIEWS[key]!, /id="pane"|id="toasts"/, `${key}: not in the fragment`)
+  }
+  assert.doesNotMatch(VIEWS['layout']!, /id="sheet"/, 'the modal sheet is gone')
+})
+
+test('only the desktop has inner scrollers', () => {
+  // Below lg the document is the only thing that scrolls: nested scroll regions on a
+  // touch screen are what the old dashboard got most wrong. Every fixed height and
+  // every overflow on the frame is therefore behind the lg: prefix.
+  for (const key of ['inbox-page', 'updates-page', 'services-page', 'activity-page', 'settings-page']) {
+    const html = VIEWS[key]!
+    for (const m of html.matchAll(/<(?:section|div|main|body)[^>]*class="([^"]*)"/g)) {
+      for (const cls of m[1]!.split(/\s+/)) {
+        if (/^(overflow-|h-dvh|max-h-)/.test(cls)) {
+          assert.fail(`${key}: "${cls}" scrolls on a phone -- prefix it lg:`)
+        }
+      }
+    }
+  }
 })
 
 test('nothing important is hidden in a title attribute', () => {
   // A tooltip does not exist on a touch screen, which is where these decisions get made.
-  for (const key of ['update-card', 'inbox']) {
+  for (const key of ['update-row', 'inbox']) {
     assert.doesNotMatch(VIEWS[key]!, /title="[^"]*confidence/i, key)
   }
-  const card = VIEWS['update-card']!
-  assert.match(card, /Read first/, 'the verdict is words, not a colour')
-  assert.match(card, /medium/, 'and the confidence is on the card')
-})
-
-test('a row is a link, never a click handler on a table row', () => {
-  // The old rows could not be opened by a keyboard at all.
   const row = VIEWS['update-row']!
-  assert.match(row, /<a href="\/updates\/7"/)
-  assert.doesNotMatch(row, /<tr[^>]*hx-get/, 'the tr itself carries no behaviour')
+  assert.match(row, /Read first/, 'the verdict is words, not a colour')
+  assert.match(row, /medium/, 'and the confidence is on the row')
+})
+
+test('a row is a link that fills the pane on a wide screen and navigates on a narrow one', () => {
+  // The old rows could not be opened by a keyboard at all. One piece of markup, two
+  // behaviours: the trigger filter fails below lg, so the browser follows the href.
+  const row = VIEWS['update-row']!
+  assert.match(row, /<a href="\/updates\/7\?list=inbox"[^>]*data-row/, 'the href carries the list, for the phone')
+  assert.doesNotMatch(row, /<tr/, 'no table')
   assert.doesNotMatch(row, /onclick/)
-  assert.match(VIEWS['update-card']!, /<a href="\/updates\/7"[^>]*data-row/)
+  assert.match(row, /hx-get="\/updates\/7\/panel\?list=inbox"/)
+  assert.match(row, /hx-target="#pane"/)
+  assert.match(row, /hx-swap="innerHTML scroll:top"/)
+  assert.match(row, /hx-push-url="\/updates\/7\?list=inbox"/, 'the URL says which list it came from')
+  // Not a `click[matchMedia(...)]` trigger filter: htmx cancels an anchor's default click
+  // before it evaluates the filter, so that left the phone with rows that did nothing.
+  // The phone/desktop split is a capture-phase listener in app.js.
+  assert.doesNotMatch(row, /hx-trigger="click\[/)
+  const appJs = readFileSync(join(process.cwd(), 'public', 'app.js'), 'utf8')
+  assert.match(appJs, /closest\('\[data-row\]'\)[\s\S]{0,80}stopPropagation/, 'app.js gates the row')
+  assert.match(appJs, /'click',\s*function[\s\S]{0,300}?\},\s*true,?\s*\)/, 'in the capture phase')
+  const svc = VIEWS['services']!
+  assert.match(svc, /<a href="\/services\/media\/jellyfin\?list=services"[^>]*data-row/)
+  assert.match(svc, /hx-push-url="\/services\/media\/jellyfin\?list=services"/)
 })
 
-test('a row loads the panel on a wide screen and navigates on a narrow one', () => {
-  // One piece of markup, two behaviours: the trigger filter fails below lg, so the
-  // browser follows the href instead.
-  assert.match(
-    VIEWS['update-card']!,
-    /hx-trigger="click\[matchMedia\(&#39;\(min-width:1024px\)&#39;\)\.matches\]"/,
-  )
+test('a direct load of a detail marks its row and fills its pane', () => {
+  // What a reload, a bookmark or a notification link produces: the same page the row
+  // would have made, drawn whole by the server so there is no flash of unselected list.
+  const html = VIEWS['update-page']!
+  assert.match(html, /<a href="\/updates\/7\?[^"]*"[^>]*aria-current="true"/)
+  assert.doesNotMatch(html, /<a href="\/updates\/8\?[^"]*"[^>]*aria-current="true"/)
+  assert.match(html, /id="upd-7-detail"/, 'the pane holds the detail')
+  const svc = VIEWS['service-page']!
+  assert.match(svc, /<a href="\/services\/media\/jellyfin\?[^"]*"[^>]*aria-current="true"/)
+  assert.match(svc, /id="svc-card-media-jellyfin"/)
 })
 
-test('a verb button targets its own card and cannot be double-fired', () => {
-  const html = VIEWS['update-detail']!
-  for (const m of html.matchAll(/<button[^>]*hx-post="([^"]+)"[^>]*>/g)) {
+test('a verb pressed in the pane redraws the pane, not the row', () => {
+  // They shared an id for a while, so Deploy in the pane replaced a row off to the left.
+  const pane = VIEWS['update-detail']!
+  for (const m of pane.matchAll(/<button[^>]*hx-post="([^"]+)"[^>]*>/g)) {
     const tag = m[0]
-    assert.match(tag, /hx-target="#upd-\d+"/, tag)
+    assert.match(tag, /hx-target="#upd-7-detail"/, tag)
     assert.match(tag, /hx-swap="outerHTML"/, tag)
     assert.match(tag, /hx-disabled-elt="this"/, tag)
+    assert.match(m[1]!, /view=detail/, 'and asks for the pane back')
+  }
+  const rows = VIEWS['inbox']!
+  for (const m of rows.matchAll(/<button[^>]*hx-post="([^"]+)"[^>]*>/g)) {
+    assert.match(m[0], /hx-target="#upd-\d+"/, m[0])
+    assert.match(m[1]!, /view=row&amp;list=inbox/, 'a row asks for a row back')
   }
 })
 
@@ -153,10 +232,10 @@ test('merging and rolling back ask twice', () => {
   assert.match(verified, /data-open="#confirm-rollback-13"/)
 })
 
-test('only a card that is in flight polls', () => {
-  assert.doesNotMatch(VIEWS['update-card']!, /hx-trigger="every/, 'a settled card is quiet')
-  assert.match(VIEWS['update-card-transient']!, /hx-get="\/updates\/11\/card"[^>]*/)
-  assert.match(VIEWS['update-card-transient']!, /every 5s/)
+test('only a row that is in flight polls', () => {
+  assert.doesNotMatch(VIEWS['update-row']!, /hx-trigger="every/, 'a settled row is quiet')
+  assert.match(VIEWS['update-row-transient']!, /hx-get="\/updates\/11\/card\?list=inbox"/)
+  assert.match(VIEWS['update-row-transient']!, /every 5s/)
 })
 
 test('the scan poll stops when the scan does', () => {
@@ -167,11 +246,26 @@ test('the scan poll stops when the scan does', () => {
   assert.equal(RUNNING['inbox-page']!.match(/id="scan-running"/g)?.length, 1)
 })
 
-test('a filter is one form, with every control inside it', () => {
-  for (const key of ['settings']) {
-    const forms = VIEWS[key]!.match(/<form/g)?.length ?? 0
-    assert.ok(forms >= 1, key)
+test('a filter is a segmented control that asks the page for its list', () => {
+  // daisyUI's `filter` hides every unselected option until hover, which on a phone left
+  // the single word "Open". And a form that pushed a /fragments/ URL reloaded as a bare
+  // fragment.
+  for (const key of ['updates-page', 'services-page', 'activity-page']) {
+    const html = VIEWS[key]!
+    assert.match(html, /role="tablist"/, key)
+    assert.doesNotMatch(html, /class="filter"/, key)
+    const form = html.match(/<form[^>]*hx-push-url="true"[^>]*>/)?.[0] ?? ''
+    assert.match(form, /hx-get="\/(updates|services|activity)"/, `${key}: ${form}`)
+    assert.doesNotMatch(form, /fragments/, key)
   }
+})
+
+test('the toolbar counts what the list shows', () => {
+  for (const key of ['updates-page', 'services-page', 'activity-page']) {
+    assert.match(VIEWS[key]!, /id="list-count"/, key)
+    assert.equal(VIEWS[key]!.match(/id="list-count"/g)?.length, 1, `${key}: once`)
+  }
+  assert.match(VIEWS['updates-page']!, />3 shown</)
 })
 
 test('an unchecked switch still says off', () => {
@@ -192,6 +286,7 @@ test('a service says where each of its settings came from', () => {
     assert.match(html, new RegExp(`>${source}</span>`), source)
   }
   assert.match(html, /media\/docker-compose\.yaml/, 'and which file it is in')
+  assert.match(html, /list=service&amp;stack=media&amp;service=jellyfin/, 'its history rows lead back here')
 })
 
 test('a repeated log line is one row with a count', () => {

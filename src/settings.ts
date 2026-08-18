@@ -417,8 +417,9 @@ export const SETTINGS: SettingDef[] = [
     defaultValue: 'true',
     label: 'Pause',
     help: 'nothing merges or deploys on its own',
+    // The section's prose says the rest; this is the one line that changes with the switch.
     about:
-      'The one switch. Scanning, pull requests and changelog reviews carry on; what stops is every step that would change the host with nobody watching. A merge you press still deploys, because you are there. Unpausing is how an update goes from detected to running without you -- on the auto rung only, tag-only, patch or minor, with no verdict withholding it.',
+      'Unpausing is how an update goes from detected to running without you -- on the auto rung only, tag-only, patch or minor, with no verdict withholding it.',
   },
   {
     section: 'Merging',

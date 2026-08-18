@@ -1,12 +1,18 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { InboxBody } from '../../src/web/views/ui/inbox.tsx'
-import { UpdateCard, UpdateDetail, UpdateRow } from '../../src/web/views/ui/update.tsx'
+import { InboxAside, InboxList } from '../../src/web/views/ui/inbox.tsx'
+import { UpdateDetail, UpdateRow } from '../../src/web/views/ui/update.tsx'
 import { ServiceDetail, ServicesList } from '../../src/web/views/ui/services.tsx'
 import { ActivityList } from '../../src/web/views/ui/activity.tsx'
 import { SettingsForm, StatusBody } from '../../src/web/views/ui/settings.tsx'
 import { Layout } from '../../src/web/views/ui/shell.tsx'
-import { InboxPage, UpdatePage } from '../../src/web/views/pages.tsx'
+import {
+  ActivityPage,
+  InboxPage,
+  ServicesPage,
+  SettingsPage,
+  UpdatesPage,
+} from '../../src/web/views/pages.tsx'
 import type { UpdateView, Milestone } from '../../src/updates/queries.ts'
 
 /**
@@ -189,6 +195,7 @@ const SERVICE = {
   lastDetail: null,
   constrainedFrom: null,
   lastSeenAt: ago(6),
+  policy: 'manual',
 }
 
 const CHROME = { paused: true, missing: [] }
@@ -305,45 +312,122 @@ const INBOX = {
 export function renderAll(opts: { running?: boolean } = {}): Record<string, string> {
   const scan = { ...INBOX.scan, running: !!opts.running }
   const inbox = { ...INBOX, scan }
+  const list = [UPDATES.waiting!, UPDATES.held!, UPDATES.ready!]
+  const detail = (u: UpdateView, ctx: string, listHref: string, warnings: string[] = []) =>
+    UpdateDetail({ update: u, milestones: MILESTONES, warnings, ctx, listHref })
+  const serviceData = {
+    svc: SERVICE,
+    composeFile: 'media/docker-compose.yaml',
+    config: [
+      { key: 'policy', value: 'manual', source: 'label' as const },
+      { key: 'major', value: 'manual', source: 'locked' as const },
+      { key: 'pattern', value: 'semver', source: 'inferred' as const },
+    ],
+    history: [UPDATES.waiting!],
+    canEdit: true,
+  }
   return {
+    // pages
     'inbox-page': String(InboxPage({ data: inbox, chrome: CHROME })),
-    inbox: String(InboxBody({ data: inbox })),
-    'update-page': String(
-      UpdatePage({
-        update: UPDATES.waiting!,
-        milestones: MILESTONES,
-        warnings: ['the changelog review returned caution'],
+    'inbox-detail-page': String(
+      InboxPage({
+        data: inbox,
+        chrome: CHROME,
+        selectedId: 7,
+        detail: {
+          pane: detail(UPDATES.waiting!, 'list=inbox', '/'),
+          title: 'jellyfin',
+          back: { href: '/', label: 'Inbox' },
+        },
+      }),
+    ),
+    'updates-page': String(
+      UpdatesPage({
+        updates: list,
+        stage: 'open',
+        q: '',
+        magnitude: 'all',
+        ctx: 'list=updates&stage=open',
         chrome: CHROME,
       }),
     ),
-    'update-detail': String(
-      UpdateDetail({ update: UPDATES.waiting!, milestones: MILESTONES, warnings: [] }),
-    ),
-    'update-card': String(UpdateCard({ update: UPDATES.waiting! })),
-    'update-card-transient': String(UpdateCard({ update: UPDATES.deploying! })),
-    'update-row': `<table><tbody>${String(UpdateRow({ update: UPDATES.waiting! }))}</tbody></table>`,
-    'update-verified': String(
-      UpdateDetail({ update: UPDATES.verified!, milestones: MILESTONES }),
-    ),
-    'update-review-failed': String(
-      UpdateDetail({ update: UPDATES.reviewFailed!, milestones: MILESTONES }),
-    ),
-    services: String(ServicesList({ services: [SERVICE], grouped: false })),
-    'services-grouped': String(ServicesList({ services: [SERVICE], grouped: true })),
-    'service-detail': String(
-      ServiceDetail({
-        data: {
-          svc: SERVICE,
-          composeFile: 'media/docker-compose.yaml',
-          config: [
-            { key: 'policy', value: 'manual', source: 'label' },
-            { key: 'major', value: 'manual', source: 'locked' },
-            { key: 'pattern', value: 'semver', source: 'inferred' },
-          ],
-          history: [UPDATES.waiting!],
-          canEdit: true,
+    'update-page': String(
+      UpdatesPage({
+        updates: list,
+        stage: 'open',
+        q: '',
+        magnitude: 'all',
+        ctx: 'list=updates&stage=open',
+        chrome: CHROME,
+        selectedId: 7,
+        detail: {
+          pane: detail(UPDATES.waiting!, 'list=updates&stage=open', '/updates', [
+            'the changelog review returned caution',
+          ]),
+          title: 'jellyfin',
+          back: { href: '/updates', label: 'Updates' },
         },
       }),
+    ),
+    'services-page': String(
+      ServicesPage({
+        services: [SERVICE],
+        filter: 'all',
+        q: '',
+        grouped: false,
+        ctx: 'list=services',
+        chrome: CHROME,
+      }),
+    ),
+    'service-page': String(
+      ServicesPage({
+        services: [SERVICE],
+        filter: 'all',
+        q: '',
+        grouped: false,
+        ctx: 'list=services',
+        chrome: CHROME,
+        selected: { stack: 'media', service: 'jellyfin' },
+        detail: {
+          pane: ServiceDetail({ data: serviceData, ctx: 'list=services', listHref: '/services' }),
+          title: 'jellyfin',
+          back: { href: '/services', label: 'Services' },
+        },
+      }),
+    ),
+    'activity-page': String(
+      ActivityPage({
+        rows: ACTIVITY,
+        repo: 'you/repo',
+        kind: 'all',
+        problems: false,
+        q: '',
+        more: null,
+        chrome: CHROME,
+      }),
+    ),
+    'settings-page': String(
+      SettingsPage({ tab: 'general', groups: SETTING_GROUPS, readyCount: 2, chrome: CHROME }),
+    ),
+    // fragments
+    inbox: String(InboxList({ data: inbox })),
+    'inbox-aside': String(InboxAside({ data: inbox })),
+    'update-detail': String(detail(UPDATES.waiting!, 'list=updates&stage=open', '/updates')),
+    'update-row': String(UpdateRow({ update: UPDATES.waiting!, ctx: 'list=inbox' })),
+    'update-row-transient': String(UpdateRow({ update: UPDATES.deploying!, ctx: 'list=inbox' })),
+    'update-row-stage': String(
+      UpdateRow({ update: UPDATES.ready!, ctx: 'list=updates&stage=open', showStage: true }),
+    ),
+    'update-verified': String(detail(UPDATES.verified!, 'list=updates&stage=done', '/updates')),
+    'update-review-failed': String(
+      detail(UPDATES.reviewFailed!, 'list=updates&stage=open', '/updates'),
+    ),
+    services: String(ServicesList({ services: [SERVICE], grouped: false, ctx: 'list=services' })),
+    'services-grouped': String(
+      ServicesList({ services: [SERVICE], grouped: true, ctx: 'list=services&group=stack' }),
+    ),
+    'service-detail': String(
+      ServiceDetail({ data: serviceData, ctx: 'list=services', listHref: '/services' }),
     ),
     activity: String(ActivityList({ rows: ACTIVITY, repo: 'you/repo', more: null })),
     settings: String(SettingsForm({ groups: SETTING_GROUPS, readyCount: 2 })),
@@ -364,7 +448,10 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
 export function classesOf(html: string): string[] {
   const out: string[] = []
   for (const m of html.matchAll(/class="([^"]*)"/g)) {
-    out.push(...m[1]!.split(/\s+/).filter(Boolean))
+    // The renderer escapes the attribute; a `[&::-webkit-details-marker]` variant comes
+    // back with `&amp;` in it, and the stylesheet knows it by the bare character.
+    const raw = m[1]!.replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+    out.push(...raw.split(/\s+/).filter(Boolean))
   }
   return out
 }

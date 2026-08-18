@@ -31,12 +31,12 @@ import {
   RawPolicyPage,
   SettingsPage,
   StatusPage,
-  ServicePage,
   ServicesPage,
-  UpdatePage,
   UpdatesList,
   UpdatesPage,
+  type Detail,
 } from './views/pages.tsx'
+import { ctxString, listHref, readCtx, type ListCtx } from './ctx.ts'
 import {
   DigestPreview,
   PromptEditor,
@@ -52,15 +52,15 @@ import {
   serviceRows,
 } from '../updates/services.ts'
 import { setServiceLabel } from '../gitops/labels.ts'
-import { InboxBody, type InboxData } from './views/ui/inbox.tsx'
-import { MergePreview, ScanStatus } from './views/ui/parts.tsx'
-import { UpdateCard, UpdateDetail } from './views/ui/update.tsx'
+import { InboxList, type InboxData } from './views/ui/inbox.tsx'
+import { ListCount, MergePreview, ScanStatus } from './views/ui/parts.tsx'
+import { UpdateDetail, UpdateRow } from './views/ui/update.tsx'
 import { runPrPass } from '../gitops/pr.ts'
 import { runAnalysisPass } from '../analyze/run.ts'
 import { runProposePass } from '../propose/run.ts'
 import { runAutoMerge } from '../gitops/automerge.ts'
 import { PROMPTS, prompt, savePrompt, resetPrompt, isCustomised, type PromptName } from '../prompts/index.ts'
-import { DiffView, DetailPanel, MergeBar, type DetailRow } from './views/diff.tsx'
+import { DiffView } from './views/diff.tsx'
 import { mergeGate, type MergeFacts } from '../gitops/merge-gate.ts'
 import { pollPrs } from '../gitops/poll.ts'
 import { Octokit } from 'octokit'
@@ -179,12 +179,6 @@ function ntfyState(): 'set' | 'missing' | 'not in use' {
   return process.env.NTFY_URL && process.env.NTFY_TOPIC ? 'set' : 'missing'
 }
 
-/** A plain sentence where the button was. Always 200: htmx swaps nothing on a 4xx. */
-function noteBar(number: number, text: string, warn = false): string {
-  const cls = warn ? 'diff-note warn-text' : 'diff-note'
-  return `<div class="mergebar" id="mergebar-${number}"><p class="${cls}">${escapeText(text)}</p></div>`
-}
-
 let mergeOcto: Octokit | null = null
 function gh(): Octokit {
   mergeOcto ??= new Octokit({ auth: env.githubToken })
@@ -273,95 +267,214 @@ export function createApp(): Hono {
     }
   }
 
-  app.get('/', (c) => c.html(InboxPage({ data: inboxData(), chrome: chrome(c) }) as string))
+  // ------------------------------------------------------------ list pages
+  //
+  // Every list route answers twice: whole, for a navigation, and as its list alone for
+  // the toolbar's filter (which asks the page's own URL, so what it pushes reloads whole).
+  // A detail route -- /updates/:id, /services/:stack/:svc -- reads which list it came
+  // from and renders that page turned inside out: list beside a filled pane at lg, pane
+  // alone below it.
+
+  const ctxOf = (c: Context, fallback: 'inbox' | 'updates' | 'services') =>
+    readCtx((k) => c.req.query(k), fallback)
+
+  const inboxRender = (c: Context, detail?: { id: number; d: Detail }) =>
+    InboxPage({ data: inboxData(), chrome: chrome(c), selectedId: detail?.id, detail: detail?.d })
+
+  const updatesRender = (c: Context, ctx: ListCtx, detail?: { id: number; d: Detail }) => {
+    const updates = listUpdates({ stage: ctx.stage, q: ctx.q, magnitude: ctx.magnitude })
+    return UpdatesPage({
+      updates,
+      stage: ctx.stage,
+      q: ctx.q,
+      magnitude: ctx.magnitude,
+      ctx: ctxString({ ...ctx, list: 'updates' }),
+      chrome: chrome(c),
+      selectedId: detail?.id,
+      detail: detail?.d,
+    })
+  }
+
+  const servicesRender = (
+    c: Context,
+    ctx: ListCtx,
+    detail?: { selected: { stack: string; service: string }; d: Detail },
+  ) => {
+    const services = filterServiceRows(serviceRows(), { filter: ctx.filter, q: ctx.q })
+    return ServicesPage({
+      services,
+      filter: ctx.filter,
+      q: ctx.q,
+      grouped: ctx.grouped,
+      ctx: ctxString({ ...ctx, list: 'services' }),
+      chrome: chrome(c),
+      selected: detail?.selected,
+      detail: detail?.d,
+    })
+  }
+
+  app.get('/', (c) => c.html(inboxRender(c) as string))
 
   /** The worklist alone, for the poll that runs while a scan is in flight. */
-  app.get('/fragments/inbox', (c) => c.html(InboxBody({ data: inboxData() }) as string))
+  app.get('/fragments/inbox', (c) => c.html(InboxList({ data: inboxData() }) as string))
 
   app.get('/updates', (c) => {
-    const stage = (c.req.query('stage') ?? 'open') as StageFilter
-    const q = c.req.query('q') ?? ''
-    const updates = listUpdates({ stage, q })
+    const ctx = ctxOf(c, 'updates')
     if (c.req.header('HX-Request')) {
-      return c.html(UpdatesList({ updates, twoPane: true }) as string)
+      const updates = listUpdates({ stage: ctx.stage, q: ctx.q, magnitude: ctx.magnitude })
+      return c.html(
+        (UpdatesList({ updates, ctx: ctxString({ ...ctx, list: 'updates' }) }) as string) +
+          (ListCount({ n: updates.length, oob: true }) as string),
+      )
     }
-    return c.html(UpdatesPage({ updates, stage, q, chrome: chrome(c) }) as string)
+    return c.html(updatesRender(c, ctx) as string)
   })
 
+  /** Kept for anything that still asks by the old name; the toolbar asks /updates. */
   app.get('/fragments/updates', (c) => {
-    const stage = (c.req.query('stage') ?? 'open') as StageFilter
-    const q = c.req.query('q') ?? ''
-    return c.html(UpdatesList({ updates: listUpdates({ stage, q }), twoPane: true }) as string)
+    const ctx = ctxOf(c, 'updates')
+    const updates = listUpdates({ stage: ctx.stage, q: ctx.q, magnitude: ctx.magnitude })
+    return c.html(UpdatesList({ updates, ctx: ctxString({ ...ctx, list: 'updates' }) }) as string)
   })
+
+  /** The pane's contents for one update, in the list it was opened from. */
+  const updatePane = (id: number, ctx: ListCtx): { update: UpdateView; pane: unknown } | null => {
+    const update = updateView(id)
+    if (!update) return null
+    const from = listHref(ctx)
+    return {
+      update,
+      pane: UpdateDetail({
+        update,
+        milestones: updateTimeline(id),
+        warnings: mergeWarnings(update),
+        diff: updateDiff(id),
+        listHref: from.href,
+        fromService:
+          ctx.list === 'service' && ctx.stack && ctx.service
+            ? { stack: ctx.stack, service: ctx.service }
+            : undefined,
+        ctx: ctxString(ctx),
+      }),
+    }
+  }
 
   /**
    * One update, addressable.
    *
    * The old detail was an offcanvas with no URL: it could not be linked to, shared,
    * bookmarked, or closed with the back button, and a notification had nowhere in the
-   * app to point at.
+   * app to point at. Now it is the list page it was opened from, with the pane filled.
    */
   app.get('/updates/:id', (c) => {
     const id = Number(c.req.param('id'))
-    const update = updateView(id)
-    if (!update) return c.notFound()
-    return c.html(
-      UpdatePage({
-        update,
-        milestones: updateTimeline(id),
-        warnings: mergeWarnings(update),
-        diff: updateDiff(id),
-        chrome: chrome(c),
-      }) as string,
-    )
+    const ctx = ctxOf(c, 'updates')
+    const found = updatePane(id, ctx)
+    if (!found) return c.notFound()
+    const d: Detail = { pane: found.pane, title: found.update.service, back: listHref(ctx) }
+    switch (ctx.list) {
+      case 'inbox':
+        return c.html(inboxRender(c, { id, d }) as string)
+      case 'service':
+      case 'services':
+        return c.html(
+          servicesRender(c, ctx, {
+            selected: { stack: found.update.stack, service: found.update.service },
+            d,
+          }) as string,
+        )
+      default:
+        return c.html(updatesRender(c, ctx, { id, d }) as string)
+    }
   })
 
-  /** The same content, for the panel beside the list on a wide screen. */
+  /** The same content, for the pane beside the list on a wide screen. */
   app.get('/updates/:id/panel', (c) => {
     const id = Number(c.req.param('id'))
-    const update = updateView(id)
-    if (!update) {
-      return c.html('<p class="text-sm opacity-60">That update no longer exists.</p>')
+    const found = updatePane(id, ctxOf(c, 'updates'))
+    if (!found) {
+      return c.html('<p class="px-4 py-3 text-xs opacity-60">That update no longer exists.</p>')
     }
+    return c.html(found.pane as string)
+  })
+
+  /** One row, for a row that is refreshing itself while a deploy runs. */
+  app.get('/updates/:id/card', (c) => {
+    const id = Number(c.req.param('id'))
+    const update = updateView(id)
+    if (!update) return c.html('')
+    const ctx = ctxOf(c, 'updates')
     return c.html(
-      UpdateDetail({
-        update,
-        milestones: updateTimeline(id),
-        warnings: mergeWarnings(update),
-        diff: updateDiff(id),
-      }) as string,
+      UpdateRow({ update, ctx: ctxString(ctx), showStage: ctx.list !== 'inbox' }) as string,
     )
   })
 
   app.get('/services', (c) => {
-    const filter = c.req.query('filter') ?? 'all'
-    const q = c.req.query('q') ?? ''
-    const grouped = c.req.query('group') === 'stack'
-    const services = filterServiceRows(serviceRows(), { filter, q })
+    const ctx = ctxOf(c, 'services')
     if (c.req.header('HX-Request')) {
-      return c.html(ServicesList({ services, grouped }) as string)
+      const services = filterServiceRows(serviceRows(), { filter: ctx.filter, q: ctx.q })
+      return c.html(
+        (ServicesList({
+          services,
+          grouped: ctx.grouped,
+          ctx: ctxString({ ...ctx, list: 'services' }),
+        }) as string) + (ListCount({ n: services.length, oob: true }) as string),
+      )
     }
-    return c.html(ServicesPage({ services, filter, q, grouped, chrome: chrome(c) }) as string)
+    return c.html(servicesRender(c, ctx) as string)
   })
 
   app.get('/fragments/services', (c) => {
-    const services = filterServiceRows(serviceRows(), {
-      filter: c.req.query('filter') ?? 'all',
-      q: c.req.query('q') ?? '',
-    })
-    return c.html(ServicesList({ services, grouped: c.req.query('group') === 'stack' }) as string)
+    const ctx = ctxOf(c, 'services')
+    const services = filterServiceRows(serviceRows(), { filter: ctx.filter, q: ctx.q })
+    return c.html(
+      ServicesList({
+        services,
+        grouped: ctx.grouped,
+        ctx: ctxString({ ...ctx, list: 'services' }),
+      }) as string,
+    )
   })
 
+  /** The pane's contents for one service. */
+  const servicePane = (stack: string, service: string, ctx: ListCtx) => {
+    const data = serviceDetail(stack, service)
+    if (!data) return null
+    const listCtx: ListCtx = { ...ctx, list: 'services' }
+    return {
+      data,
+      pane: ServiceDetail({
+        data,
+        ctx: ctxString(listCtx),
+        listHref: listHref(listCtx).href,
+      }),
+    }
+  }
+
   app.get('/services/:stack/:service', (c) => {
-    const data = serviceDetail(c.req.param('stack'), c.req.param('service'))
-    if (!data) return c.notFound()
-    return c.html(ServicePage({ data, chrome: chrome(c) }) as string)
+    const stack = c.req.param('stack')
+    const service = c.req.param('service')
+    const ctx = ctxOf(c, 'services')
+    const found = servicePane(stack, service, ctx)
+    if (!found) return c.notFound()
+    return c.html(
+      servicesRender(c, ctx, {
+        selected: { stack, service },
+        d: {
+          pane: found.pane,
+          title: service,
+          back: listHref({ ...ctx, list: 'services' }),
+        },
+      }) as string,
+    )
   })
 
   app.get('/services/:stack/:service/panel', (c) => {
-    const data = serviceDetail(c.req.param('stack'), c.req.param('service'))
-    if (!data) return c.html('<p class="text-sm opacity-60">That service is no longer here.</p>')
-    return c.html(ServiceDetail({ data }) as string)
+    const found = servicePane(c.req.param('stack'), c.req.param('service'), ctxOf(c, 'services'))
+    if (!found) {
+      return c.html('<p class="px-4 py-3 text-xs opacity-60">That service is no longer here.</p>')
+    }
+    return c.html(found.pane as string)
   })
 
   /** Re-check one service now, rather than waiting for a sweep that takes 156 seconds. */
@@ -373,13 +486,13 @@ export function createApp(): Hono {
       (s) => s.stack === stack && s.service === service,
     )
     if (svc?.watched) await scanOne(svc, policy)
-    const data = serviceDetail(stack, service)
-    if (!data) {
+    const found = servicePane(stack, service, ctxOf(c, 'services'))
+    if (!found) {
       toastHeader(c, 'warn', `${stack}/${service} is no longer here`)
       return c.html('')
     }
-    // The card, not the row: this comes back into either, and the card is the superset.
-    return c.html(ServiceDetail({ data }) as string)
+    // The pane, whichever button asked: the row's check button targets the pane too.
+    return c.html(found.pane as string)
   })
 
   /**
@@ -404,16 +517,8 @@ export function createApp(): Hono {
     })
     toastHeader(c, result.ok ? 'info' : 'warn', result.message)
     if (!c.req.header('HX-Request')) return c.redirect(`/services/${stack}/${service}`, 303)
-    const data = serviceDetail(stack, service)
-    return c.html(data ? (ServiceDetail({ data }) as string) : '')
-  })
-
-  /** One card, for a row that is refreshing itself while a deploy runs. */
-  app.get('/updates/:id/card', (c) => {
-    const id = Number(c.req.param('id'))
-    const update = updateView(id)
-    if (!update) return c.html('')
-    return c.html(UpdateCard({ update }) as string)
+    const found = servicePane(stack, service, ctxOf(c, 'services'))
+    return c.html(found ? (found.pane as string) : '')
   })
 
   /** The pending region alone, so it can refresh itself while a scan runs. */
@@ -438,7 +543,39 @@ export function createApp(): Hono {
   const verbReply = (c: Context, id: number, r: VerbResult) => {
     toastHeader(c, r.ok ? 'info' : 'warn', r.message)
     if (!c.req.header('HX-Request')) return c.redirect(`/updates/${id}`, 303)
-    return c.html(noteBar(id, r.message, !r.ok))
+    return c.html(updateFragment(c, id))
+  }
+
+  /**
+   * What comes back from a verb: the fragment the button sat in, redrawn. `view=row`
+   * means a list row -- re-rendered with its stage showing, so the change is visible in
+   * place, and gone entirely from the Inbox once it no longer belongs there -- and
+   * anything else means the pane.
+   */
+  const updateFragment = (c: Context, id: number): string => {
+    const update = updateView(id)
+    if (!update) return ''
+    const ctx = ctxOf(c, 'updates')
+    if (c.req.query('view') === 'row') {
+      if (ctx.list === 'inbox' && (update.state === 'skipped' || update.state === 'superseded')) {
+        return ''
+      }
+      return UpdateRow({ update, ctx: ctxString(ctx), showStage: true }) as string
+    }
+    return (updatePane(id, ctx)?.pane as string | undefined) ?? ''
+  }
+
+  /** The update a pull-request verb was pressed on: named in the query, or the PR's first. */
+  const updateOfPr = (c: Context, number: number): number | null => {
+    const named = Number(c.req.query('update'))
+    if (Number.isFinite(named) && named > 0) return named
+    const row = getDb()
+      .prepare(
+        `SELECT pu.update_id AS id FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
+         WHERE p.number = ? ORDER BY pu.update_id LIMIT 1`,
+      )
+      .get(number) as { id: number } | undefined
+    return row?.id ?? null
   }
 
   /** Not this version. A dismissal is durable: the next scan must not offer it again. */
@@ -523,12 +660,15 @@ export function createApp(): Hono {
   /** Draft config changes for one pull request on demand. */
   app.post('/prs/:number/propose', async (c) => {
     const number = Number(c.req.param('number'))
+    const id = updateOfPr(c, number) ?? 0
     const r = await runProposePass(number)
     if (r.drafted > 0) {
-      return c.html('<span class="sub">drafted — reload to see the changes</span>')
+      return verbReply(c, id, { ok: true, message: 'Drafted. The changes are on the pull request.' })
     }
-    if (r.failed > 0) return c.html('<span class="sub">could not draft; see the activity log</span>')
-    return c.html('<span class="sub">nothing to draft for this pull request</span>')
+    if (r.failed > 0) {
+      return verbReply(c, id, { ok: false, message: 'Could not draft; see the activity log.' })
+    }
+    return verbReply(c, id, { ok: false, message: 'Nothing to draft for this pull request.' })
   })
 
   /** What auto-merge would do right now, decided by the code that does it. */
@@ -557,21 +697,21 @@ export function createApp(): Hono {
     const number = Number(c.req.param('number'))
     const force = c.req.query('force') === '1'
     const { policy } = loadPolicy()
+    const id = updateOfPr(c, number) ?? 0
+    const refuse = (message: string) => verbReply(c, id, { ok: false, message })
 
     const facts = mergeFacts(number)
     let gate = mergeGate(facts, { force })
-    if (!gate.allowed) return c.html(MergeBar({ number, gate }) as string)
+    if (!gate.allowed) return refuse(gate.blocked ?? 'the merge gate refused')
 
     try {
       const { owner, repo } = repoParts()
       const live = await gh().rest.pulls.get({ owner, repo, pull_number: number })
-      if (live.data.merged) {
-        return c.html(noteBar(number, `#${number} has already been merged.`))
-      }
+      if (live.data.merged) return refuse(`#${number} has already been merged.`)
       // GitHub's own answer beats ours: it knows about conflicts and branch protection.
       gate = mergeGate({ ...facts, mergeable: live.data.mergeable }, { force })
-      if (!gate.allowed) return c.html(MergeBar({ number, gate }) as string)
-      if (gate.needsForce) return c.html(MergeBar({ number, gate }) as string)
+      if (!gate.allowed) return refuse(gate.blocked ?? 'the merge gate refused')
+      if (gate.needsForce) return refuse(gate.warnings.join('; '))
 
       await gh().rest.pulls.merge({
         owner,
@@ -590,7 +730,7 @@ export function createApp(): Hono {
       })
     } catch (err) {
       const msg = (err as Error).message.slice(0, 200)
-      return c.html(noteBar(number, `GitHub refused the merge: ${msg}`, true))
+      return refuse(`GitHub refused the merge: ${msg}`)
     }
 
     // Close the loop now rather than waiting for the next tick: this is what captures
@@ -602,14 +742,12 @@ export function createApp(): Hono {
       /* the scheduler will pick it up on its next pass */
     }
 
-    return c.html(
-      noteBar(
-        number,
-        policy.paused
-          ? `Merged. Ready to deploy — press Deploy when you are.`
-          : `Merged. The deploy is running and will be verified.`,
-      ),
-    )
+    return verbReply(c, id, {
+      ok: true,
+      message: policy.paused
+        ? 'Merged. Ready to deploy \u2014 press Deploy when you are.'
+        : 'Merged. The deploy is running and will be verified.',
+    })
   })
 
   app.get('/merge/preview', async (c) => {
@@ -830,6 +968,10 @@ export function createApp(): Hono {
         // The prompts are tuning of the same kind: rarely the answer, and dangerous to
         // reach for first. They were a tab of their own, which oversold them.
         extra: promptStates().map((st) => promptEditor(st.name)),
+        extraNav: promptStates().map((st) => ({
+          href: `#prompt-${st.name}`,
+          label: PROMPTS[st.name].title,
+        })),
         chrome: chrome(c),
       }) as string,
     ),

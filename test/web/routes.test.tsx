@@ -33,9 +33,13 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 const PAGES = [
   '/',
   '/updates',
+  '/updates?stage=all&q=x',
+  '/updates?stage=done&magnitude=major',
   '/services',
   '/services?group=stack',
+  '/services?filter=watched&q=x',
   '/activity',
+  '/activity?kind=deploy&level=problems&q=x',
   '/settings',
   '/settings/advanced',
   '/settings/status',
@@ -78,6 +82,38 @@ test('every fragment returns a bare fragment, never a whole document', async () 
     const res = await app.request(path)
     assert.equal(res.status, 200, path)
     assert.doesNotMatch(await res.text(), /<html[ >]|<head>|<body[ >]/, path)
+  }
+})
+
+test('a list page asked by htmx answers with its list alone', async () => {
+  // The toolbar's filter asks the page's own URL, so what it pushes reloads whole -- and
+  // the fragment it gets back carries the count for the toolbar out of band.
+  for (const path of ['/updates?stage=all', '/services?filter=watched', '/activity?kind=pr']) {
+    const res = await app.request(path, { headers: { 'HX-Request': 'true' } })
+    assert.equal(res.status, 200, path)
+    const html = await res.text()
+    assert.doesNotMatch(html, /<html[ >]|<head>|<body[ >]/, path)
+    if (!path.startsWith('/activity')) {
+      assert.match(html, /id="list-count"[^>]*hx-swap-oob="true"/, `${path} updates the count`)
+    }
+  }
+})
+
+test('a detail that no longer exists is a 404 in every list it could be opened from', async () => {
+  for (const path of [
+    '/updates/9999',
+    '/updates/9999?list=inbox',
+    '/updates/9999?list=updates&stage=all',
+    '/updates/9999?list=service&stack=a&service=b',
+    '/services/nope/nope',
+    '/services/nope/nope?list=services&filter=watched',
+  ]) {
+    assert.equal((await app.request(path)).status, 404, path)
+  }
+  for (const path of ['/updates/9999/panel?list=inbox', '/services/nope/nope/panel']) {
+    const res = await app.request(path)
+    assert.equal(res.status, 200, path)
+    assert.match(await res.text(), /no longer/, path)
   }
 })
 

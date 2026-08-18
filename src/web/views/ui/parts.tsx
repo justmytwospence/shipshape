@@ -25,7 +25,7 @@ const MAGNITUDE: Record<string, string> = {
 }
 
 export const MagnitudeBadge: FC<{ value: string }> = ({ value }) => (
-  <span class={`badge badge-sm badge-soft ${MAGNITUDE[value] ?? 'badge-ghost'}`}>{value}</span>
+  <span class={`badge badge-xs badge-soft ${MAGNITUDE[value] ?? 'badge-ghost'}`}>{value}</span>
 )
 
 /** What an update is doing, in the words used everywhere else. */
@@ -66,7 +66,7 @@ export function stageOf(u: UpdateView): { label: string; cls: string; live?: boo
 export const StageBadge: FC<{ update: UpdateView }> = ({ update }) => {
   const s = stageOf(update)
   return (
-    <span class={`badge badge-sm badge-soft ${s.cls} gap-1`}>
+    <span class={`badge badge-xs badge-soft ${s.cls} gap-1 whitespace-nowrap`}>
       {s.live ? <span class="status status-info status-xs animate-pulse" /> : null}
       {s.label}
     </span>
@@ -208,7 +208,7 @@ export const MergePreview: FC<{
   decisions: { number: number; merge: boolean; reason?: string }[]
   paused: boolean
 }> = ({ decisions, paused }) => (
-  <div class="card-body gap-2 p-4 text-sm">
+  <div class="flex flex-col gap-1 py-2 text-xs">
     {paused ? (
       <p class="text-xs opacity-60">
         Paused, so none of this happens on its own — this is what would, if it were not.
@@ -235,9 +235,65 @@ export const EmptyState: FC<{ icon: IconName; title: string; hint?: string }> = 
   title,
   hint,
 }) => (
-  <div class="flex flex-col items-center gap-2 py-14 text-center">
-    <Icon name={icon} class="size-8 opacity-30" />
-    <p class="font-medium">{title}</p>
-    {hint ? <p class="max-w-sm text-sm opacity-60">{hint}</p> : null}
+  <div class="flex flex-col items-center gap-1.5 px-4 py-8 text-center">
+    <Icon name={icon} class="size-6 opacity-30" />
+    <p class="text-sm font-medium">{title}</p>
+    {hint ? <p class="max-w-sm text-xs opacity-60">{hint}</p> : null}
   </div>
+)
+
+// ---------------------------------------------------------------- toolbar
+
+/**
+ * A segmented control: radios in a tab box, every option visible all the time.
+ *
+ * Not daisyUI's `filter`, which hides the unselected options until you hover -- so on a
+ * phone the strip collapsed to the single word "Open", and there was no way to know it
+ * was a control at all. The tabs are 40px on a phone -- a segmented control's height,
+ * filling the toolbar row -- and pointer-height at lg.
+ */
+export const Tabs: FC<{
+  name: string
+  value: string
+  options: readonly { key: string; label: string }[]
+  label: string
+}> = ({ name, value, options, label }) => (
+  <div
+    role="tablist"
+    aria-label={label}
+    class="tabs tabs-box tabs-xs shrink-0 flex-nowrap p-0.5"
+  >
+    {options.map((o) => (
+      <input
+        type="radio"
+        name={name}
+        value={o.key}
+        class="tab min-h-10 whitespace-nowrap lg:min-h-0"
+        aria-label={o.label}
+        checked={o.key === value}
+      />
+    ))}
+  </div>
+)
+
+/** The search box, for a toolbar. `data-search` is what `/` focuses. */
+export const Search: FC<{ value: string; placeholder: string }> = ({ value, placeholder }) => (
+  <label class="input input-sm tap w-40 shrink-0 lg:w-52">
+    <Icon name="search" class="size-3.5 opacity-50" />
+    <input type="search" name="q" value={value} data-search placeholder={placeholder} class="grow" />
+  </label>
+)
+
+/**
+ * "56 shown", at the toolbar's right edge. A list fragment carries a copy marked
+ * out-of-band, so a filter change updates the number without re-rendering the toolbar.
+ */
+export const ListCount: FC<{ n: number; oob?: boolean }> = ({ n, oob }) => (
+  <span
+    id="list-count"
+    class="text-xs whitespace-nowrap opacity-60"
+    {...(oob ? { 'hx-swap-oob': 'true' } : {})}
+  >
+    {n} shown
+  </span>
 )

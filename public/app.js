@@ -140,6 +140,51 @@
   document.body.addEventListener('htmx:afterSettle', markSelected)
   document.body.addEventListener('htmx:pushedIntoHistory', markSelected)
 
+  // ---------------------------------------------------------------- sections
+  //
+  // A nav of anchors beside a long form (Settings) marks the section you are reading as
+  // the pane scrolls, so the nav is a map and not just a list of links. The section at
+  // the top edge wins; at the very end the last one does, since the last sections can
+  // never reach the top. Recomputed from the DOM each time, because the form is swapped
+  // whole after a save. The nav is only shown at lg, where the pane is the scroller.
+  function spy() {
+    var nav = document.querySelector('[data-spy]')
+    if (!nav || nav.offsetParent === null) return
+    var links = Array.prototype.slice.call(nav.querySelectorAll('a[href^="#"]'))
+    if (!links.length) return
+    var pane = document.querySelector('[data-panel]')
+    var edge = (pane ? pane.getBoundingClientRect().top : 0) + 24
+    var current = null
+    links.forEach(function (a) {
+      var t = document.getElementById(a.getAttribute('href').slice(1))
+      if (t && t.getBoundingClientRect().top <= edge) current = a
+    })
+    if (pane && pane.scrollTop + pane.clientHeight >= pane.scrollHeight - 2) {
+      current = links[links.length - 1]
+    }
+    if (!current) current = links[0]
+    links.forEach(function (a) {
+      if (a === current) a.setAttribute('aria-current', 'true')
+      else a.removeAttribute('aria-current')
+    })
+  }
+  var spyQueued = false
+  function queueSpy() {
+    if (spyQueued) return
+    spyQueued = true
+    requestAnimationFrame(function () {
+      spyQueued = false
+      spy()
+    })
+  }
+  addEventListener('DOMContentLoaded', function () {
+    var pane = document.querySelector('[data-panel]')
+    if (pane) pane.addEventListener('scroll', queueSpy, { passive: true })
+    addEventListener('resize', queueSpy)
+    spy()
+  })
+  document.body.addEventListener('htmx:afterSettle', queueSpy)
+
   // ---------------------------------------------------------------- keyboard
   //
   // A backlog of eight is a lot of pointing. j/k move a cursor through the rows and, on

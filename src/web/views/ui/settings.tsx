@@ -40,30 +40,39 @@ export const SettingsTabs: FC<{ active: string }> = ({ active }) => (
 )
 
 /**
- * The section list beside the form on a desktop. Anchors scroll the pane natively; the
- * sections carry `scroll-mt` so a heading lands under the toolbar rather than behind it.
+ * The section list beside the form on a desktop: a map of the form, not just links.
+ * Anchors scroll the pane natively (smoothly -- the pane is `scroll-smooth`); the sections
+ * carry `scroll-mt` so a heading lands under the top edge rather than behind it; and
+ * app.js marks the section you are reading (`aria-current`) as the pane scrolls, keyed
+ * off `data-spy`.
  */
+const NAV_LINK =
+  'border-l-2 border-transparent hover:bg-base-200 aria-[current=true]:border-primary ' +
+  'aria-[current=true]:bg-primary/8 aria-[current=true]:font-medium flex h-7 items-center px-3 text-xs'
+
 export const SettingsNav: FC<{ sections: string[]; extra?: { href: string; label: string }[] }> = ({
   sections,
   extra,
 }) => (
-  <ul class="menu menu-xs w-full px-2 py-2">
+  <nav data-spy aria-label="Sections" class="flex flex-col py-2">
     {sections.map((title) => (
-      <li>
-        <a href={`#${slug(title)}`}>{title}</a>
-      </li>
+      <a href={`#${slug(title)}`} class={NAV_LINK}>
+        {title}
+      </a>
     ))}
     {extra && extra.length > 0 ? (
       <>
-        <li class="menu-title pt-2">Prompts</li>
+        <span class="px-3 pt-3 pb-1 text-xs font-medium tracking-wide uppercase opacity-50">
+          Prompts
+        </span>
         {extra.map((e) => (
-          <li>
-            <a href={e.href}>{e.label}</a>
-          </li>
+          <a href={e.href} class={NAV_LINK}>
+            {e.label}
+          </a>
         ))}
       </>
     ) : null}
-  </ul>
+  </nav>
 )
 
 const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) => {

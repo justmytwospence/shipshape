@@ -344,9 +344,11 @@ export const Split: FC<{
         : `border-base-300 lg:min-h-0 lg:w-[55%] lg:min-w-[34rem] lg:max-w-[56rem] lg:shrink-0 lg:overflow-y-auto lg:border-r ${
             mode === 'detail' ? 'hidden lg:block' : ''
           }`
+  // Beside a section nav the pane glides to an anchor rather than jumping; the other
+  // panes are swapped whole, where an animated scroll-to-top would read as a stutter.
   const paneCls = `lg:min-h-0 lg:min-w-0 lg:flex-1 lg:overflow-y-auto ${
-    variant === 'nav' || mode === 'detail' ? '' : 'hidden lg:block'
-  }`
+    variant === 'nav' ? 'lg:scroll-smooth' : ''
+  } ${variant === 'nav' || mode === 'detail' ? '' : 'hidden lg:block'}`
   return (
     <div class="flex min-h-0 flex-1 flex-col lg:flex-row">
       <section id="list" class={listCls}>

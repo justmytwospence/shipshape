@@ -198,9 +198,8 @@ export const SETTINGS: SettingDef[] = [
     defaultValue: 'manual',
     label: 'Major',
     help: 'X.y.z',
-    about:
-      'Always a pull request you merge yourself. Not configurable.',
-    locked: 'not configurable — a major always needs a human',
+    about: 'Always a pull request you merge yourself.',
+    locked: 'X.y.z — not configurable, a major always needs a human',
   },
   {
     section: 'Update policy',

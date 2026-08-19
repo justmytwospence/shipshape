@@ -268,6 +268,18 @@ test('the toolbar counts what the list shows', () => {
   assert.match(VIEWS['updates-page']!, />3 shown</)
 })
 
+test('the settings nav is a map of the form: it glides to a section and marks the one you are in', () => {
+  const html = VIEWS['settings-page']!
+  assert.match(html, /<nav data-spy[^>]*>/, 'the nav is the scroll-spy root')
+  assert.match(html, /<a href="#update-policy"/, 'anchors, scrolled natively')
+  assert.match(html, /id="update-policy"[^>]*class="[^"]*scroll-mt-2/, 'sections land under the top edge')
+  assert.match(html, /id="pane"[^>]*class="[^"]*lg:scroll-smooth/, 'the pane glides rather than jumps')
+  const appJs = readFileSync(join(process.cwd(), 'public', 'app.js'), 'utf8')
+  assert.match(appJs, /\[data-spy\][\s\S]{0,1200}aria-current/, 'app.js marks the current section')
+  // The other panes are swapped whole, where an animated scroll-to-top reads as a stutter.
+  assert.doesNotMatch(VIEWS['updates-page']!, /lg:scroll-smooth/)
+})
+
 test('an unchecked switch still says off', () => {
   // A checkbox that is not ticked sends nothing at all, which would read as "leave it
   // alone" rather than "turn it off".

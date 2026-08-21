@@ -17,7 +17,8 @@ const POLICY = { claude: { mode: 'advisory' } } as Policy
 
 function group(members: Partial<UpdateGroup['members'][number]>[]): UpdateGroup {
   return {
-    key: members.length > 1 ? 'grp' : null,
+    key: members.length > 1 ? 'grp--1.1.0' : null,
+    branchKey: members.length > 1 ? 'grp' : null,
     members: members.map((m, i) => ({
       id: i + 1,
       stack: 'demo',

@@ -258,17 +258,6 @@ export const SETTINGS: SettingDef[] = [
   },
   {
     section: 'Pull requests',
-    path: 'prs.close_superseded',
-    advanced: true,
-    kind: 'bool',
-    defaultValue: 'true',
-    label: 'Close superseded',
-    help: '',
-    about:
-      'When a scan finds an even newer target, the fresh pull request replaces the old one rather than extending it -- both rewrite the same line. This closes the loser with a comment naming its successor. A branch you have pushed to is never closed, whatever this is set to.',
-  },
-  {
-    section: 'Pull requests',
     path: 'merge_method',
     kind: 'enum',
     options: ['squash', 'merge', 'rebase'],

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { groupUpdates, branchFor, sanitise, type GroupMember } from '../src/groups.ts'
+import { groupUpdates, branchFor, taggedBranchFor, sanitise, type GroupMember } from '../src/groups.ts'
 
 let nextId = 1
 function m(stack: string, service: string, to: string, over: Partial<GroupMember> = {}): GroupMember {
@@ -40,7 +40,10 @@ test('services sharing an upstream repo and a target version travel together', (
   assert.equal(groups.length, 1)
   assert.equal(groups[0]!.members.length, 2)
   assert.equal(groups[0]!.key, 'immich--group-immich--v3.1.0')
-  assert.equal(branchFor(groups[0]!), 'shipshape/immich--group-immich--v3.1.0')
+  // The key keeps the target tag so drifted members cannot be bundled; the branch drops
+  // it so the next target can be retargeted onto the same pull request.
+  assert.equal(groups[0]!.branchKey, 'immich--group-immich')
+  assert.equal(branchFor(groups[0]!), 'shipshape/immich--group-immich')
 })
 
 test('two containers off one image group without any resolution', () => {
@@ -97,7 +100,20 @@ test('a lone service is a singleton, not a one-member group', () => {
   const groups = groupUpdates([m('miniflux', 'miniflux', '2.3.3')], src({}), lbl({}))
   assert.equal(groups.length, 1)
   assert.equal(groups[0]!.key, null)
-  assert.equal(branchFor(groups[0]!), 'shipshape/miniflux--miniflux--2.3.3')
+  assert.equal(groups[0]!.branchKey, null)
+  assert.equal(branchFor(groups[0]!), 'shipshape/miniflux--miniflux')
+})
+
+test('the branch name says nothing about the target, so it can be reused', () => {
+  // Two consecutive targets for one service want the same branch. That is the point:
+  // the pull request open on it is retargeted rather than closed and replaced.
+  const first = groupUpdates([m('miniflux', 'miniflux', '2.3.3')], src({}), lbl({}))
+  const second = groupUpdates([m('miniflux', 'miniflux', '2.3.4')], src({}), lbl({}))
+  assert.equal(branchFor(first[0]!), branchFor(second[0]!))
+  // The tag-suffixed form is what the two coexisting cases fall back to, and it is the
+  // scheme every pull request open before retargeting is still sitting on.
+  assert.equal(taggedBranchFor(first[0]!), 'shipshape/miniflux--miniflux--2.3.3')
+  assert.equal(taggedBranchFor(second[0]!), 'shipshape/miniflux--miniflux--2.3.4')
 })
 
 test('branch names stay readable and legal', () => {
@@ -118,7 +134,9 @@ test('branch names stay readable and legal', () => {
     src({}),
     lbl({}),
   )
-  assert.match(branchFor(g[0]!), /^shipshape\/immich--immich-redis--9@[0-9a-f]{12}$/)
+  assert.equal(branchFor(g[0]!), 'shipshape/immich--immich-redis')
+  // A digest target still has to survive the fallback form.
+  assert.match(taggedBranchFor(g[0]!), /^shipshape\/immich--immich-redis--9@[0-9a-f]{12}$/)
 })
 
 test('grouping is deterministic so reruns produce the same branches', () => {

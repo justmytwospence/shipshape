@@ -33,6 +33,13 @@ change the host waits for a button. A merge *you* press still deploys — you ar
 `Detected · Held on request · Waiting on you · Auto-merging · Ready to deploy ·
 Deploying · Verifying · Verified · Failed · Rolled back · Skipped · Superseded`
 
+**Superseded** is a stage of the *update*, not of its pull request. When a newer version
+appears the pull request is **retargeted** onto it -- same number, rebuilt branch, one
+comment saying the target moved -- and is only closed when it cannot be moved, which is
+when nothing live is left to move it onto or you have pushed to the branch yourself.
+"Retargeted" is the word everywhere that event appears: the comment, the activity log and
+the digest. Never say a pull request was "superseded"; its update was.
+
 Merging always leads to a deploy: `compose up -d` → verify (health check, HTTP probe
 where a port is declared, crash watch) → soak → **Verified**. A hard failure inside the
 verify window rolls back automatically, once. After the soak nothing is rolled back

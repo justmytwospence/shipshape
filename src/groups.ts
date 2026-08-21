@@ -27,6 +27,16 @@ export interface GroupMember {
 export interface UpdateGroup {
   /** null for a singleton; otherwise the branch-safe group identity. */
   key: string | null
+  /**
+   * The same identity without the target tag, or null for a singleton.
+   *
+   * The two differ in exactly one way and it is load-bearing. `key` decides what travels
+   * together, so it carries the target tag: two services drifting to different versions
+   * must never share a commit. The branch name must not carry it -- a name that changed
+   * with the target could never be reused, and that is precisely what forced an overtaken
+   * pull request to be closed and replaced instead of retargeted.
+   */
+  branchKey: string | null
   members: GroupMember[]
 }
 
@@ -55,7 +65,7 @@ export function groupUpdates(
     const source = sourceRepoFor(m.stack, m.service)
     const identity = label ?? source
     if (!identity) {
-      singletons.push({ key: null, members: [m] })
+      singletons.push({ key: null, branchKey: null, members: [m] })
       continue
     }
     const key = `${m.stack}|${label ? `label:${label}` : `src:${identity}`}|${m.to_tag}`
@@ -68,12 +78,13 @@ export function groupUpdates(
   for (const [key, members] of buckets) {
     if (members.length === 1) {
       // Sharing a source repo with nothing else is just a singleton.
-      out.push({ key: null, members })
+      out.push({ key: null, branchKey: null, members })
       continue
     }
     const [stack, identity, tag] = key.split('|') as [string, string, string]
     const short = identity.replace(/^(label|src):/, '').split('/').pop() ?? 'group'
-    out.push({ key: `${stack}--group-${sanitise(short)}--${sanitise(tag)}`, members })
+    const branchKey = `${stack}--group-${sanitise(short)}`
+    out.push({ key: `${branchKey}--${sanitise(tag)}`, branchKey, members })
   }
 
   // Deterministic order so branch creation and tests are stable.
@@ -98,11 +109,38 @@ export function sanitise(s: string): string {
     .replace(/^-|-$/g, '')
 }
 
-/** Branch name for a group or singleton. */
+/**
+ * Branch name for a group or singleton -- deliberately without the target tag.
+ *
+ * The name identifies the *service*, not the version it is being moved to, so when a
+ * target is overtaken the successor wants the branch the open pull request already sits
+ * on and can be retargeted onto it in place. GitHub cannot change a pull request's head
+ * branch, so this naming is the whole reason retargeting is possible rather than closing
+ * one pull request and opening another.
+ *
+ * Safe because at most one live update exists per (stack, service): every scan path that
+ * records a new target first supersedes the live rows for that service, and eligibility
+ * excludes updates already attached to an open pull request. Two shipshape pull requests
+ * can therefore never both want this name. For the one case where a stale one lingers on
+ * it -- a branch someone has pushed to, left open on purpose -- `resolveBranch` in pr.ts
+ * falls back to `taggedBranchFor` rather than contending for it.
+ */
 export function branchFor(g: UpdateGroup): string {
-  if (g.key) return `shipshape/${g.key}`
+  if (g.branchKey) return `shipshape/${g.branchKey}`
   const m = g.members[0]!
-  return `shipshape/${m.stack}--${sanitise(m.service)}--${sanitise(m.to_tag)}`
+  return `shipshape/${m.stack}--${sanitise(m.service)}`
+}
+
+/**
+ * The tag-suffixed form: unique per target, and therefore never reusable.
+ *
+ * This was the only naming scheme before retargeting existed, which is why every pull
+ * request open at the time of that change migrates itself once -- its branch matches no
+ * successor's name, so it takes the close-and-replace path a final time. It survives as
+ * the fallback for the two pull requests that genuinely have to coexist on one service.
+ */
+export function taggedBranchFor(g: UpdateGroup): string {
+  return `${branchFor(g)}--${sanitise(g.members[0]!.to_tag)}`
 }
 
 /** Lookup helpers backed by the resolution cache plus the live compose labels. */

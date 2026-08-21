@@ -104,19 +104,25 @@ test('a successor with no pull request yet still names its version', () => {
   assert.deepEqual(successorFor(dead), { toTag: '1.2.0', number: null })
 })
 
-test('a superseded update can no longer justify a merge', async () => {
+test('a superseded update can no longer justify a merge', () => {
   // The sharp end: decide() used to join pr_updates -> updates with no state filter, so
   // an overtaken row still supplied magnitude, tier and verdict.
+  //
+  // Every argument matters here. This was once called as `decide(id, 9)` and passed for
+  // the wrong reason entirely -- `scope` arrived undefined, so it returned false at the
+  // scope guard without ever reaching the query this test is about.
   const id = pr(9, [update('superseded', '1.1.0')])
-  const d = await decide(id, 9)
+  const d = decide(id, 9, 'tag-only', false, PolicySchema.parse({}))
   assert.equal(d.merge, false)
 })
 
-test('the setting exists, defaults to on, and is a switch in the Pull requests section', () => {
-  assert.equal(PolicySchema.parse({}).prs.close_superseded, true)
-  assert.equal(PolicySchema.parse({ prs: { close_superseded: false } }).prs.close_superseded, false)
-  const def = SETTINGS.find((s) => s.path === 'prs.close_superseded')!
-  assert.equal(def.kind, 'bool')
-  assert.equal(def.section, 'Pull requests')
-  assert.equal(def.defaultValue, 'true')
+test('whether to close an overtaken pull request is no longer a setting', () => {
+  // It is retargeted in place when it can be and retired when it cannot, and neither is
+  // optional. The switch existed because the only alternative to closing was leaving a
+  // pull request open that could never merge.
+  assert.equal('close_superseded' in PolicySchema.parse({}).prs, false)
+  assert.equal(
+    SETTINGS.find((s) => s.path === 'prs.close_superseded'),
+    undefined,
+  )
 })

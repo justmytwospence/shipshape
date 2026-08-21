@@ -55,15 +55,32 @@ test('sections read in the order an update travels', () => {
     row({ category: 'opened', summary: 'o' }),
     row({ category: 'merged', summary: 'm' }),
     row({ category: 'drafted', summary: 'p' }),
+    row({ category: 'retargeted', summary: 'r' }),
   ])!
-  const order = ['opened', 'merged', 'deployed', 'carried drafted', 'waiting on you'].map((h) =>
-    m.body.indexOf(h),
-  )
+  const order = [
+    'opened',
+    'retargeted',
+    'merged',
+    'deployed',
+    'carried drafted',
+    'waiting on you',
+  ].map((h) => m.body.indexOf(h))
   assert.deepEqual(
     order,
     [...order].sort((a, b) => a - b),
     m.body,
   )
+})
+
+test('a pull request moved onto a newer target gets its own heading', () => {
+  // Not folded into "superseded and closed": nothing was closed, and a section heading
+  // that says otherwise is how the digest stops describing what actually happened. An
+  // unlisted category is silently dropped, so this is also the test that it is listed.
+  const m = render([
+    row({ category: 'retargeted', stack: 'servarr', service: 'radarr', summary: '5.28 -> 5.30 (#16)' }),
+  ])!
+  assert.match(m.body, /^1 retargeted$/m)
+  assert.match(m.body, /^ {2}servarr\/radarr: 5\.28 -> 5\.30 \(#16\)$/m)
 })
 
 test('a heading agrees with itself on plurals', () => {

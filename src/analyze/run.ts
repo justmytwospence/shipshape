@@ -211,19 +211,87 @@ function recordFailure(
   })
 }
 
+/**
+ * Splice an already-judged verdict into whatever open pull requests now carry this bump.
+ *
+ * The pass above only visits pairs with no verdict at all, and only a fresh analysis
+ * writes one into a pull request. So a pull request that has just been retargeted onto a
+ * bump some other stack already had judged would otherwise keep "analysis has not run
+ * yet" in its body for as long as it stayed open. Reusing the cache like this is the
+ * point of keying verdicts by (image, from, to) rather than by pull request.
+ *
+ * Returns whether there was one to apply. `only` narrows it to a single pull request --
+ * a retarget knows exactly which one just started carrying this bump, and applying it to
+ * every pull request that shares the bump would re-announce siblings that were told about
+ * it when their own verdict landed.
+ */
+export async function applyCachedVerdict(
+  row: { image: string; from_tag: string; to_tag: string },
+  only?: number,
+): Promise<boolean> {
+  const v = getDb()
+    .prepare(
+      `SELECT summary, severity, breaking_changes, migration_steps, recommendation, confidence,
+              sources
+         FROM verdicts
+        WHERE image = ? AND from_tag = ? AND to_tag = ? AND error IS NULL`,
+    )
+    .get(row.image, row.from_tag, row.to_tag) as
+    | {
+        summary: string | null
+        severity: string | null
+        breaking_changes: string | null
+        migration_steps: string | null
+        recommendation: string | null
+        confidence: string | null
+        sources: string | null
+      }
+    | undefined
+  if (!v?.recommendation) return false
+
+  const list = (s: string | null): string[] => {
+    try {
+      const parsed = JSON.parse(s ?? '[]')
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+  await applyToPrs(
+    row,
+    {
+      summary: v.summary ?? '',
+      severity: (v.severity ?? 'none') as Verdict['severity'],
+      breaking_changes: list(v.breaking_changes),
+      migration_steps: list(v.migration_steps),
+      recommendation: v.recommendation as Verdict['recommendation'],
+      confidence: (v.confidence ?? 'low') as Verdict['confidence'],
+      sources: list(v.sources),
+    },
+    only,
+  )
+  return true
+}
+
 /** Write the verdict into every open PR carrying this update, and adjust its labels. */
 async function applyToPrs(
   row: { image: string; from_tag: string; to_tag: string },
   v: Verdict,
+  only?: number,
 ): Promise<void> {
-  const prs = getDb()
-    .prepare(
-      `SELECT DISTINCT p.number FROM prs p
+  const prs = (
+    getDb()
+      .prepare(
+        // Ordered so the pull request named in the digest below is a stable choice rather
+        // than whichever row the query planner happened to return first.
+        `SELECT DISTINCT p.number FROM prs p
        JOIN pr_updates pu ON pu.pr_id = p.id
        JOIN updates u ON u.id = pu.update_id
-       WHERE p.state = 'open' AND u.image = ? AND u.from_tag = ? AND u.to_tag = ?`,
-    )
-    .all(row.image, row.from_tag, row.to_tag) as { number: number }[]
+       WHERE p.state = 'open' AND u.image = ? AND u.from_tag = ? AND u.to_tag = ?
+       ORDER BY p.number`,
+      )
+      .all(row.image, row.from_tag, row.to_tag) as { number: number }[]
+  ).filter((p) => only === undefined || p.number === only)
 
   const [owner, repo] = env.githubRepo.split('/') as [string, string]
   const { policy } = loadPolicy()

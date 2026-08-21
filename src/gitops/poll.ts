@@ -3,7 +3,7 @@ import { env, loadPolicy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { notify } from '../notify/index.ts'
 import { routine } from '../notify/digest.ts'
-import { withGitLock } from './repo.ts'
+import { ensureWorkRepo, git, httpsUrl, withGitLock } from './repo.ts'
 import { syncMain } from './sync.ts'
 import { manualCommand, stackPeers, withNamespacePeers, type DeployTarget } from '../deploy/run.ts'
 import { enqueueDeploy, hasDueRechecks, hasPendingDeploys } from '../deploy/queue.ts'
@@ -83,17 +83,34 @@ async function pollPass(): Promise<PollResult> {
       continue
     }
 
+    // Read the row again rather than trusting the snapshot this pass started with. A
+    // retarget force-pushes and writes `head_sha_pushed` in the same moment, and a pass
+    // holding the value it read a minute ago would compare the new head against the old
+    // one -- which reads as a human's edit.
+    //
+    // It narrows the window rather than closing it: a `pulls.get` answered just before
+    // the force-push, whose continuation runs just after it, still compares an old head
+    // against the new column. Ownership is recomputed in both directions every cycle, so
+    // that resolves itself within a poll; what it costs in between is one cycle in which
+    // the pull request will not auto-merge.
+    const live = getDb()
+      .prepare(`SELECT head_sha_pushed, scope, scope_sha, state FROM prs WHERE id = ?`)
+      .get(pr.id) as
+      | { head_sha_pushed: string; scope: string; scope_sha: string | null; state: string }
+      | undefined
+    if (!live || live.state !== 'open') continue
+
     // A head that no longer matches what we pushed means a human edited the branch.
     // From then on it is theirs: never force-pushed, never regenerated. Restoring it
     // to shipshape's own commit hands ownership back, since there is nothing of theirs
     // left on it.
-    const owned = data.head.sha !== pr.head_sha_pushed
+    const owned = data.head.sha !== live.head_sha_pushed
     getDb().prepare(`UPDATE prs SET user_owned = ? WHERE id = ?`).run(owned ? 1 : 0, pr.id)
 
     // Re-classify whenever the head has moved since the last classification -- in
     // either direction, so an edit that is later reverted stops being reported as one.
-    if (data.state === 'open' && data.head.sha !== pr.scope_sha) {
-      await classifyScope(pr.id, pr.number, pr.scope, data.head.sha, !owned)
+    if (data.state === 'open' && data.head.sha !== live.scope_sha) {
+      await classifyScope(pr.id, pr.number, live.scope, data.head.sha, !owned)
     }
 
     if (data.state === 'open') continue
@@ -103,7 +120,7 @@ async function pollPass(): Promise<PollResult> {
       await onMerged(pr.id, pr.number, data.merge_commit_sha ?? null)
     } else {
       out.closed++
-      onClosed(pr.id, pr.number)
+      await onClosed(pr.id, pr.number, pr.branch)
     }
   }
 
@@ -310,9 +327,13 @@ function deployLabelFor(stack: string, service: string): string | null {
   return row?.deploy_label ?? null
 }
 
-function onClosed(prId: number, number: number): void {
+async function onClosed(prId: number, number: number, branch: string): Promise<void> {
   const db = getDb()
   const now = new Date().toISOString()
+  const mine =
+    (db.prepare(`SELECT user_owned FROM prs WHERE id = ?`).get(prId) as
+      | { user_owned: number }
+      | undefined)?.user_owned !== 1
   db.transaction(() => {
     db.prepare(`UPDATE prs SET state = 'closed' WHERE id = ?`).run(prId)
     db.prepare(
@@ -326,6 +347,36 @@ function onClosed(prId: number, number: number): void {
     message: `#${number} was closed without merging`,
     detail: 'the update will be re-detected on the next scan unless the tag moves on',
   })
+
+  // Take the branch with it. Branch names carry the service, not the target, so this ref
+  // is the one the next update of the same service will want; `branchOwnership` would
+  // still recognise it as ours and overwrite it, but leaving abandoned refs around for
+  // that to sort out is how a single wrong answer freezes a service out of updates.
+  // Never for a branch somebody has pushed to -- their commits are not ours to discard.
+  if (!mine) return
+  try {
+    await withGitLock('close-cleanup', async () => {
+      // Re-check inside the lock. This delete waits for whatever git work is in flight,
+      // and a pull request pass running right now may hand this very name to the next
+      // update of the same service -- it holds the lock while it pushes and records the
+      // new pull request, so by the time this runs the database says whether the ref has
+      // been claimed again. Deleting it then would tear the head out from under a pull
+      // request opened seconds ago and GitHub would close it.
+      const reclaimed = getDb()
+        .prepare(`SELECT 1 FROM prs WHERE branch = ? AND state = 'open' LIMIT 1`)
+        .get(branch)
+      if (reclaimed) return
+      const repoDir = await ensureWorkRepo()
+      await git(repoDir, ['push', httpsUrl(), '--delete', branch], { remote: true, allowFail: true })
+    })
+  } catch (err) {
+    logEvent({
+      level: 'info',
+      kind: 'pr',
+      message: `left the branch of #${number} behind`,
+      detail: (err as Error).message.slice(0, 160),
+    })
+  }
 }
 
 const COMMAND_MARK = '<!-- shipshape:deploy-command -->'

@@ -42,7 +42,7 @@ const PAGES = [
   '/activity?kind=deploy&level=problems&q=x',
   '/settings',
   '/settings/advanced',
-  '/settings/status',
+  '/status',
   '/settings/raw',
 ]
 const FRAGMENTS = [
@@ -128,7 +128,10 @@ test('the old addresses still land somewhere', async () => {
   // costs the operator a search.
   for (const [from, to] of [
     ['/images', '/services'],
-    ['/system', '/settings/status'],
+    ['/system', '/status'],
+    // Status left Settings when it became a destination of its own. Its old address
+    // outlived it in bookmarks and in every digest link written before the move.
+    ['/settings/status', '/status'],
   ]) {
     const res = await app.request(from)
     assert.equal(res.status, 301, from)

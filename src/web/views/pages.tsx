@@ -8,10 +8,9 @@ import {
   SettingsForm,
   SettingsNav,
   SettingsTabs,
-  StatusBody,
   type SettingValue,
-  type StatusData,
 } from './ui/settings.tsx'
+import { StatusBody, type StatusData } from './ui/status.tsx'
 import { ActivityList, ActivityToolbar, type ActivityRow } from './ui/activity.tsx'
 import {
   ServicesList,
@@ -264,12 +263,7 @@ export const SettingsPage: FC<{
 )
 
 export const StatusPage: FC<{ data: StatusData; chrome: PageChrome }> = ({ data, chrome }) => (
-  <Layout
-    title="Status"
-    nav="settings"
-    chrome={chrome}
-    toolbar={<SettingsTabs active="status" />}
-  >
+  <Layout title="Status" nav="status" chrome={chrome}>
     <Split variant="wide" list={<StatusBody data={data} />} />
   </Layout>
 )

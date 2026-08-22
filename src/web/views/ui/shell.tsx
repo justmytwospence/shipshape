@@ -12,11 +12,13 @@ import { version } from '../../version.ts'
  * page scrolls -- nested scrollers on a touch screen are the thing the old dashboard got
  * most wrong. Every fixed height and every `overflow-*` here is therefore prefixed `lg:`.
  *
- * One navigation, two presentations: the sidebar and the dock are the same five
- * destinations in the same order from the same array.
+ * One navigation, two presentations: the sidebar and the dock are the same six
+ * destinations in the same order from the same array. Six is the ceiling a phone dock can
+ * label honestly -- past it the words start truncating, and a "More" menu that hides a
+ * destination is worse than a tight one that shows it.
  */
 
-export type NavKey = 'inbox' | 'updates' | 'services' | 'activity' | 'settings'
+export type NavKey = 'inbox' | 'updates' | 'services' | 'activity' | 'settings' | 'status'
 
 export const NAV: { key: NavKey; href: string; label: string; icon: IconName }[] = [
   { key: 'inbox', href: '/', label: 'Inbox', icon: 'inbox' },
@@ -24,6 +26,7 @@ export const NAV: { key: NavKey; href: string; label: string; icon: IconName }[]
   { key: 'services', href: '/services', label: 'Services', icon: 'services' },
   { key: 'activity', href: '/activity', label: 'Activity', icon: 'activity' },
   { key: 'settings', href: '/settings', label: 'Settings', icon: 'settings' },
+  { key: 'status', href: '/status', label: 'Status', icon: 'status' },
 ]
 
 /**
@@ -433,7 +436,7 @@ const KEYS: [string, string][] = [
   ['m', 'do the thing the button says'],
   ['s', 'skip this version'],
   ['/', 'search'],
-  ['g then i / u / s / a / ,', 'go to Inbox, Updates, Services, Activity, Settings'],
+  ['g then i / u / s / a / , / t', 'go to Inbox, Updates, Services, Activity, Settings, Status'],
   ['?', 'this list'],
 ]
 

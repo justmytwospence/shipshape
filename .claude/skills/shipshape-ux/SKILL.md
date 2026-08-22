@@ -92,7 +92,19 @@ only offered where the analysis is on screen, never as a bare row button.
   provenance (label / default / inferred / locked).
 - **Activity** — the log, coalesced.
 - **Settings** — the defaults, Pause, review, notifications, schedule; Advanced holds
-  everything else; Status is the machine's own state; `/docs` explains the model.
+  everything else; `/docs` explains the model.
+- **Status** — the machine's own state: its clocks, what it is wired to, what it has
+  spent, and what would merge if nothing were holding it. Nothing on it is a decision,
+  which is the line between it and Settings: Settings is where you change what shipshape
+  may do, Status is where you find out what it did.
+
+Six destinations, and the sidebar and the phone dock show the same six in the same order
+from one array. Six is the ceiling a dock can label honestly — past it the words truncate,
+and a "More" menu that hides a destination is worse than a tight row that shows them all.
+
+Everything on Status is written for a person. A raw epoch, a JSON blob, or a counter whose
+name is its database key are all things the database happens to store; printing them
+verbatim is what made the page read as a debug dump, and is the thing to keep out of it.
 
 ## Two rules about configuration
 

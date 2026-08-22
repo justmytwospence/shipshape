@@ -43,8 +43,8 @@ import {
   PromptEditor,
   SettingsForm,
   type SettingValue,
-  type StatusData,
 } from './views/ui/settings.tsx'
+import type { StatusData } from './views/ui/status.tsx'
 import { ServiceDetail, ServicesList } from './views/ui/services.tsx'
 import { ActivityList, KINDS as ACTIVITY_KINDS, type ActivityRow } from './views/ui/activity.tsx'
 import {
@@ -924,7 +924,7 @@ export function createApp(): Hono {
     return groups
   }
 
-  /** What the machine is doing and what it has spent, for the Status tab. */
+  /** What the machine is doing and what it has spent, for the Status page (`/status`). */
   const statusData = (): StatusData => {
     const { policy } = loadPolicy()
     const db = getDb()
@@ -955,6 +955,9 @@ export function createApp(): Hono {
         lastAt: info.lastAt,
         nextAt: sched.scan.nextAt,
         durationS: info.durationS,
+        // Already parsed by scanInfo, and previously thrown away here -- which is why the
+        // only place it reached the page was as the JSON string in the counters dump.
+        counts: info.counts,
       },
       digest: { cron: sched.digest.cron, nextAt: sched.digest.nextAt },
       credentials: [
@@ -1018,7 +1021,7 @@ export function createApp(): Hono {
     ),
   )
 
-  app.get('/settings/status', (c) => c.html(StatusPage({ data: statusData(), chrome: chrome(c) }) as string))
+  app.get('/status', (c) => c.html(StatusPage({ data: statusData(), chrome: chrome(c) }) as string))
 
   app.post('/settings/prompt/:name', async (c) => {
     const name = c.req.param('name') as PromptName
@@ -1131,7 +1134,8 @@ export function createApp(): Hono {
 
   // Old addresses, kept as redirects: a bookmark or a link in a months-old digest
   // should land on the page that replaced it rather than a 404.
-  app.get('/system', (c) => c.redirect('/settings/status', 301))
+  app.get('/system', (c) => c.redirect('/status', 301))
+  app.get('/settings/status', (c) => c.redirect('/status', 301))
   app.get('/images', (c) => c.redirect('/services', 301))
 
 

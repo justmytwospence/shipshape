@@ -238,7 +238,7 @@
     if (document.querySelector('dialog[open]') && e.key !== 'Escape') return
 
     if (pending === 'g') {
-      var go = { i: '/', u: '/updates', s: '/services', a: '/activity', ',': '/settings' }[e.key]
+      var go = { i: '/', u: '/updates', s: '/services', a: '/activity', ',': '/settings', t: '/status' }[e.key]
       pending = ''
       if (go) {
         e.preventDefault()

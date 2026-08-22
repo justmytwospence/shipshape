@@ -4,13 +4,15 @@ import { InboxAside, InboxList } from '../../src/web/views/ui/inbox.tsx'
 import { UpdateDetail, UpdateRow } from '../../src/web/views/ui/update.tsx'
 import { ServiceDetail, ServicesList } from '../../src/web/views/ui/services.tsx'
 import { ActivityList } from '../../src/web/views/ui/activity.tsx'
-import { SettingsForm, StatusBody } from '../../src/web/views/ui/settings.tsx'
+import { SettingsForm } from '../../src/web/views/ui/settings.tsx'
+import { StatusBody } from '../../src/web/views/ui/status.tsx'
 import { Layout } from '../../src/web/views/ui/shell.tsx'
 import {
   ActivityPage,
   InboxPage,
   ServicesPage,
   SettingsPage,
+  StatusPage,
   UpdatesPage,
 } from '../../src/web/views/pages.tsx'
 import type { UpdateView, Milestone } from '../../src/updates/queries.ts'
@@ -242,14 +244,20 @@ const SETTING_GROUPS = [
   },
 ]
 
-const STATUS = {
+export const STATUS = {
   version: '0.1.0',
   repoDir: '/srv/compose',
   repo: 'you/repo',
   mergeMethod: 'squash',
   pushMain: true,
   blackout: ['00:45-02:30'],
-  scan: { cron: '0 0 3 * * *', lastAt: ago(9), nextAt: null, durationS: 156 },
+  scan: {
+    cron: '0 0 3 * * *',
+    lastAt: ago(9),
+    nextAt: null,
+    durationS: 156,
+    counts: { 'up-to-date': 62, unchanged: 45, update: 3, error: 4 },
+  },
   digest: { cron: '0 0 8 * * *', nextAt: null },
   credentials: [{ name: 'GITHUB_TOKEN', state: 'set' as const }],
   spend: [{ model: 'claude-haiku-4-5', purpose: 'verdict', calls: 34, cost: 3.63 }],
@@ -258,7 +266,15 @@ const STATUS = {
   deploys: [
     { at: ago(2), stack: 'media', services: 'jellyfin', status: 'verified', trigger: 'queue' },
   ],
-  budgets: [{ key: 'dockerhub.pulls', value: 200, window: '200;w=3600' }],
+  // Every key the real table holds, so the filter that drops the ones stated in words
+  // elsewhere on the page is actually exercised rather than assumed.
+  budgets: [
+    { key: 'claude.spend_usd', value: 8.03, window: '2026-08' },
+    { key: 'dockerhub.pulls', value: 180, window: '200;w=3600' },
+    { key: 'scan.last_at', value: 1787389349759, window: '2026-08-22T09:02:29.759Z' },
+    { key: 'scan.last_counts', value: 118, window: '{"up-to-date":62,"unchanged":45}' },
+    { key: 'scan.last_duration_s', value: 156, window: null },
+  ],
 }
 
 const ACTIVITY = [
@@ -416,6 +432,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
     'settings-page': String(
       SettingsPage({ tab: 'general', groups: SETTING_GROUPS, readyCount: 2, chrome: CH }),
     ),
+    'status-page': String(StatusPage({ data: STATUS, chrome: CH })),
     // fragments
     inbox: String(InboxList({ data: inbox })),
     'inbox-aside': String(InboxAside({ data: inbox })),

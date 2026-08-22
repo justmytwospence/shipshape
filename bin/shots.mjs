@@ -41,7 +41,7 @@ const VIEWPORTS = {
 }
 
 // Every page the app serves. Fragments are not screenshotted -- they have no chrome.
-const DEFAULT_ROUTES = ['/', '/images', '/activity', '/system', '/settings']
+const DEFAULT_ROUTES = ['/', '/updates', '/services', '/activity', '/settings', '/status']
 
 function parseArgs(argv) {
   const out = {

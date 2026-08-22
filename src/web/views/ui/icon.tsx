@@ -40,6 +40,7 @@ export type IconName =
   | 'plus'
   | 'skip'
   | 'eye'
+  | 'status'
 
 const PATHS: Record<IconName, string[]> = {
   inbox: ['M4 13h3l3 3h4l3 -3h3', 'M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-10a2 2 0 0 1 2 -2z'],
@@ -57,6 +58,14 @@ const PATHS: Record<IconName, string[]> = {
   alert: ['M12 9v4', 'M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z', 'M12 16h.01'],
   ban: ['M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0', 'M5.7 5.7l12.6 12.6'],
   clock: ['M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0', 'M12 7v5l3 3'],
+  // A gauge, not a clock and not the Activity pulse: both of those are already spoken for
+  // in this set, and at 16px a needle reading against an arc is the one of the three that
+  // still says "a machine's own dial" rather than "a time" or "a log".
+  status: [
+    'M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0',
+    'M13.41 10.59l2.59 -2.59',
+    'M7 12a5 5 0 0 1 5 -5',
+  ],
   pause: ['M6 5m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z', 'M14 5m0 1a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v12a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1z'],
   rocket: [
     'M4 13a8 8 0 0 1 7 7a6 6 0 0 0 3 -5a9 9 0 0 0 6 -8a3 3 0 0 0 -3 -3a9 9 0 0 0 -8 6a6 6 0 0 0 -5 3',

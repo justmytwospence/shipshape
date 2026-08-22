@@ -2,7 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { renderAll, classesOf, builtCss } from './fixtures.tsx'
+import { renderAll, classesOf, builtCss, STATUS } from './fixtures.tsx'
+import { StatusBody } from '../../src/web/views/ui/status.tsx'
 
 /**
  * What the markup has to be true of, independent of how it looks.
@@ -26,6 +27,7 @@ const PAGES = [
   'service-page',
   'activity-page',
   'settings-page',
+  'status-page',
   'layout',
   'layout-setup',
 ]
@@ -116,7 +118,11 @@ test('both navigations exist, keyed to the same breakpoint', () => {
   assert.match(html, /drawer lg:drawer-open/, 'the sidebar takes over at the same width')
   const dock = html.slice(html.indexOf('class="dock'))
   const links = dock.slice(0, dock.indexOf('</nav>')).match(/<a /g)?.length
-  assert.equal(links, 5, 'five destinations, and no More menu hiding one of them')
+  // Six since Status became a destination of its own rather than a tab of Settings. The
+  // number is asserted because the failure it guards against is a "More" menu: a phone
+  // dock that hides a destination behind an overflow is worse than a tight one that
+  // shows them all, and six labels is the point where that trade is still winnable.
+  assert.equal(links, 6, 'six destinations, and no More menu hiding one of them')
 })
 
 test('back and forward are reloads, not snapshots', () => {
@@ -147,7 +153,7 @@ test('only the desktop has inner scrollers', () => {
   // Below lg the document is the only thing that scrolls: nested scroll regions on a
   // touch screen are what the old dashboard got most wrong. Every fixed height and
   // every overflow on the frame is therefore behind the lg: prefix.
-  for (const key of ['inbox-page', 'updates-page', 'services-page', 'activity-page', 'settings-page']) {
+  for (const key of ['inbox-page', 'updates-page', 'services-page', 'activity-page', 'settings-page', 'status-page']) {
     const html = VIEWS[key]!
     for (const m of html.matchAll(/<(?:section|div|main|body)[^>]*class="([^"]*)"/g)) {
       for (const cls of m[1]!.split(/\s+/)) {
@@ -157,6 +163,63 @@ test('only the desktop has inner scrollers', () => {
       }
     }
   }
+})
+
+test('the scan is stated in words, and never twice', () => {
+  // Status is the page the machine describes itself on, which is exactly why it drifted
+  // into printing what the database happens to store: an epoch, a JSON object, and
+  // counters named after their keys. Everything on it is for a person.
+  const html = VIEWS['status']!
+  assert.match(html, /62 up to date/, 'the tally reads as a sentence, not as JSON')
+  assert.match(html, /45 unchanged/)
+  assert.doesNotMatch(html, /\{&quot;|\{"/, 'no JSON object printed as itself')
+  for (const key of ['scan.last_at', 'scan.last_counts', 'scan.last_duration_s']) {
+    assert.doesNotMatch(
+      html,
+      new RegExp(key.replace(/\./g, '\\.')),
+      `${key} is stated in words above, so it must not also appear as a database key`,
+    )
+  }
+  assert.doesNotMatch(html, /1787389349759/, 'an epoch is not a time a person reads')
+  // The Hub allowance counts down, and its bare number under a key name reads as the
+  // opposite of what it means.
+  assert.match(html, /180 of 200 left this hour/, 'the direction the number counts is said')
+  assert.doesNotMatch(html, /200;w=3600/, 'the rate-limit header is not the sentence')
+})
+
+test('one of a thing is not called several of it', () => {
+  const html = String(
+    StatusBody({
+      data: {
+        ...STATUS,
+        scan: { ...STATUS.scan, counts: { 'moved-pinned': 1, 'moved-rolling': 3 } },
+      },
+    }),
+  )
+  assert.match(html, /1 pinned digest moved/)
+  assert.match(html, /3 rolling images moved/)
+})
+
+test('two ways of failing are one word to the person reading it', () => {
+  // A registry that would not answer and a row that would not write are both an error
+  // here; listed separately they read as "4 errors · 1 errors".
+  const html = String(
+    StatusBody({
+      data: { ...STATUS, scan: { ...STATUS.scan, counts: { error: 4, 'persist-error': 1 } } },
+    }),
+  )
+  assert.match(html, /5 errors/)
+})
+
+test('an outcome nobody has named still gets counted', () => {
+  // The labels are a map, and a scan that grows a new outcome must not lose it silently
+  // just because no word has been chosen yet -- it should look odd and get one.
+  const html = String(
+    StatusBody({
+      data: { ...STATUS, scan: { ...STATUS.scan, counts: { 'brand-new-outcome': 2 } } },
+    }),
+  )
+  assert.match(html, /2 brand-new-outcome/)
 })
 
 test('nothing important is hidden in a title attribute', () => {

@@ -9,8 +9,14 @@ import type { GroupMember, UpdateGroup } from '../src/groups.ts'
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'shipshape-test-'))
 
 const { getDb } = await import('../src/db.ts')
-const { branchOwnership, partitionOvertaken, repointPr, resolveBranch, supersededPrs } =
-  await import('../src/gitops/pr.ts')
+const {
+  branchOwnership,
+  forcePushArgs,
+  partitionOvertaken,
+  repointPr,
+  resolveBranch,
+  supersededPrs,
+} = await import('../src/gitops/pr.ts')
 const { branchFor } = await import('../src/groups.ts')
 const { PolicySchema } = await import('../src/config.ts')
 const { decide } = await import('../src/gitops/automerge.ts')
@@ -328,4 +334,24 @@ test('an open pull request someone has taken over holds its branch outright', ()
 
 test('an unknown branch is never ours', () => {
   assert.equal(branchOwnership('shipshape/demo--never-seen', 'sha-1'), 'theirs')
+})
+
+// ------------------------------------------------------------------ the overwrite
+
+test('the overwrite names the sha it is leasing against', () => {
+  // A bare `--force-with-lease` works out what it expects from the remote-tracking ref
+  // for the destination. These go to a URL rather than a configured remote, so no such
+  // ref exists, nothing can be compared, and git refuses with "stale info" -- which is
+  // how the first retarget that ever ran failed, leaving the pull request on its old
+  // target and letting the close path retire it instead.
+  const args = forcePushArgs('https://example.invalid/x.git', 'shipshape/demo--svc', 'sha-1')
+  assert.deepEqual(args, [
+    'push',
+    '--force-with-lease=shipshape/demo--svc:sha-1',
+    'https://example.invalid/x.git',
+    'shipshape/demo--svc',
+  ])
+  // The bare flag is the bug; an unconditional overwrite would be a worse one.
+  assert.ok(!args.includes('--force-with-lease'), 'the lease must carry the ref and the sha')
+  assert.ok(!args.includes('--force'), 'never an unconditional overwrite')
 })

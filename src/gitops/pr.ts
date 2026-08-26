@@ -902,6 +902,23 @@ export function branchOwnership(branch: string, remoteSha: string): 'ours' | 'th
   return ours ? 'ours' : 'theirs'
 }
 
+/**
+ * The arguments that overwrite a branch we have just proved is ours.
+ *
+ * The lease is spelled out rather than left implicit, and that is the whole point of this
+ * function existing. A bare `--force-with-lease` works out what it expects from the
+ * remote-tracking ref for the destination -- and these pushes go to a URL rather than to a
+ * configured remote, so there is no such ref, nothing to compare against, and git refuses
+ * with `stale info`. It rejected the first retarget that ever reached this line.
+ *
+ * Naming the sha is also the stronger claim of the two. `branchOwnership` has just read
+ * that exact tip and recognised it as ours; leasing against it means a push that lands in
+ * the moment between the reading and the writing is refused rather than flattened.
+ */
+export function forcePushArgs(url: string, branch: string, expectedSha: string): string[] {
+  return ['push', `--force-with-lease=${branch}:${expectedSha}`, url, branch]
+}
+
 async function pushBranch(
   repoDir: string,
   branch: string,
@@ -921,7 +938,7 @@ async function pushBranch(
         reason: `branch ${branch} has been modified upstream; leaving it alone`,
       }
     }
-    const forced = await git(repoDir, ['push', '--force-with-lease', httpsUrl(), branch], {
+    const forced = await git(repoDir, forcePushArgs(httpsUrl(), branch, remoteSha), {
       remote: true,
       allowFail: true,
     })

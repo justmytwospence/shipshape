@@ -29,26 +29,67 @@ export interface AnalysisRun {
   failed: number
 }
 
-/** Analyse up to `limit` un-analysed open PRs. */
-export async function runAnalysisPass(limit = 3): Promise<AnalysisRun> {
-  const out: AnalysisRun = { analysed: 0, skipped: 0, failed: 0 }
-  const { policy } = loadPolicy()
-  if (policy.claude.mode === 'off' || !env.anthropicApiKey) return out
-  if (budgetExhausted()) {
-    out.skipped++
-    return out
-  }
+/**
+ * How far back to reach for updates that applied without a pull request.
+ *
+ * Without a bound the first pass after this shipped would try to read the changelog of
+ * every minor and major release ever recorded, which is a large one-off bill for entries
+ * nobody is going to scroll to. A month keeps the feed's recent end populated, which is
+ * the end anyone reads, and older rows keep their links.
+ */
+const UNREVIEWED_WINDOW_DAYS = 30
 
-  const db = getDb()
-  // One verdict per (image, from, to): the same postgres bump in three stacks is judged
-  // once and reused everywhere.
-  const pending = db
+function sinceForUnreviewed(): string {
+  return new Date(Date.now() - UNREVIEWED_WINDOW_DAYS * 86_400_000).toISOString()
+}
+
+export interface PendingAnalysis {
+  image: string
+  from_tag: string
+  to_tag: string
+  stack: string
+  service: string
+  /** 1 when an open pull request is waiting on this verdict. */
+  has_pr: number
+}
+
+/**
+ * Which updates want a verdict next, most deserving first.
+ *
+ * One verdict per (image, from, to): the same postgres bump in three stacks is judged
+ * once and reused everywhere.
+ *
+ * Two things want a verdict, and they are not the same thing. An open pull request wants
+ * one because a decision is waiting on it. An update that applied on its own wants one
+ * because otherwise nobody ever finds out what changed -- it never had a pull request to
+ * carry the reading, so the releases feed would show it as a version number and nothing
+ * else. Open pull requests still go first: a verdict nobody is waiting on can wait.
+ *
+ * Patches are deliberately excluded from the second set. They are the bulk of what lands
+ * here and the least worth reading, and each one costs a model call against a budget that
+ * a feed is not worth exhausting. Their changelog links are derived rather than analysed,
+ * so a patch still has somewhere to send you.
+ *
+ * Exported because which updates get paid for is a decision worth testing on its own,
+ * without a model or a network anywhere near it.
+ */
+export function pendingAnalysis(limit: number): PendingAnalysis[] {
+  return getDb()
     .prepare(
-      `SELECT DISTINCT u.image, u.from_tag, u.to_tag, u.stack, u.service
+      `SELECT DISTINCT u.image, u.from_tag, u.to_tag, u.stack, u.service,
+              CASE WHEN EXISTS (
+                SELECT 1 FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
+                WHERE pu.update_id = u.id AND p.state = 'open'
+              ) THEN 1 ELSE 0 END AS has_pr
        FROM updates u
-       JOIN pr_updates pu ON pu.update_id = u.id
-       JOIN prs p ON p.id = pu.pr_id AND p.state = 'open'
-       WHERE NOT EXISTS (
+       WHERE (
+         EXISTS (
+           SELECT 1 FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
+           WHERE pu.update_id = u.id AND p.state = 'open'
+         )
+         OR (u.magnitude IN ('minor', 'major') AND u.detected_at >= ?)
+       )
+       AND NOT EXISTS (
          SELECT 1 FROM verdicts v
          WHERE v.image = u.image AND v.from_tag = u.from_tag AND v.to_tag = u.to_tag
            AND v.error IS NULL
@@ -62,15 +103,24 @@ export async function runAnalysisPass(limit = 3): Promise<AnalysisRun> {
            AND v.error IS NOT NULL
            AND v.next_attempt_at IS NOT NULL AND v.next_attempt_at > ?
        )
+       ORDER BY has_pr DESC, u.detected_at DESC
        LIMIT ?`,
     )
-    .all(new Date().toISOString(), limit) as {
-    image: string
-    from_tag: string
-    to_tag: string
-    stack: string
-    service: string
-  }[]
+    .all(sinceForUnreviewed(), new Date().toISOString(), limit) as PendingAnalysis[]
+}
+
+/** Analyse up to `limit` updates that want a verdict: open pull requests first. */
+export async function runAnalysisPass(limit = 3): Promise<AnalysisRun> {
+  const out: AnalysisRun = { analysed: 0, skipped: 0, failed: 0 }
+  const { policy } = loadPolicy()
+  if (policy.claude.mode === 'off' || !env.anthropicApiKey) return out
+  if (budgetExhausted()) {
+    out.skipped++
+    return out
+  }
+
+  const db = getDb()
+  const pending = pendingAnalysis(limit)
 
   for (const row of pending) {
     if (budgetExhausted()) {
@@ -91,6 +141,19 @@ export async function runAnalysisPass(limit = 3): Promise<AnalysisRun> {
       }
       recordVerdict(row, result)
       await applyToPrs(row, result)
+      // applyToPrs writes the log line per pull request it edits. An update that applied
+      // without one edits nothing, so say it here instead -- otherwise the only evidence
+      // a review ran is a row quietly gaining a summary in the feed.
+      if (!row.has_pr) {
+        logEvent({
+          level: result.recommendation === 'block' ? 'warn' : 'info',
+          kind: 'analysis',
+          stack: row.stack,
+          service: row.service,
+          message: `${row.stack}/${row.service} ${row.from_tag} -> ${row.to_tag} reviewed after the fact: ${result.recommendation} (${result.confidence} confidence)`,
+          detail: result.summary.slice(0, 160),
+        })
+      }
       out.analysed++
     } catch (err) {
       recordFailure(row, (err as Error).message)

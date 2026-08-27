@@ -20,6 +20,7 @@ import {
   inboxParked,
   inboxRecent,
   listUpdates,
+  listReleases,
   updateTimeline,
   updateView,
   type StageFilter,
@@ -34,6 +35,7 @@ import {
   ServicesPage,
   UpdatesList,
   UpdatesPage,
+  ReleasesPage,
   type Detail,
 } from './views/pages.tsx'
 import type { Chrome } from './views/ui/shell.tsx'
@@ -56,6 +58,7 @@ import { setServiceLabel } from '../gitops/labels.ts'
 import { InboxList, type InboxData } from './views/ui/inbox.tsx'
 import { ListCount, MergePreview, ScanStatus } from './views/ui/parts.tsx'
 import { UpdateDetail, UpdateRow } from './views/ui/update.tsx'
+import { ReleaseList } from './views/ui/releases.tsx'
 import { runPrPass } from '../gitops/pr.ts'
 import { runAnalysisPass } from '../analyze/run.ts'
 import { runProposePass } from '../propose/run.ts'
@@ -319,6 +322,21 @@ export function createApp(): Hono {
     InboxPage({ data: inboxData(), chrome: chrome(c), selectedId: detail?.id, detail: detail?.d })
 
   const updatesRender = (c: Context, ctx: ListCtx, detail?: { id: number; d: Detail }) => {
+    // The releases feed is the same page with a different list in it, and a different
+    // query behind that: every state, newest first, carrying the outbound links.
+    if (ctx.stage === 'releases') {
+      const releases = listReleases({ q: ctx.q, magnitude: ctx.magnitude })
+      return ReleasesPage({
+        releases,
+        stage: ctx.stage,
+        q: ctx.q,
+        magnitude: ctx.magnitude,
+        ctx: ctxString({ ...ctx, list: 'updates' }),
+        chrome: chrome(c),
+        selectedId: detail?.id,
+        detail: detail?.d,
+      })
+    }
     const updates = listUpdates({ stage: ctx.stage, q: ctx.q, magnitude: ctx.magnitude })
     return UpdatesPage({
       updates,
@@ -358,6 +376,13 @@ export function createApp(): Hono {
   app.get('/updates', (c) => {
     const ctx = ctxOf(c, 'updates')
     if (c.req.header('HX-Request')) {
+      if (ctx.stage === 'releases') {
+        const releases = listReleases({ q: ctx.q, magnitude: ctx.magnitude })
+        return c.html(
+          (ReleaseList({ releases, ctx: ctxString({ ...ctx, list: 'updates' }) }) as string) +
+            (ListCount({ n: releases.length, oob: true }) as string),
+        )
+      }
       const updates = listUpdates({ stage: ctx.stage, q: ctx.q, magnitude: ctx.magnitude })
       return c.html(
         (UpdatesList({ updates, ctx: ctxString({ ...ctx, list: 'updates' }) }) as string) +

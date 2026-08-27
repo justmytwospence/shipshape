@@ -59,6 +59,14 @@ UI never shows the raw enum:
 | failed | **Review failed** | error, with the attempt count |
 | off / unavailable | **No review** | neutral |
 
+Most releases carry **No review**, and the interface says so rather than leaving a gap.
+Reviews are written against pull requests, so an update that applies on its own has none
+to be written against. Minor and major updates that applied unattended are reviewed after
+the fact so the Releases tab has something to say about them; patches are not, because
+they are most of the volume and least of the interest, and every review costs a model
+call. A release with no review still links to its changelog -- those links come from the
+image reference, not from any analysis.
+
 Confidence is always visible next to it, as text. It is the qualifier that changes the
 decision — "Safe to apply" at low confidence is not the same claim — and a `title`
 attribute does not exist on a phone.
@@ -87,7 +95,10 @@ only offered where the analysis is on screen, never as a bare row button.
 ## Where things live
 
 - **Inbox** — what needs you, grouped by why, worst first; then what happened recently.
-- **Updates** — every update by stage, filterable, searchable.
+- **Updates** — every update by stage, filterable, searchable. Its **Releases** tab is the
+  same rows read rather than worked: newest first rather than biggest first, the review's
+  summary on the row rather than behind a click, and a link out for every release. It is a
+  tab, not a seventh destination -- the six below still stand.
 - **Services** — every service, its watch status, and its effective configuration with
   provenance (label / default / inferred / locked).
 - **Activity** — the log, coalesced.

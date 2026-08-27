@@ -4,6 +4,8 @@ import { shouldOpenPr, type EffectiveTier } from '../policy.ts'
 import type { Magnitude } from '../versions/patterns.ts'
 import { actionsFor, isTransient, primaryVerb, type ActionContext, type Verb } from './actions.ts'
 import { LIVE_STATES, sqlIn, type UpdateState } from './state.ts'
+import { refLinks, registryName, type RefLinks } from '../links.ts'
+import { parseImageRef } from '../images/ref.ts'
 
 /**
  * What the pages read.
@@ -572,14 +574,23 @@ export const STAGE_FILTERS = {
   closed: ['failed', 'skipped', 'superseded'],
 } as const satisfies Record<string, readonly UpdateState[]>
 
-export type StageFilter = keyof typeof STAGE_FILTERS | 'all'
+/**
+ * `releases` is not a state filter like the others -- it is the same rows read for a
+ * different reason. The stage tabs above answer "what is in my way"; releases answers
+ * "what came out", which wants recency rather than the triage order, and every release
+ * rather than a slice of the pipeline. It rides on the stage parameter because it is
+ * still a way of looking at the updates list, and the alternative -- a second axis in
+ * the toolbar, or a seventh destination in a navigation that documents six as its
+ * ceiling -- costs more than it explains.
+ */
+export type StageFilter = keyof typeof STAGE_FILTERS | 'all' | 'releases'
 
 export function listUpdates(opts: { stage?: StageFilter; q?: string; magnitude?: string; limit?: number } = {}): UpdateView[] {
   const stage = opts.stage ?? 'open'
   const where: string[] = []
   const args: unknown[] = []
 
-  if (stage !== 'all') {
+  if (stage !== 'all' && stage !== 'releases') {
     where.push(`u.state IN ${sqlIn(STAGE_FILTERS[stage])}`)
   }
   if (opts.magnitude && opts.magnitude !== 'all') {
@@ -603,6 +614,71 @@ export function listUpdates(opts: { stage?: StageFilter; q?: string; magnitude?:
     .all(...args, opts.limit ?? 200) as RawUpdate[]
   const repo = repoName()
   return rows.map((r) => toView(r, repo))
+}
+
+/**
+ * One release, as something to read rather than something to action.
+ *
+ * Same rows as the updates list, ordered by when they turned up rather than by how big
+ * they are, and carrying the outbound links. The links matter most here: they are derived
+ * from the image reference and the resolved source repository, so a release has somewhere
+ * to send you even when no changelog review ever ran for it -- which is the common case,
+ * because reviews are written for pull requests and most updates apply without one.
+ */
+export interface ReleaseView extends UpdateView {
+  links: RefLinks
+  /** What to call the registry, for the link that exists when no changelog does. */
+  registry: string
+}
+
+interface RawRelease extends RawUpdate {
+  source_url: string | null
+}
+
+export function listReleases(
+  opts: { q?: string; magnitude?: string; limit?: number } = {},
+): ReleaseView[] {
+  const where: string[] = []
+  const args: unknown[] = []
+
+  if (opts.magnitude && opts.magnitude !== 'all') {
+    where.push(`u.magnitude = ?`)
+    args.push(opts.magnitude)
+  }
+  if (opts.q) {
+    where.push(`(u.stack LIKE ? OR u.service LIKE ? OR u.image LIKE ?)`)
+    const like = `%${opts.q}%`
+    args.push(like, like, like)
+  }
+
+  // Both joins are one-to-one -- images is keyed by (stack, service) and resolutions by
+  // (registry, repository) -- so neither can multiply the rows. Both are LEFT joins
+  // because this is history: a service deleted from the compose file loses its images
+  // row, and the releases it did have should not disappear from the feed along with it.
+  // Without a resolved source repository refLinks falls back to what the image reference
+  // alone can produce, which is the registry rather than the changelog.
+  const rows = getDb()
+    .prepare(
+      `SELECT u.id, u.stack, u.service, u.image, u.from_tag, u.to_tag, u.magnitude, u.tier,
+              u.state, u.detail, u.detected_at, u.updated_at, u.acked_at, r.source_url
+         FROM updates u
+         LEFT JOIN images i ON i.stack = u.stack AND i.service = u.service
+         LEFT JOIN resolutions r ON r.registry = i.registry AND r.repository = i.repository
+       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+       ORDER BY u.detected_at DESC, u.id DESC
+       LIMIT ?`,
+    )
+    .all(...args, opts.limit ?? 200) as RawRelease[]
+
+  const repo = repoName()
+  return rows.map((r) => {
+    const ref = parseImageRef(r.image)
+    return {
+      ...toView(r, repo),
+      links: refLinks(ref, r.to_tag, r.source_url),
+      registry: registryName(ref.registry),
+    }
+  })
 }
 
 /** Every update ever recorded for one service, newest first. */

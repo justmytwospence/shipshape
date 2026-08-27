@@ -2,6 +2,7 @@ import type { FC } from 'hono/jsx'
 import { Layout, Split, type Chrome } from './ui/shell.tsx'
 import { InboxAside, InboxList, ScanControls, type InboxData } from './ui/inbox.tsx'
 import { UpdateRow } from './ui/update.tsx'
+import { ReleaseList } from './ui/releases.tsx'
 import { EmptyState, ListCount, Search, Tabs } from './ui/parts.tsx'
 import {
   RawPolicy,
@@ -17,7 +18,7 @@ import {
   ServicesToolbar,
   type ServiceRowData,
 } from './ui/services.tsx'
-import type { StageFilter, UpdateView } from '../../updates/queries.ts'
+import type { ReleaseView, StageFilter, UpdateView } from '../../updates/queries.ts'
 
 /**
  * The pages, assembled from the parts.
@@ -73,6 +74,7 @@ const STAGES: { key: StageFilter; label: string }[] = [
   { key: 'done', label: 'Done' },
   { key: 'closed', label: 'Closed' },
   { key: 'all', label: 'All' },
+  { key: 'releases', label: 'Releases' },
 ]
 
 const MAGNITUDES = [
@@ -150,6 +152,54 @@ export const UpdatesPage: FC<{
       pane={
         detail?.pane ?? (
           <EmptyState icon="updates" title="Select an update" hint="What the review said, and what you can do about it, shows here." />
+        )
+      }
+      mode={detail ? 'detail' : 'list'}
+    />
+  </Layout>
+)
+
+/**
+ * The releases feed: the same page furniture as Updates, a different list inside it.
+ *
+ * Kept as its own component rather than a branch inside UpdatesPage so that neither has
+ * to accept an array it might not be able to render -- a ReleaseView carries links an
+ * UpdateView does not, and a cast at the render site would be a promise the type system
+ * could not check.
+ */
+export const ReleasesPage: FC<{
+  releases: ReleaseView[]
+  stage: StageFilter
+  q: string
+  magnitude: string
+  ctx: string
+  chrome: PageChrome
+  selectedId?: number
+  detail?: Detail
+}> = ({ releases, stage, q, magnitude, ctx, chrome, selectedId, detail }) => (
+  <Layout
+    title={detail?.title ?? 'Releases'}
+    section="Updates"
+    nav="updates"
+    back={detail?.back}
+    detail={!!detail}
+    toolbar={<UpdatesToolbar stage={stage} q={q} magnitude={magnitude} />}
+    count={<ListCount n={releases.length} />}
+    chrome={chrome}
+  >
+    <Split
+      list={
+        <div id="updates-list">
+          <ReleaseList releases={releases} ctx={ctx} selectedId={selectedId} />
+        </div>
+      }
+      pane={
+        detail?.pane ?? (
+          <EmptyState
+            icon="updates"
+            title="Select a release"
+            hint="What the review said, and what you can do about it, shows here."
+          />
         )
       }
       mode={detail ? 'detail' : 'list'}

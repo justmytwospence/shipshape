@@ -26,7 +26,7 @@ export interface ListCtx {
   service?: string
 }
 
-const STAGES = new Set(['open', 'rolling', 'done', 'closed', 'all'])
+const STAGES = new Set(['open', 'rolling', 'done', 'closed', 'all', 'releases'])
 const LISTS = new Set<string>(['inbox', 'updates', 'services', 'service'])
 
 export function readCtx(get: (k: string) => string | undefined, fallback: ListKind): ListCtx {

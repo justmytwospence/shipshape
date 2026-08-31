@@ -810,9 +810,10 @@ export function createApp(): Hono {
 
     return verbReply(c, id, {
       ok: true,
-      message: policy.paused
-        ? 'Merged. Ready to deploy \u2014 press Deploy when you are.'
-        : 'Merged. The deploy is running and will be verified.',
+      // The deploy follows the merge unless the service says otherwise, so the reply can
+      // no longer be decided by `paused` -- it is decided by the rung, and the poll pass
+      // that runs a moment from now is what knows it.
+      message: 'Merged. The deploy follows unless this service is one you deploy yourself.',
     })
   })
 

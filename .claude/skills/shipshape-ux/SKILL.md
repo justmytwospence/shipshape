@@ -16,17 +16,27 @@ here, one of the two is wrong.
 | Rung | What happens |
 |---|---|
 | `auto` | A pull request opens and shipshape merges it, unless the changelog review objects. |
-| `manual` | A pull request opens. You merge it. |
-| `on-request` | Nothing opens. The update is listed until you ask for a pull request. |
+| `manual` | A pull request opens. You merge it, and the deploy follows. |
+| `attended` | A pull request opens. You merge it, and **you** deploy it. |
+| `on-request` | Nothing opens. The update is listed until you ask. You deploy it. |
 | `skip` | Not tracked at all. |
 
 Majors and digest moves are **always** manual, and that is not configurable. A
 `shipshape.policy` label on a service overrides the default for that service and always
 wins; anything unrecognised narrows to `manual` rather than widening.
 
-**Pause** is the one global switch: while it is on, shipshape merges and deploys nothing
-on its own. Scanning, pull requests and changelog reviews continue; every step that would
-change the host waits for a button. A merge *you* press still deploys — you are present.
+**Pause** is the one global switch: while it is on, shipshape merges nothing on its own.
+Scanning, pull requests and changelog reviews continue. A merge *you* press still deploys —
+you are present, and that is the point: merging is the decision and deploying is carrying
+it out, so the two are not negotiated separately.
+
+**A merge always leads to a deploy shipshape watches**, so a failure is caught by the
+health check and rolled back inside the soak window. Withholding the deploy never avoided
+that risk, it only moved it — the merged version reaches the host anyway the next time
+anything recreates the stack, and it arrives then with nothing watching. The exception is
+named per service, on the `attended` and `on-request` rungs, rather than taken globally:
+infrastructure that carries the way back in, datastores, anything a rollback could not put
+back.
 
 ## The stages
 

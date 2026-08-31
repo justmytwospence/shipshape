@@ -263,7 +263,7 @@ notify:
   cron: "0 0 8 * * *"         # when the digest goes out; empty ones are never sent
   ntfy: all                   # all | alerts | routine | off
   email: all                  # ...per channel, so push and mail can differ
-paused: true                  # nothing merges or deploys on its own. Off means it does.
+paused: true                  # nothing merges on its own. A merge you press still deploys.
 merge:
   max_per_run: 3
 model_tier:

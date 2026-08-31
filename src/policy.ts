@@ -39,10 +39,10 @@ export type Confidence = 'low' | 'medium' | 'high'
  * postgres major cannot be applied by bumping the tag at all (the new container refuses
  * the old datadir), so a standing merge-able PR would be a loaded gun.
  */
-export type EffectiveTier = 'auto' | 'manual' | 'held' | 'skip' | 'model'
+export type EffectiveTier = 'auto' | 'manual' | 'attended' | 'held' | 'skip' | 'model'
 
 /** What an operator may write in `shipshape.policy` or in `defaults.*`. */
-export const TIER_LABELS = ['auto', 'manual', 'on-request', 'skip', 'model'] as const
+export const TIER_LABELS = ['auto', 'manual', 'attended', 'on-request', 'skip', 'model'] as const
 
 export interface TierInput {
   magnitude: Magnitude
@@ -54,7 +54,7 @@ export interface TierInput {
 }
 
 /** Every spelling `shipshape.policy` accepts, including the deprecated one. */
-const KNOWN_LABELS = new Set(['auto', 'manual', 'gated', 'on-request', 'skip', 'model'])
+const KNOWN_LABELS = new Set(['auto', 'manual', 'attended', 'gated', 'on-request', 'skip', 'model'])
 
 function clean(v: string | null): string | null {
   const s = v?.trim().toLowerCase()
@@ -72,6 +72,12 @@ export function tierFor(i: TierInput): EffectiveTier {
   // lives in one label rather than being split across two that have to be read together.
   if (pr === 'on-request' || label === 'on-request') return 'held'
   if (label === 'manual' || label === 'gated') return 'manual'
+  // One rung further than manual: the pull request still opens and is still reviewed, but
+  // the host is not touched until a person presses Deploy. It is the answer to "I want to
+  // see this and decide, and I want to be watching when it lands" -- infrastructure that
+  // carries the way back in, anything whose restart takes other services down with it,
+  // anything a rollback could not put back.
+  if (label === 'attended') return 'attended'
   // Deferred, not decided: `model` needs a verdict, which tierFor has not got. The
   // merge path resolves it through policy/model-tier.ts and falls back to the static
   // tier -- `manual` for a major -- whenever the guards refuse.
@@ -95,7 +101,7 @@ export function asTier(v: string): EffectiveTier {
   const s = clean(v) ?? ''
   if (s === 'gated') return 'manual' // deprecated spelling, folded on read
   if (s === 'on-request') return 'held'
-  return s === 'auto' || s === 'manual' || s === 'skip' ? s : 'manual'
+  return s === 'auto' || s === 'manual' || s === 'attended' || s === 'skip' ? s : 'manual'
 }
 
 const TIER_RANK: Record<EffectiveTier, number> = {
@@ -105,7 +111,8 @@ const TIER_RANK: Record<EffectiveTier, number> = {
   // of its other members.
   model: 2,
   manual: 3,
-  held: 4,
+  attended: 4,
+  held: 5,
 }
 
 /**
@@ -126,6 +133,24 @@ export function foldGroupTier(tiers: string[]): EffectiveTier {
 export function normaliseTier(v: string): EffectiveTier {
   if (v === 'held' || v === 'model') return v
   return asTier(v)
+}
+
+/**
+ * Does changing this service need a person present at the moment it changes?
+ *
+ * Merging is a decision and deploying is carrying it out, and for almost everything the
+ * second should follow the first without being asked twice -- an update that is merged but
+ * not applied is going to be applied eventually anyway, by a reboot or by the next time
+ * anything recreates the stack, and it will land then with no health check and no rollback
+ * window. Deploying on merge is what puts that moment somewhere shipshape is watching.
+ *
+ * These two rungs are where that reasoning stops. `attended` is chosen per service for
+ * exactly this; `held` is the on-request rung, where the datastores live, and a postgres
+ * major cannot be applied by bumping a tag at all. For both, the deploy waits for a button
+ * however the merge happened.
+ */
+export function deployNeedsYou(tier: EffectiveTier): boolean {
+  return tier === 'attended' || tier === 'held'
 }
 
 const MAGNITUDE_RANK: Record<Magnitude, number> = { digest: 0, patch: 1, minor: 2, major: 3 }

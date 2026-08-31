@@ -304,7 +304,7 @@ const SidebarStatus: FC<{ chrome?: Chrome }> = ({ chrome }) => {
         </a>
       </div>
       <p class="opacity-70">
-        {chrome.paused ? 'Nothing merges or deploys on its own.' : 'Merges what policy allows.'}
+        {chrome.paused ? 'Nothing merges on its own.' : 'Merges what policy allows.'}
       </p>
       {scan ? (
         <p class="flex flex-wrap items-center gap-x-1.5 opacity-70">
@@ -407,7 +407,7 @@ const PausedBanner: FC = () => (
   <div class="alert alert-warning alert-soft shrink-0 rounded-none border-x-0 border-t-0 py-1 text-xs lg:hidden">
     <Icon name="pause" class="size-3.5" />
     <span>
-      <strong class="font-medium">Paused.</strong> Nothing merges or deploys on its own.
+      <strong class="font-medium">Paused.</strong> Nothing merges on its own.
     </span>
     {/* Straight to the switch, not to the top of a page it sits somewhere on. The
         negative margin gives a thumb 44px without making the strip 44px. */}

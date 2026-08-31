@@ -200,10 +200,18 @@ export function dueJobs(limit = MAX_PER_TICK): DeployJob[] {
 }
 
 export async function drainDeployQueue(): Promise<{ ran: number }> {
-  const { policy } = loadPolicy()
-  // While paused nothing self-starts. Jobs enqueued before the pause stay pending and
-  // resume when it lifts; jobs enqueued during it are `ready` and wait for the button.
-  if (policy.paused) return { ran: 0 }
+  // Pause does not gate this any more, and that is deliberate.
+  //
+  // It used to return here, which meant a merge the operator pressed themselves produced
+  // a deploy that then sat waiting for a second press. Pause is about what shipshape may
+  // *decide* -- it still stops auto-merge dead (see automerge.ts) -- and a merge is a
+  // decision already taken. What is queued here is the carrying out of one, and carrying
+  // it out under a health check is safer than leaving it to happen unwatched the next
+  // time something recreates the stack.
+  //
+  // Services that must not be touched without a person present say so for themselves, per
+  // service, on the `attended` and on-request rungs: those enqueue as `ready`, which no
+  // drain claims. That is now the only thing that holds a deploy back.
 
   reclaimStale()
   const jobs = dueJobs()

@@ -30,7 +30,7 @@ const GROUPS: Record<AttentionKind, { title: string; hint: string; icon: IconNam
   },
   'ready-to-deploy': {
     title: 'Ready to deploy',
-    hint: 'merged and waiting, because shipshape is paused',
+    hint: 'merged, and this service is one you deploy yourself',
     icon: 'rocket',
   },
   'pr-waiting': {

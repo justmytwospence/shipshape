@@ -503,7 +503,7 @@ export function updateTimeline(id: number): Milestone[] {
         at: d?.created_at ?? null,
         kind: 'ready',
         label: 'ready to deploy',
-        detail: 'waiting for you — shipshape is paused',
+        detail: 'waiting for you — this service is deployed by hand',
       })
     }
     if (v.deploy.startedAt) {

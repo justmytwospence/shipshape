@@ -404,7 +404,7 @@ export const SETTINGS: SettingDef[] = [
     kind: 'bool',
     defaultValue: 'true',
     label: 'Pause',
-    help: 'nothing merges or deploys on its own',
+    help: 'nothing merges on its own',
     // The section's prose says the rest; this is the one line that changes with the switch.
     about:
       'Unpausing is how an update goes from detected to running without you -- on the auto rung only, tag-only, patch or minor, with no verdict withholding it.',

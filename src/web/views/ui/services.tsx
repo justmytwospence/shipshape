@@ -241,9 +241,10 @@ const SOURCE_CLS: Record<Provenance, string> = {
 }
 
 const RUNGS = [
-  { value: 'auto', what: 'shipshape merges it, unless the review objects' },
-  { value: 'manual', what: 'a pull request opens; you merge it' },
-  { value: 'on-request', what: 'nothing opens until you ask' },
+  { value: 'auto', what: 'shipshape merges it, unless the review objects, then deploys' },
+  { value: 'manual', what: 'a pull request opens; you merge it, and the deploy follows' },
+  { value: 'attended', what: 'you merge it, and you deploy it — nothing touches this without you' },
+  { value: 'on-request', what: 'nothing opens until you ask; you deploy it' },
   { value: 'skip', what: 'not tracked at all' },
   { value: '', what: 'remove the label and follow the default' },
 ]

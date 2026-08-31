@@ -1,5 +1,5 @@
 import { Octokit } from 'octokit'
-import { env, loadPolicy } from '../config.ts'
+import { env, loadPolicy, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { notify } from '../notify/index.ts'
 import { routine } from '../notify/digest.ts'
@@ -7,6 +7,9 @@ import { ensureWorkRepo, git, httpsUrl, withGitLock } from './repo.ts'
 import { syncMain } from './sync.ts'
 import { manualCommand, stackPeers, withNamespacePeers, type DeployTarget } from '../deploy/run.ts'
 import { enqueueDeploy, hasDueRechecks, hasPendingDeploys } from '../deploy/queue.ts'
+import { scanRepo } from '../compose/scan.ts'
+import { deployNeedsYou, tierFor } from '../policy.ts'
+import type { Magnitude } from '../versions/patterns.ts'
 
 /**
  * Watching for merges.
@@ -210,10 +213,16 @@ async function onMerged(
   const now = new Date().toISOString()
   const members = db
     .prepare(
-      `SELECT u.id, u.stack, u.service, u.to_tag FROM updates u
+      `SELECT u.id, u.stack, u.service, u.to_tag, u.magnitude FROM updates u
        JOIN pr_updates pu ON pu.update_id = u.id WHERE pu.pr_id = ?`,
     )
-    .all(prId) as { id: number; stack: string; service: string; to_tag: string }[]
+    .all(prId) as {
+    id: number
+    stack: string
+    service: string
+    to_tag: string
+    magnitude: string
+  }[]
 
   const stack = members[0]?.stack ?? 'unknown'
   const services = members.map((m) => m.service).join(' ')
@@ -236,9 +245,24 @@ async function onMerged(
       : 'up',
   }
   const command = manualCommand(target)
-  // Merging leads to a deploy either way; `paused` only decides whether it starts itself
-  // or waits for the operator to press the button.
-  const waits = policy.paused
+  // Merging leads to a deploy either way; what this decides is whether it starts itself or
+  // waits for a button.
+  //
+  // It used to be `policy.paused`, which asked the wrong question. Pause is about what
+  // shipshape may *decide*; a merge is a decision already taken, and the version it
+  // decided on is going to reach the host regardless -- on the next reboot, or the next
+  // time anything recreates that stack. Deferring the deploy never avoided that, it only
+  // moved it to a moment with no health check, no soak and no rollback. Every merge now
+  // deploys and is watched, and the exception is per service rather than global.
+  //
+  // Tier is re-derived from the compose files rather than read from the update row, so a
+  // label added since the pull request opened takes effect -- the same reason automerge
+  // re-derives it.
+  const waits = deployWaits(
+    members,
+    scanRepo(env.repoDir, policy.exclude_stacks),
+    policy.defaults,
+  )
 
   db.transaction(() => {
     // The sha is recorded here because this is the only place it is offered. A deploy
@@ -316,6 +340,34 @@ async function onMerged(
     stack,
     message: `deploy of ${stack} queued for #${number}`,
     detail: target.services.join(', '),
+  })
+}
+
+/**
+ * Does this merge's deploy wait for a button, or start itself?
+ *
+ * A group is only as attended as its most cautious member: bringing a stack up recreates
+ * every service named in the target, so one service that wants a person present makes the
+ * whole invocation want one.
+ *
+ * Separated from `onMerged` because it is the whole of the decision and the rest of that
+ * function needs a database, a work tree and GitHub to reach.
+ */
+export function deployWaits(
+  members: { stack: string; service: string; magnitude: string }[],
+  scanned: { stack: string; service: string; policyLabel: string | null; prLabel: string | null }[],
+  defaults: Policy['defaults'],
+): boolean {
+  return members.some((m) => {
+    const svc = scanned.find((s) => s.stack === m.stack && s.service === m.service)
+    return deployNeedsYou(
+      tierFor({
+        magnitude: m.magnitude as Magnitude,
+        policyLabel: svc?.policyLabel ?? null,
+        prLabel: svc?.prLabel ?? null,
+        defaults,
+      }),
+    )
   })
 }
 

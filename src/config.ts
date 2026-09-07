@@ -247,6 +247,44 @@ export const PolicySchema = z.object({
       never: z.array(z.string()).default([]),
     })
     .prefault({}),
+  /**
+   * Comments on a pull request, read as instructions.
+   *
+   * Three rungs rather than the `auto | manual | off` the propose block uses, because
+   * the question an operator actually has here is not "how often" but "how far". The
+   * fear worth answering is "a sentence I typed caused a commit", and `reply` is the
+   * rung that answers it: shipshape talks back, holds, re-reads a changelog or skips,
+   * and writes nothing to the branch.
+   *
+   * `off` by default. Nobody upgrades into a feature that spends `code_model` on every
+   * comment without choosing to.
+   */
+  revise: z
+    .object({
+      // off   -- comments are read by nobody
+      // reply -- it answers, and may hold, skip, or re-read the changelog
+      // act   -- it may also write the change onto the branch
+      mode: z.enum(['off', 'reply', 'act']).default('off'),
+      // Logins whose comments count as instructions. Empty means the account the token
+      // authenticates as, which on a fine-grained PAT is the operator themselves.
+      authors: z.array(z.string()).default([]),
+      // How far a comment-driven edit may reach where the service's own
+      // `shipshape.propose` label says nothing. Wider than the propose default on
+      // purpose: drafting is shipshape's own idea and gets the narrowest useful
+      // boundary, where a comment is a person asking for something specific and usually
+      // about a file the service reads rather than the service block itself.
+      //
+      // An explicit label still wins outright, in both directions. Nothing here lifts
+      // the permanently-forbidden paths.
+      scope: z
+        .enum(['none', 'service', 'compose-file', 'compose-dir', 'repo'])
+        .default('compose-dir'),
+      // Whether a revision may search and read the web. Off by default: the operator's
+      // comment IS the specification, and fetching is what a call actually costs --
+      // worst case drops from about $0.57 to under $0.05 with these off.
+      web: z.boolean().default(false),
+    })
+    .prefault({}),
   // Whether a service labelled `shipshape.policy: model` actually gets model-decided
   // treatment. `shadow` records what would have happened and changes nothing, which is
   // how you find out whether it works before it matters.

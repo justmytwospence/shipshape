@@ -10,6 +10,7 @@ import { runPrPass } from './gitops/pr.ts'
 import { runScan } from './scan.ts'
 import { flush as flushDigest, prune as pruneDigest } from './notify/digest.ts'
 import { checkGitHubAuth } from './health/github-auth.ts'
+import { ingestInstructions } from './revise/ingest.ts'
 
 /**
  * Nightly scan scheduling.
@@ -103,6 +104,12 @@ function startPrLoop(): void {
       // only check that runs when `prs.enabled` is false, and the state it reports is
       // exactly what the operator would otherwise have to infer from a silent backlog.
       await checkGitHubAuth()
+      // Outside the gate, for the same reason the auth probe is: this is a GitHub read
+      // that touches no git and no host, and the blackout exists to keep shipshape away
+      // from another updater's file writes. Inside it, a comment left at 01:00 would go
+      // unrecorded for 105 minutes -- and an unrecorded comment is one that does not
+      // hold the merge, which is the one thing this must never fail to do.
+      await ingestInstructions()
       if (policy.prs.enabled && !inBlackout(policy)) {
         await pollPrs()
         // After polling, so every merge this tick noticed is queued before any of them

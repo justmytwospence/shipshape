@@ -55,11 +55,57 @@ interface Candidate {
 }
 
 /**
+ * Why this pull request is being held by something the operator said, or null.
+ *
+ * Two sources, and they are different things. A standing hold is a decision -- "don't
+ * merge this yet" -- and lasts until it is released. An unanswered instruction is
+ * merely unfinished: shipshape has been asked something and has not replied, and
+ * merging underneath that would answer a question with a fait accompli.
+ *
+ * The quiet period is the third case, and it closes the one gap the ledger cannot: a
+ * comment posted between the listing and the merge in the same tick. Five minutes of
+ * "somebody is typing" costs nothing on a repository whose updates wait hours anyway.
+ */
+export function holdReason(prId: number): string | null {
+  const db = getDb()
+  const pr = db.prepare(`SELECT hold_reason FROM prs WHERE id = ?`).get(prId) as
+    | { hold_reason: string | null }
+    | undefined
+  if (pr?.hold_reason) return pr.hold_reason
+
+  const pending = db
+    .prepare(
+      `SELECT COUNT(*) c FROM instructions
+        WHERE pr_id = ? AND status IN ('new', 'working')`,
+    )
+    .get(prId) as { c: number }
+  if (pending.c > 0) {
+    return pending.c === 1
+      ? 'a comment is waiting on an answer'
+      : `${pending.c} comments are waiting on an answer`
+  }
+
+  const fresh = db
+    .prepare(
+      `SELECT COUNT(*) c FROM instructions
+        WHERE pr_id = ? AND status != 'ours' AND created_at > datetime('now', '-5 minutes')`,
+    )
+    .get(prId) as { c: number }
+  return fresh.c > 0 ? 'somebody commented on it in the last few minutes' : null
+}
+
+/**
  * Decide, without merging. Exported so the dashboard and the dry run can show exactly
  * what would happen using the same code that does it.
  */
 export function decide(prId: number, number: number, scope: string, userOwned: boolean, policy: Policy): MergeDecision {
   if (userOwned) return { number, merge: false, reason: 'the branch has been edited by hand' }
+  // Before the scope test, because a comment on a still-tag-only pull request is the
+  // whole case this exists for. `holdReason` reads rows written by ingestion, which runs
+  // with no model and no git, so this is decided from facts that were already true when
+  // the tick started rather than from work that may still be in flight.
+  const held = holdReason(prId)
+  if (held) return { number, merge: false, reason: held }
   if (scope !== 'tag-only') {
     return {
       number,

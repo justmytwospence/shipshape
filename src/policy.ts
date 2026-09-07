@@ -175,6 +175,16 @@ export interface AutoMergeInput {
   claudeRequired: boolean
   claudeMode: Policy['claude']['mode']
   minConfidence: Confidence
+  /**
+   * Why this pull request is being held, if it is: an instruction nobody has answered
+   * yet, or a hold the operator asked for in a comment.
+   *
+   * Checked before anything else, and it is the reason "don't merge this yet" works at
+   * all. The sentence takes effect the moment the comment is *recorded*, which happens
+   * with no model involved -- so a hold does not have to win a race against the pass
+   * that reads it.
+   */
+  hold?: string | null
 }
 
 export type AutoMergeDecision =
@@ -190,6 +200,9 @@ export type AutoMergeDecision =
  * Services that would rather stall than proceed unread carry `shipshape.claude: required`.
  */
 export function canAutoMerge(i: AutoMergeInput): AutoMergeDecision {
+  // First, and it can only ever refuse. Like a verdict, a comment may withhold a merge
+  // and may never cause one -- so there is no branch here that returns { merge: true }.
+  if (i.hold) return { merge: false, reason: i.hold }
   if (i.tier !== 'auto') return { merge: false, reason: `tier is ${i.tier}` }
   if (i.prScope && i.prScope !== 'tag-only') {
     return {

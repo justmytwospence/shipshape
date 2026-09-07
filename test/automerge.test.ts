@@ -32,6 +32,27 @@ test('nothing but a clean tag-only bump on the auto tier merges', () => {
   }
 })
 
+test('a comment can withhold a merge and can never cause one', () => {
+  // "Don't merge this yet" has to work before anything reads the sentence, so the hold
+  // is set by recording the comment rather than by understanding it.
+  const held = canAutoMerge({ ...base, hold: 'a comment is waiting on an answer' })
+  assert.equal(held.merge, false)
+  assert.equal(held.merge === false ? held.reason : '', 'a comment is waiting on an answer')
+  // Only the hold changed; the same input merges without it.
+  assert.equal(canAutoMerge({ ...base, hold: null }).merge, true)
+  assert.equal(canAutoMerge({ ...base, hold: undefined }).merge, true)
+  // ...and it is a damper, never a lever: nothing policy already refused is rescued by
+  // adding one, whatever it says.
+  for (const over of [
+    { tier: 'manual' as const },
+    { magnitude: 'major' as const },
+    { prScope: 'modified' as const },
+    { verdict: 'block' as const },
+  ]) {
+    assert.equal(canAutoMerge({ ...base, ...over, hold: 'merge it' }).merge, false)
+  }
+})
+
 test('a changelog can withhold a merge and can never cause one', () => {
   // The containment for untrusted release notes is that the worst they achieve is a
   // stopped update.

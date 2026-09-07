@@ -529,6 +529,82 @@ const MIGRATIONS: { id: string; sql: string }[] = [
       );
   `,
   },
+  {
+    id: '016-instructions',
+    sql: `
+    -- A comment on an open pull request, and what shipshape did about it.
+    --
+    -- comment_id is namespaced ('issue:123' / 'review:456'): issue comments and review
+    -- comments are independent id sequences and would otherwise collide. UNIQUE on it is
+    -- the whole idempotency story -- ingestion is INSERT OR IGNORE, so a comment can be
+    -- seen on a hundred polls without being acted on twice.
+    --
+    -- shipshape's own replies are recorded here too, as status 'ours'. It authenticates
+    -- with a fine-grained PAT, so its comments carry the OPERATOR'S login and author
+    -- identity cannot tell bot from human. Recording the id that createComment hands
+    -- back is exact, unspoofable, and immune to quoting; the first-line marker is the
+    -- readable half of the same guard.
+    --
+    -- status is deliberately not handled_at. The claim has to be taken before a model
+    -- call that can run for minutes, and the auto-merge interlock has to keep holding
+    -- for every one of them -- one column cannot answer both "is anyone working on
+    -- this" and "is this finished".
+    CREATE TABLE instructions (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      pr_id        INTEGER NOT NULL REFERENCES prs(id) ON DELETE CASCADE,
+      comment_id   TEXT NOT NULL UNIQUE,         -- issue:<id> | review:<id>
+      kind         TEXT NOT NULL,                -- issue | review
+      author       TEXT NOT NULL,
+      body         TEXT NOT NULL,
+      url          TEXT,
+      path         TEXT,                         -- review comments: the file
+      line         INTEGER,                      -- review comments: the line
+      context      TEXT,                         -- JSON: diff_hunk, in_reply_to
+      commented_at TEXT NOT NULL,                -- GitHub's created_at, not ours
+      status       TEXT NOT NULL DEFAULT 'new',  -- new|working|done|failed|stale|ours
+      attempts     INTEGER NOT NULL DEFAULT 0,
+      claimed_at   TEXT,
+      action       TEXT,                         -- answer|edit|hold|rerun-review|skip
+      reply        TEXT,
+      reply_id     TEXT,
+      model        TEXT,
+      error        TEXT,
+      created_at   TEXT NOT NULL,
+      handled_at   TEXT
+    );
+    CREATE INDEX idx_instructions_pending ON instructions(status, pr_id);
+
+    -- Which instruction produced these changes, when one did.
+    --
+    -- A revision writes a proposals row like any other drafted change, and that is not
+    -- bookkeeping. classifyScope only calls a branch 'proposed' when a proposals row
+    -- exists; without one a revision commit is relabelled 'modified', which tells the
+    -- operator their branch was edited by hand (it was not), disables the propose path
+    -- on that pull request forever, and silently downgrades auto-rollback to a
+    -- suggestion.
+    ALTER TABLE proposals ADD COLUMN instruction_id INTEGER REFERENCES instructions(id);
+
+    -- "Don't merge this yet", as a fact about the pull request rather than about the
+    -- comment that asked for it. It has to outlive the instruction, or the hold lasts
+    -- exactly as long as it takes to post the reply.
+    ALTER TABLE prs ADD COLUMN hold_reason TEXT;
+    ALTER TABLE prs ADD COLUMN hold_at TEXT;
+
+    -- The rollout watermark, written by SQLite so it is the moment the feature arrived
+    -- rather than whenever the process next started. Open pull requests already carry
+    -- months of comments; without this the first tick would work through all of them.
+    --
+    -- Two keys because they answer different questions. 'since' is the payload window
+    -- for the list calls; 'epoch' is the decision. An old comment that is edited today
+    -- reappears in a 'since' window and must still be refused on its created_at.
+    INSERT OR IGNORE INTO budgets (key, value, window, updated_at)
+      VALUES ('revise.epoch', 0, strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                                 strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+    INSERT OR IGNORE INTO budgets (key, value, window, updated_at)
+      VALUES ('revise.since', 0, strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                                 strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

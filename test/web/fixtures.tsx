@@ -259,7 +259,12 @@ export const STATUS = {
     counts: { 'up-to-date': 62, unchanged: 45, update: 3, error: 4 },
   },
   digest: { cron: '0 0 8 * * *', nextAt: null },
-  credentials: [{ name: 'GITHUB_TOKEN', state: 'set' as const }],
+  // `refused` is rendered here so the class gate covers its badge: it is the state the
+  // page could not show through a six-day outage, when a dead token still read `set`.
+  credentials: [
+    { name: 'GITHUB_TOKEN', state: 'set' as const },
+    { name: 'ANTHROPIC_API_KEY', state: 'refused' as const },
+  ],
   spend: [{ model: 'claude-haiku-4-5', purpose: 'verdict', calls: 34, cost: 3.63 }],
   budgetUsd: 10,
   spentUsd: 8.03,

@@ -2,6 +2,7 @@ import { execa, type Options } from 'execa'
 import { existsSync, rmSync } from 'node:fs'
 import { botIdentity, env, paths } from '../config.ts'
 import { logEvent } from '../db.ts'
+import { looksLikeGitAuthFailure, noteAuthFailure } from '../health/github-auth.ts'
 
 /**
  * Git plumbing, credentials, and the lock that keeps every repository operation
@@ -56,6 +57,14 @@ export async function git(
     stdout: String(r.stdout ?? '').trim(),
     stderr: String(r.stderr ?? '').trim(),
     exitCode: r.exitCode ?? 1,
+  }
+  // A remote operation refused on credentials is the same standing fault the API probe
+  // reports, and it can happen while the API is still fine -- a token with contents read
+  // but not write fetches happily and refuses every push. Reported here rather than at
+  // each call site because this is the one place every remote command passes through,
+  // and the `allowFail` callers swallow the error entirely.
+  if (out.exitCode !== 0 && opts.remote && looksLikeGitAuthFailure(out.stderr)) {
+    void noteAuthFailure(`a remote operation was refused: ${out.stderr.split('\n')[0]}`)
   }
   if (out.exitCode !== 0 && !opts.allowFail) {
     // Never echo the args back wholesale -- the credential helper string is in there.

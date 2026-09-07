@@ -47,6 +47,7 @@ import {
   type SettingValue,
 } from './views/ui/settings.tsx'
 import type { StatusData } from './views/ui/status.tsx'
+import { authHealth } from '../health/github-auth.ts'
 import { ServiceDetail, ServicesList } from './views/ui/services.tsx'
 import { ActivityList, KINDS as ACTIVITY_KINDS, type ActivityRow } from './views/ui/activity.tsx'
 import {
@@ -987,7 +988,12 @@ export function createApp(): Hono {
       },
       digest: { cron: sched.digest.cron, nextAt: sched.digest.nextAt },
       credentials: [
-        { name: 'GITHUB_TOKEN', state: env.githubToken ? 'set' : 'missing' },
+        // Presence is not health. Through a six-day outage this row read `set` in green
+        // the whole time, because a token that has expired is still very much present.
+        {
+          name: 'GITHUB_TOKEN',
+          state: !env.githubToken ? 'missing' : authHealth().ok ? 'set' : 'refused',
+        },
         { name: 'ANTHROPIC_API_KEY', state: env.anthropicApiKey ? 'set' : 'missing' },
         { name: 'NTFY_URL + NTFY_TOKEN', state: ntfyState() },
         { name: 'SMTP_URL + MAIL_TO', state: emailConfigured() ? 'set' : 'not in use' },

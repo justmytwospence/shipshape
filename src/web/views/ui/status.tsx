@@ -32,7 +32,8 @@ export interface StatusData {
     counts: Record<string, number> | null
   }
   digest: { cron: string; nextAt: string | null }
-  credentials: { name: string; state: 'set' | 'missing' | 'not in use' }[]
+  /** `refused` is present-but-rejected: a token can be all three of set, wrong and silent. */
+  credentials: { name: string; state: 'set' | 'missing' | 'not in use' | 'refused' }[]
   spend: { model: string; purpose: string; calls: number; cost: number }[]
   budgetUsd: number
   spentUsd: number
@@ -46,6 +47,7 @@ const CRED_CLS: Record<string, string> = {
   set: 'badge-success',
   missing: 'badge-error',
   'not in use': 'badge-ghost',
+  refused: 'badge-error',
 }
 
 const DEPLOY_CLS: Record<string, string> = {

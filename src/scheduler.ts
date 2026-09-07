@@ -9,6 +9,7 @@ import { drainDeployQueue, runRechecks } from './deploy/queue.ts'
 import { runPrPass } from './gitops/pr.ts'
 import { runScan } from './scan.ts'
 import { flush as flushDigest, prune as pruneDigest } from './notify/digest.ts'
+import { checkGitHubAuth } from './health/github-auth.ts'
 
 /**
  * Nightly scan scheduling.
@@ -96,6 +97,12 @@ function startPrLoop(): void {
   const tick = async (): Promise<void> => {
     try {
       const { policy } = loadPolicy()
+      // Outside the gate below on purpose. A dead credential is worth saying whether or
+      // not the engine is parked or the hour is quiet -- those stop shipshape acting,
+      // which is a choice, where this stops it working, which is a fault. It is also the
+      // only check that runs when `prs.enabled` is false, and the state it reports is
+      // exactly what the operator would otherwise have to infer from a silent backlog.
+      await checkGitHubAuth()
       if (policy.prs.enabled && !inBlackout(policy)) {
         await pollPrs()
         // After polling, so every merge this tick noticed is queued before any of them

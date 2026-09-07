@@ -35,6 +35,9 @@ const VERB: Record<
   'rerun-review': { label: 'Re-run review', icon: 'eye', style: 'btn-primary' },
   propose: { label: 'Draft config changes', icon: 'plus', style: 'btn-ghost' },
   skip: { label: 'Skip', icon: 'skip', style: 'btn-ghost' },
+  // "Release hold", never "Unhold": the noun is already in the sentence the pane shows
+  // ("You asked shipshape to hold this"), and Held stays reserved for the on-request rung.
+  'release-hold': { label: 'Release hold', icon: 'undo', style: 'btn-ghost' },
   ack: { label: 'Acknowledge', short: 'Ack', icon: 'check', style: 'btn-ghost' },
 }
 
@@ -556,7 +559,20 @@ export const UpdateDetail: FC<{
         ) : null}
       </header>
 
-      <ActionBar update={update} target={target} reply={reply} warnings={warnings} />
+      {/* Through the existing warnings strip rather than a component of its own: a hold
+          is one sentence about why nothing is happening, which is exactly what that
+          strip already says. "Hold", never "Held" -- the badge word belongs to the
+          on-request rung and means something else. */}
+      <ActionBar
+        update={update}
+        target={target}
+        reply={reply}
+        warnings={
+          update.pr?.held
+            ? [`You asked shipshape to hold this — it will not merge on its own.`, ...(warnings ?? [])]
+            : warnings
+        }
+      />
       <VerdictBlock update={update} />
 
       <section class="border-base-300 border-t px-4 py-3">

@@ -396,3 +396,18 @@ test('the banner points at the switch, not at the top of the page it sits on', (
   // down it, which reads exactly like a link that did nothing.
   assert.match(VIEWS['layout']!, /href="\/settings#pause"/)
 })
+
+test('a hold says who asked for it, and offers the way out of it', () => {
+  const html = VIEWS['update-detail-hold']!
+  assert.match(html, /You asked shipshape to hold this/)
+  assert.match(html, /Release hold/)
+  // Never the badge word. `Held` is the on-request rung -- the pull request has not been
+  // opened yet -- which is a different situation with a different button, and reusing the
+  // word is how one vocabulary becomes two.
+  assert.doesNotMatch(html, /badge[^"]*">\s*Held/)
+})
+
+test('an ordinary pull request says nothing about a hold', () => {
+  assert.doesNotMatch(VIEWS['update-detail']!, /asked shipshape to hold/)
+  assert.doesNotMatch(VIEWS['update-detail']!, /Release hold/)
+})

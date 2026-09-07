@@ -18,6 +18,7 @@ export type Verb =
   | 'rerun-review' // read the changelog again
   | 'propose' // draft the config changes this update needs
   | 'skip' // not this version
+  | 'release-hold' // you asked shipshape to hold this; let it go again
   | 'ack' // seen; stop showing it as needing attention
 
 /**
@@ -71,6 +72,8 @@ export interface ActionContext {
   ackedAt?: string | null
   /** From `images.current_tag`: whether the file still sits on the version we came from. */
   atFromTag?: boolean
+  /** Why this pull request is being held, when somebody asked shipshape to hold it. */
+  held?: string | null
 }
 
 const ROLLING = (c: ActionContext) => c.detail === 'rolling'
@@ -96,6 +99,10 @@ export function actionsFor(c: ActionContext): Verb[] {
       // offered, but the button asks for the reading rather than the merge.
       if (c.verdictError) out.push('rerun-review')
       if (c.prNumber) out.push('merge-deploy')
+      // Only offered when there is one. A hold is set by asking for it in a comment
+      // rather than by pressing anything -- somebody who does not want a merge simply
+      // does not press Merge -- so this is the half that needs a button.
+      if (c.held) out.push('release-hold')
       if (c.prScope === 'tag-only' && !c.userOwned && !c.hasProposal) out.push('propose')
       if (!c.verdictError && !c.hasVerdict) out.push('rerun-review')
       out.push('skip')
@@ -172,6 +179,8 @@ export function refusalFor(verb: Verb, c: ActionContext): string {
       return 'config changes can only be drafted onto a pull request shipshape still owns'
     case 'skip':
       return `this update is already ${stage}`
+    case 'release-hold':
+      return 'nothing is holding this pull request'
     case 'ack':
       return 'there is nothing outstanding to acknowledge'
   }

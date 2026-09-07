@@ -121,6 +121,10 @@ export const SECTIONS = [
     'Config proposals',
     'When an update needs more than its tag, a model can write the rest. A pull request carrying drafted changes can never merge automatically.',
   ],
+  [
+    'Your comments',
+    'Comment on an open pull request and shipshape does what you asked — answer, hold it, re-read the changelog, or write the change. It can never merge and never deploy from a comment.',
+  ],
   ['Merging', 'The only place shipshape changes the repository with nobody watching.'],
   ['Deploys', 'A change is done when it is running, not when it is merged.'],
   [
@@ -384,6 +388,62 @@ export const SETTINGS: SettingDef[] = [
     help: '',
     about:
       'A drafted pull request always needs a human, whatever else is set.',
+  },
+  // ------------------------------------------------------------- Reading your comments
+  {
+    section: 'Your comments',
+    path: 'revise.mode',
+    // Not advanced: this decides what shipshape may do, and that is the line this file
+    // draws. Getting it wrong changes whether a sentence you typed writes a commit.
+    advanced: false,
+    kind: 'enum',
+    options: ['off', 'reply', 'act'],
+    optionHelp: {
+      off: 'comments are read by nobody',
+      reply: 'it answers, and can hold, skip or re-read the changelog',
+      act: 'it can also write the change onto the branch',
+    },
+    defaultValue: 'off',
+    label: 'Act on comments',
+    help: '',
+    about:
+      'A pull request it has written to can never merge on its own, whatever else is set. ' +
+      'Skipping needs the literal `/skip` in your comment — it is never inferred from prose.',
+  },
+  {
+    section: 'Your comments',
+    path: 'revise.scope',
+    advanced: false,
+    kind: 'enum',
+    options: ['none', 'service', 'compose-file', 'compose-dir', 'repo'],
+    optionHelp: {
+      none: 'nothing — answer only',
+      service: "this service's block in its compose file",
+      'compose-file': 'any service in that compose file',
+      'compose-dir': "any config file in the stack's directory",
+      repo: 'any config file in the repository',
+    },
+    defaultValue: 'compose-dir',
+    label: 'How far a comment may reach',
+    help: 'where the service itself says nothing',
+    about:
+      'A `shipshape.propose` label on the service wins over this, in both directions. ' +
+      "No rung reaches shipshape's own configuration, CI workflows, bin/ or scripts/ at " +
+      'any depth, credentials, .env files, or anything that is not configuration — ' +
+      'scripts, Dockerfiles and unit files are described rather than edited.',
+  },
+  {
+    section: 'Your comments',
+    path: 'revise.web',
+    advanced: true,
+    kind: 'bool',
+    defaultValue: 'false',
+    label: 'Let it read the web',
+    help: '',
+    about:
+      'Off by default because your comment is the specification, and fetching pages is ' +
+      'what a call actually costs. Turn it on if you want it to go and check upstream ' +
+      'documentation before answering.',
   },
   {
     section: 'Config proposals',

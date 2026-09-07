@@ -26,6 +26,10 @@ export const SECTION_PROSE: Record<SectionName, string[]> = {
     'One axis — how much happens without you — answered by default from how large the version jump is, and overridden for one service by a `shipshape.policy` label. `auto` opens a pull request and merges it; `manual` opens one and leaves it to you; `on-request` opens nothing until you ask; `skip` stops tracking it.',
     'Majors and digest moves always wait for a person, whatever these say, and a label nobody recognises narrows to `manual` rather than widening. A typo must never grant reach.',
   ],
+  'Your comments': [
+    'Comment on an open pull request and shipshape reads it as an instruction. It can answer a question, write the change you asked for as a second commit, hold the pull request so it will not merge on its own, or read the changelog again. Any comment counts — there is no prefix to remember — and it replies to every one, including the ones it decides need no change.',
+    'It can never merge and never deploy from a comment, at any setting. A merge reaches this host through a real `compose up`, and that is not something a reading of prose should be able to start. Skipping is the one thing it will not infer either: that leaves a tombstone the scan never offers again, so it needs the literal `/skip` in your comment rather than a sentence it interpreted.',
+  ],
   'Pull requests': [
     'Every change goes through one, because it is the review surface. A branch off main, one commit, nothing in the diff but the image line; services that must move together share a pull request. The body links the release notes for the target version, so deciding does not start with a search.',
     'Push to one of those branches and shipshape stops force-pushing it. It is yours from then on, and it comments rather than regenerating.',

@@ -39,6 +39,8 @@ export interface UpdateView {
     scope: 'tag-only' | 'proposed' | 'modified'
     userOwned: boolean
     mergeCommitSha: string | null
+    /** Why this is being held, when somebody asked shipshape to hold it. */
+    held: string | null
     url: string
   } | null
   verdict: {
@@ -100,7 +102,7 @@ interface RawUpdate {
 function prFor(updateId: number, repo: string) {
   const row = getDb()
     .prepare(
-      `SELECT p.number, p.state, p.scope, p.user_owned, p.merge_commit_sha
+      `SELECT p.number, p.state, p.scope, p.user_owned, p.merge_commit_sha, p.hold_reason
          FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id
         WHERE pu.update_id = ? ORDER BY p.id DESC LIMIT 1`,
     )
@@ -111,6 +113,7 @@ function prFor(updateId: number, repo: string) {
         scope: string
         user_owned: number
         merge_commit_sha: string | null
+        hold_reason: string | null
       }
     | undefined
   if (!row) return null
@@ -120,6 +123,7 @@ function prFor(updateId: number, repo: string) {
     scope: (row.scope ?? 'tag-only') as 'tag-only' | 'proposed' | 'modified',
     userOwned: row.user_owned === 1,
     mergeCommitSha: row.merge_commit_sha,
+    held: row.hold_reason,
     url: `https://github.com/${repo}/pull/${row.number}`,
   }
 }
@@ -231,6 +235,7 @@ function toView(u: RawUpdate, repo: string): UpdateView {
     hasVerdict: !!verdict && !verdict.error,
     hasProposal,
     ackedAt: u.acked_at,
+    held: pr?.held ?? null,
     atFromTag: image ? image.current_tag === u.from_tag.split('@')[0] : undefined,
   }
   const actions = actionsFor(ctx)

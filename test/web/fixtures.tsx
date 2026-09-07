@@ -51,6 +51,7 @@ export function update(over: Partial<UpdateView> = {}): UpdateView {
       scope: 'tag-only',
       userOwned: false,
       mergeCommitSha: null,
+      held: null,
       url: 'https://github.com/you/repo/pull/41',
     },
     verdict: {
@@ -77,6 +78,23 @@ export function update(over: Partial<UpdateView> = {}): UpdateView {
 
 export const UPDATES: Record<string, UpdateView> = {
   waiting: update(),
+  // Asked to wait in a comment. Distinct from `held` below, which is the on-request rung
+  // -- same English word, different thing, which is exactly why the pane must not use the
+  // badge word for this one.
+  holdRequested: update({
+    id: 9,
+    pr: {
+      number: 41,
+      state: 'open',
+      scope: 'tag-only',
+      userOwned: false,
+      mergeCommitSha: null,
+      held: 'you asked shipshape to hold this',
+      url: 'https://github.com/you/repo/pull/41',
+    },
+    actions: ['merge-deploy', 'release-hold', 'skip'],
+    primary: 'merge-deploy',
+  }),
   held: update({
     id: 8,
     state: 'held',
@@ -158,6 +176,7 @@ export const UPDATES: Record<string, UpdateView> = {
       scope: 'tag-only',
       userOwned: false,
       mergeCommitSha: 'abc1234',
+      held: null,
       url: 'https://github.com/you/repo/pull/22',
     },
     deploy: {
@@ -442,6 +461,9 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
     inbox: String(InboxList({ data: inbox })),
     'inbox-aside': String(InboxAside({ data: inbox })),
     'update-detail': String(detail(UPDATES.waiting!, 'list=updates&stage=open', '/updates')),
+    'update-detail-hold': String(
+      detail(UPDATES.holdRequested!, 'list=updates&stage=open', '/updates'),
+    ),
     'update-row': String(UpdateRow({ update: UPDATES.waiting!, ctx: 'list=inbox' })),
     'update-row-transient': String(UpdateRow({ update: UPDATES.deploying!, ctx: 'list=inbox' })),
     'update-row-stage': String(

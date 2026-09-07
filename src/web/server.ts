@@ -682,7 +682,7 @@ export function createApp(): Hono {
   })
 
   /** Bring up a merge that has been waiting, run it again, put it back, or say you saw it. */
-  for (const verb of ['deploy', 'redeploy', 'retry', 'rollback', 'ack'] as const) {
+  for (const verb of ['deploy', 'redeploy', 'retry', 'rollback', 'ack', 'release-hold'] as const) {
     app.post(`/updates/:id/${verb}`, async (c) => {
       const id = Number(c.req.param('id'))
       return verbReply(c, id, await runVerb(id, verb))

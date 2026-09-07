@@ -51,7 +51,7 @@ export function contextFor(id: number): { row: UpdateRow; ctx: ActionContext } |
   // attempts has two, and joining on open would return neither once both are closed.
   const pr = db
     .prepare(
-      `SELECT p.id, p.number, p.state, p.scope, p.user_owned, p.merge_commit_sha
+      `SELECT p.id, p.number, p.state, p.scope, p.user_owned, p.merge_commit_sha, p.hold_reason
          FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id
         WHERE pu.update_id = ? ORDER BY p.id DESC LIMIT 1`,
     )
@@ -63,6 +63,7 @@ export function contextFor(id: number): { row: UpdateRow; ctx: ActionContext } |
         scope: string
         user_owned: number
         merge_commit_sha: string | null
+        hold_reason: string | null
       }
     | undefined
 
@@ -103,6 +104,7 @@ export function contextFor(id: number): { row: UpdateRow; ctx: ActionContext } |
       hasVerdict: !!verdict && !verdict.error,
       hasProposal: !!proposal,
       ackedAt: row.acked_at,
+      held: pr?.hold_reason ?? null,
       // A digest pin carries `tag@sha`; compare the tag part only.
       atFromTag: image ? image.current_tag === row.from_tag.split('@')[0] : undefined,
     },
@@ -166,6 +168,8 @@ export async function runVerb(id: number, verb: Verb): Promise<VerbResult> {
       return skipUpdate(row)
     case 'rerun-review':
       return rerunReview(row)
+    case 'release-hold':
+      return releaseHold(row)
     default:
       // The remaining verbs live where their machinery does: merge and propose in the
       // GitHub routes, open-pr alongside them.
@@ -190,6 +194,31 @@ function skipUpdate(row: UpdateRow): VerbResult {
     message: `${row.from_tag} -> ${row.to_tag} dismissed by the operator`,
   })
   return { ok: true, message: 'Skipped. It will not be offered again unless you ask for it.' }
+}
+
+/**
+ * Let go of a pull request you asked shipshape to hold.
+ *
+ * The other half of a hold, and the reason a hold is a column rather than a state of the
+ * comment that asked for it: it lasts until somebody says otherwise, which means there
+ * has to be a way to say otherwise. Only clears the standing hold -- an instruction that
+ * has not been answered yet still holds, because that one resolves itself.
+ */
+function releaseHold(row: UpdateRow): VerbResult {
+  getDb()
+    .prepare(
+      `UPDATE prs SET hold_reason = NULL, hold_at = NULL
+        WHERE id IN (SELECT pr_id FROM pr_updates WHERE update_id = ?)`,
+    )
+    .run(row.id)
+  logEvent({
+    level: 'info',
+    kind: 'pr',
+    stack: row.stack,
+    service: row.service,
+    message: 'hold released by the operator',
+  })
+  return { ok: true, message: 'Released. It can merge on its own again.' }
 }
 
 /** Read the changelog again: for a review that failed, or one that never ran. */

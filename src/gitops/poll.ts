@@ -3,6 +3,7 @@ import { env, loadPolicy, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { notify } from '../notify/index.ts'
 import { routine } from '../notify/digest.ts'
+import { alreadyCommented, postIssueComment } from './comments.ts'
 import { ensureWorkRepo, git, httpsUrl, withGitLock } from './repo.ts'
 import { syncMain } from './sync.ts'
 import { manualCommand, stackPeers, withNamespacePeers, type DeployTarget } from '../deploy/run.ts'
@@ -436,8 +437,6 @@ async function onClosed(prId: number, number: number, branch: string): Promise<v
   }
 }
 
-const COMMAND_MARK = '<!-- shipshape:deploy-command -->'
-
 /**
  * Put the deploy command on the pull request, once.
  *
@@ -451,50 +450,33 @@ async function commentCommand(
   command: string,
   synced: boolean,
 ): Promise<void> {
-  const [owner, repo] = env.githubRepo.split('/') as [string, string]
-  try {
-    const { data } = await gh().rest.issues.listComments({
-      owner,
-      repo,
-      issue_number: number,
-      per_page: 100,
-    })
-    if (data.some((c) => (c.body ?? '').includes(COMMAND_MARK))) return
+  if (await alreadyCommented(number, 'deploy-command')) return
 
-    const dump = dumpHintFor(stack)
-    const body = [
-      COMMAND_MARK,
-      synced
-        ? 'Merged, and the checkout is synced. Bring it up with:'
-        : 'Merged, but the checkout could not be updated — resolve that first, then:',
-      '',
-      '```',
-      command,
-      '```',
-      ...(dump
-        ? [
-            '',
-            'This stack carries a dump recipe (`docker-volume-backup.archive-pre`).',
-            'Worth running first:',
-            '',
-            '```',
-            dump,
-            '```',
-          ]
-        : []),
-    ].join('\n')
+  const dump = dumpHintFor(stack)
+  const body = [
+    synced
+      ? 'Merged, and the checkout is synced. Bring it up with:'
+      : 'Merged, but the checkout could not be updated — resolve that first, then:',
+    '',
+    '```',
+    command,
+    '```',
+    ...(dump
+      ? [
+          '',
+          'This stack carries a dump recipe (`docker-volume-backup.archive-pre`).',
+          'Worth running first:',
+          '',
+          '```',
+          dump,
+          '```',
+        ]
+      : []),
+  ].join('\n')
 
-    await gh().rest.issues.createComment({ owner, repo, issue_number: number, body })
-  } catch (err) {
-    // The command is also in the digest and on the dashboard. A comment that could not
-    // be written is not worth failing a merge over.
-    logEvent({
-      level: 'warn',
-      kind: 'pr',
-      message: `could not comment the deploy command on #${number}`,
-      detail: (err as Error).message.slice(0, 200),
-    })
-  }
+  // The command is also in the digest and on the dashboard, so a comment that could not
+  // be written is not worth failing a merge over. postIssueComment logs and returns null.
+  await postIssueComment(number, 'deploy-command', body)
 }
 
 /**

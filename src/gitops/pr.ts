@@ -18,6 +18,7 @@ import type { Magnitude } from '../versions/patterns.ts'
 import { bumpImage } from './editor.ts'
 import { prBody, short } from './body.ts'
 import { resolveSource } from '../resolver/index.ts'
+import { alreadyCommented, mark } from './comments.ts'
 import { authorArgs, ensureWorkRepo, git, httpsUrl, withGitLock } from './repo.ts'
 import { syncMain } from './sync.ts'
 
@@ -233,7 +234,7 @@ export function successorFor(prId: number): { toTag: string; number: number | nu
 }
 
 /** Marks our own note so it is written once rather than every poll. */
-const SUPERSEDED_MARK = '<!-- shipshape:superseded -->'
+const SUPERSEDED_MARK = mark('superseded')
 
 function supersededNote(next: { toTag: string; number: number | null } | null, mine: boolean): string {
   const to = next
@@ -248,18 +249,11 @@ function supersededNote(next: { toTag: string; number: number | null } | null, m
 
 /** True when we have already said this on this pull request. */
 async function alreadyNoted(number: number): Promise<boolean> {
-  const { owner, repo } = repoParts()
-  try {
-    const { data } = await gh().rest.issues.listComments({ owner, repo, issue_number: number, per_page: 100 })
-    return data.some((c) => (c.body ?? '').includes(SUPERSEDED_MARK))
-  } catch {
-    // Unreadable comments must not cause a double-post, and must not block the close.
-    return true
-  }
+  return alreadyCommented(number, 'superseded')
 }
 
 /** Marks the retarget note, so the comment can be found again by eye or by grep. */
-const RETARGET_MARK = '<!-- shipshape:retargeted -->'
+const RETARGET_MARK = mark('retargeted')
 
 function retargetNote(was: string | null, g: UpdateGroup): string {
   const to = short(g.members[0]!.to_tag)

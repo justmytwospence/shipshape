@@ -9,6 +9,7 @@ import { scanRepo } from '../compose/scan.ts'
 import { routine } from '../notify/digest.ts'
 import { resolveSource } from '../resolver/index.ts'
 import { parseImageRef } from '../images/ref.ts'
+import { postIssueComment } from '../gitops/comments.ts'
 import { ensureWorkRepo, git, httpsUrl, withGitLock } from '../gitops/repo.ts'
 import { parse as parseYaml } from 'yaml'
 import { applyOps } from './apply.ts'
@@ -461,11 +462,16 @@ function record(
     )
 }
 
+/**
+ * Marked, like everything else shipshape says.
+ *
+ * This was the one comment that carried no marker, which mattered more than it looks:
+ * the token is the operator's, so an unmarked comment from shipshape is indistinguishable
+ * from one the operator wrote. Anything reading the thread back as input would have
+ * treated shipshape's own summary as an instruction and answered it.
+ */
 async function comment(number: number, body: string): Promise<void> {
-  const [owner, repo] = env.githubRepo.split('/') as [string, string]
-  await gh()
-    .rest.issues.createComment({ owner, repo, issue_number: number, body })
-    .catch(() => {})
+  await postIssueComment(number, 'proposal', body)
 }
 
 function renderComment(p: Proposal, changed: string[], model: string | null): string {

@@ -11,6 +11,7 @@ import { runScan } from './scan.ts'
 import { flush as flushDigest, prune as pruneDigest } from './notify/digest.ts'
 import { checkGitHubAuth } from './health/github-auth.ts'
 import { ingestInstructions } from './revise/ingest.ts'
+import { runInstructionPass } from './revise/run.ts'
 
 /**
  * Nightly scan scheduling.
@@ -123,6 +124,10 @@ function startPrLoop(): void {
         // After analysis, because a proposal is only drafted once a verdict says the
         // update needs more than its tag.
         await runProposePass()
+        // After drafting, so a comment about the drafted changes is answered against the
+        // branch as it actually stands. Its hold is already in force either way -- that
+        // was decided by ingestion, above the gate, before any of this ran.
+        await runInstructionPass()
         // Last, so a pull request opened this cycle has had its verdict and any
         // proposal before anything considers merging it.
         await runAutoMerge()

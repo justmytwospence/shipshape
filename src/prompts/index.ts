@@ -17,7 +17,7 @@ import { getDb } from '../db.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
-export type PromptName = 'verdict' | 'proposal'
+export type PromptName = 'verdict' | 'proposal' | 'revision'
 
 export const PROMPTS: Record<PromptName, { title: string; help: string }> = {
   verdict: {
@@ -27,6 +27,10 @@ export const PROMPTS: Record<PromptName, { title: string; help: string }> = {
   proposal: {
     title: 'Config changes',
     help: 'Runs when a verdict reports breakage. Drafts the compose changes an update needs beyond its tag.',
+  },
+  revision: {
+    title: 'Your comments',
+    help: 'Runs when you comment on an open pull request. It can answer, hold, re-read the changelog, skip, or write the change — never merge, never deploy.',
   },
 }
 

@@ -32,18 +32,18 @@ export interface Proposal {
   sources: string[]
 }
 
-const PROPOSE_CHANGES = {
-  name: 'propose_changes',
+/**
+ * The operation vocabulary, exported so the revision tool describes exactly the same one.
+ *
+ * Two schemas that drift is how a boundary gets skipped: `applyOps` enforces what it is
+ * given, and a second tool that described a slightly different vocabulary would be
+ * enforcing a different thing while looking identical in review. There is one of these.
+ */
+export const OPS_SCHEMA = {
+  type: 'array',
   description:
-    'Record the compose changes this update requires, plus anything the operator must do by hand.',
-  input_schema: {
-    type: 'object' as const,
-    properties: {
-      ops: {
-        type: 'array',
-        description:
-          'Compose changes to apply to this service. Empty when the update needs no config change.',
-        items: {
+    'Compose changes to apply to this service. Empty when the update needs no config change.',
+  items: {
           type: 'object',
           properties: {
             op: {
@@ -95,16 +95,28 @@ const PROPOSE_CHANGES = {
               description:
                 'set_path / remove_path / rename_path: the key path in the document, outermost first. The parent must already exist; structure is never invented.',
             },
-          },
-          required: ['op'],
-        },
-      },
-      notes: {
-        type: 'array',
-        items: { type: 'string' },
-        description:
-          'Steps the operator must perform that are NOT compose changes: data migrations, volume permissions, values only they can supply, anything outside this vocabulary.',
-      },
+    },
+    required: ['op'],
+  },
+}
+
+/** The notes array, shared for the same reason the operations are. */
+export const NOTES_SCHEMA = {
+  type: 'array',
+  items: { type: 'string' },
+  description:
+    'Steps the operator must perform that are NOT compose changes: data migrations, volume permissions, values only they can supply, anything outside this vocabulary.',
+}
+
+const PROPOSE_CHANGES = {
+  name: 'propose_changes',
+  description:
+    'Record the compose changes this update requires, plus anything the operator must do by hand.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      ops: OPS_SCHEMA,
+      notes: NOTES_SCHEMA,
       summary: { type: 'string', description: 'One short paragraph on what these changes do.' },
       sources: { type: 'array', items: { type: 'string' }, description: 'URLs relied on.' },
     },
@@ -197,10 +209,16 @@ function renderPrompt(i: ProposeInput): string {
     .join('\n')
 }
 
-/** Keep only well-formed operations; a malformed one becomes nothing rather than a guess. */
-function normalise(raw: Record<string, unknown>): Proposal {
+/**
+ * Keep only well-formed operations; a malformed one becomes nothing rather than a guess.
+ *
+ * Exported so the revision path parses its operations with this exact function rather
+ * than a copy of it. A second parser that was subtly more forgiving would be a second,
+ * weaker boundary wearing the same name.
+ */
+export function normaliseOps(raw: unknown): Op[] {
   const ops: Op[] = []
-  for (const item of Array.isArray(raw.ops) ? raw.ops : []) {
+  for (const item of Array.isArray(raw) ? raw : []) {
     const o = item as Record<string, unknown>
     const key = typeof o.key === 'string' ? o.key : ''
     const value = typeof o.value === 'string' ? o.value : ''
@@ -254,10 +272,17 @@ function normalise(raw: Record<string, unknown>): Proposal {
         break
     }
   }
-  const strings = (v: unknown): string[] =>
-    Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : []
+  return ops
+}
+
+/** Anything the model returns as a list of strings, with the non-strings dropped. */
+export function strings(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : []
+}
+
+function normalise(raw: Record<string, unknown>): Proposal {
   return {
-    ops,
+    ops: normaliseOps(raw.ops),
     notes: strings(raw.notes),
     summary: typeof raw.summary === 'string' ? raw.summary : '',
     sources: strings(raw.sources),

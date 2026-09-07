@@ -646,25 +646,9 @@ export function createApp(): Hono {
   }
 
   /** Not this version. A dismissal is durable: the next scan must not offer it again. */
-  app.post('/updates/:id/dismiss', (c) => {
+  app.post('/updates/:id/dismiss', async (c) => {
     const id = Number(c.req.param('id'))
-    const found = contextFor(id)
-    if (!found) return verbReply(c, id, { ok: false, message: 'that update no longer exists' })
-    if (!actionsFor(found.ctx).includes('skip')) {
-      return verbReply(c, id, { ok: false, message: refusalFor('skip', found.ctx) })
-    }
-    setState(id, 'skipped', 'dismissed')
-    logEvent({
-      level: 'info',
-      kind: 'pr',
-      stack: found.row.stack,
-      service: found.row.service,
-      message: `${found.row.from_tag} -> ${found.row.to_tag} dismissed by the operator`,
-    })
-    return verbReply(c, id, {
-      ok: true,
-      message: 'Skipped. It will not be offered again unless you ask for it.',
-    })
+    return verbReply(c, id, await runVerb(id, 'skip'))
   })
 
   /**
@@ -706,22 +690,9 @@ export function createApp(): Hono {
   }
 
   /** Read the changelog again: for a review that failed, or one that never ran. */
-  app.post('/updates/:id/rerun-review', (c) => {
+  app.post('/updates/:id/rerun-review', async (c) => {
     const id = Number(c.req.param('id'))
-    const found = contextFor(id)
-    if (!found) return verbReply(c, id, { ok: false, message: 'that update no longer exists' })
-    if (!actionsFor(found.ctx).includes('rerun-review')) {
-      return verbReply(c, id, { ok: false, message: refusalFor('rerun-review', found.ctx) })
-    }
-    // Clear the backoff rather than the row: the attempt count is the history of how hard
-    // this changelog has been to read, and an operator asking is not attempt one.
-    getDb()
-      .prepare(
-        `UPDATE verdicts SET next_attempt_at = NULL WHERE image = ? AND from_tag = ? AND to_tag = ?`,
-      )
-      .run(found.row.image, found.row.from_tag, found.row.to_tag)
-    void runAnalysisPass(1).catch(() => {})
-    return verbReply(c, id, { ok: true, message: 'Reading the changelog again\u2026' })
+    return verbReply(c, id, await runVerb(id, 'rerun-review'))
   })
 
   /** Draft config changes for one pull request on demand. */

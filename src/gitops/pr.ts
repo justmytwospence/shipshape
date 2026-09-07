@@ -255,10 +255,18 @@ async function alreadyNoted(number: number): Promise<boolean> {
 /** Marks the retarget note, so the comment can be found again by eye or by grep. */
 const RETARGET_MARK = mark('retargeted')
 
-function retargetNote(was: string | null, g: UpdateGroup): string {
+function retargetNote(was: string | null, g: UpdateGroup, discarded = 0): string {
   const to = short(g.members[0]!.to_tag)
   const from = was ? ` (was ${short(was)})` : ''
-  return `${RETARGET_MARK}\nRetargeted to **${to}**${from}: the target moved on, so this pull request carries the newer bump rather than being closed in favour of another one.\n\n<sub>The branch was rebuilt from \`main\`, so any diff you had already read is out of date. The changelog review above re-runs for the new version.</sub>`
+  // Naming the discarded work is the whole point of counting it. The branch was rebuilt
+  // from main, so anything asked for in a comment is no longer on it -- and saying
+  // nothing would leave shipshape's own "done, pushed" reply standing next to a branch
+  // that does not carry the change.
+  const lost =
+    discarded > 0
+      ? `\n\n**${discarded === 1 ? 'A change you asked for in a comment is' : `${discarded} changes you asked for in comments are`} not on the rebuilt branch.** Ask again and shipshape will redo ${discarded === 1 ? 'it' : 'them'} against the new target — it has not repeated ${discarded === 1 ? 'it' : 'them'} on its own, because ${discarded === 1 ? 'that comment was' : 'those comments were'} written about a different diff.`
+      : ''
+  return `${RETARGET_MARK}\nRetargeted to **${to}**${from}: the target moved on, so this pull request carries the newer bump rather than being closed in favour of another one.${lost}\n\n<sub>The branch was rebuilt from \`main\`, so any diff you had already read is out of date. The changelog review above re-runs for the new version.</sub>`
 }
 
 /** The target this pull request carried until now, for the note that says it moved. */
@@ -403,6 +411,17 @@ async function retargetPr(
     return 'leave'
   }
 
+  // Counted before repointPr marks them stale, so the note can say how much of somebody's
+  // asking went with the old branch.
+  const discarded = (
+    getDb()
+      .prepare(
+        `SELECT COUNT(*) c FROM instructions
+          WHERE pr_id = ? AND status IN ('new', 'working', 'done')`,
+      )
+      .get(pr.id) as { c: number }
+  ).c
+
   // Immediately after the push and before any network call. The poller decides a branch
   // is a human's by comparing its live head against this column, so every moment between
   // the force-push and this write is a moment a poll could mark the pull request theirs.
@@ -451,7 +470,7 @@ async function retargetPr(
       owner,
       repo,
       issue_number: pr.number,
-      body: retargetNote(was, group),
+      body: retargetNote(was, group, discarded),
     })
   } catch {
     // The comment is the archive of what happened, not the mechanism. Losing it does not
@@ -552,6 +571,21 @@ export function repointPr(prId: number, group: UpdateGroup, sha: string): boolea
     // A draft written for the retired target describes a diff that no longer exists, and
     // the row alone would keep the proposal pass from ever drafting for the new one.
     db.prepare(`DELETE FROM proposals WHERE pr_id = ?`).run(prId)
+    // An instruction is somebody's sentence, so it is marked rather than deleted. The
+    // branch was just rebuilt from main, which threw away whatever was written for them
+    // -- and a ledger still reading `done` next to a branch that no longer carries the
+    // change is how shipshape ends up having told them it did something it did not.
+    //
+    // Marked `stale`, not requeued: re-running the instruction against a rebuilt branch
+    // would be acting on a sentence written about a different diff. The retarget note
+    // says so and they can ask again.
+    db.prepare(
+      `UPDATE instructions SET status = 'stale'
+        WHERE pr_id = ? AND status IN ('new', 'working', 'done')`,
+    ).run(prId)
+    // ...and a hold does not survive a target change either: it was about the version
+    // that is no longer here.
+    db.prepare(`UPDATE prs SET hold_reason = NULL, hold_at = NULL WHERE id = ?`).run(prId)
     return true
   })()
 }

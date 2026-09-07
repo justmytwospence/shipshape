@@ -232,7 +232,7 @@ export function recordCost(
   usage: Anthropic.Usage,
   policy: Policy,
   model: string,
-  purpose: 'verdict' | 'proposal' = 'verdict',
+  purpose: 'verdict' | 'proposal' | 'revision' = 'verdict',
 ): void {
   const c = costOf(usage, model)
   const now = new Date().toISOString()

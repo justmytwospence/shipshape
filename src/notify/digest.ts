@@ -33,6 +33,7 @@ export type Category =
   | 'deployed'
   | 'held'
   | 'drafted'
+  | 'revised'
 
 export interface DigestItem {
   category: Category
@@ -54,6 +55,10 @@ const SECTIONS: { category: Category; heading: (n: number) => string }[] = [
   { category: 'merged', heading: (n) => `${n} merged` },
   { category: 'deployed', heading: (n) => `${n} deployed` },
   { category: 'drafted', heading: (n) => `${n} carried drafted config changes` },
+  // Only recorded when something actually changed. A plain answer is a reply to
+  // something typed thirty seconds earlier; putting it in tomorrow's 08:00 summary is
+  // noise, and noise is how a digest stops being read.
+  { category: 'revised', heading: (n) => `${n} changed because you asked` },
   { category: 'held', heading: (n) => `${n} waiting on you` },
 ]
 

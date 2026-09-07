@@ -7,6 +7,7 @@ import { performRollback, revertCommand } from '../deploy/rollback.ts'
 import { stackPeers, withNamespacePeers, type DeployTarget } from '../deploy/run.ts'
 import { syncMain } from '../gitops/sync.ts'
 import { withGitLock } from '../gitops/repo.ts'
+import { runAnalysisPass } from '../analyze/run.ts'
 
 /**
  * The things a person can do to an update.
@@ -161,11 +162,47 @@ export async function runVerb(id: number, verb: Verb): Promise<VerbResult> {
       return rollback(row, ctx)
     case 'ack':
       return acknowledge(row)
+    case 'skip':
+      return skipUpdate(row)
+    case 'rerun-review':
+      return rerunReview(row)
     default:
       // The remaining verbs live where their machinery does: merge and propose in the
-      // GitHub routes, open-pr and skip and rerun-review alongside them.
+      // GitHub routes, open-pr alongside them.
       return { ok: false, message: `${verb} is handled elsewhere` }
   }
+}
+
+/**
+ * Not this version.
+ *
+ * Durable: `skipped` is in REFUSED_STATES, so the next scan will not offer it again.
+ * That is what makes it the one verb a model may not reach by reading prose -- see
+ * `hasSkipToken` in the revision path.
+ */
+function skipUpdate(row: UpdateRow): VerbResult {
+  setState(row.id, 'skipped', 'dismissed')
+  logEvent({
+    level: 'info',
+    kind: 'pr',
+    stack: row.stack,
+    service: row.service,
+    message: `${row.from_tag} -> ${row.to_tag} dismissed by the operator`,
+  })
+  return { ok: true, message: 'Skipped. It will not be offered again unless you ask for it.' }
+}
+
+/** Read the changelog again: for a review that failed, or one that never ran. */
+function rerunReview(row: UpdateRow): VerbResult {
+  // Clear the backoff rather than the row: the attempt count is the history of how hard
+  // this changelog has been to read, and somebody asking is not attempt one.
+  getDb()
+    .prepare(
+      `UPDATE verdicts SET next_attempt_at = NULL WHERE image = ? AND from_tag = ? AND to_tag = ?`,
+    )
+    .run(row.image, row.from_tag, row.to_tag)
+  void detach(runAnalysisPass(1), 'rerun-review')
+  return { ok: true, message: 'Reading the changelog again…' }
 }
 
 /** Bring up a merge that has been waiting -- the button `paused` exists to require. */

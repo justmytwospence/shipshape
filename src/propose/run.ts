@@ -11,16 +11,8 @@ import { resolveSource } from '../resolver/index.ts'
 import { parseImageRef } from '../images/ref.ts'
 import { postIssueComment } from '../gitops/comments.ts'
 import { ensureWorkRepo, git, httpsUrl, withGitLock } from '../gitops/repo.ts'
-import { parse as parseYaml } from 'yaml'
-import { applyOps } from './apply.ts'
-import {
-  scopeFor,
-  boundaryFor,
-  canWrite,
-  describeBoundary,
-  allowedServices,
-  isStructured,
-} from './paths.ts'
+import { blockFor, checkAndApply, composeAccepts, restore } from './commit.ts'
+import { scopeFor, boundaryFor, describeBoundary, allowedServices } from './paths.ts'
 import { proposalHunks } from './hunks.ts'
 import { propose, type Proposal } from './propose.ts'
 import { gatherContext } from './context.ts'
@@ -225,66 +217,18 @@ async function draftFor(c: Candidate): Promise<boolean> {
       return true
     }
 
-    // Ops are grouped by the file they name; anything unnamed edits the compose file.
-    // Every target is checked against the boundary before a byte is written, so the
-    // permission is enforced here rather than trusted from the model's output.
-    const byFile = new Map<string, typeof result.ops>()
-    for (const op of result.ops) {
-      const file = op.file ?? c.composeFile
-      let peek: string | undefined
-      try {
-        peek = readFileSync(join(repoDir, file), 'utf8').slice(0, 8192)
-      } catch {
-        peek = undefined
-      }
-      const verdict = canWrite(file, boundary, env.selfStack, peek, policy.propose.never)
-      if (!verdict.ok) {
-        record(c, result, verdict.reason, [])
-        await comment(
-          c.number,
-          `shipshape drafted config changes but refused to apply them: **${verdict.reason}**\n\n` +
-            renderComment(result, [], null),
-        )
-        logEvent({
-          level: 'warn',
-          kind: 'pr',
-          stack: c.stack,
-          service: c.service,
-          message: `#${c.number}: proposal refused`,
-          detail: verdict.reason,
-        })
-        return false
-      }
-      byFile.set(file, [...(byFile.get(file) ?? []), op])
-    }
-
-    const originals = new Map<string, string>()
-    const results = new Map<string, string>()
-    const allChanged: string[] = []
-    let failure: string | null = null
-
-    for (const [file, ops] of byFile) {
-      const abs2 = join(repoDir, file)
-      let text: string
-      try {
-        text = readFileSync(abs2, 'utf8')
-      } catch {
-        failure = `${file} does not exist`
-        break
-      }
-      originals.set(file, text)
-      const step = applyOps(text, c.service, ops, allowed)
-      if (!step.ok) {
-        failure = step.reason
-        break
-      }
-      results.set(file, step.text)
-      allChanged.push(...step.changed.map((x) => (byFile.size > 1 ? `${file}: ${x}` : x)))
-    }
-
-    const applied = failure
-      ? ({ ok: false, reason: failure } as const)
-      : ({ ok: true, text: results.get(c.composeFile) ?? before, changed: allChanged } as const)
+    // The boundary check, the applier and the parse gate all live in checkAndApply, which
+    // the revision path calls too -- one enforcement path rather than two that look alike.
+    const applied = checkAndApply({
+      repoDir,
+      ops: result.ops,
+      composeFile: c.composeFile,
+      service: c.service,
+      boundary,
+      allowed,
+      selfStack: env.selfStack,
+      never: policy.propose.never,
+    })
 
     if (!applied.ok) {
       // A refused proposal must be visible: silence would look like "nothing to do".
@@ -305,10 +249,10 @@ async function draftFor(c: Candidate): Promise<boolean> {
       return false
     }
 
-    for (const [file, text] of results) writeFileSync(join(repoDir, file), text)
-    const gate = (await parses(results)) ?? (await composeAccepts(repoDir, c.composeFile))
+    const { results, originals } = applied
+    const gate = await composeAccepts(repoDir, c.composeFile)
     if (!gate.ok) {
-      for (const [file, text] of originals) writeFileSync(join(repoDir, file), text)
+      restore(repoDir, originals)
       record(c, result, gate.reason, [])
       await comment(c.number, `shipshape's drafted changes did not validate: **${gate.reason}**`)
       return false
@@ -370,67 +314,6 @@ async function draftFor(c: Candidate): Promise<boolean> {
     })
     return true
   })
-}
-
-/**
- * Every structured file that was written must still parse.
- *
- * `composeAccepts` only ever looked at the service's own compose file, so a proposal
- * that edited a sibling -- which is the whole point of the wider rungs -- was committed
- * with nothing checking it at all. `docker compose config` cannot help there: it does
- * not know the file exists. Re-parsing is a weaker claim than "compose accepts this",
- * but it is a claim about the file that actually changed.
- *
- * Returns the first failure, or null when there is nothing to object to -- so the
- * caller still runs the compose gate.
- */
-async function parses(
-  results: Map<string, string>,
-): Promise<{ ok: false; reason: string } | null> {
-  for (const [file, text] of results) {
-    if (!isStructured(file)) continue
-    try {
-      if (/\.json$/i.test(file)) JSON.parse(text)
-      else parseYaml(text)
-    } catch (err) {
-      return { ok: false, reason: `${file} no longer parses: ${(err as Error).message.slice(0, 160)}` }
-    }
-  }
-  return null
-}
-
-async function composeAccepts(
-  repoDir: string,
-  composeFile: string,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const r = await execa(
-    'docker',
-    ['compose', '-f', join(repoDir, composeFile), 'config', '--no-interpolate', '-q'],
-    { reject: false, timeout: 60_000, cwd: repoDir },
-  )
-  return (r.exitCode ?? 1) === 0
-    ? { ok: true }
-    : { ok: false, reason: String(r.stderr ?? '').slice(0, 200) }
-}
-
-/** The service's own block, so the model sees its configuration and nothing else. */
-function blockFor(text: string, service: string): string {
-  const lines = text.split('\n')
-  const start = lines.findIndex((l) =>
-    new RegExp(`^\\s{1,4}${service.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:\\s*$`).test(l),
-  )
-  if (start === -1) return text.slice(0, 4000)
-  const indent = lines[start]!.match(/^\s*/)![0].length
-  let end = lines.length
-  for (let i = start + 1; i < lines.length; i++) {
-    const l = lines[i]!
-    if (!l.trim()) continue
-    if (l.match(/^\s*/)![0].length <= indent) {
-      end = i
-      break
-    }
-  }
-  return lines.slice(start, end).join('\n')
 }
 
 function record(

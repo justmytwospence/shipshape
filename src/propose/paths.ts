@@ -63,6 +63,27 @@ export function scopeFor(label: string | null | undefined): ProposeScope {
 }
 
 /**
+ * How far a comment-driven edit may reach.
+ *
+ * An explicit label wins outright, in both directions: `none` still means never, and a
+ * deliberate `service` pin stays `service`. The policy floor applies only where the
+ * service has said nothing at all.
+ *
+ * That distinction is the reason this cannot be written as "the wider of the two".
+ * `scopeFor` folds *absent* and an explicit `shipshape.propose: service` into the same
+ * answer, so a wider-of rule would silently promote a pin the operator wrote on purpose
+ * up to the policy default -- the same failure this file forbids in its own comment ("a
+ * typo must never grant reach"), pointed the other way. Reading the raw label is what
+ * keeps "I meant that" distinguishable from "I never said".
+ */
+export function reviseScope(
+  label: string | null | undefined,
+  floor: ProposeScope,
+): ProposeScope {
+  return label && label.trim() ? scopeFor(label) : floor
+}
+
+/**
  * Directory names that are never writable, at any depth.
  *
  * Depth is the point. This used to test only the first path segment, which read as

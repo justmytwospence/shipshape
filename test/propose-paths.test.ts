@@ -75,6 +75,90 @@ test('traversal and absolute paths do not escape the repository', () => {
   }
 })
 
+test('traversal that lands back INSIDE the repo is still checked where it lands', () => {
+  // The hole this closes: the path was resolved only to answer "does this escape?", and
+  // the raw string was then handed to the forbidden test, which reads path segments. So
+  // every rule above was reachable by naming its target the long way round -- and
+  // writeFileSync(join(...)) collapsed the `..` on the way to disk.
+  for (const f of [
+    'authelia/../shipshape/config/policy.yaml',
+    'authelia/../.github/workflows/ci.yaml',
+    'authelia/../bin/homelab.yaml',
+    'authelia/sub/../../shipshape/docker-compose.yaml',
+  ]) {
+    assert.equal(canWrite(f, b('compose-dir'), 'shipshape').ok, false, f)
+    assert.equal(canWrite(f, b('repo'), 'shipshape').ok, false, f)
+  }
+  // ...and a `..` that resolves to somewhere legitimate is still allowed, so this is a
+  // correction rather than a blanket ban on the character.
+  assert.equal(canWrite('authelia/sub/../configuration.yml', b('compose-dir'), 'shipshape').ok, true)
+})
+
+test('executable and secret-bearing directories are excluded at any depth', () => {
+  // Testing only the first segment meant "excluded at the repository root", which is
+  // where none of them actually live.
+  for (const f of [
+    'mcpjungle/bin/download.sh',
+    'servarr/scripts/run.sh',
+    'code-server/custom-cont-init.d/01-fix-prompt.sh',
+    'n8n/credentials/anthropic.json',
+    'vault/secrets/token.yaml',
+  ]) {
+    assert.equal(canWrite(f, b('repo'), 'shipshape').ok, false, f)
+    assert.equal(isForbidden(f, 'shipshape'), true, f)
+  }
+})
+
+test('the operator can rule out a path at every scope', () => {
+  // For configuration that is hot-reloaded: a merged edit goes live on the next sync
+  // with no compose up, no verify window and no rollback, so nothing shipshape does to
+  // make a deploy safe applies to it at all.
+  const never = ['traefik/dynamic', 'traefik/authelia/configuration.yml']
+  const t = (s: Parameters<typeof boundaryFor>[0]) => boundaryFor(s, 'traefik/docker-compose.yaml')
+  assert.equal(canWrite('traefik/dynamic/mcp.yaml', t('compose-dir'), 'shipshape').ok, true)
+  for (const scope of ['compose-dir', 'repo'] as const) {
+    const r = canWrite('traefik/dynamic/mcp.yaml', t(scope), 'shipshape', undefined, never)
+    assert.equal(r.ok, false, scope)
+    assert.match(r.ok === false ? r.reason : '', /never writable/)
+    assert.equal(
+      canWrite('traefik/authelia/configuration.yml', t(scope), 'shipshape', undefined, never).ok,
+      false,
+      scope,
+    )
+  }
+  // A ruled-out prefix must not swallow a sibling that merely starts with the same text.
+  assert.equal(canWrite('traefik/dynamic-notes.yaml', t('compose-dir'), 'shipshape', undefined, never).ok, true)
+  // ...and it is still reachable by the long way round.
+  assert.equal(
+    canWrite('traefik/x/../dynamic/mcp.yaml', t('compose-dir'), 'shipshape', undefined, never).ok,
+    false,
+  )
+})
+
+test('a config-typed boundary refuses anything that runs', () => {
+  // The revision path's rule. The proposal path keeps `any`, which is why the test above
+  // still finds entrypoint.sh writable: a proposal is drafted from a changelog at a rung
+  // the operator opted into per service, and a revision is a sentence someone typed at a
+  // rung that is the default.
+  const cfg = boundaryFor('compose-dir', 'authelia/docker-compose.yaml', 'config')
+  for (const f of ['authelia/configuration.yml', 'authelia/users.json', 'authelia/app.conf']) {
+    assert.equal(canWrite(f, cfg, 'shipshape').ok, true, f)
+  }
+  for (const f of [
+    'authelia/entrypoint.sh',
+    'authelia/Dockerfile',
+    'authelia/sync.py',
+    'authelia/export.service',
+    'authelia/action.d/ntfy.local',
+  ]) {
+    const r = canWrite(f, cfg, 'shipshape')
+    assert.equal(r.ok, false, f)
+    assert.match(r.ok === false ? r.reason : '', /not a configuration file/)
+  }
+  // The service's own compose file is always writable, whatever it is called.
+  assert.equal(canWrite('authelia/docker-compose.yaml', cfg, 'shipshape').ok, true)
+})
+
 test('a typo narrows; the widest words are still recognised', () => {
   assert.equal(scopeFor('compose-directory'), 'compose-dir')
   assert.equal(scopeFor('any'), 'repo')

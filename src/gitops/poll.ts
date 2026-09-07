@@ -388,9 +388,14 @@ async function onClosed(prId: number, number: number, branch: string): Promise<v
       | undefined)?.user_owned !== 1
   db.transaction(() => {
     db.prepare(`UPDATE prs SET state = 'closed' WHERE id = ?`).run(prId)
+    // `skipped` is a tombstone the scan never re-offers, and it outranks this. Closing
+    // the pull request is how a skip reaches GitHub, so overwriting the state here would
+    // undo the decision that caused the close and re-offer the update on the next scan --
+    // the exact failure the operator verbs were written to prevent.
     db.prepare(
       `UPDATE updates SET state = 'superseded', detail = 'pr-closed', updated_at = ?
-       WHERE id IN (SELECT update_id FROM pr_updates WHERE pr_id = ?)`,
+       WHERE id IN (SELECT update_id FROM pr_updates WHERE pr_id = ?)
+         AND state != 'skipped'`,
     ).run(now, prId)
   })()
   logEvent({

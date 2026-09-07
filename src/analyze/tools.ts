@@ -64,18 +64,25 @@ export function webTools(
         max_uses: budget.searches,
         allowed_domains: allowedDomains,
       }
+  // The same allowlist as the search tool. It was missing here, which meant search was
+  // confined to the upstream's own documentation while fetch could read any URL on the
+  // internet -- including one named by the untrusted release notes the model is reading,
+  // while it holds this deployment's configuration in context. A one-sided allowlist is
+  // not an allowlist.
   const fetch: Anthropic.ToolUnion = supportsDynamicFiltering(model)
     ? {
         type: 'web_fetch_20260209',
         name: 'web_fetch',
         max_uses: budget.fetches,
         max_content_tokens: budget.content_tokens,
+        allowed_domains: allowedDomains,
       }
     : {
         type: 'web_fetch_20250910',
         name: 'web_fetch',
         max_uses: budget.fetches,
         max_content_tokens: budget.content_tokens,
+        allowed_domains: allowedDomains,
       }
   return [search, fetch]
 }

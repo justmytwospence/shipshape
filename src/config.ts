@@ -231,6 +231,20 @@ export const PolicySchema = z.object({
       // manual -- only when asked, per pull request
       // off    -- never
       mode: z.enum(['auto', 'manual', 'off']).default('auto'),
+      // Repo-relative paths no proposal may write, whatever its scope, on top of the
+      // ones the code refuses unconditionally (its own stack, .github, bin, scripts,
+      // credentials, .env).
+      //
+      // This exists for configuration that is *hot-reloaded*. Everything shipshape does
+      // to make a change safe -- the verify window, the soak, the rollback -- hangs off
+      // `compose up` noticing a new image. A file provider that watches its directory,
+      // or an auth policy the proxy re-reads, goes live on the next `syncMain()`
+      // fast-forward instead: merged, live, and unwatched. There is no version to roll
+      // back to and nothing observing whether it worked.
+      //
+      // Left empty by default because which paths those are is a property of the
+      // repository, not of shipshape.
+      never: z.array(z.string()).default([]),
     })
     .prefault({}),
   // Whether a service labelled `shipshape.policy: model` actually gets model-decided

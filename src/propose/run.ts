@@ -10,8 +10,16 @@ import { routine } from '../notify/digest.ts'
 import { resolveSource } from '../resolver/index.ts'
 import { parseImageRef } from '../images/ref.ts'
 import { ensureWorkRepo, git, httpsUrl, withGitLock } from '../gitops/repo.ts'
+import { parse as parseYaml } from 'yaml'
 import { applyOps } from './apply.ts'
-import { scopeFor, boundaryFor, canWrite, describeBoundary, allowedServices } from './paths.ts'
+import {
+  scopeFor,
+  boundaryFor,
+  canWrite,
+  describeBoundary,
+  allowedServices,
+  isStructured,
+} from './paths.ts'
 import { proposalHunks } from './hunks.ts'
 import { propose, type Proposal } from './propose.ts'
 import { gatherContext } from './context.ts'
@@ -228,7 +236,7 @@ async function draftFor(c: Candidate): Promise<boolean> {
       } catch {
         peek = undefined
       }
-      const verdict = canWrite(file, boundary, env.selfStack, peek)
+      const verdict = canWrite(file, boundary, env.selfStack, peek, policy.propose.never)
       if (!verdict.ok) {
         record(c, result, verdict.reason, [])
         await comment(
@@ -297,7 +305,7 @@ async function draftFor(c: Candidate): Promise<boolean> {
     }
 
     for (const [file, text] of results) writeFileSync(join(repoDir, file), text)
-    const gate = await composeAccepts(repoDir, c.composeFile)
+    const gate = (await parses(results)) ?? (await composeAccepts(repoDir, c.composeFile))
     if (!gate.ok) {
       for (const [file, text] of originals) writeFileSync(join(repoDir, file), text)
       record(c, result, gate.reason, [])
@@ -361,6 +369,33 @@ async function draftFor(c: Candidate): Promise<boolean> {
     })
     return true
   })
+}
+
+/**
+ * Every structured file that was written must still parse.
+ *
+ * `composeAccepts` only ever looked at the service's own compose file, so a proposal
+ * that edited a sibling -- which is the whole point of the wider rungs -- was committed
+ * with nothing checking it at all. `docker compose config` cannot help there: it does
+ * not know the file exists. Re-parsing is a weaker claim than "compose accepts this",
+ * but it is a claim about the file that actually changed.
+ *
+ * Returns the first failure, or null when there is nothing to object to -- so the
+ * caller still runs the compose gate.
+ */
+async function parses(
+  results: Map<string, string>,
+): Promise<{ ok: false; reason: string } | null> {
+  for (const [file, text] of results) {
+    if (!isStructured(file)) continue
+    try {
+      if (/\.json$/i.test(file)) JSON.parse(text)
+      else parseYaml(text)
+    } catch (err) {
+      return { ok: false, reason: `${file} no longer parses: ${(err as Error).message.slice(0, 160)}` }
+    }
+  }
+  return null
 }
 
 async function composeAccepts(

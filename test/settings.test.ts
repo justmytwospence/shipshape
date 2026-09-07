@@ -106,6 +106,24 @@ test('the result still parses as the same shape', () => {
 
 // ------------------------------------------------------------------- inserting
 
+test('turning on comment handling writes a section the file has never had', () => {
+  // The whole `revise:` block is absent from every policy.yaml that predates it, so the
+  // first save has to create the section and the key. If it could not, the switch in
+  // Settings would be a control that silently does nothing -- which is the failure this
+  // file's own fixture comment is about.
+  let out = setValue(FIXTURE, 'revise.mode', 'reply')!
+  out = setValue(out, 'revise.scope', 'compose-dir')!
+  const doc = parse(out) as Record<string, Record<string, unknown>>
+  assert.equal(doc.revise!.mode, 'reply')
+  assert.equal(doc.revise!.scope, 'compose-dir')
+  // ...without disturbing anything that was already there.
+  assert.equal(doc.claude!.mode, 'advisory')
+  assert.equal(doc.prs!.max_open, 5)
+  assert.deepEqual(doc.sync!.blackout, ['00:45-02:30'])
+  // And `mode` under `revise` must not be confused with `mode` under `claude`.
+  assert.match(out, /revise:\n(?:.*\n)*?\s+mode: reply/)
+})
+
 test('setValue adds a key that is missing from an existing section', () => {
   const out = setValue(FIXTURE, 'claude.code_model', 'claude-opus-5')!
   const doc = parse(out) as Record<string, Record<string, unknown>>

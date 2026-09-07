@@ -52,6 +52,35 @@ registry poll ──▶ new tag ──▶ resolve source repo ──▶ fetch ch
                               docker compose up -d ──▶ health check ──▶ ntfy
 ```
 
+### Comment on a pull request and it does what you asked
+
+The pull request is the review surface, so it is also where you answer back. Comment on an
+open one and shipshape reads it as an instruction: it can reply to a question, write the
+change you asked for as a second commit, hold the pull request so it will not merge on its
+own, or read the changelog again. There is no prefix and no bot to summon — any comment
+counts — and it answers every one, including the ones it decides need no change.
+
+```
+you: "PAPERLESS_HOST isn't set here — drop that line and use the URL form instead"
+     ↓  (within a minute)
+shipshape: 👀 → second commit on the branch → a reply saying what it changed
+```
+
+Two things it will not do:
+
+- **Never merge, never deploy.** Not at any setting. A merge reaches your host through a
+  real `compose up`, and that is not something a model's reading of prose should be able
+  to start. You merge; shipshape carries it out.
+- **Never skip on inference.** Skipping tombstones an update so the scan will not offer it
+  again, and "don't skip this" differs from "skip this" by one word. It needs the literal
+  `/skip` typed in your comment.
+
+Off by default (`revise.mode: off`). `reply` lets it answer, hold, skip and re-read
+without touching the branch; `act` lets it commit as well. Anything it commits is subject
+to the same boundary as a drafted proposal — it can never reach shipshape's own
+configuration, CI workflows, `bin/` or `scripts/` at any depth, credentials, `.env` files,
+or anything that executes — and a pull request it has written to can never auto-merge.
+
 Three git locations, with strict roles:
 
 | Location | Role |

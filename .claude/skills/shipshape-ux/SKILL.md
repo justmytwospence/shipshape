@@ -90,7 +90,7 @@ anything.
 
 | State | Primary | Also available |
 |---|---|---|
-| Waiting on you | **Merge & deploy** (confirm step) | Skip · Draft config changes · Re-run review · Open on GitHub |
+| Waiting on you | **Merge & deploy** (confirm step) | Skip · Draft config changes · Re-run review · Release hold · Open on GitHub |
 | Held on request | **Open PR** | Skip |
 | Ready to deploy | **Deploy** | Copy compose command |
 | Rolling tag moved | **Redeploy** | Dismiss |
@@ -102,6 +102,31 @@ A verb keeps its name through the whole flow: the button that says "Deploy" prod
 "Deploying" and then "Deployed". Destructive-ish verbs (Merge & deploy, Roll back) are
 only offered where the analysis is on screen, never as a bare row button.
 
+## Your comments
+
+Comment on an open pull request and shipshape reads it as an instruction. Any comment
+counts -- there is no prefix -- and it replies to every one, including the ones it decides
+need no change. `revise.mode` says how far it may go: `off`, `reply` (it answers, and may
+hold, skip or re-read the changelog), or `act` (it may also write the change onto the
+branch, as a second commit, which permanently disqualifies the pull request from
+auto-merge like any other drafted change).
+
+**It can never merge and never deploy from a comment, at any setting.** Never write copy
+that suggests otherwise. A merge reaches the host through a real `compose up`, and that is
+not something a reading of prose may start. Skipping is the other thing it will not infer:
+that leaves a tombstone the scan never offers again, so it needs the literal `/skip` typed
+in the comment. Everything reversible -- answering, editing, holding, re-reading -- is
+prose-driven.
+
+**Hold** and **Release hold** are the verbs. The sentence is "You asked shipshape to hold
+this -- it will not merge on its own." Hold is not a button: somebody who does not want a
+merge simply does not press Merge, so only the release half is offered.
+
+**Hold is not Held.** `Held on request` is the `on-request` rung and means no pull request
+has been opened yet. A hold is a pull request that exists and has been asked to wait. Same
+English word, different stage, different button -- the badge word stays reserved for the
+rung.
+
 ## Where things live
 
 - **Inbox** — what needs you, grouped by why, worst first; then what happened recently.
@@ -112,8 +137,8 @@ only offered where the analysis is on screen, never as a bare row button.
 - **Services** — every service, its watch status, and its effective configuration with
   provenance (label / default / inferred / locked).
 - **Activity** — the log, coalesced.
-- **Settings** — the defaults, Pause, review, notifications, schedule; Advanced holds
-  everything else; `/docs` explains the model.
+- **Settings** — the defaults, Pause, review, your comments, notifications, schedule;
+  Advanced holds everything else; `/docs` explains the model.
 - **Status** — the machine's own state: its clocks, what it is wired to, what it has
   spent, and what would merge if nothing were holding it. Nothing on it is a decision,
   which is the line between it and Settings: Settings is where you change what shipshape

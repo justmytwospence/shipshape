@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { claimable } from '../src/revise/run.ts'
+import { claimable, parseContext } from '../src/revise/run.ts'
 
 /**
  * Who may pick an instruction up, and when shipshape stops trying.
@@ -55,5 +55,19 @@ test('a finished or foreign row is never taken', () => {
       { take: false, give_up: false },
       status,
     )
+  }
+})
+
+test('an inline comment keeps the hunk and the thread it belongs to', () => {
+  const r = parseContext(JSON.stringify({ diffHunk: '@@ -1 +1 @@\n-a\n+b', inReplyTo: 77 }))
+  assert.equal(r.diffHunk, '@@ -1 +1 @@\n-a\n+b')
+  // The thread root, so a reply continues the conversation instead of nesting under
+  // whichever comment in it happened to be read.
+  assert.equal(r.inReplyTo, 77)
+})
+
+test('a conversation comment carries no inline context, and neither does a broken one', () => {
+  for (const raw of [null, '', 'not json', '{"diffHunk":42}', '{}']) {
+    assert.deepEqual(parseContext(raw), { diffHunk: null, inReplyTo: null }, String(raw))
   }
 })

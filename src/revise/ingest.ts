@@ -170,7 +170,15 @@ export async function ingestInstructions(): Promise<IngestResult> {
   )
 
   let newest = since
-  const seen: { facts: CommentFacts; prNumber: number; url: string; path?: string; line?: number }[] = []
+  const seen: {
+    facts: CommentFacts
+    prNumber: number
+    url: string
+    path?: string
+    line?: number
+    diffHunk?: string
+    inReplyTo?: number
+  }[] = []
 
   try {
     for await (const page of gh().paginate.iterator(gh().rest.issues.listCommentsForRepo, {
@@ -191,6 +199,42 @@ export async function ingestInstructions(): Promise<IngestResult> {
           facts: {
             id: c.id,
             kind: 'issue',
+            body: c.body,
+            author: c.user?.login ?? '',
+            authorType: c.user?.type ?? 'Unknown',
+            association: c.author_association ?? 'NONE',
+            createdAt: c.created_at,
+          },
+        })
+      }
+    }
+
+    // Inline comments on a diff line. A separate endpoint and a separate id sequence --
+    // hence the namespace on comment_id -- and worth having because "change this line" is
+    // the most natural thing to say about a diff, and the comment already carries the
+    // file, the line and the hunk the operator was looking at.
+    for await (const page of gh().paginate.iterator(gh().rest.pulls.listReviewCommentsForRepo, {
+      owner,
+      repo,
+      since,
+      sort: 'created',
+      direction: 'asc',
+      per_page: 100,
+    })) {
+      for (const c of page.data) {
+        const number = prNumberOf(c.pull_request_url, 'pulls')
+        if (number === null || !byNumber.has(number)) continue
+        if (c.created_at > newest) newest = c.created_at
+        seen.push({
+          prNumber: number,
+          url: c.html_url,
+          path: c.path,
+          line: c.line ?? c.original_line ?? undefined,
+          diffHunk: c.diff_hunk,
+          inReplyTo: c.in_reply_to_id ?? undefined,
+          facts: {
+            id: c.id,
+            kind: 'review',
             body: c.body,
             author: c.user?.login ?? '',
             authorType: c.user?.type ?? 'Unknown',
@@ -231,7 +275,9 @@ export async function ingestInstructions(): Promise<IngestResult> {
       item.url,
       item.path ?? null,
       item.line ?? null,
-      null,
+      item.diffHunk || item.inReplyTo
+        ? JSON.stringify({ diffHunk: item.diffHunk ?? null, inReplyTo: item.inReplyTo ?? null })
+        : null,
       item.facts.createdAt,
       new Date().toISOString(),
     )
@@ -250,9 +296,18 @@ export async function ingestInstructions(): Promise<IngestResult> {
   return out
 }
 
-/** `https://api.github.com/repos/o/r/issues/12` -> 12. */
-export function prNumberOf(issueUrl: string | null | undefined): number | null {
-  const m = /\/issues\/(\d+)$/.exec(issueUrl ?? '')
+/**
+ * `https://api.github.com/repos/o/r/issues/12` -> 12.
+ *
+ * The two endpoints name the pull request differently -- an issue comment carries
+ * `issue_url`, a review comment carries `pull_request_url` -- so the segment is a
+ * parameter rather than assumed.
+ */
+export function prNumberOf(
+  url: string | null | undefined,
+  segment: 'issues' | 'pulls' = 'issues',
+): number | null {
+  const m = new RegExp(`/${segment}/(\\d+)$`).exec(url ?? '')
   return m ? Number(m[1]) : null
 }
 

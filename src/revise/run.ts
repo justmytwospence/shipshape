@@ -50,6 +50,8 @@ export interface InstructionRow {
   url: string | null
   path: string | null
   line: number | null
+  /** JSON: the diff hunk the operator was looking at, and the thread it replies to. */
+  context: string | null
   status: string
   attempts: number
   claimed_at: string | null
@@ -148,7 +150,7 @@ function pick(only?: number): InstructionRow | null {
   return (getDb()
     .prepare(
       `SELECT i.id, i.pr_id, i.comment_id, i.kind, i.author, i.body, i.url, i.path, i.line,
-              i.status, i.attempts, i.claimed_at,
+              i.context, i.status, i.attempts, i.claimed_at,
               p.number, p.branch, p.head_sha_pushed, p.user_owned
          FROM instructions i
          JOIN prs p ON p.id = i.pr_id
@@ -223,7 +225,7 @@ async function handle(row: InstructionRow, mode: 'reply' | 'act'): Promise<boole
     author: row.author,
     path: row.path,
     line: row.line,
-    diffHunk: null,
+    diffHunk: parseContext(row.context).diffHunk,
     thread: thread(row.pr_id, row.id),
     stack: target.stack,
     service: target.service,
@@ -429,9 +431,13 @@ async function settle(
   body: string,
   action?: string,
 ): Promise<void> {
+  // A review reply is addressed to the thread's root, not to whichever comment in it we
+  // happened to read: GitHub threads a reply under the comment it names, so replying to
+  // a reply would start nesting rather than continue the conversation.
+  const root = parseContext(row.context).inReplyTo ?? numericId(row.comment_id)
   const replyId =
     row.kind === 'review'
-      ? await postReviewReply(row.number, numericId(row.comment_id), 'reply', body)
+      ? await postReviewReply(row.number, root, 'reply', body)
       : await postIssueComment(row.number, 'reply', body)
 
   if (replyId === null) {
@@ -490,4 +496,21 @@ function firstLine(body: string): string {
 /** `issue:123` -> 123. */
 function numericId(commentId: string): number {
   return Number(commentId.split(':')[1] ?? 0)
+}
+
+/** What an inline comment carried beyond its text. Absent for a conversation comment. */
+export function parseContext(raw: string | null): {
+  diffHunk: string | null
+  inReplyTo: number | null
+} {
+  if (!raw) return { diffHunk: null, inReplyTo: null }
+  try {
+    const o = JSON.parse(raw) as { diffHunk?: unknown; inReplyTo?: unknown }
+    return {
+      diffHunk: typeof o.diffHunk === 'string' ? o.diffHunk : null,
+      inReplyTo: typeof o.inReplyTo === 'number' ? o.inReplyTo : null,
+    }
+  } catch {
+    return { diffHunk: null, inReplyTo: null }
+  }
 }

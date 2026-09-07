@@ -106,8 +106,13 @@ test('the breaker stops a runaway thread, and says so', () => {
   assert.match(r.take === false ? r.why : '', /in an hour/)
 })
 
-test('the pull request number comes out of the issue url', () => {
+test('the pull request number comes out of whichever url the endpoint returned', () => {
+  // The two endpoints name the same pull request differently: an issue comment carries
+  // `issue_url`, a review comment carries `pull_request_url`. Reading the wrong segment
+  // silently matches nothing, which looks exactly like "nobody commented".
   assert.equal(prNumberOf('https://api.github.com/repos/o/r/issues/12'), 12)
+  assert.equal(prNumberOf('https://api.github.com/repos/o/r/pulls/12', 'pulls'), 12)
   assert.equal(prNumberOf('https://api.github.com/repos/o/r/pulls/12'), null)
+  assert.equal(prNumberOf('https://api.github.com/repos/o/r/issues/12', 'pulls'), null)
   assert.equal(prNumberOf(null), null)
 })

@@ -386,11 +386,8 @@ export async function runAutoMerge(dryRun = false): Promise<AutoMergeResult> {
       out.held++
       continue
     }
-    if (dryRun) {
-      out.merged++
-      continue
-    }
     // A misconfiguration should merge a couple of things and stop, not the backlog.
+    // Counted in the preview too, or it claims a backlog would land in one pass.
     if (out.merged >= policy.merge.max_per_run) {
       out.decisions.push({
         number: pr.number,
@@ -402,10 +399,33 @@ export async function runAutoMerge(dryRun = false): Promise<AutoMergeResult> {
     }
 
     // A red check stops a merge even when policy is satisfied.
+    //
+    // The preview runs this too, and that is the point of the change: it used to answer
+    // `dryRun` before reaching here, so it reported "would merge" for pull requests the
+    // real pass then refused on an unreadable checks API. A page whose whole job is
+    // "what would merge if nothing were holding it" was the last place to learn that
+    // something was.
     const checks = await checksFailing(owner, repo, pr.number)
     if (checks) {
       out.held++
       out.decisions.push({ number: pr.number, merge: false, reason: `checks failing: ${checks}` })
+      // Said out loud, because this is the one refusal that is not a policy decision the
+      // operator already made. Everything else that holds a merge is visible on the
+      // update -- a tier, a verdict, a hold. This was only ever a row in a preview
+      // nobody had reason to open.
+      if (!dryRun) {
+        logEvent({
+          level: 'warn',
+          kind: 'pr',
+          message: `#${pr.number} not merged: ${checks}`,
+          detail: 'policy allowed it; the checks gate did not',
+        })
+      }
+      continue
+    }
+
+    if (dryRun) {
+      out.merged++
       continue
     }
 
@@ -436,18 +456,93 @@ export async function runAutoMerge(dryRun = false): Promise<AutoMergeResult> {
   return out
 }
 
-/** The name of a failing check, or null when nothing is red. */
+/**
+ * What a check-runs response means for a merge.
+ *
+ * The distinction that matters is **"a check is red"** versus **"this token is not
+ * allowed to look"**, and the original code could not draw it: every failure went
+ * through one catch and came back as `could not read checks`, which read as red.
+ *
+ * That is a deadlock, not a safeguard. A fine-grained token scoped to Contents and Pull
+ * requests -- which is what the README asks for, and all shipshape otherwise needs --
+ * gets 403 from `checks.listForRef`. On a repository with no CI at all, there are no
+ * checks to read, never will be, and every auto-merge refuses forever with no log line
+ * to say why. It cost this lab a full day of a migration before anyone noticed, because
+ * the symptom is silence.
+ *
+ * So it fails open on `not-visible`, and that is the same asymmetry the changelog review
+ * already uses: an unavailable verdict falls back to static policy rather than freezing
+ * every update, because a provider outage must not stop the world. A 403 here is not
+ * evidence about the state of a check -- it is evidence about the token, which is the
+ * operator's own deliberate configuration.
+ *
+ * Everything else still fails closed. A 5xx or a network error genuinely means "a check
+ * may be red and I could not see it", and refusing is right.
+ */
+export type ChecksVerdict =
+  | { kind: 'clear' }
+  | { kind: 'red'; name: string }
+  | { kind: 'not-visible'; why: string }
+  | { kind: 'unknown'; why: string }
+
+export function classifyChecks(
+  status: number | null,
+  runs: { conclusion: string | null; name: string }[],
+  message = '',
+): ChecksVerdict {
+  // No status at all means no HTTP response came back -- a network failure, which is
+  // the one case where "a check may be red and I could not see it" is literally true.
+  // Checked first, and deliberately not folded in with the codes below: reading `null`
+  // as "no error status, therefore fine" is how a connection reset becomes a merge.
+  if (status === null) {
+    return { kind: 'unknown', why: `could not reach the checks API${message ? `: ${message}` : ''}` }
+  }
+  // 403: the token has no Checks permission. 404: the repository exposes no check API to
+  // it. Neither says anything about whether a check is red.
+  if (status === 403 || status === 404) {
+    return { kind: 'not-visible', why: `GitHub returned ${status} for the checks API` }
+  }
+  if (status < 200 || status >= 300) {
+    return { kind: 'unknown', why: `checks API returned ${status}${message ? `: ${message}` : ''}` }
+  }
+  const bad = runs.find((c) => c.conclusion === 'failure' || c.conclusion === 'timed_out')
+  return bad ? { kind: 'red', name: bad.name } : { kind: 'clear' }
+}
+
+/** Said once per process, not once per pull request per minute. */
+let announcedInvisible = false
+
+/** Whether a red check stands in the way of merging this pull request. */
 async function checksFailing(owner: string, repo: string, number: number): Promise<string | null> {
+  let verdict: ChecksVerdict
   try {
     const pr = await gh().rest.pulls.get({ owner, repo, pull_number: number })
-    const ref = pr.data.head.sha
-    const runs = await gh().rest.checks.listForRef({ owner, repo, ref })
-    const bad = runs.data.check_runs.find(
-      (c) => c.conclusion === 'failure' || c.conclusion === 'timed_out',
-    )
-    return bad ? bad.name : null
-  } catch {
-    // Unknown is not the same as passing. Refuse rather than assume.
-    return 'could not read checks'
+    const runs = await gh().rest.checks.listForRef({ owner, repo, ref: pr.data.head.sha })
+    verdict = classifyChecks(runs.status, runs.data.check_runs)
+  } catch (err) {
+    const e = err as { status?: number; message?: string }
+    verdict = classifyChecks(e.status ?? null, [], e.message ?? '')
+  }
+
+  switch (verdict.kind) {
+    case 'clear':
+      return null
+    case 'red':
+      return verdict.name
+    case 'not-visible':
+      // Fail open, but never silently -- an operator who does have CI needs to know the
+      // guard is not running, and the reason is a one-line fix on the token.
+      if (!announcedInvisible) {
+        announcedInvisible = true
+        logEvent({
+          level: 'warn',
+          kind: 'pr',
+          message: 'merging without checking CI -- this token cannot read check runs',
+          detail: `${verdict.why}. Harmless when the repository has no CI. If it does, grant the token Checks: read, or shipshape will merge over a red check.`,
+        })
+      }
+      return null
+    case 'unknown':
+      return verdict.why
   }
 }

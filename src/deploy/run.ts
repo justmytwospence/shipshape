@@ -2,7 +2,7 @@ import { execa } from 'execa'
 import { join } from 'node:path'
 import { env, inBlackout, loadPolicy, type Policy } from '../config.ts'
 import { httpProbe, inspectService, projectName, snapshotTarget, type ServiceSnapshot } from './probe.ts'
-import { includedStacks } from '../compose/scan.ts'
+import { includedStacks, scanRepo } from '../compose/scan.ts'
 import { DEFAULT_VERIFY, runVerify, type Verdict } from './verify.ts'
 import { getDb, logEvent } from '../db.ts'
 import { notify } from '../notify/index.ts'
@@ -192,6 +192,24 @@ export async function deploy(
   }
 }
 
+/**
+ * Which ref the verifier should expect a freshly-deployed container to be running.
+ *
+ * The file wins, and that ordering is the entire fix. `images.image_ref` is a snapshot
+ * the scan takes once a day; a deploy happens seconds after a merge, so that row still
+ * holds the pre-bump tag. Comparing a correctly-updated container against it reported
+ * `image-mismatch` -- a hard failure -- on every unattended deploy, which then rolled
+ * back a change that had worked. The database is kept only as a fallback for a service
+ * the scan can see and the file read could not.
+ */
+export function expectedRef(
+  service: string,
+  fromFile: Map<string, string | null>,
+  fromDb: Map<string, string | null>,
+): string | null {
+  return fromFile.get(service) ?? fromDb.get(service) ?? null
+}
+
 /** Wire the pure verifier to the real docker, and to this service's declared probe port. */
 async function verifyDeploy(
   target: DeployTarget,
@@ -209,6 +227,31 @@ async function verifyDeploy(
     }),
   )
 
+  // What the compose file pins RIGHT NOW, read from disk rather than from the database.
+  //
+  // `images.image_ref` is a snapshot taken by the last scan, and the scan runs once a
+  // day. A deploy happens seconds after a merge, so that row still holds the tag from
+  // before the bump -- and comparing the (correct) running container against it made
+  // every single unattended deploy fail `image-mismatch` and roll back. It never showed
+  // up while `paused: true`, because nothing had ever deployed unattended.
+  //
+  // The file is the source of truth everywhere else in shipshape, and by this point it
+  // has been fast-forwarded, so read it.
+  const pinned = new Map<string, string | null>()
+  try {
+    // `imageRaw` is the ref exactly as written in the file, which is what `image_ref`
+    // stores and what the container reports -- the three have to be the same shape or
+    // the comparison is meaningless.
+    for (const svc of scanRepo(env.repoDir, policy.exclude_stacks)) {
+      if (svc.stack === target.stack) pinned.set(svc.service, svc.imageRaw ?? null)
+    }
+  } catch {
+    // Unreadable compose files are the deploy's problem, not the verifier's. Falling
+    // back to the database keeps the old behaviour rather than skipping the check.
+  }
+  const expectedImageRef = (service: string): string | null =>
+    expectedRef(service, pinned, new Map([...meta].map(([k, v]) => [k, v.image_ref ?? null])))
+
   return runVerify(
     target.services,
     snapshot,
@@ -225,9 +268,7 @@ async function verifyDeploy(
         if (!ip) return undefined
         return httpProbe(ip, port)
       },
-      // The compose file was already fast-forwarded, so images.image_ref is the merged
-      // pin -- what the container should have been created from.
-      expectedImageRef: (service) => meta.get(service)?.image_ref ?? null,
+      expectedImageRef,
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       now: () => Date.now(),
     },

@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Verifier, DEFAULT_VERIFY, type VerifyConfig } from '../src/deploy/verify.ts'
 import { parseInspect, projectName, missing } from '../src/deploy/probe.ts'
+import { expectedRef } from '../src/deploy/run.ts'
 import type { ServiceObservation, ServiceSnapshot } from '../src/deploy/probe.ts'
 
 /**
@@ -163,6 +164,30 @@ test('a matching image is not a finding', () => {
     v().push([{ obs: obs({ imageRef: 'app:2.0' }), expectedImageRef: 'app:2.0' }], 1000),
     null,
   )
+})
+
+/**
+ * Where `expectedImageRef` comes from, which is what made the check above fire on every
+ * healthy deploy.
+ *
+ * The verifier was correct; it was being handed the wrong number. `images.image_ref` is
+ * written by the scan, which runs once a day, and a deploy lands seconds after a merge --
+ * so the row still held the pre-bump tag and every unattended deploy "failed" and rolled
+ * back a change that had worked. Invisible until the day auto-merge was switched on.
+ */
+test('the expected ref comes from the file, not from the daily scan snapshot', () => {
+  const file = new Map([['app', 'app:2.0']])
+  const db = new Map([['app', 'app:1.0']]) // yesterday's scan
+  assert.equal(expectedRef('app', file, db), 'app:2.0')
+})
+
+test('the database is a fallback, not a tie-breaker', () => {
+  // Only when the file read could not see the service at all.
+  assert.equal(expectedRef('app', new Map(), new Map([['app', 'app:1.0']])), 'app:1.0')
+  assert.equal(expectedRef('app', new Map(), new Map()), null)
+  // A service the file knows about but cannot pin (a `build:` service) is null, not the
+  // stale row -- there is genuinely nothing to compare against.
+  assert.equal(expectedRef('app', new Map([['app', null]]), new Map([['app', 'app:1.0']])), 'app:1.0')
 })
 
 // -------------------------------------------------------------------- the probe

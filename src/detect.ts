@@ -9,6 +9,7 @@ import {
 } from './registry/index.ts'
 import { probeByReleases } from './registry/probe.ts'
 import { resolveSource, guessFromImagePath } from './resolver/index.ts'
+import { fetchPrereleaseTags, normaliseReleaseTag } from './changelog/github.ts'
 import { selectUpdate, type Comparison } from './versions/compare.ts'
 import { inferPattern, isPatternKind, type PatternKind } from './versions/patterns.ts'
 
@@ -135,13 +136,34 @@ export async function detect(svc: ScannedService): Promise<Detection> {
     }
   }
 
-  const cmp: Comparison = selectUpdate({
-    currentTag: ref.tag,
-    availableTags: tags,
-    kind,
-    tagInclude,
-    regex: tagInclude,
-  })
+  const select = (available: string[]): Comparison =>
+    selectUpdate({ currentTag: ref.tag!, availableTags: available, kind, tagInclude, regex: tagInclude })
+
+  let cmp: Comparison = select(tags)
+
+  // A prerelease is not an update.
+  //
+  // The registry publishes betas and stable builds with identical tag shapes -- n8n
+  // ships 2.39.0 (prerelease) alongside 2.38.5 (stable) -- so nothing about the tag
+  // itself can tell them apart, and 2.39.0 sorts higher. shipshape would target the
+  // beta and then hold it on a changelog review that could not find its notes, because
+  // `fetchReleases` had already filtered prereleases out. Two halves of the same
+  // opinion, applied in one place and not the other.
+  //
+  // Done here, after a candidate exists, rather than by filtering the tag list up
+  // front: the fetch costs nothing on the services that are up to date, which is most
+  // of them on most scans.
+  if (cmp.status === 'update') {
+    const excluded = await prereleaseTagsAmong(svc, ref, ref.tag, tags)
+    // Only re-run when the tag actually chosen is one of them. A project can have betas
+    // in its history without the current candidate being one, and re-selecting then
+    // would spend a comparison to reach the same answer.
+    if (excluded.has(cmp.tag)) {
+      // `kept` is a subset, so the worst this can do is report up-to-date. It never
+      // widens the candidate set.
+      cmp = select(tags.filter((t) => !excluded.has(t)))
+    }
+  }
 
   switch (cmp.status) {
     case 'update':
@@ -154,6 +176,42 @@ export async function detect(svc: ScannedService): Promise<Detection> {
       return { status: 'bad-refinement', detail: cmp.detail }
     case 'not-orderable':
       return { status: 'digest-watch', currentDigest: null }
+  }
+}
+
+/**
+ * Which of these image tags the upstream project published as prereleases.
+ *
+ * Positive evidence only. A tag is excluded when it matches a GitHub release marked
+ * `prerelease`, and never for the absence of one -- most images here have no release to
+ * match at all (locally built, mirrored, or simply a project that does not cut GitHub
+ * releases), and treating "no release" as "not a real version" would freeze them.
+ *
+ * Every failure path returns the empty set, so an unresolvable repo, a rate limit or a
+ * GitHub outage costs nothing but the filter. Updates keep flowing on the old behaviour;
+ * they do not stop.
+ */
+async function prereleaseTagsAmong(
+  svc: ScannedService,
+  ref: NonNullable<ScannedService['ref']>,
+  currentTag: string,
+  tags: string[],
+): Promise<Set<string>> {
+  try {
+    const resolved = await resolveSource({
+      registry: ref.registry,
+      repository: ref.repository,
+      tag: currentTag,
+      sourceLabel: svc.sourceLabel,
+    })
+    const sourceRepo = resolved.sourceRepo ?? guessFromImagePath(ref.registry, ref.repository)
+    if (!sourceRepo) return new Set()
+
+    const pre = await fetchPrereleaseTags(sourceRepo)
+    if (pre.size === 0) return new Set()
+    return new Set(tags.filter((t) => pre.has(normaliseReleaseTag(t))))
+  } catch {
+    return new Set()
   }
 }
 

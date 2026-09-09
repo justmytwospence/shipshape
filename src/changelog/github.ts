@@ -61,6 +61,43 @@ export async function fetchReleases(ownerRepo: string): Promise<Release[]> {
     }))
 }
 
+/**
+ * The tags this project has published as prereleases, normalised for comparison.
+ *
+ * The other half of the filter two lines above. `fetchReleases` drops prereleases so the
+ * changelog review never reads a beta's notes -- but detection never knew about them, so
+ * shipshape would target a beta, then hold it on a review that truthfully reported the
+ * version "does not exist in the release history". It had removed it itself.
+ *
+ * n8n is the case that surfaced it: 2.39.0 and 2.39.1 are prereleases while 2.38.5 is
+ * the current stable. Both are published to the registry with identical tag shapes, so
+ * no pattern or regex can separate them -- the release metadata is the only signal.
+ *
+ * Returns an empty set on any failure, and the caller treats empty as "no evidence" and
+ * proceeds. Absence of a release must never withhold an update: plenty of images are
+ * published without a GitHub release at all, and failing closed here would freeze them.
+ */
+export async function fetchPrereleaseTags(ownerRepo: string): Promise<Set<string>> {
+  const raw = await ghJson<{ tag_name: string; draft: boolean; prerelease: boolean }[]>(
+    `/repos/${ownerRepo}/releases?per_page=60`,
+  )
+  if (!raw) return new Set()
+  return new Set(raw.filter((r) => r.prerelease && !r.draft).map((r) => normaliseReleaseTag(r.tag_name)))
+}
+
+/**
+ * A release tag and an image tag, reduced to the part that can be compared.
+ *
+ * Projects prefix release tags in ways the registry does not: n8n publishes `n8n@2.39.0`
+ * for the image `2.39.0`, and a leading `v` appears on one side or the other constantly.
+ * Anything left unmatched simply is not treated as a prerelease, which is the safe
+ * direction.
+ */
+export function normaliseReleaseTag(tag: string): string {
+  const afterAt = tag.includes('@') ? tag.slice(tag.lastIndexOf('@') + 1) : tag
+  return afterAt.trim().replace(/^v/i, '')
+}
+
 /** Commit subjects between two refs, when both resolve. Cheap context for projects that
  *  publish releases with empty bodies. */
 export async function fetchCompare(ownerRepo: string, from: string, to: string): Promise<string[]> {

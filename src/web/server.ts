@@ -957,7 +957,7 @@ export function createApp(): Hono {
         // only place it reached the page was as the JSON string in the counters dump.
         counts: info.counts,
       },
-      digest: { cron: sched.digest.cron, nextAt: sched.digest.nextAt },
+      digest: { cron: sched.digest.cron, nextAt: sched.digest.nextAt, owed: sched.digest.owed },
       credentials: [
         // Presence is not health. Through a six-day outage this row read `set` in green
         // the whole time, because a token that has expired is still very much present.

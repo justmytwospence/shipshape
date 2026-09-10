@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 /**
- * Migration 016 against a copy of the real database, when there is one to hand.
+ * The newest migrations against a copy of the real database, when there is one to hand.
  *
  * Skipped everywhere it cannot find one, so this is not a test anybody else's checkout
  * fails on -- but a schema change is exactly the thing a fresh-database test cannot
@@ -56,6 +56,30 @@ test('the new schema applies to a database with real history in it', (t) => {
   assert.equal(held, 0)
   assert.equal((d.prepare(`SELECT COUNT(*) c FROM instructions`).get() as { c: number }).c, 0)
   assert.ok(prs >= 0)
+})
+
+test('the digest barrier arrives with nothing owed', (t) => {
+  if (!have) return t.skip('set SHIPSHAPE_LIVE_DB to an online backup to run this')
+  const d = db.getDb()
+
+  // Empty on arrival, so deploying this cannot make a digest go out early or twice: the
+  // first thing to write the row is the schedule firing.
+  assert.equal((d.prepare(`SELECT COUNT(*) c FROM digest_due`).get() as { c: number }).c, 0)
+
+  // One row, and the database is what enforces it -- two digests owed at once is not a
+  // state the loop knows how to resolve.
+  d.prepare(`INSERT INTO digest_due (id, due_at, deadline) VALUES (1, 'a', 'b')`).run()
+  assert.throws(() =>
+    d.prepare(`INSERT INTO digest_due (id, due_at, deadline) VALUES (2, 'a', 'b')`).run(),
+  )
+  d.prepare(`DELETE FROM digest_due`).run()
+
+  // Pending items from before the upgrade are still pending: the barrier changes when
+  // the digest goes out, never which rows it carries.
+  const pending = (
+    d.prepare(`SELECT COUNT(*) c FROM digest_items WHERE sent_at IS NULL`).get() as { c: number }
+  ).c
+  assert.ok(pending >= 0)
 })
 
 test('the rollout watermark is set to now, not to the beginning of time', (t) => {

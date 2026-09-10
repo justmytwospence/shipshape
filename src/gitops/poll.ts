@@ -8,6 +8,7 @@ import { ensureWorkRepo, git, httpsUrl, withGitLock } from './repo.ts'
 import { syncMain } from './sync.ts'
 import { manualCommand, stackPeers, withNamespacePeers, type DeployTarget } from '../deploy/run.ts'
 import { enqueueDeploy, hasDueRechecks, hasPendingDeploys } from '../deploy/queue.ts'
+import { digestOwed } from '../notify/barrier.ts'
 import { scanRepo } from '../compose/scan.ts'
 import { deployNeedsYou, tierFor } from '../policy.ts'
 import type { Magnitude } from '../versions/patterns.ts'
@@ -507,7 +508,9 @@ export function hasOpenPrs(): boolean {
 export function pollIntervalMs(): number {
   const { policy } = loadPolicy()
   // Queued deploys count as activity: a merge with nothing else open would otherwise
-  // wait out the idle interval before anything brought it up.
-  const busy = hasOpenPrs() || hasPendingDeploys() || hasDueRechecks()
+  // wait out the idle interval before anything brought it up. So does an owed digest,
+  // which is now sent by this loop rather than by its own timer -- on the idle interval
+  // a quiet morning would sit ten minutes past 08:00 waiting for a tick to notice.
+  const busy = hasOpenPrs() || hasPendingDeploys() || hasDueRechecks() || digestOwed()
   return (busy ? policy.sync.poll_active_s : policy.sync.poll_idle_s) * 1000
 }

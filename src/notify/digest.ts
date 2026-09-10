@@ -117,10 +117,63 @@ interface Row {
   url: string | null
 }
 
+/**
+ * The highest id the table has ever handed out.
+ *
+ * The quiescence check needs one question answered -- did anything reportable happen
+ * during this tick -- and every reportable thing lands here. Comparing the watermark
+ * across a tick answers it without each pass having to report for itself, and without
+ * inventing a second definition of "work" that could drift from the one the digest uses.
+ *
+ * The column is AUTOINCREMENT, so pruning old rows cannot walk it backwards and make a
+ * busy tick look quiet.
+ */
+export function lastItemId(): number {
+  const row = getDb().prepare(`SELECT COALESCE(MAX(id), 0) id FROM digest_items`).get() as {
+    id: number
+  }
+  return row.id
+}
+
 export function pending(): Row[] {
   return getDb()
     .prepare(`SELECT * FROM digest_items WHERE sent_at IS NULL ORDER BY id`)
     .all() as Row[]
+}
+
+/**
+ * Take the pending batch, marking it sent in the same transaction that reads it.
+ *
+ * There are two callers of `flush` -- the schedule and the Send now button -- and
+ * `flush` used to read the batch, `await` the transport, and only then mark it. Two
+ * callers overlapping in that await both saw the same unsent rows and both sent them.
+ * Rare while the read and the write were milliseconds apart; not rare once the digest
+ * started waiting for deploys to finish before sending, which held the gap open for
+ * minutes.
+ *
+ * Claiming first closes it by construction rather than by timing: the second caller's
+ * SELECT returns nothing, whatever order they interleave in. `better-sqlite3` runs the
+ * transaction synchronously, so there is no await inside it for anything to interleave
+ * at.
+ *
+ * The cost is that a batch is marked sent before the transport confirms it, so a send
+ * that fails is a digest nobody gets. That was already the policy -- rows were marked
+ * regardless of whether `notify` succeeded, because a batch that retried forever would
+ * eventually push a week of history -- so this gives up nothing that was being relied
+ * on.
+ */
+export function claimPending(): Row[] {
+  const db = getDb()
+  return db.transaction(() => {
+    const rows = db
+      .prepare(`SELECT * FROM digest_items WHERE sent_at IS NULL ORDER BY id`)
+      .all() as Row[]
+    if (rows.length === 0) return rows
+    const now = new Date().toISOString()
+    const mark = db.prepare(`UPDATE digest_items SET sent_at = ? WHERE id = ?`)
+    for (const r of rows) mark.run(now, r.id)
+    return rows
+  })()
 }
 
 /** The digest as structure, so each transport can render what it is actually good at. */
@@ -293,15 +346,16 @@ export interface FlushResult {
 }
 
 /**
- * Send everything waiting, and mark it sent.
+ * Send everything waiting.
  *
- * Marked sent only after the transport returns, and marked regardless of whether it
- * succeeded: `notify` already swallows and logs its own failures, and a batch that
- * retried forever would eventually push a hundred-line message about a week of history.
- * A missed digest is a missed digest; the Activity page still has all of it.
+ * The batch is claimed -- read and marked sent in one transaction -- before the transport
+ * runs, so two callers overlapping in the await cannot both send it. Marked regardless of
+ * whether the send succeeds: `notify` already swallows and logs its own failures, and a
+ * batch that retried forever would eventually push a hundred-line message about a week of
+ * history. A missed digest is a missed digest; the Activity page still has all of it.
  */
 export async function flush(trigger: 'cron' | 'manual'): Promise<FlushResult> {
-  const rows = pending()
+  const rows = claimPending()
   if (rows.length === 0) return { sent: 0, skipped: 'nothing pending' }
 
   const message = render(rows)
@@ -314,12 +368,6 @@ export async function flush(trigger: 'cron' | 'manual'): Promise<FlushResult> {
     tags: ['package'],
     click: env.githubRepo ? `https://github.com/${env.githubRepo}/pulls` : undefined,
   })
-
-  const now = new Date().toISOString()
-  const mark = getDb().prepare(`UPDATE digest_items SET sent_at = ? WHERE id = ?`)
-  getDb().transaction(() => {
-    for (const r of rows) mark.run(now, r.id)
-  })()
 
   logEvent({
     level: 'info',

@@ -8,7 +8,8 @@ import { pollIntervalMs, pollPrs } from './gitops/poll.ts'
 import { drainDeployQueue, hasPendingDeploys, runRechecks } from './deploy/queue.ts'
 import { runPrPass } from './gitops/pr.ts'
 import { runScan } from './scan.ts'
-import { flush as flushDigest, prune as pruneDigest } from './notify/digest.ts'
+import { flush as flushDigest, lastItemId, prune as pruneDigest } from './notify/digest.ts'
+import { claimDigestSlot, digestOwed, MAX_WAIT_MS, requestDigest } from './notify/barrier.ts'
 import { checkGitHubAuth } from './health/github-auth.ts'
 import { ingestInstructions } from './revise/ingest.ts'
 import { runInstructionPass } from './revise/run.ts'
@@ -62,7 +63,7 @@ function scheduleDigest(): void {
   const { policy } = loadPolicy()
   digestExpression = policy.notify.cron
   digestJob?.stop()
-  digestJob = new Cron(digestExpression, { timezone: env.tz }, async () => {
+  digestJob = new Cron(digestExpression, { timezone: env.tz }, () => {
     const { policy: now } = loadPolicy()
     // Pick up a schedule edit without a restart, the same way the scan does.
     if (now.notify.cron !== digestExpression) {
@@ -70,47 +71,51 @@ function scheduleDigest(): void {
       return
     }
     if (now.notify.routine !== 'digest') return
-    try {
-      await settle()
-      await flushDigest('cron')
-      pruneDigest()
-    } catch (err) {
-      logEvent({
-        level: 'warn',
-        kind: 'system',
-        message: 'could not send the digest',
-        detail: (err as Error).message,
-      })
-    }
+    // The clock says the digest is owed; the pull-request loop decides when it goes out.
+    // See notify/barrier.ts -- sending from here would mean sampling shared state from a
+    // timer running beside the work, which is the arrangement this replaced.
+    requestDigest()
   })
 }
 
-/** How long the digest will wait for work in flight, and how often it looks. */
-const SETTLE_MAX_MS = 20 * 60_000
-const SETTLE_STEP_MS = 60_000
-
 /**
- * Hold the digest until nothing is mid-deploy.
+ * Send the digest, if one is owed and this tick left nothing unfinished.
+ *
+ * Called at the end of every tick, inside the loop rather than beside it. `worked` is
+ * the tick's own account of itself; `hasPendingDeploys` covers work queued but not yet
+ * carried out. Together they are the whole definition of quiet, and both are read at the
+ * one point in the cycle where nothing else is running.
  *
  * The summary is meant to describe a night that is over. A merge at 07:58 whose deploy
- * is still running at 08:00 would otherwise be reported as "merged" and the deploy would
- * land in *tomorrow's* digest, splitting one event across two mornings.
+ * is still running at 08:00 used to be reported as "merged", with the deploy landing in
+ * *tomorrow's* digest -- one event split across two mornings. Now the digest waits for
+ * the chain to finish, then describes the outcome.
  *
- * Bounded, and deliberately short of the soak window: a deploy wedged for hours must
- * delay the digest, not cancel it. When the wait runs out the digest goes anyway and
- * says what was true at that moment.
+ * Everything here is guarded: it runs from the tick's `finally`, and a throw would stop
+ * the loop rescheduling itself.
  */
-async function settle(): Promise<void> {
-  const until = Date.now() + SETTLE_MAX_MS
-  while (hasPendingDeploys() && Date.now() < until) {
-    await new Promise((r) => setTimeout(r, SETTLE_STEP_MS))
-  }
-  if (hasPendingDeploys()) {
+async function settleDigest(worked: boolean): Promise<void> {
+  try {
+    if (!digestOwed()) return
+    const slot = claimDigestSlot(!worked && !hasPendingDeploys())
+    if (!slot.send) return
+
+    if (slot.reason === 'deadline') {
+      logEvent({
+        level: 'info',
+        kind: 'system',
+        message: 'digest sent with work still in flight',
+        detail: `waited ${Math.round(MAX_WAIT_MS / 60_000)}m; the rest will appear in the next digest`,
+      })
+    }
+    await flushDigest('cron')
+    pruneDigest()
+  } catch (err) {
     logEvent({
-      level: 'info',
+      level: 'warn',
       kind: 'system',
-      message: 'digest sent with a deploy still in flight',
-      detail: `waited ${SETTLE_MAX_MS / 60_000}m; it will appear in the next digest`,
+      message: 'could not send the digest',
+      detail: (err as Error).message,
     })
   }
 }
@@ -128,6 +133,8 @@ export function rescheduleDigest(): void {
  */
 function startPrLoop(): void {
   const tick = async (): Promise<void> => {
+    // Whether this tick left anything unfinished, for the digest barrier below.
+    let worked = false
     try {
       const { policy } = loadPolicy()
       // Outside the gate below on purpose. A dead credential is worth saying whether or
@@ -143,10 +150,11 @@ function startPrLoop(): void {
       // hold the merge, which is the one thing this must never fail to do.
       await ingestInstructions()
       if (policy.prs.enabled && !inBlackout(policy)) {
+        const before = lastItemId()
         await pollPrs()
         // After polling, so every merge this tick noticed is queued before any of them
         // is acted on, and one slow verify window cannot hide the others.
-        await drainDeployQueue()
+        const drained = await drainDeployQueue()
         await runRechecks()
         const result = await runPrPass()
         // Analysis runs after PR creation, not before: a pull request must appear
@@ -161,7 +169,14 @@ function startPrLoop(): void {
         await runInstructionPass()
         // Last, so a pull request opened this cycle has had its verdict and any
         // proposal before anything considers merging it.
-        await runAutoMerge()
+        const merge = await runAutoMerge()
+        // Three questions, because no one of them is sufficient. The watermark catches
+        // anything that recorded a digest line. `drained.ran` catches a deploy that
+        // finished without recording one -- a rollback, say. And `merge.merged` catches
+        // the gap that made a timer unworkable in the first place: a merge is not queued
+        // for deploy until the *next* tick's `pollPrs` notices it, so at this instant
+        // there is nothing pending to see and the tick is not remotely finished.
+        worked = lastItemId() > before || drained.ran > 0 || merge.merged > 0
         if (result.paused) {
           logEvent({
             level: 'info',
@@ -172,6 +187,10 @@ function startPrLoop(): void {
         }
       }
     } catch (err) {
+      // A tick that failed part way through is not a quiet one: whatever it was doing is
+      // unfinished, and the digest should wait for the retry rather than report a
+      // half-done night as the outcome.
+      worked = true
       logEvent({
         level: 'error',
         kind: 'pr',
@@ -179,6 +198,7 @@ function startPrLoop(): void {
         detail: (err as Error).message,
       })
     } finally {
+      await settleDigest(worked)
       const wait = pollIntervalMs()
       nextTickAt = new Date(Date.now() + wait).toISOString()
       setTimeout(() => void tick(), wait).unref?.()
@@ -241,7 +261,7 @@ async function fire(): Promise<void> {
  */
 export function scheduleInfo(): {
   scan: { cron: string; nextAt: string | null; deferred: boolean }
-  digest: { cron: string; nextAt: string | null }
+  digest: { cron: string; nextAt: string | null; owed: boolean }
   prLoop: { nextTickAt: string | null }
 } {
   const { policy } = loadPolicy()
@@ -256,6 +276,9 @@ export function scheduleInfo(): {
     digest: {
       cron: policy.notify.cron,
       nextAt: policy.notify.routine === 'digest' ? (digestJob?.nextRun()?.toISOString() ?? null) : null,
+      // The same honesty the scan's deferral gets: between the schedule firing and the
+      // loop finding a quiet tick, "next digest: in 23 hours" is the wrong answer.
+      owed: digestOwed(),
     },
     prLoop: { nextTickAt },
   }

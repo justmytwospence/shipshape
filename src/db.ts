@@ -605,6 +605,29 @@ const MIGRATIONS: { id: string; sql: string }[] = [
                                  strftime('%Y-%m-%dT%H:%M:%SZ','now'));
   `,
   },
+  {
+    id: '017-digest-due',
+    sql: `
+    -- A digest that is owed but not yet sent.
+    --
+    -- The schedule firing and the digest going out stopped being the same moment when
+    -- the digest started waiting for the work to finish. What sits between them is a
+    -- decision already taken -- "this morning's summary is due" -- and a decision that
+    -- can be pending for twenty minutes belongs in the database, not in a timer's
+    -- closure: a restart at 08:03 would otherwise fold the whole morning into tomorrow's
+    -- summary under tomorrow's date.
+    --
+    -- One row, enforced. Two rows would mean two digests owed at once, which is not a
+    -- state that exists: a second occurrence while one is still owed keeps the first
+    -- deadline (INSERT OR IGNORE), so a digest waiting on a slow deploy cannot have its
+    -- clock reset out from under it.
+    CREATE TABLE digest_due (
+      id       INTEGER PRIMARY KEY CHECK (id = 1),
+      due_at   TEXT NOT NULL,   -- when the schedule fired
+      deadline TEXT NOT NULL    -- when it goes out regardless
+    );
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

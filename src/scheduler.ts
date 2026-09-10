@@ -5,7 +5,7 @@ import { runAnalysisPass } from './analyze/run.ts'
 import { runProposePass } from './propose/run.ts'
 import { runAutoMerge } from './gitops/automerge.ts'
 import { pollIntervalMs, pollPrs } from './gitops/poll.ts'
-import { drainDeployQueue, runRechecks } from './deploy/queue.ts'
+import { drainDeployQueue, hasPendingDeploys, runRechecks } from './deploy/queue.ts'
 import { runPrPass } from './gitops/pr.ts'
 import { runScan } from './scan.ts'
 import { flush as flushDigest, prune as pruneDigest } from './notify/digest.ts'
@@ -71,6 +71,7 @@ function scheduleDigest(): void {
     }
     if (now.notify.routine !== 'digest') return
     try {
+      await settle()
       await flushDigest('cron')
       pruneDigest()
     } catch (err) {
@@ -82,6 +83,36 @@ function scheduleDigest(): void {
       })
     }
   })
+}
+
+/** How long the digest will wait for work in flight, and how often it looks. */
+const SETTLE_MAX_MS = 20 * 60_000
+const SETTLE_STEP_MS = 60_000
+
+/**
+ * Hold the digest until nothing is mid-deploy.
+ *
+ * The summary is meant to describe a night that is over. A merge at 07:58 whose deploy
+ * is still running at 08:00 would otherwise be reported as "merged" and the deploy would
+ * land in *tomorrow's* digest, splitting one event across two mornings.
+ *
+ * Bounded, and deliberately short of the soak window: a deploy wedged for hours must
+ * delay the digest, not cancel it. When the wait runs out the digest goes anyway and
+ * says what was true at that moment.
+ */
+async function settle(): Promise<void> {
+  const until = Date.now() + SETTLE_MAX_MS
+  while (hasPendingDeploys() && Date.now() < until) {
+    await new Promise((r) => setTimeout(r, SETTLE_STEP_MS))
+  }
+  if (hasPendingDeploys()) {
+    logEvent({
+      level: 'info',
+      kind: 'system',
+      message: 'digest sent with a deploy still in flight',
+      detail: `waited ${SETTLE_MAX_MS / 60_000}m; it will appear in the next digest`,
+    })
+  }
 }
 
 /** Rebuild the digest job, so a schedule edited in the UI applies immediately. */

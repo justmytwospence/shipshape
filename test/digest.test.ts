@@ -169,3 +169,84 @@ test('channel routing: what each mode wants', () => {
   assert.equal(wants('routine', 'routine'), true)
   assert.equal(wants('routine', 'alert'), false)
 })
+
+/**
+ * The digest reports outcomes, not transitions.
+ *
+ * It used to replay every recorded step, so an update that opened, merged and deployed
+ * overnight appeared three times and the 08:00 summary announced pull requests as
+ * "opened" that had been running since 03:00.
+ */
+
+const pr = (n: number) => `https://github.com/o/r/pull/${n}`
+
+test('a pull request that opened and then deployed is reported once, as deployed', () => {
+  const m = render([
+    row({ category: 'opened', stack: 'changedetection', service: 'changedetection', summary: 'a (#90)', url: pr(90) }),
+    row({ category: 'deployed', stack: 'changedetection', summary: 'changedetection up in 51s', url: pr(90) }),
+  ])!
+  assert.match(m.body, /1 deployed/)
+  assert.doesNotMatch(m.body, /opened/)
+  // ...and counted once, not twice.
+  assert.equal(m.title, 'shipshape: changedetection up in 51s')
+})
+
+test('the whole pipeline for one update collapses to its last stage', () => {
+  const steps = ['opened', 'retargeted', 'drafted', 'held', 'merged', 'deployed'] as const
+  const m = render(steps.map((category) => row({ category, summary: `${category} (#7)`, url: pr(7) })))!
+  assert.match(m.body, /1 deployed/)
+  for (const gone of ['opened', 'retargeted', 'drafted', 'waiting on you', 'merged']) {
+    assert.doesNotMatch(m.body, new RegExp(gone))
+  }
+})
+
+test('different pull requests stay separate, even for the same service', () => {
+  // The case that makes the pull request the key rather than the service: one update
+  // deployed and a second is waiting. Collapsing by service would hide the actionable
+  // one behind the finished one.
+  const m = render([
+    row({ category: 'deployed', stack: 'paperless', service: 'litellm', summary: 'deployed (#66)', url: pr(66) }),
+    row({ category: 'held', stack: 'paperless', service: 'litellm', summary: 'held (#70)', url: pr(70) }),
+  ])!
+  assert.match(m.body, /1 deployed/)
+  assert.match(m.body, /1 waiting on you/)
+})
+
+test('the service name survives even when the winning row never knew it', () => {
+  // A verdict hold records neither stack nor service; the row that opened the pull
+  // request has both. Losing them would print a bare summary with no service prefix.
+  const m = render([
+    row({ category: 'opened', stack: 'paperless', service: 'litellm', summary: 'opened (#66)', url: pr(66) }),
+    row({ category: 'held', stack: null, service: null, summary: 'held for review (#66)', url: pr(66) }),
+  ])!
+  assert.match(m.body, /paperless\/litellm: held for review/)
+})
+
+test('two records of the same stage keep the later one', () => {
+  // #79 retargeted twice in one night, onto 2.96.7 and then 2.96.9.
+  const m = render([
+    row({ category: 'retargeted', stack: 'minuspod', summary: 'now 2.96.7 (#79)', url: pr(79) }),
+    row({ category: 'retargeted', stack: 'minuspod', summary: 'now 2.96.9 (#79)', url: pr(79) }),
+  ])!
+  assert.match(m.body, /1 retargeted/)
+  assert.match(m.body, /2\.96\.9/)
+  assert.doesNotMatch(m.body, /2\.96\.7/)
+})
+
+test('an item with no pull request is never merged into another', () => {
+  const m = render([
+    row({ category: 'deployed', stack: 'a', summary: 'one', url: null }),
+    row({ category: 'deployed', stack: 'b', summary: 'two', url: null }),
+  ])!
+  assert.match(m.body, /2 deployed/)
+})
+
+test('the html renderer collapses identically', () => {
+  const rows = [
+    row({ category: 'opened', stack: 'servarr', service: 'jackett', summary: 'opened (#89)', url: pr(89) }),
+    row({ category: 'deployed', stack: 'servarr', summary: 'jackett up in 59s', url: pr(89) }),
+  ]
+  const html = renderHtml(rows)!
+  assert.match(html, /1 deployed/)
+  assert.doesNotMatch(html, /opened/)
+})

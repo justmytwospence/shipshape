@@ -129,7 +129,80 @@ interface Grouped {
   sections: { heading: string; items: Row[]; more: number }[]
 }
 
-function group(rows: Row[]): Grouped | null {
+/**
+ * How far along the pipeline each category is, for choosing between two records of the
+ * same pull request. Higher wins.
+ *
+ * Not the same order as SECTIONS, which is about reading. `superseded` sits low because
+ * it is what happens to a pull request that got *replaced*: when a service has one
+ * update superseded and its replacement deployed, "deployed" is the truer sentence.
+ * `held` sits above the annotations because "waiting on you" is the thing you would act
+ * on, and below `merged` because acting on it is exactly what a merge is.
+ */
+const PROGRESS: Record<Category, number> = {
+  opened: 1,
+  superseded: 2,
+  retargeted: 3,
+  drafted: 4,
+  revised: 4,
+  held: 5,
+  merged: 6,
+  deployed: 7,
+}
+
+/**
+ * Which pull request an item is about.
+ *
+ * The pull request number, because that is the only field recorded consistently. `stack`
+ * and `service` are not: the same pull request arrives as `changedetection/changedetection`
+ * when it opens and `changedetection/-` when it deploys, and a verdict hold records
+ * neither. Keying on those would leave the duplicates this exists to remove.
+ */
+function keyOf(r: Row): string {
+  const pr = /\/pull\/(\d+)/.exec(r.url ?? '')
+  // No pull request means no evidence that two rows describe the same thing, so they
+  // are kept apart. Merging on a matching summary would quietly swallow one of two
+  // genuinely separate events that happened to be worded the same.
+  return pr ? `pr:${pr[1]}` : `item:${r.id}`
+}
+
+/**
+ * One line per pull request, at the furthest point it reached.
+ *
+ * The digest used to replay transitions, so an update that opened, merged and deployed
+ * between two digests appeared three times -- and the morning summary announced pull
+ * requests as "opened" that had been running for five hours. Reporting the outcome is
+ * both shorter and true.
+ *
+ * The winning row is also the one recorded furthest from the compose file, so it tends
+ * to carry the least context: the deploy knows the stack, the verdict hold knows
+ * neither. Names are backfilled from its siblings rather than lost.
+ */
+function collapse(rows: Row[]): Row[] {
+  const best = new Map<string, Row>()
+  for (const r of rows) {
+    const k = keyOf(r)
+    const cur = best.get(k)
+    const further = !cur || PROGRESS[r.category] > PROGRESS[cur.category]
+    // Same stage twice means the later record supersedes the earlier one.
+    const newer = cur && PROGRESS[r.category] === PROGRESS[cur.category] && r.id > cur.id
+    if (further || newer) best.set(k, { ...r })
+  }
+  for (const r of rows) {
+    const w = best.get(keyOf(r))!
+    if (!w.stack && r.stack) {
+      w.stack = r.stack
+      w.service = r.service
+    } else if (w.stack === r.stack && !w.service && r.service) {
+      w.service = r.service
+    }
+    if (!w.url && r.url) w.url = r.url
+  }
+  return [...best.values()].sort((a, b) => a.id - b.id)
+}
+
+function group(all: Row[]): Grouped | null {
+  const rows = collapse(all)
   if (rows.length === 0) return null
   const sections: Grouped['sections'] = []
   for (const section of SECTIONS) {

@@ -13,6 +13,7 @@ import { claimDigestSlot, digestOwed, MAX_WAIT_MS, requestDigest } from './notif
 import { checkGitHubAuth } from './health/github-auth.ts'
 import { ingestInstructions } from './revise/ingest.ts'
 import { runInstructionPass } from './revise/run.ts'
+import { createTicker, type Ticker } from './loop/ticker.ts'
 
 /**
  * Nightly scan scheduling.
@@ -29,9 +30,19 @@ let deferTimer: NodeJS.Timeout | null = null
 let digestJob: Cron | null = null
 let digestExpression = ''
 
-/** When the deferred scan or the next poll tick is due, for the UI to show. */
+/** When the deferred scan is due, for the UI to show. */
 let deferredScanAt: string | null = null
-let nextTickAt: string | null = null
+
+/**
+ * The pull-request loop's heartbeat. Null until the loop is running.
+ *
+ * Exposed at module scope for one caller: the digest schedule. The loop is what sends
+ * the digest now, and on a quiet morning the loop is on its ten-minute idle cadence with
+ * a timer already armed -- so 08:00's summary would go out at some point before 08:10
+ * for no reason at all. Recomputing the interval is not enough; the timer that is
+ * already ticking has to be replaced, which is what `wake` does.
+ */
+let prLoop: Ticker | null = null
 
 export function startScheduler(): void {
   const setup = configured()
@@ -75,6 +86,9 @@ function scheduleDigest(): void {
     // See notify/barrier.ts -- sending from here would mean sampling shared state from a
     // timer running beside the work, which is the arrangement this replaced.
     requestDigest()
+    // ...but the loop has to be asked, or 08:00's digest waits out whatever remains of a
+    // ten-minute idle interval before anything looks at it.
+    prLoop?.wake()
   })
 }
 
@@ -135,7 +149,12 @@ function startPrLoop(): void {
   const tick = async (): Promise<void> => {
     // Whether this tick left anything unfinished, for the digest barrier below.
     let worked = false
+    // The digest watermark as the tick began. Zero if it could not be read, which makes
+    // any existing item read as new -- the conservative direction, since a tick wrongly
+    // called busy delays the digest where one wrongly called quiet truncates it.
+    let before = 0
     try {
+      before = lastItemId()
       const { policy } = loadPolicy()
       // Outside the gate below on purpose. A dead credential is worth saying whether or
       // not the engine is parked or the hour is quiet -- those stop shipshape acting,
@@ -150,7 +169,6 @@ function startPrLoop(): void {
       // hold the merge, which is the one thing this must never fail to do.
       await ingestInstructions()
       if (policy.prs.enabled && !inBlackout(policy)) {
-        const before = lastItemId()
         await pollPrs()
         // After polling, so every merge this tick noticed is queued before any of them
         // is acted on, and one slow verify window cannot hide the others.
@@ -170,13 +188,15 @@ function startPrLoop(): void {
         // Last, so a pull request opened this cycle has had its verdict and any
         // proposal before anything considers merging it.
         const merge = await runAutoMerge()
-        // Three questions, because no one of them is sufficient. The watermark catches
-        // anything that recorded a digest line. `drained.ran` catches a deploy that
-        // finished without recording one -- a rollback, say. And `merge.merged` catches
-        // the gap that made a timer unworkable in the first place: a merge is not queued
-        // for deploy until the *next* tick's `pollPrs` notices it, so at this instant
-        // there is nothing pending to see and the tick is not remotely finished.
-        worked = lastItemId() > before || drained.ran > 0 || merge.merged > 0
+        // Two of the three questions the barrier asks; the watermark is the third, and
+        // it is asked below so that it covers the whole tick rather than this block.
+        // `drained.ran` catches a deploy that finished without recording a digest line
+        // -- a rollback, say, which sets `ran` before it branches on the outcome. And
+        // `merge.merged` catches the gap that made a timer unworkable in the first
+        // place: a merge is not queued for deploy until the *next* tick's `pollPrs`
+        // notices it, so at this instant there is nothing pending to see and the tick is
+        // nowhere near finished.
+        worked = drained.ran > 0 || merge.merged > 0
         if (result.paused) {
           logEvent({
             level: 'info',
@@ -198,15 +218,16 @@ function startPrLoop(): void {
         detail: (err as Error).message,
       })
     } finally {
-      await settleDigest(worked)
-      const wait = pollIntervalMs()
-      nextTickAt = new Date(Date.now() + wait).toISOString()
-      setTimeout(() => void tick(), wait).unref?.()
+      // The watermark is read here so it spans the whole tick, including the passes that
+      // run above the blackout gate. A throw is contained by the ticker, which arms the
+      // next tick whatever happens in this one.
+      await settleDigest(worked || lastItemId() > before)
     }
   }
+
+  prLoop = createTicker(tick, pollIntervalMs)
   // Give the first scan a moment before touching git.
-  nextTickAt = new Date(Date.now() + 20_000).toISOString()
-  setTimeout(() => void tick(), 20_000).unref?.()
+  prLoop.start(20_000)
 }
 
 function schedule(): void {
@@ -280,7 +301,7 @@ export function scheduleInfo(): {
       // loop finding a quiet tick, "next digest: in 23 hours" is the wrong answer.
       owed: digestOwed(),
     },
-    prLoop: { nextTickAt },
+    prLoop: { nextTickAt: prLoop?.nextAt() ?? null },
   }
 }
 

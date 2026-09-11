@@ -9,6 +9,7 @@ import { syncMain } from './sync.ts'
 import { manualCommand, stackPeers, withNamespacePeers, type DeployTarget } from '../deploy/run.ts'
 import { enqueueDeploy, hasDueRechecks, hasPendingDeploys } from '../deploy/queue.ts'
 import { digestOwed } from '../notify/barrier.ts'
+import { logRetired, retireOvertaken, type Retired } from '../updates/overtaken.ts'
 import { scanRepo } from '../compose/scan.ts'
 import { deployNeedsYou, tierFor } from '../policy.ts'
 import type { Magnitude } from '../versions/patterns.ts'
@@ -266,6 +267,7 @@ async function onMerged(
     policy.defaults,
   )
 
+  let retired: Retired[] = []
   db.transaction(() => {
     // The sha is recorded here because this is the only place it is offered. A deploy
     // that has to be undone needs to revert exactly what was applied, and reconstructing
@@ -275,6 +277,9 @@ async function onMerged(
     ).run(now, mergeSha, prId)
     const mark = db.prepare(`UPDATE updates SET state = 'merged', updated_at = ? WHERE id = ?`)
     for (const m of members) mark.run(now, m.id)
+    // In the same transaction as the merge that does the overtaking, so there is no moment
+    // where two merged updates for one service both look like the thing to deploy.
+    retired = retireOvertaken(now)
     // Inside the transaction, deliberately. If the intent were written after it, a crash
     // in between would leave a pull request marked merged with nothing left to act on
     // it -- which is exactly how merges used to be lost, silently and permanently.
@@ -284,6 +289,8 @@ async function onMerged(
     // and an empty deploys table.
     enqueueDeploy({ prId, prNumber: number, target, now, status: waits ? 'ready' : 'pending' })
   })()
+
+  logRetired(retired)
 
   // Land it in the live checkout so the deploy runs against merged content. The queued
   // job waits for the drain later this tick, by which point this has finished.

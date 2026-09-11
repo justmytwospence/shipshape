@@ -245,6 +245,8 @@ export interface Outcome {
   merged: boolean
   /** Its most recent deploy, or null when it has never had one. */
   deploy: { status: string; detail: string | null } | null
+  /** Every update it carried has been overtaken by a later merge. */
+  superseded?: boolean
 }
 
 /** Deploy statuses that ended badly, and how to say so in one line. */
@@ -307,7 +309,12 @@ export function reconcile(rows: Row[], outcomes: Map<number, Outcome>): Row[] {
     })
 
     const status = o.deploy?.status ?? null
-    if (status && WENT_WRONG[status]) {
+    // Before the failure check. A pull request a later merge has overtaken cannot deploy on
+    // its own any more; whatever its own deploy did, the service's story continues on the
+    // pull request that overtook it, and that is the line that carries any failure.
+    if (o.merged && o.superseded) {
+      if (best < PROGRESS.merged) added.push(row('merged', 'merged, overtaken by a later update'))
+    } else if (status && WENT_WRONG[status]) {
       added.push(row('went-wrong', `${WENT_WRONG[status]}${reason(o.deploy!.detail)}`))
     } else if ((status === 'deployed' || status === 'verified') && best < PROGRESS.deployed) {
       added.push(row('deployed', 'deployed'))
@@ -339,17 +346,26 @@ export function outcomesFor(rows: Row[]): Map<number, Outcome> {
   if (numbers.length === 0) return out
 
   const db = getDb()
-  const pr = db.prepare(`SELECT state FROM prs WHERE number = ? ORDER BY id DESC LIMIT 1`)
+  const pr = db.prepare(`SELECT id, state FROM prs WHERE number = ? ORDER BY id DESC LIMIT 1`)
+  const carried = db.prepare(
+    `SELECT COUNT(*) AS total, SUM(u.state = 'superseded') AS overtaken
+     FROM pr_updates pu JOIN updates u ON u.id = pu.update_id WHERE pu.pr_id = ?`,
+  )
   // The latest attempt is the one that describes the present: a retry that verified
   // after a failure means the failure is history.
   const deploy = db.prepare(
     `SELECT status, detail FROM deploys WHERE pr_number = ? ORDER BY id DESC LIMIT 1`,
   )
   for (const n of numbers) {
-    const p = pr.get(n) as { state: string } | undefined
+    const p = pr.get(n) as { id: number; state: string } | undefined
     const d = deploy.get(n) as { status: string; detail: string | null } | undefined
     if (!p && !d) continue
-    out.set(n, { merged: p?.state === 'merged', deploy: d ?? null })
+    const c = p ? (carried.get(p.id) as { total: number; overtaken: number | null }) : null
+    out.set(n, {
+      merged: p?.state === 'merged',
+      deploy: d ?? null,
+      superseded: !!c && c.total > 0 && c.overtaken === c.total,
+    })
   }
   return out
 }

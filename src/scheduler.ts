@@ -14,6 +14,7 @@ import { checkGitHubAuth } from './health/github-auth.ts'
 import { ingestInstructions } from './revise/ingest.ts'
 import { runInstructionPass } from './revise/run.ts'
 import { createTicker, type Ticker } from './loop/ticker.ts'
+import { logRetired, retireOvertaken } from './updates/overtaken.ts'
 
 /**
  * Nightly scan scheduling.
@@ -56,6 +57,13 @@ export function startScheduler(): void {
       detail: setup.missing.map((m) => m.name).join(', '),
     })
     return
+  }
+  // Updates stranded before merges retired what they overtook. From here on the merge path
+  // does it; this clears what came before. A failure here must not stop anything starting.
+  try {
+    logRetired(retireOvertaken())
+  } catch (err) {
+    logEvent({ level: 'warn', kind: 'system', message: 'could not retire overtaken updates', detail: (err as Error).message })
   }
   schedule()
   scheduleDigest()

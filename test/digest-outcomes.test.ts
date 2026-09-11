@@ -245,12 +245,16 @@ test('outcomes come from the latest deploy, not the first', () => {
   insertDeploy(id, 93, 'verified', 'minuspod up in 40s')
 
   const o = outcomesFor([row({ url: pr(93) })])
-  assert.deepEqual(o.get(93), { merged: true, deploy: { status: 'verified', detail: 'minuspod up in 40s' } })
+  assert.deepEqual(o.get(93), {
+    merged: true,
+    deploy: { status: 'verified', detail: 'minuspod up in 40s' },
+    superseded: false,
+  })
 })
 
 test('an open pull request with no deploy reads as not merged', () => {
   insertPr(92, 'open')
-  assert.deepEqual(outcomesFor([row({ url: pr(92) })]).get(92), { merged: false, deploy: null })
+  assert.deepEqual(outcomesFor([row({ url: pr(92) })]).get(92), { merged: false, deploy: null, superseded: false })
 })
 
 test('only pull requests in the batch are looked up, and unknown ones are skipped', () => {

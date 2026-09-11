@@ -24,7 +24,13 @@ test('a pull request with no verdict offers to read the changelog again', () => 
   )
   assert.ok(
     !actionsFor(ctx({ state: 'pr_open', prNumber: 41, hasVerdict: true })).includes('rerun-review'),
-    'a verdict that arrived is not re-read on a whim',
+    'a verdict that approved is not re-read on a whim',
+  )
+  assert.ok(
+    actionsFor(ctx({ state: 'pr_open', prNumber: 41, hasVerdict: true, verdictHolds: true })).includes(
+      'rerun-review',
+    ),
+    'a verdict that is holding the merge is the one worth disputing',
   )
 })
 

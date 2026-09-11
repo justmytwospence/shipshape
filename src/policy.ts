@@ -246,6 +246,32 @@ export function canAutoMerge(i: AutoMergeInput): AutoMergeDecision {
 }
 
 /**
+ * Whether a verdict, on its own, keeps a pull request from merging.
+ *
+ * Asked of `canAutoMerge` rather than restated. Two things outside the gate need this
+ * answer -- the digest's "waiting on you", and whether the update page offers to read the
+ * changelog again -- and a copy of the rule would drift from the one that actually
+ * decides. Everything else is set to the most permissive values, so the verdict is the
+ * only thing that can refuse.
+ */
+export function verdictHolds(
+  verdict: Verdict,
+  confidence: Confidence | null,
+  minConfidence: Confidence,
+): boolean {
+  return !canAutoMerge({
+    tier: 'auto',
+    magnitude: 'patch',
+    prScope: 'tag-only',
+    verdict,
+    confidence,
+    claudeRequired: false,
+    claudeMode: 'advisory',
+    minConfidence,
+  }).merge
+}
+
+/**
  * Whether the PR engine should open a PR for this update at all.
  *
  * `coexist` is for running alongside another updater that already applies routine

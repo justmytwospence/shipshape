@@ -16,11 +16,26 @@ Read what you find. Then judge:
 - **caution** — applies cleanly, but the operator should know something: a changed
   default, a deprecation warning, a behaviour change they may notice.
 - **block** — will break without action. Renamed or removed configuration, a data
-  migration that cannot be reversed, a dropped platform, a required manual step.
+  migration that cannot be reversed, a dropped platform, a required manual step. A block
+  names what breaks: it lists at least one entry in `breaking_changes`, each a specific
+  change you read in the notes.
 
 Judge the update as it will actually be applied: unattended, on a running service, with
 whatever configuration the operator already has. "Breaking for someone" and "breaking
 here" are different questions, and the second one is the one that matters.
+
+## The versions are real
+
+Both tags were read from the image registry before you were asked. The current one is
+what is running; the proposed one is published and can be pulled. Neither is in question,
+and a version "not existing" is never a finding.
+
+Release notes lag images, skip versions, and name them differently. A LinuxServer build
+such as `4.137.0-ls364` packages an upstream release that may be published later, as a
+prerelease, or never; a project may cut images for versions it does not write notes for.
+When you cannot match the proposed version to its notes, that is missing evidence. Say
+what you could not find, report `low` confidence, and recommend `caution`. It is never a
+reason to `block`, and it never belongs in `breaking_changes`.
 
 ## Confidence
 

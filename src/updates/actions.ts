@@ -68,6 +68,8 @@ export interface ActionContext {
   deployStatus?: DeployStatus | null
   verdictError?: boolean
   hasVerdict?: boolean
+  /** The verdict that arrived is what is keeping this from merging. */
+  verdictHolds?: boolean
   hasProposal?: boolean
   ackedAt?: string | null
   /** From `images.current_tag`: whether the file still sits on the version we came from. */
@@ -104,7 +106,11 @@ export function actionsFor(c: ActionContext): Verb[] {
       // does not press Merge -- so this is the half that needs a button.
       if (c.held) out.push('release-hold')
       if (c.prScope === 'tag-only' && !c.userOwned && !c.hasProposal) out.push('propose')
-      if (!c.verdictError && !c.hasVerdict) out.push('rerun-review')
+      // Read again when there is no reading, or when the reading is what is in the way. A
+      // verdict that approved is not re-read on a whim -- each read is a model call -- but
+      // one that holds is exactly the one worth disputing, and until this it could not be:
+      // #92 and #96 sat held on a verdict that had found nothing, with no way to ask again.
+      if (!c.verdictError && (!c.hasVerdict || c.verdictHolds)) out.push('rerun-review')
       out.push('skip')
       break
 

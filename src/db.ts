@@ -628,6 +628,19 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     );
   `,
   },
+  {
+    id: '018-verdict-rerun',
+    sql: `
+    -- Someone asked for this changelog to be read again.
+    --
+    -- A column rather than deleting the verdict, and that is the whole point. With no
+    -- verdict the gate falls back to static policy, which merges an auto-rung update --
+    -- so deleting a block to make room for a re-read, and then having that re-read fail,
+    -- would turn "held" into "merged". The old verdict stays in force until a new one
+    -- replaces it, and a failed re-read leaves it exactly where it was.
+    ALTER TABLE verdicts ADD COLUMN rerun_requested_at TEXT;
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

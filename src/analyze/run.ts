@@ -5,6 +5,7 @@ import { env, loadPolicy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { routine } from '../notify/digest.ts'
 import { analyze, budgetExhausted, type Verdict } from './claude.ts'
+import { verdictHolds, type Confidence } from '../policy.ts'
 
 /**
  * Analysing open pull requests and folding the result back into them.
@@ -51,6 +52,9 @@ export interface PendingAnalysis {
   service: string
   /** 1 when an open pull request is waiting on this verdict. */
   has_pr: number
+  /** 1 when someone asked for the existing verdict to be read again. */
+  rerun: number
+  detected_at: string
 }
 
 /**
@@ -76,11 +80,16 @@ export interface PendingAnalysis {
 export function pendingAnalysis(limit: number): PendingAnalysis[] {
   return getDb()
     .prepare(
-      `SELECT DISTINCT u.image, u.from_tag, u.to_tag, u.stack, u.service,
+      `SELECT DISTINCT u.image, u.from_tag, u.to_tag, u.stack, u.service, u.detected_at,
               CASE WHEN EXISTS (
                 SELECT 1 FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
                 WHERE pu.update_id = u.id AND p.state = 'open'
-              ) THEN 1 ELSE 0 END AS has_pr
+              ) THEN 1 ELSE 0 END AS has_pr,
+              CASE WHEN EXISTS (
+                SELECT 1 FROM verdicts v
+                WHERE v.image = u.image AND v.from_tag = u.from_tag AND v.to_tag = u.to_tag
+                  AND v.rerun_requested_at IS NOT NULL
+              ) THEN 1 ELSE 0 END AS rerun
        FROM updates u
        WHERE (
          EXISTS (
@@ -89,10 +98,11 @@ export function pendingAnalysis(limit: number): PendingAnalysis[] {
          )
          OR (u.magnitude IN ('minor', 'major') AND u.detected_at >= ?)
        )
+       -- A verdict that arrived is done, unless someone asked for it to be read again.
        AND NOT EXISTS (
          SELECT 1 FROM verdicts v
          WHERE v.image = u.image AND v.from_tag = u.from_tag AND v.to_tag = u.to_tag
-           AND v.error IS NULL
+           AND v.error IS NULL AND v.rerun_requested_at IS NULL
        )
        -- A failure that will fail again is not work. Without this, one unreachable
        -- changelog is retried on every poll cycle for as long as the pull request is
@@ -103,7 +113,8 @@ export function pendingAnalysis(limit: number): PendingAnalysis[] {
            AND v.error IS NOT NULL
            AND v.next_attempt_at IS NOT NULL AND v.next_attempt_at > ?
        )
-       ORDER BY has_pr DESC, u.detected_at DESC
+       -- A requested re-read first: somebody pressed a button and is waiting to see it.
+       ORDER BY rerun DESC, has_pr DESC, u.detected_at DESC
        LIMIT ?`,
     )
     .all(sinceForUnreviewed(), new Date().toISOString(), limit) as PendingAnalysis[]
@@ -132,6 +143,7 @@ export async function runAnalysisPass(limit = 3): Promise<AnalysisRun> {
         image: row.image,
         fromTag: row.from_tag,
         toTag: row.to_tag,
+        observedAt: row.detected_at,
         composeSnippet: composeSnippet(row.stack, row.service),
       })
       if ('error' in result) {
@@ -195,7 +207,8 @@ function escape(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function recordVerdict(
+/** Exported for the tests, like the rest of the bookkeeping here. */
+export function recordVerdict(
   row: { image: string; from_tag: string; to_tag: string },
   v: Verdict,
 ): void {
@@ -212,6 +225,7 @@ function recordVerdict(
          migration_steps = excluded.migration_steps,
          recommendation = excluded.recommendation, confidence = excluded.confidence,
          sources = excluded.sources, model = excluded.model, error = NULL,
+         next_attempt_at = NULL, rerun_requested_at = NULL,
          created_at = excluded.created_at`,
     )
     .run(
@@ -241,14 +255,36 @@ export function nextAttemptAt(attempts: number, now = Date.now()): string {
   return new Date(now + backoffMs).toISOString()
 }
 
-function recordFailure(
+export function recordFailure(
   row: { image: string; from_tag: string; to_tag: string },
   error: string,
 ): void {
   const db = getDb()
   const prior = db
-    .prepare(`SELECT attempts FROM verdicts WHERE image = ? AND from_tag = ? AND to_tag = ?`)
-    .get(row.image, row.from_tag, row.to_tag) as { attempts: number } | undefined
+    .prepare(
+      `SELECT attempts, error, recommendation FROM verdicts
+       WHERE image = ? AND from_tag = ? AND to_tag = ?`,
+    )
+    .get(row.image, row.from_tag, row.to_tag) as
+    | { attempts: number; error: string | null; recommendation: string | null }
+    | undefined
+
+  // A re-read that failed. The verdict it was meant to replace is still the best reading
+  // there is, so it stays -- writing the error over it would make the gate see "no
+  // verdict", fall back to static policy, and merge what the verdict was holding.
+  if (prior && prior.error === null && prior.recommendation !== null) {
+    db.prepare(
+      `UPDATE verdicts SET rerun_requested_at = NULL WHERE image = ? AND from_tag = ? AND to_tag = ?`,
+    ).run(row.image, row.from_tag, row.to_tag)
+    logEvent({
+      level: 'warn',
+      kind: 'analysis',
+      message: 'could not read the changelog again; the previous verdict stands',
+      detail: `${row.image} ${row.from_tag} -> ${row.to_tag}: ${error.slice(0, 140)}`,
+    })
+    return
+  }
+
   const attempts = (prior?.attempts ?? 0) + 1
 
   db.prepare(
@@ -361,6 +397,12 @@ async function applyToPrs(
   const demoted =
     policy.claude.block_on.includes(v.recommendation as 'block' | 'caution') ||
     (v.recommendation === 'approve' && rank(v.confidence) < rank(policy.claude.min_confidence))
+  // Labels this verdict does not earn. A re-read that changed its mind used to leave the
+  // old `claude-block` on the pull request forever, contradicting the body right below it.
+  const stale = [
+    ...(v.recommendation === 'block' ? [] : ['claude-block']),
+    ...(demoted && v.recommendation !== 'block' ? [] : ['claude-hold']),
+  ]
 
   for (const pr of prs) {
     try {
@@ -374,7 +416,9 @@ async function applyToPrs(
           : `${current}\n\n${START}\n${rendered}\n${END}`
 
       await gh().rest.pulls.update({ owner, repo, pull_number: pr.number, body })
-      await gh().rest.issues.removeLabel({ owner, repo, issue_number: pr.number, name: 'needs-analysis' }).catch(() => {})
+      for (const name of ['needs-analysis', ...stale]) {
+        await gh().rest.issues.removeLabel({ owner, repo, issue_number: pr.number, name }).catch(() => {})
+      }
       if (v.recommendation === 'block') {
         await gh().rest.issues.addLabels({ owner, repo, issue_number: pr.number, labels: ['claude-block'] })
       } else if (demoted) {
@@ -397,16 +441,41 @@ async function applyToPrs(
     }
   }
 
-  // Routine, not an alert: a block means an update is *not* being applied, so nothing is
+  // Routine, not an alert: a hold means an update is *not* being applied, so nothing is
   // broken and nothing is waiting on a fast reaction. It belongs in the summary of what
   // shipshape decided, alongside what it opened and merged.
-  if (v.recommendation === 'block' && prs.length > 0) {
+  const held = prs.length > 0 ? heldSummary(prs[0]!.number, row.to_tag, v, policy.claude.min_confidence) : null
+  if (held) {
     await routine({
       category: 'held',
-      summary: `#${prs[0]!.number} held — breaking changes in ${row.to_tag}`,
+      summary: held,
       detail: `${row.image} ${row.from_tag} -> ${row.to_tag}\n\n${v.summary}`,
       url: `https://github.com/${env.githubRepo}/pull/${prs[0]!.number}`,
     })
+  }
+}
+
+/**
+ * The digest line for a verdict that holds a merge, or null when it does not hold one.
+ *
+ * It used to fire for `block` only, and always say "breaking changes" -- so a block that
+ * listed none was announced as breaking, and a `caution`, which holds a merge exactly as
+ * firmly, never reached "waiting on you" at all. Which verdicts hold is asked of the gate.
+ */
+export function heldSummary(
+  prNumber: number,
+  toTag: string,
+  v: Pick<Verdict, 'recommendation' | 'confidence'>,
+  minConfidence: Confidence,
+): string | null {
+  if (!verdictHolds(v.recommendation, v.confidence, minConfidence)) return null
+  switch (v.recommendation) {
+    case 'block':
+      return `#${prNumber} held — breaking changes in ${toTag}`
+    case 'caution':
+      return `#${prNumber} held — worth a read before ${toTag}`
+    default:
+      return `#${prNumber} held — approved, but only at ${v.confidence} confidence`
   }
 }
 

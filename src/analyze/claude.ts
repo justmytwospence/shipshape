@@ -52,7 +52,9 @@ const EMIT_VERDICT = {
       breaking_changes: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Concrete breaking changes affecting this deployment. Empty if none.',
+        description:
+          'Specific changes, read in the release notes, that break this deployment without action. ' +
+          'Required for block. Missing or unmatched release notes are not a breaking change -- say that in the summary.',
       },
       migration_steps: {
         type: 'array',
@@ -63,7 +65,9 @@ const EMIT_VERDICT = {
         type: 'string',
         enum: ['approve', 'caution', 'block'],
         description:
-          'approve = safe to apply without review. caution = a human should read this first. block = known breakage or a required migration.',
+          'approve = safe to apply without review. caution = a human should read this first, ' +
+          'including when the notes for this version could not be found. ' +
+          'block = a specific breaking change or required migration, named in breaking_changes.',
       },
       confidence: {
         type: 'string',
@@ -85,10 +89,12 @@ const EMIT_VERDICT = {
 }
 
 
-interface AnalyzeTarget {
+export interface AnalyzeTarget {
   image: string
   fromTag: string
   toTag: string
+  /** When shipshape first saw the proposed tag in the registry. */
+  observedAt?: string
   /** The service's compose block, so config-relevant changes can be flagged concretely. */
   composeSnippet?: string
 }
@@ -149,15 +155,26 @@ export async function analyze(target: AnalyzeTarget): Promise<Verdict | { error:
   }
 }
 
-function renderPrompt(
+/**
+ * The user turn: what is being updated, what shipshape already knows, what it fetched.
+ *
+ * The first two lines state as fact what the model otherwise had to take on trust, and
+ * did not. Given only a version string and a release list that ended a few builds
+ * earlier, it concluded -- three times for minuspod, and for jackett and code-server on
+ * 2026-09-11 -- that the proposed version "does not exist", that pulling it would fail,
+ * and so that it would break. Every one of those tags was in the registry; shipshape had
+ * read it there. Exported for the tests.
+ */
+export function renderPrompt(
   t: AnalyzeTarget,
   b: Awaited<ReturnType<typeof assemble>>,
   sourceRepo: string | null,
 ): string {
   const parts: string[] = [
     `Image: ${t.image}`,
-    `Current version: ${t.fromTag}`,
-    `Proposed version: ${t.toTag}`,
+    `Current version: ${t.fromTag} (running now)`,
+    `Proposed version: ${t.toTag} (published in the registry${t.observedAt ? `, first seen ${t.observedAt}` : ''})`,
+    `Both tags were read from the registry and exist. If the notes below do not reach the proposed version, the notes are incomplete -- not the image.`,
     sourceRepo ? `Upstream repository: https://github.com/${sourceRepo}` : 'Upstream repository: unknown',
   ]
 
@@ -196,11 +213,27 @@ function renderPrompt(
   return parts.join('\n')
 }
 
-function normalise(v: Partial<Verdict>): Verdict {
+/**
+ * Coerce whatever the model sent into a verdict shipshape can act on.
+ *
+ * One rule is enforced here rather than only asked for: a block names what breaks. The
+ * prompt says so, and the model still returned `block` with an empty `breaking_changes`
+ * and `low` confidence for jackett and code-server -- a verdict that found nothing and
+ * held anyway, and which the digest then announced as "breaking changes". A block with
+ * nothing listed is read as `caution`.
+ *
+ * That cannot widen what a hostile changelog achieves. `caution` holds a merge exactly as
+ * `block` does -- the gate refuses both -- so this changes what the hold is called and
+ * never whether it holds. It only ever moves toward `caution`, never to `approve`.
+ * Exported for the tests.
+ */
+export function normalise(v: Partial<Verdict>): Verdict {
   const asArray = (x: unknown): string[] =>
     Array.isArray(x) ? x.filter((s): s is string => typeof s === 'string') : []
-  const rec: Recommendation =
+  const breaking = asArray(v.breaking_changes)
+  const claimed: Recommendation =
     v.recommendation === 'approve' || v.recommendation === 'block' ? v.recommendation : 'caution'
+  const rec: Recommendation = claimed === 'block' && breaking.length === 0 ? 'caution' : claimed
   const conf: Confidence =
     v.confidence === 'high' || v.confidence === 'medium' ? v.confidence : 'low'
   const sev: Severity =
@@ -210,7 +243,7 @@ function normalise(v: Partial<Verdict>): Verdict {
   return {
     summary: typeof v.summary === 'string' ? v.summary : '',
     severity: sev,
-    breaking_changes: asArray(v.breaking_changes),
+    breaking_changes: breaking,
     migration_steps: asArray(v.migration_steps),
     recommendation: rec,
     confidence: conf,

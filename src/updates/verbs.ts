@@ -8,6 +8,7 @@ import { stackPeers, withNamespacePeers, type DeployTarget } from '../deploy/run
 import { syncMain } from '../gitops/sync.ts'
 import { withGitLock } from '../gitops/repo.ts'
 import { runAnalysisPass } from '../analyze/run.ts'
+import { verdictHolds, type Confidence, type Verdict } from '../policy.ts'
 
 /**
  * The things a person can do to an update.
@@ -76,8 +77,13 @@ export function contextFor(id: number): { row: UpdateRow; ctx: ActionContext } |
     .get(id) as { id: number; status: string } | undefined
 
   const verdict = db
-    .prepare(`SELECT error FROM verdicts WHERE image = ? AND from_tag = ? AND to_tag = ?`)
-    .get(row.image, row.from_tag, row.to_tag) as { error: string | null } | undefined
+    .prepare(
+      `SELECT error, recommendation, confidence FROM verdicts
+       WHERE image = ? AND from_tag = ? AND to_tag = ?`,
+    )
+    .get(row.image, row.from_tag, row.to_tag) as
+    | { error: string | null; recommendation: string | null; confidence: string | null }
+    | undefined
 
   const proposal = pr
     ? (db.prepare(`SELECT id FROM proposals WHERE pr_id = ? LIMIT 1`).get(pr.id) as
@@ -102,6 +108,15 @@ export function contextFor(id: number): { row: UpdateRow; ctx: ActionContext } |
       deployStatus: (deploy?.status as ActionContext['deployStatus']) ?? null,
       verdictError: !!verdict?.error,
       hasVerdict: !!verdict && !verdict.error,
+      verdictHolds:
+        !!verdict &&
+        !verdict.error &&
+        !!verdict.recommendation &&
+        verdictHolds(
+          verdict.recommendation as Verdict,
+          (verdict.confidence as Confidence | null) ?? null,
+          loadPolicy().policy.claude.min_confidence,
+        ),
       hasProposal: !!proposal,
       ackedAt: row.acked_at,
       held: pr?.hold_reason ?? null,
@@ -225,11 +240,19 @@ function releaseHold(row: UpdateRow): VerbResult {
 function rerunReview(row: UpdateRow): VerbResult {
   // Clear the backoff rather than the row: the attempt count is the history of how hard
   // this changelog has been to read, and somebody asking is not attempt one.
+  //
+  // A verdict that arrived is flagged rather than deleted, for a reason that is not
+  // bookkeeping: with no verdict the gate falls back to static policy and merges, so a
+  // deleted block followed by a failed re-read would merge what the block was holding.
+  // The old verdict stays in force until a new one replaces it.
   getDb()
     .prepare(
-      `UPDATE verdicts SET next_attempt_at = NULL WHERE image = ? AND from_tag = ? AND to_tag = ?`,
+      `UPDATE verdicts
+         SET next_attempt_at = NULL,
+             rerun_requested_at = CASE WHEN error IS NULL THEN ? ELSE rerun_requested_at END
+       WHERE image = ? AND from_tag = ? AND to_tag = ?`,
     )
-    .run(row.image, row.from_tag, row.to_tag)
+    .run(new Date().toISOString(), row.image, row.from_tag, row.to_tag)
   void detach(runAnalysisPass(1), 'rerun-review')
   return { ok: true, message: 'Reading the changelog again…' }
 }

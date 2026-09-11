@@ -72,7 +72,12 @@ import { Octokit } from 'octokit'
 import { applySettings, currentValue, SECTIONS, SETTINGS } from '../settings.ts'
 import { SECTION_PROSE } from '../settings/prose.ts'
 import { listModels } from '../analyze/models.ts'
-import { flush as flushDigest, pending as pendingDigest, render as renderDigest } from '../notify/digest.ts'
+import {
+  flush as flushDigest,
+  pending as pendingDigest,
+  render as renderDigest,
+  withOutcomes,
+} from '../notify/digest.ts'
 import { activeChannels } from '../notify/index.ts'
 import { configured as emailConfigured, send as sendEmail, escapeHtml as escapeText } from '../notify/email.ts'
 import { rescheduleScan, rescheduleDigest } from '../scheduler.ts'
@@ -1081,7 +1086,9 @@ export function createApp(): Hono {
    */
   app.get('/settings/digest', (c) => {
     const rows = pendingDigest()
-    const message = renderDigest(rows)
+    // Through the same correction the send applies, or the preview is the one place the
+    // old "opened" for a failed deploy would survive.
+    const message = renderDigest(withOutcomes(rows))
     return c.html(
       DigestPreview({
         title: message?.title ?? null,

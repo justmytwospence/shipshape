@@ -1,6 +1,6 @@
 import { loadPolicy, env } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
-import { notify } from './index.ts'
+import { activeChannels, notify } from './index.ts'
 import { escapeHtml } from './email.ts'
 
 /**
@@ -14,6 +14,12 @@ import { escapeHtml } from './email.ts'
  *   always send immediately, whatever the digest settings say, so turning digests on can
  *   never cause a failure to be missed. That guarantee is worth more than the flexibility
  *   of being able to batch them.
+ *
+ *   An alert going out on its own does not excuse the digest from telling the truth about
+ *   the same pull request, though. Channels are routed per kind, so `ntfy: alerts` with
+ *   `email: routine` means the failure buzzed a phone at 03:06 and the email never heard
+ *   of it -- and the email then described that pull request as "opened", because opening
+ *   was the last routine thing that happened to it. See `reconcile`.
  *
  *   **Routine** — a pull request opened, one merged, a deploy succeeded, a verdict held
  *   something back, config changes were drafted. Each is a fact worth knowing and none is
@@ -34,6 +40,9 @@ export type Category =
   | 'held'
   | 'drafted'
   | 'revised'
+  // Never recorded. Synthesised by `reconcile` from what a deploy actually concluded, so
+  // the digest cannot report a pull request at a stage it has already left.
+  | 'went-wrong'
 
 export interface DigestItem {
   category: Category
@@ -54,6 +63,10 @@ const SECTIONS: { category: Category; heading: (n: number) => string }[] = [
   { category: 'superseded', heading: (n) => `${n} superseded and closed` },
   { category: 'merged', heading: (n) => `${n} merged` },
   { category: 'deployed', heading: (n) => `${n} deployed` },
+  // Next to `deployed` rather than at the end, because it is the other answer to the same
+  // question. The alert with the detail has already gone out; this is the line that stops
+  // the summary from contradicting it.
+  { category: 'went-wrong', heading: (n) => `${n} went wrong after merging` },
   { category: 'drafted', heading: (n) => `${n} carried drafted config changes` },
   // Only recorded when something actually changed. A plain answer is a reply to
   // something typed thirty seconds earlier; putting it in tomorrow's 08:00 summary is
@@ -201,6 +214,9 @@ const PROGRESS: Record<Category, number> = {
   held: 5,
   merged: 6,
   deployed: 7,
+  // Above `deployed`: a deploy that passed its window and then degraded, or was rolled
+  // back, reached further than "deployed" and ended somewhere worse.
+  'went-wrong': 8,
 }
 
 /**
@@ -212,11 +228,135 @@ const PROGRESS: Record<Category, number> = {
  * neither. Keying on those would leave the duplicates this exists to remove.
  */
 function keyOf(r: Row): string {
-  const pr = /\/pull\/(\d+)/.exec(r.url ?? '')
+  const n = prNumber(r)
   // No pull request means no evidence that two rows describe the same thing, so they
   // are kept apart. Merging on a matching summary would quietly swallow one of two
   // genuinely separate events that happened to be worded the same.
-  return pr ? `pr:${pr[1]}` : `item:${r.id}`
+  return n !== null ? `pr:${n}` : `item:${r.id}`
+}
+
+function prNumber(r: Row): number | null {
+  const m = /\/pull\/(\d+)/.exec(r.url ?? '')
+  return m ? Number(m[1]) : null
+}
+
+/** What became of a pull request, read when the digest is sent. */
+export interface Outcome {
+  merged: boolean
+  /** Its most recent deploy, or null when it has never had one. */
+  deploy: { status: string; detail: string | null } | null
+}
+
+/** Deploy statuses that ended badly, and how to say so in one line. */
+const WENT_WRONG: Record<string, string> = {
+  failed: 'merged, but did not deploy',
+  error: 'merged, but its deploy could not be run',
+  'rolled-back': 'deployed, failed verification, and was rolled back',
+  degraded: 'deployed, then stopped being healthy',
+}
+
+/** A merge whose deploy has not concluded, or never will by itself. */
+const MERGED_WHILE: Record<string, string> = {
+  pending: 'merged, deploy queued',
+  running: 'merged, deploy still running',
+  ready: 'merged, ready to deploy',
+  superseded: 'merged, its deploy folded into a later one',
+}
+
+/**
+ * Correct the recorded story with what actually happened.
+ *
+ * The digest used to be built only from routine items recorded along the way, and a
+ * pull request's story does not always end on a routine note. A merge is not recorded
+ * for auto-deploying pull requests at all -- the `deployed` item is expected to follow
+ * and supersede `opened` -- so when the deploy failed, nothing superseded it, and #93
+ * went out as "opened" five hours after it had merged. Every other non-routine ending
+ * does the same: a rollback, a soak that degraded, a deploy that could not be run, a
+ * sync that blocked.
+ *
+ * Asking every one of those paths to also record a digest item would fix today's and
+ * leave the next one to be discovered the same way. So the outcome is read instead, at
+ * the moment of sending, and one row per pull request is added describing where it
+ * really ended up. `collapse` then picks it the ordinary way, by rank, and backfills its
+ * names from the rows it outranks.
+ *
+ * Only pull requests already in the batch are touched. This corrects what the digest
+ * says; it never widens what the digest is about. Pure, so the whole mapping is testable
+ * without a database.
+ */
+export function reconcile(rows: Row[], outcomes: Map<number, Outcome>): Row[] {
+  const groups = new Map<number, Row[]>()
+  for (const r of rows) {
+    const n = prNumber(r)
+    if (n === null) continue
+    groups.set(n, [...(groups.get(n) ?? []), r])
+  }
+
+  const added: Row[] = []
+  for (const [n, group] of groups) {
+    const o = outcomes.get(n)
+    if (!o) continue
+    const best = Math.max(...group.map((r) => PROGRESS[r.category] ?? 0))
+    // The newest record, so the added row sorts where the pull request last moved.
+    const latest = group.reduce((a, b) => (b.id > a.id ? b : a))
+    const row = (category: Category, summary: string): Row => ({
+      ...latest,
+      category,
+      summary: `#${n} ${summary}`,
+      detail: null,
+    })
+
+    const status = o.deploy?.status ?? null
+    if (status && WENT_WRONG[status]) {
+      added.push(row('went-wrong', `${WENT_WRONG[status]}${reason(o.deploy!.detail)}`))
+    } else if ((status === 'deployed' || status === 'verified') && best < PROGRESS.deployed) {
+      added.push(row('deployed', 'deployed'))
+    } else if (o.merged && best < PROGRESS.merged) {
+      added.push(row('merged', (status && MERGED_WHILE[status]) || 'merged'))
+    }
+  }
+  return added.length ? [...rows, ...added] : rows
+}
+
+/**
+ * The line worth quoting from a deploy's detail.
+ *
+ * The last one, not the first. A compose failure is recorded as "compose failed" followed
+ * by the tail of its output, and the line that says *why* is at the bottom; everything
+ * else recorded so far is a single line.
+ */
+function reason(detail: string | null): string {
+  const lines = (detail ?? '').split('\n').map((l) => l.trim()).filter(Boolean)
+  const last = lines[lines.length - 1]
+  if (!last) return ''
+  return `: ${last.length > 100 ? `${last.slice(0, 99)}…` : last}`
+}
+
+/** Read the outcome of every pull request the batch mentions. */
+export function outcomesFor(rows: Row[]): Map<number, Outcome> {
+  const out = new Map<number, Outcome>()
+  const numbers = [...new Set(rows.map(prNumber).filter((n): n is number => n !== null))]
+  if (numbers.length === 0) return out
+
+  const db = getDb()
+  const pr = db.prepare(`SELECT state FROM prs WHERE number = ? ORDER BY id DESC LIMIT 1`)
+  // The latest attempt is the one that describes the present: a retry that verified
+  // after a failure means the failure is history.
+  const deploy = db.prepare(
+    `SELECT status, detail FROM deploys WHERE pr_number = ? ORDER BY id DESC LIMIT 1`,
+  )
+  for (const n of numbers) {
+    const p = pr.get(n) as { state: string } | undefined
+    const d = deploy.get(n) as { status: string; detail: string | null } | undefined
+    if (!p && !d) continue
+    out.set(n, { merged: p?.state === 'merged', deploy: d ?? null })
+  }
+  return out
+}
+
+/** Rows as they will be sent: the batch, corrected by what actually happened. */
+export function withOutcomes(rows: Row[]): Row[] {
+  return reconcile(rows, outcomesFor(rows))
 }
 
 /**
@@ -308,7 +448,10 @@ export function render(rows: Row[]): { title: string; body: string } | null {
  * them -- a push has one click target for the whole message -- so the plain-text version
  * leaves them out rather than pasting bare URLs into a phone notification.
  */
-export function renderHtml(rows: Row[]): string | null {
+export function renderHtml(
+  rows: Row[],
+  opts: { alertChannels?: string[] } = {},
+): string | null {
   const g = group(rows)
   if (!g) return null
 
@@ -333,11 +476,26 @@ export function renderHtml(rows: Row[]): string | null {
     out.push(`</ul>`)
   }
   out.push(
-    `<p style="margin:1.5em 0 0;color:#6b6b66;font-size:.9em">` +
-      `Anything that went wrong is sent on its own, immediately, and is never in a digest.</p>`,
+    `<p style="margin:1.5em 0 0;color:#6b6b66;font-size:.9em">${esc(footer(opts.alertChannels))}</p>`,
     `</div>`,
   )
   return out.join('\n')
+}
+
+/**
+ * Where failures went, said where the reader is.
+ *
+ * It used to claim failures were "never in a digest", which stopped being true and was
+ * unhelpful while it was: the reader of an email with `email: routine` has no way to
+ * know that the thing they are looking for went to their phone at three in the morning.
+ * Naming the channel answers that. Naming none says something worth knowing too.
+ */
+function footer(channels: string[] | undefined): string {
+  if (!channels) return 'Failures are also sent on their own, the moment they happen.'
+  if (channels.length === 0) {
+    return 'Nothing is set up to receive failures on their own -- this digest is the only place they appear.'
+  }
+  return `Failures are also sent on their own, the moment they happen, by ${channels.join(' and ')}.`
 }
 
 export interface FlushResult {
@@ -355,16 +513,18 @@ export interface FlushResult {
  * history. A missed digest is a missed digest; the Activity page still has all of it.
  */
 export async function flush(trigger: 'cron' | 'manual'): Promise<FlushResult> {
-  const rows = claimPending()
-  if (rows.length === 0) return { sent: 0, skipped: 'nothing pending' }
+  const claimed = claimPending()
+  if (claimed.length === 0) return { sent: 0, skipped: 'nothing pending' }
 
+  // Outcomes are read after the claim, so they are as fresh as the send itself.
+  const rows = withOutcomes(claimed)
   const message = render(rows)
   if (!message) return { sent: 0, skipped: 'nothing pending' }
 
   await notify({
     ...message,
     kind: 'routine',
-    html: renderHtml(rows) ?? undefined,
+    html: renderHtml(rows, { alertChannels: activeChannels('alert') }) ?? undefined,
     tags: ['package'],
     click: env.githubRepo ? `https://github.com/${env.githubRepo}/pulls` : undefined,
   })
@@ -372,10 +532,10 @@ export async function flush(trigger: 'cron' | 'manual'): Promise<FlushResult> {
   logEvent({
     level: 'info',
     kind: 'system',
-    message: `digest sent: ${rows.length} item(s)`,
+    message: `digest sent: ${claimed.length} item(s)`,
     detail: trigger === 'manual' ? 'sent on request' : undefined,
   })
-  return { sent: rows.length }
+  return { sent: claimed.length }
 }
 
 /** Old sent items are history nobody reads; keep a fortnight so a digest can be re-read. */

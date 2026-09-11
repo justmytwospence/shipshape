@@ -27,6 +27,7 @@ const { pendingAnalysis, recordFailure, recordVerdict, heldSummary } = await imp
 const { canAutoMerge, verdictHolds } = await import('../src/policy.ts')
 const { contextFor, runVerb } = await import('../src/updates/verbs.ts')
 const { actionsFor } = await import('../src/updates/actions.ts')
+const { updateView } = await import('../src/updates/queries.ts')
 const { prompt } = await import('../src/prompts/index.ts')
 
 after(() => rmSync(dir, { recursive: true, force: true }))
@@ -169,6 +170,20 @@ test('a held pull request offers a second reading, and asking for one flags rath
   const v = stored()
   assert.equal(v.recommendation, 'block', 'the hold stays in force while it is re-read')
   assert.ok(v.rerun_requested_at)
+})
+
+test('the page offers the re-read the route accepts', () => {
+  // Two builders make an action context: `contextFor` guards the route, `updateView`
+  // decides which buttons render. The first shipped with `verdictHolds` and the second
+  // without it, so a re-read worked from a pull request comment and never appeared on
+  // the page -- caught by the screenshot pass, not by a test. Now it is a test.
+  const id = seedHeldPr()
+  recordVerdict(pair, blockVerdict as never)
+
+  const route = actionsFor(contextFor(id)!.ctx)
+  const page = updateView(id)!.actions
+  assert.ok(page.includes('rerun-review'), `page offers: ${page.join(', ')}`)
+  assert.deepEqual([...page].sort(), [...route].sort(), 'the page and the route agree')
 })
 
 test('a flagged verdict is analysed again, ahead of everything else', () => {

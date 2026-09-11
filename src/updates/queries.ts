@@ -1,6 +1,6 @@
 import { getDb } from '../db.ts'
 import { loadPolicy } from '../config.ts'
-import { shouldOpenPr, type EffectiveTier } from '../policy.ts'
+import { shouldOpenPr, verdictHolds, type EffectiveTier } from '../policy.ts'
 import type { Magnitude } from '../versions/patterns.ts'
 import { actionsFor, isTransient, primaryVerb, type ActionContext, type Verb } from './actions.ts'
 import { LIVE_STATES, sqlIn, type UpdateState } from './state.ts'
@@ -233,6 +233,13 @@ function toView(u: RawUpdate, repo: string): UpdateView {
     deployStatus: (deploy?.status as ActionContext['deployStatus']) ?? null,
     verdictError: !!verdict?.error,
     hasVerdict: !!verdict && !verdict.error,
+    // The same answer `contextFor` gives the route, or the button and the route disagree:
+    // the route would accept a re-read the page never offers.
+    verdictHolds:
+      !!verdict &&
+      !verdict.error &&
+      !!verdict.recommendation &&
+      verdictHolds(verdict.recommendation, verdict.confidence, loadPolicy().policy.claude.min_confidence),
     hasProposal,
     ackedAt: u.acked_at,
     held: pr?.held ?? null,

@@ -569,6 +569,13 @@ export function carriedUpdates(
 const CARRY_FROM = new Set(['failed', 'error', 'rolled-back'])
 
 /**
+ * Statuses of an attempt that recorded a plan and never finished: still `running` because
+ * the process died under it, `pending` again after a throw, or `superseded` by a newer merge
+ * while it waited for that retry.
+ */
+const UNFINISHED = new Set(['running', 'pending', 'superseded'])
+
+/**
  * The services shipshape's own earlier attempt left down, which this deploy puts back up
  * unless someone has visibly stopped them since.
  *
@@ -581,9 +588,17 @@ const CARRY_FROM = new Set(['failed', 'error', 'rolled-back'])
  *
  * So, per service, the newest recorded plan that names it -- up or left -- decides. It is
  * carried when that plan brought it up, and either the plan is this very row (an attempt
- * interrupted after recording, now re-run) or the attempt failed with nothing healthy on
- * it: `failed`, `error`, or `rolled-back` with `healthy = 0`. Newest-that-names-it is what
- * breaks the chain: a later plan that verified it, or left it stopped, is the later word.
+ * interrupted after recording, now re-run), or the attempt never finished, or it failed
+ * with nothing healthy on it: `failed`, `error`, or `rolled-back` with `healthy = 0`.
+ * Newest-that-names-it is what breaks the chain: a later plan that verified it, or left it
+ * stopped, is the later word.
+ *
+ * Never finished includes another row's attempt, not only this one's. When shipshape dies
+ * after an rm-first removed the container, that row sits in `running` for reclaimStale's
+ * thirty minutes; a second deploy of the same service drained inside them used to find no
+ * container, read shipshape's own outage as a stop, and go terminal as Left stopped. A plan
+ * that was recorded and never finished meant that service to be up -- and if its attempt
+ * is in fact still running, it is bringing the service up anyway.
  * An operator rollback that came back healthy never carries, and neither do rows with no
  * plan -- legacy rows, refusals, and attempts docker could not be asked about.
  *
@@ -608,7 +623,11 @@ export function carriedFor(stack: string, services: readonly string[], deployId:
   for (const s of new Set(services)) {
     const newest = plans.find(({ plan }) => plan.up.includes(s) || plan.left.some((l) => l.service === s))
     if (!newest || !newest.plan.up.includes(s)) continue
-    if (newest.row.id === deployId || (CARRY_FROM.has(newest.row.status) && newest.row.healthy === 0)) {
+    if (
+      newest.row.id === deployId ||
+      UNFINISHED.has(newest.row.status) ||
+      (CARRY_FROM.has(newest.row.status) && newest.row.healthy === 0)
+    ) {
       out.add(s)
     }
   }

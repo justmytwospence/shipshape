@@ -297,6 +297,24 @@ test('an interrupted attempt keeps its own plan', () => {
   assert.equal(carriedFor('bitwarden', ['bitwarden'], leftIt).size, 0, 'its own plan left it, so it stays left')
 })
 
+test("another row's attempt that never finished still carries", () => {
+  // shipshape died after rm-first removed minuspod, and a second deploy of it drained before
+  // reclaimStale's thirty minutes were up: the older row still reads running, and its plan
+  // meant minuspod to be up. A throw puts a row back to pending, and a newer merge can
+  // supersede it while it waits.
+  for (const status of ['running', 'pending', 'superseded']) {
+    db().exec(`DELETE FROM deploys`)
+    insertDeploy({ stack: 'minuspod', status, snapshot: planJson(['minuspod']) })
+    const newer = insertDeploy({ stack: 'minuspod', status: 'running' })
+    assert.ok(carriedFor('minuspod', ['minuspod'], newer).has('minuspod'), status)
+  }
+
+  db().exec(`DELETE FROM deploys`)
+  insertDeploy({ stack: 'minuspod', status: 'running', snapshot: planJson([], ['minuspod']) })
+  const newer = insertDeploy({ stack: 'minuspod', status: 'running' })
+  assert.equal(carriedFor('minuspod', ['minuspod'], newer).size, 0, 'an unfinished plan that left it still left it')
+})
+
 test('an attempt that failed with nothing healthy carries, whatever the failure was called', () => {
   for (const status of ['failed', 'error', 'rolled-back']) {
     db().exec(`DELETE FROM deploys`)

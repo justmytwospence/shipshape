@@ -2,7 +2,7 @@ import { authorArgs, git, withGitLock } from '../gitops/repo.ts'
 import { env, loadPolicy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { notify } from '../notify/index.ts'
-import { deploy, manualCommand, type DeployTarget } from './run.ts'
+import { deploy, manualCommand, type DeployIo, type DeployTarget } from './run.ts'
 import type { LeftService, RecordedPlan } from './runstate.ts'
 import type { Verdict } from './verify.ts'
 
@@ -102,7 +102,7 @@ export async function performRollback(
   target: DeployTarget,
   mergeSha: string,
   mergeMethod: string,
-  opts: { carried?: ReadonlySet<string>; record?: (p: RecordedPlan) => void } = {},
+  opts: { carried?: ReadonlySet<string>; record?: (p: RecordedPlan) => void; io?: DeployIo } = {},
 ): Promise<RollbackResult> {
   const repo = env.repoDir
 
@@ -130,7 +130,7 @@ export async function performRollback(
 
   // Deploy the reverted tree straight away. The image it wants is the one that was
   // running minutes ago, so its layers are local and this is a recreate, not a pull.
-  const back = await deploy(target, { skipBlackout: true, carried: opts.carried, record: opts.record })
+  const back = await deploy(target, { skipBlackout: true, carried: opts.carried, record: opts.record, io: opts.io })
   if (!back.ok) {
     return { ok: false, detail: `reverted ${gitPart.revertSha}, but the redeploy failed: ${back.reason}` }
   }

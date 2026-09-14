@@ -4,7 +4,7 @@ import { setState, type UpdateState } from './state.ts'
 import { actionsFor, refusalFor, type ActionContext, type Verb } from './actions.ts'
 import { carriedFor, claimJob, linkDeployUpdates, runDeployJob } from '../deploy/queue.ts'
 import { performRollback, revertCommand } from '../deploy/rollback.ts'
-import { stackPeers, withNamespacePeers, type DeployTarget } from '../deploy/run.ts'
+import { stackPeers, withNamespacePeers, type DeployIo, type DeployTarget } from '../deploy/run.ts'
 import { syncMain } from '../gitops/sync.ts'
 import { withGitLock } from '../gitops/repo.ts'
 import { runAnalysisPass } from '../analyze/run.ts'
@@ -137,18 +137,46 @@ function latestDeployId(updateId: number): { id: number; status: string } | null
     .get(updateId) ?? null) as { id: number; status: string } | null
 }
 
-function targetFor(row: UpdateRow, strategy: 'up' | 'rm-first' = 'up'): DeployTarget {
-  const deployLabel = getDb()
-    .prepare(`SELECT deploy_label FROM images WHERE stack = ? AND service = ?`)
-    .get(row.stack, row.service) as { deploy_label: string | null } | undefined
+function targetFor(stack: string, services: string[]): DeployTarget {
+  const label = getDb().prepare(`SELECT deploy_label FROM images WHERE stack = ? AND service = ?`)
+  const unique = [...new Set(services)]
   return {
-    stack: row.stack,
+    stack,
     // A service pinned into another container's network namespace has to come up with
     // the container it is pinned to, or it survives attached to a namespace that no
     // longer exists: running, listed as up, unreachable.
-    services: withNamespacePeers(row.stack, [row.service], stackPeers),
-    strategy: deployLabel?.deploy_label === 'rm-first' ? 'rm-first' : strategy,
+    services: withNamespacePeers(stack, unique, stackPeers),
+    // rm-first if any of them asked for it: the strategy applies to the whole compose
+    // invocation, and the safer of the two wins.
+    strategy: unique.some(
+      (s) => (label.get(stack, s) as { deploy_label: string | null } | undefined)?.deploy_label === 'rm-first',
+    )
+      ? 'rm-first'
+      : 'up',
   }
+}
+
+/**
+ * The updates a revert of this update's merge takes back: every one its pull request
+ * carried, not just the one the button was pressed on.
+ *
+ * `git revert` undoes the whole commit, so a group's file goes back for every member. Rolling
+ * back from one member used to redeploy only that member -- pressed on n8n-import, left
+ * stopped from #91, it reverted n8n's line too and never touched n8n, which kept running
+ * 2.38.7 and kept reading verified against a file that pinned 2.38.5. A member already
+ * overtaken or dismissed is not the revert's to move, and there is no pull request to read
+ * for an update that never had one.
+ */
+function revertedMembers(row: UpdateRow): { id: number; service: string }[] {
+  const members = getDb()
+    .prepare(
+      `SELECT u.id, u.service FROM pr_updates pu JOIN updates u ON u.id = pu.update_id
+        WHERE pu.pr_id = (SELECT pr_id FROM pr_updates WHERE update_id = ? ORDER BY pr_id DESC LIMIT 1)
+          AND u.stack = ? AND (u.id = ? OR u.state NOT IN ('superseded', 'skipped'))
+        ORDER BY u.id`,
+    )
+    .all(row.id, row.stack, row.id) as { id: number; service: string }[]
+  return members.length > 0 ? members : [{ id: row.id, service: row.service }]
 }
 
 /**
@@ -159,7 +187,12 @@ function targetFor(row: UpdateRow, strategy: 'up' | 'rm-first' = 'up'): DeployTa
  * takes minutes, and the operator's browser must not sit on a request for that long. The
  * interface polls the update instead, which is what the transient flag is for.
  */
-export async function runVerb(id: number, verb: Verb): Promise<VerbResult> {
+export async function runVerb(
+  id: number,
+  verb: Verb,
+  /** The docker the deploy verbs talk to; the real one unless a test says otherwise. */
+  opts: { io?: DeployIo } = {},
+): Promise<VerbResult> {
   const found = contextFor(id)
   if (!found) return { ok: false, message: 'that update no longer exists' }
   const { row, ctx } = found
@@ -170,13 +203,13 @@ export async function runVerb(id: number, verb: Verb): Promise<VerbResult> {
 
   switch (verb) {
     case 'deploy':
-      return startQueuedDeploy(row)
+      return startQueuedDeploy(row, opts.io)
     case 'redeploy':
-      return startRedeploy(row)
+      return startRedeploy(row, opts.io)
     case 'retry':
-      return retry(row, ctx)
+      return retry(row, ctx, opts.io)
     case 'rollback':
-      return rollback(row, ctx)
+      return rollback(row, ctx, opts.io)
     case 'ack':
       return acknowledge(row)
     case 'skip':
@@ -258,13 +291,13 @@ function rerunReview(row: UpdateRow): VerbResult {
 }
 
 /** Bring up a merge that has been waiting -- the button `paused` exists to require. */
-async function startQueuedDeploy(row: UpdateRow): Promise<VerbResult> {
+async function startQueuedDeploy(row: UpdateRow, io?: DeployIo): Promise<VerbResult> {
   const latest = latestDeployId(row.id)
   if (!latest) return { ok: false, message: 'there is no queued deploy for this update' }
   const job = claimJob(latest.id)
   if (!job) return { ok: false, message: 'that deploy is already running' }
 
-  void detach(runDeployJob(job), `deploy of ${row.stack}`)
+  void detach(runDeployJob(job, { io }), `deploy of ${row.stack}`)
   // Said before the outcome is known, so it states the rule rather than promising a start
   // that may not happen.
   return {
@@ -279,9 +312,9 @@ async function startQueuedDeploy(row: UpdateRow): Promise<VerbResult> {
  * to pull and bring the service up again -- and the only record of it having happened is
  * the deploy row this creates.
  */
-async function startRedeploy(row: UpdateRow): Promise<VerbResult> {
+async function startRedeploy(row: UpdateRow, io?: DeployIo): Promise<VerbResult> {
   const db = getDb()
-  const target = targetFor(row)
+  const target = targetFor(row.stack, [row.service])
   const now = new Date().toISOString()
 
   const info = db
@@ -297,7 +330,7 @@ async function startRedeploy(row: UpdateRow): Promise<VerbResult> {
   const job = claimJob(deployId)
   if (!job) return { ok: false, message: 'that deploy is already running' }
 
-  void detach(runDeployJob(job, { pull: true }), `redeploy of ${row.stack}`)
+  void detach(runDeployJob(job, { pull: true, io }), `redeploy of ${row.stack}`)
   return {
     ok: true,
     transient: true,
@@ -313,9 +346,9 @@ async function startRedeploy(row: UpdateRow): Promise<VerbResult> {
  * has to re-enter the pipeline from the top, which means clearing the tombstone that
  * stops the scan re-offering it and letting the next pull request pass pick it up.
  */
-async function retry(row: UpdateRow, ctx: ActionContext): Promise<VerbResult> {
+async function retry(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Promise<VerbResult> {
   if (row.state === 'merged') {
-    const target = targetFor(row)
+    const target = targetFor(row.stack, [row.service])
     const now = new Date().toISOString()
     const db = getDb()
     const prId = db
@@ -332,7 +365,7 @@ async function retry(row: UpdateRow, ctx: ActionContext): Promise<VerbResult> {
     linkDeployUpdates(deployId, prId?.pr_id ?? null, [row.id])
     const job = claimJob(deployId)
     if (!job) return { ok: false, message: 'that deploy is already running' }
-    void detach(runDeployJob(job), `retry of ${row.stack}`)
+    void detach(runDeployJob(job, { io }), `retry of ${row.stack}`)
     return { ok: true, transient: true, message: `Deploying ${row.stack} again.` }
   }
 
@@ -355,13 +388,20 @@ async function retry(row: UpdateRow, ctx: ActionContext): Promise<VerbResult> {
 }
 
 /** Put the previous version back, on purpose rather than because verification said so. */
-async function rollback(row: UpdateRow, ctx: ActionContext): Promise<VerbResult> {
+async function rollback(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Promise<VerbResult> {
   const { policy } = loadPolicy()
   const sha = ctx.mergeCommitSha
   if (!sha) return { ok: false, message: 'the merge commit is unknown, so there is nothing to revert' }
 
   const db = getDb()
-  const target = targetFor(row)
+  // Everything the revert takes back is deployed from the reverted file, each service read
+  // live the same as any deploy: a running sibling goes back to the old version, and one
+  // that is not running stays as it is.
+  const members = revertedMembers(row)
+  const target = targetFor(
+    row.stack,
+    members.map((m) => m.service),
+  )
   const now = new Date().toISOString()
   const info = db
     .prepare(
@@ -371,7 +411,11 @@ async function rollback(row: UpdateRow, ctx: ActionContext): Promise<VerbResult>
     )
     .run(ctx.prNumber ?? null, target.stack, target.services.join(' '), target.strategy, now, now)
   const deployId = Number(info.lastInsertRowid)
-  linkDeployUpdates(deployId, null, [row.id])
+  linkDeployUpdates(
+    deployId,
+    null,
+    members.map((m) => m.id),
+  )
   // Roll back applies the rule every deploy does -- it chooses a version, it does not start
   // a service -- with the same exception: what shipshape's own failed attempt left down
   // goes back up. Read now, before this row records a plan of its own.
@@ -381,6 +425,7 @@ async function rollback(row: UpdateRow, ctx: ActionContext): Promise<VerbResult>
     (async () => {
       const result = await performRollback(target, sha, policy.merge_method, {
         carried,
+        io,
         record: (p) => {
           db.prepare(`UPDATE deploys SET snapshot = ? WHERE id = ?`).run(JSON.stringify(p), deployId)
         },
@@ -392,7 +437,7 @@ async function rollback(row: UpdateRow, ctx: ActionContext): Promise<VerbResult>
         db.prepare(
           `UPDATE deploys SET status = 'rolled-back', ok = 1, healthy = ?, detail = ?, finished_at = ? WHERE id = ?`,
         ).run(result.up && result.up.length === 0 ? 0 : 1, result.detail, finished, deployId)
-        setState(row.id, 'failed', 'rolled back by the operator')
+        for (const m of members) setState(m.id, 'failed', 'rolled back by the operator')
         logEvent({
           level: 'warn',
           kind: 'deploy',

@@ -127,6 +127,14 @@ export type DeployOutcome =
       plan?: RecordedPlan
       up?: string[]
       after?: { service: string; state: string }[]
+      /**
+       * `orphan` when docker answered and the answer was another project's container. It
+       * fails in `inspect` like an unreadable docker, and nothing was touched either way,
+       * but waiting does not fix it: someone has to move that container.
+       */
+      cause?: 'orphan'
+      /** The other project's container, by name, for `cause: 'orphan'`. */
+      container?: string
     }
 
 /**
@@ -327,10 +335,14 @@ export async function deploy(
         // left stopped, which is false in the one way that matters.
         const desc = await io.foreign(project, target.stack, s)
         if (desc) {
+          // `foreignFrom` ends the description with the container's name in parentheses.
+          const container = /\(([^()]+)\)$/.exec(desc)?.[1]
           return {
             ok: false,
             phase: 'inspect',
             reason: `${s} has a container from ${desc}, so shipshape cannot tell whether it is this service`,
+            cause: 'orphan',
+            ...(container ? { container } : {}),
           }
         }
       }
@@ -676,6 +688,25 @@ export function failureState(outcome: Extract<DeployOutcome, { ok: false }>, str
   return 'The change is in the checkout; the service is running whatever it was.'
 }
 
+/**
+ * What the operator does about a failed deploy, as the last paragraph of its alert.
+ *
+ * Usually the command to run by hand, built for `target` -- which the caller has already
+ * narrowed to what the deploy meant to bring up. Not when the deploy stopped in `inspect`:
+ * running compose by hand while docker cannot say what is there is the very guess the
+ * deploy declined to make, so what fixes it is docker answering. And not for an orphan
+ * either, where docker did answer: pressing Try again finds the same container every time
+ * until someone removes it or brings it up from the project that owns it.
+ */
+export function nextStep(outcome: Extract<DeployOutcome, { ok: false }>, target: DeployTarget): string {
+  if (outcome.phase === 'inspect' && outcome.cause === 'orphan') {
+    const rm = outcome.container ? ` (docker rm -f ${outcome.container})` : ''
+    return `Remove that container${rm} or bring it up from its own compose project, then press Try again on the update.`
+  }
+  if (outcome.phase === 'inspect') return 'Press Try again on the update once docker answers.'
+  return `Retry with:\n${manualCommand(target)}`
+}
+
 /** Run a deploy for a merged pull request and record what happened. */
 export async function deployForPr(
   prNumber: number,
@@ -762,13 +793,7 @@ export async function deployForPr(
     // exactly what the deploy declined to. A failed pull has that plan in memory only.
     const meant = outcome.plan?.up ?? outcome.up ?? target.services
     const named = meant.length ? meant : target.services
-    // No command to paste when docker could not be asked: compose was never the problem,
-    // and running it by hand while docker cannot say what is there is the very guess the
-    // deploy declined to make. What fixes it is docker answering.
-    const next =
-      outcome.phase === 'inspect'
-        ? 'Press Try again on the update once docker answers.'
-        : `Retry with:\n${manualCommand({ ...target, services: meant })}`
+    const next = nextStep(outcome, { ...target, services: meant })
     await notify({
       title: down
         ? `shipshape: ${target.stack} is DOWN — deploy failed`

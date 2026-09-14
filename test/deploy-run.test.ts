@@ -8,7 +8,7 @@ const dir = mkdtempSync(join(tmpdir(), 'shipshape-deploy-run-'))
 process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 
-const { deploy } = await import('../src/deploy/run.ts')
+const { deploy, nextStep } = await import('../src/deploy/run.ts')
 const { composeCalls, fakeIo } = await import('./helpers/deploy-io.ts')
 type RecordedPlan = import('../src/deploy/runstate.ts').RecordedPlan
 type DeployTarget = import('../src/deploy/run.ts').DeployTarget
@@ -178,6 +178,16 @@ test('a container from another project stops the deploy', async () => {
     'bitwarden has a container from compose project "bw-old" (bitwarden), so shipshape cannot tell whether it is this service',
   )
   assert.deepEqual(composeCalls(io.calls), [])
+
+  // Docker answered, so waiting for it to answer is the wrong thing to tell anyone.
+  assert.equal(out.cause, 'orphan')
+  assert.equal(out.container, 'bitwarden')
+  const next = nextStep(out, bitwarden)
+  assert.doesNotMatch(next, /once docker answers/)
+  assert.equal(
+    next,
+    'Remove that container (docker rm -f bitwarden) or bring it up from its own compose project, then press Try again on the update.',
+  )
 })
 
 test('only a service with no container is checked for an orphan', async () => {

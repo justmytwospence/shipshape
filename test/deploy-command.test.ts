@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { manualCommand, failureState, type DeployTarget } from '../src/deploy/run.ts'
+import { manualCommand, failureState, nextStep, type DeployTarget } from '../src/deploy/run.ts'
 import { PolicySchema } from '../src/config.ts'
 
 /**
@@ -88,6 +88,20 @@ test('rm-first whose container is running again is not down', () => {
     'rm-first',
   )
   assert.doesNotMatch(s, /DOWN/)
+})
+
+test('the next step is a command, except where a command is the wrong answer', () => {
+  assert.equal(
+    nextStep({ ok: false, phase: 'up', reason: 'compose failed' }, target()),
+    'Retry with:\ndocker compose -f jellyfin/docker-compose.yaml up -d --no-deps jellyfin',
+  )
+  assert.equal(
+    nextStep({ ok: false, phase: 'inspect', reason: 'could not ask docker' }, target()),
+    'Press Try again on the update once docker answers.',
+  )
+  const orphan = nextStep({ ok: false, phase: 'inspect', reason: 'x', cause: 'orphan' }, target())
+  assert.doesNotMatch(orphan, /once docker answers/)
+  assert.match(orphan, /its own compose project, then press Try again/)
 })
 
 test('a refusal says nothing was attempted', () => {

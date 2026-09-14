@@ -89,6 +89,20 @@ test('a pull that fails names only what it meant to bring up', async () => {
   )
 })
 
+// ---------------------------------------------------------------- docker answered, unhelpfully
+
+test('an orphan container says how to clear it, not to wait for docker', async () => {
+  const io = fakeIo({ bitwarden: 'absent' }, { foreign: async () => 'compose project "bw-old" (bitwarden)' })
+  await deployForPr(101, { stack: 'bitwarden', services: ['bitwarden'], strategy: 'up' }, undefined, { io })
+
+  assert.equal(sent.length, 1)
+  assert.doesNotMatch(sent[0]!.body, /once docker answers/)
+  assert.match(
+    sent[0]!.body,
+    /\n\nRemove that container \(docker rm -f bitwarden\) or bring it up from its own compose project, then press Try again on the update\.$/,
+  )
+})
+
 // ---------------------------------------------------------------- an up that fails
 
 test('a plain up that fails after recreating pages that the service is DOWN', async () => {

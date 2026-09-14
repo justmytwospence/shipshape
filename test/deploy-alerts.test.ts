@@ -39,7 +39,7 @@ globalThis.fetch = (async (_url: unknown, init: { headers: Record<string, string
 
 const { getDb } = await import('../src/db.ts')
 const { deployForPr } = await import('../src/deploy/run.ts')
-const { claimJob, enqueueDeploy, linkDeployUpdates, runDeployJob } = await import('../src/deploy/queue.ts')
+const { claimJob, dueJobs, enqueueDeploy, linkDeployUpdates, runDeployJob } = await import('../src/deploy/queue.ts')
 const { contextFor } = await import('../src/updates/verbs.ts')
 const { actionsFor } = await import('../src/updates/actions.ts')
 const { composeCalls, fakeIo } = await import('./helpers/deploy-io.ts')
@@ -206,4 +206,54 @@ test('a verifier that could not see still alerts, because nothing else will', as
 
   assert.equal(sent.length, 1)
   assert.equal(sent[0]!.title, 'shipshape: scratch unhealthy after deploy')
+})
+
+// ---------------------------------------------------------------- an attempt that throws
+
+test('an attempt that throws is retried once before anyone is told', async () => {
+  const db = getDb()
+  const now = new Date().toISOString()
+  const prId = Number(
+    db
+      .prepare(
+        `INSERT INTO prs (number, branch, head_sha_pushed, state, scope, created_at, merge_commit_sha)
+         VALUES (46, 'b46', 'sha', 'merged', 'tag-only', ?, 'abc1234')`,
+      )
+      .run(now).lastInsertRowid,
+  )
+  enqueueDeploy({ prId, prNumber: 46, target: { stack: 'minuspod', services: ['minuspod'], strategy: 'rm-first' }, now })
+  const { id } = db.prepare(`SELECT MAX(id) id FROM deploys`).get() as { id: number }
+
+  /** A docker that removes the old container and then dies before the up can report. */
+  const crashing = (states: Parameters<typeof fakeIo>[0]) => {
+    const io = fakeIo(states)
+    const exec = io.exec
+    io.exec = async (args, opts) => {
+      const r = await exec(args, opts)
+      if (args.includes('up')) throw new Error('simulated crash before up')
+      return r
+    }
+    return io
+  }
+
+  const first = claimJob(id)!
+  assert.equal(first.attempts, 1)
+  await runDeployJob(first, { io: crashing({ minuspod: 'running' }) })
+
+  const row = () => db.prepare(`SELECT status, attempts FROM deploys WHERE id = ?`).get(id) as { status: string; attempts: number }
+  assert.equal(row().status, 'pending', 'the first throw is retried, not given up on')
+  assert.ok(dueJobs().some((j) => j.id === id), 'and the next drain will pick it up')
+  assert.equal(sent.length, 0, 'nobody is paged about an attempt that is about to be retried')
+
+  // The retry finds the container the first attempt removed, and puts it back: its own
+  // recorded plan carries it.
+  const second = claimJob(id)!
+  assert.equal(second.attempts, 2)
+  const io = crashing({ minuspod: 'absent' })
+  await runDeployJob(second, { io })
+  assert.ok(io.calls.includes('compose -f minuspod/docker-compose.yaml up -d --no-deps minuspod'), io.calls.join('\n'))
+
+  assert.equal(row().status, 'error', 'the second throw is a person\'s problem')
+  assert.equal(sent.length, 1)
+  assert.match(sent[0]!.title, /could not be run/)
 })

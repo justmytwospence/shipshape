@@ -388,9 +388,17 @@ export async function runDeployJob(
         markUpdates(job.id, notLanded, outcome.ok ? { services: outcome.up } : {})
       }
     } catch (err) {
-      // The row stays `running` and reclaimStale will retry it once. Never rethrow:
-      // one bad deploy must not abandon the rest of the queue, which is the failure
-      // this module exists to prevent.
+      // Back to `pending`, so the next drain retries it once -- the same one retry
+      // reclaimStale gives an attempt interrupted outright, and the same for a job an
+      // operator pressed. The retry is what makes a throw after `rm -sf` survivable: it
+      // re-runs this row, whose own recorded plan carries the service it removed. Only a
+      // second throw is marked `error` and alerted.
+      //
+      // `attempts` was already counted by the claim. Adding one more here marked the very
+      // first throw as `error`, so the retry promised above never happened.
+      //
+      // Never rethrow: one bad deploy must not abandon the rest of the queue, which is the
+      // failure this module exists to prevent.
       db.prepare(`UPDATE deploys SET status = 'pending', detail = ? WHERE id = ?`).run(
         `attempt failed: ${(err as Error).message.slice(0, 200)}`,
         job.id,
@@ -402,7 +410,7 @@ export async function runDeployJob(
         message: `deploy attempt for #${job.pr_number} threw`,
         detail: (err as Error).message.slice(0, 300),
       })
-      if (job.attempts + 1 >= MAX_ATTEMPTS) {
+      if (job.attempts >= MAX_ATTEMPTS) {
         db.prepare(`UPDATE deploys SET status = 'error', finished_at = ? WHERE id = ?`).run(
           new Date().toISOString(),
           job.id,

@@ -3,7 +3,13 @@ import { env, loadPolicy } from '../config.ts'
 import { notify } from '../notify/index.ts'
 import { deployForPr, type DeployTarget } from './run.ts'
 import { handleFailure } from './rollback.ts'
-import { captureLogs, inspectService, projectName } from './probe.ts'
+import {
+  captureLogs,
+  DockerUnreadable,
+  inspectService,
+  projectName,
+  type ServiceObservation,
+} from './probe.ts'
 import type { Verdict } from './verify.ts'
 import { routine } from '../notify/digest.ts'
 import { withGitLock } from '../gitops/repo.ts'
@@ -363,15 +369,26 @@ export async function runDeployJob(
  * database has been migrated, files have been written -- and reverting a version that
  * has been serving for half an hour is a decision with consequences a machine should not
  * take alone. It alerts and hands over.
+ *
+ * And a look that could not see is not a look. When docker cannot be asked, the soak is
+ * postponed rather than decided: this used to read a socket error as every service gone
+ * and page the operator that a healthy deploy had degraded.
  */
-export async function runRechecks(): Promise<{ checked: number }> {
+export async function runRechecks(
+  opts: {
+    observe?: (project: string, service: string) => Promise<ServiceObservation>
+    now?: () => number
+  } = {},
+): Promise<{ checked: number }> {
+  const observe = opts.observe ?? inspectService
+  const now = opts.now ?? Date.now
   const db = getDb()
   const due = db
     .prepare(
       `SELECT id, pr_number, stack, services FROM deploys
        WHERE recheck_at IS NOT NULL AND recheck_at <= ? AND status = 'deployed'`,
     )
-    .all(new Date().toISOString()) as {
+    .all(new Date(now()).toISOString()) as {
     id: number
     pr_number: number | null
     stack: string
@@ -382,7 +399,27 @@ export async function runRechecks(): Promise<{ checked: number }> {
   for (const row of due) {
     const project = projectName(row.stack)
     const services = row.services.split(' ').filter(Boolean)
-    const obs = await Promise.all(services.map((svc) => inspectService(project, svc)))
+    let obs: ServiceObservation[]
+    try {
+      obs = await Promise.all(services.map((svc) => observe(project, svc)))
+    } catch (err) {
+      if (!(err instanceof DockerUnreadable)) throw err
+      // The deploy stays `deployed` and nobody is told anything is wrong, because nothing
+      // was seen to be. Five minutes is long enough for a restarting daemon to come back
+      // and short enough that the soak still means something when it does.
+      db.prepare(`UPDATE deploys SET recheck_at = ? WHERE id = ?`).run(
+        new Date(now() + 5 * 60 * 1000).toISOString(),
+        row.id,
+      )
+      logEvent({
+        level: 'warn',
+        kind: 'deploy',
+        stack: row.stack,
+        message: `could not ask docker about ${row.stack}; looking again in 5 minutes`,
+        detail: err.message,
+      })
+      continue
+    }
     const bad = obs.filter(
       (o) => !o.found || o.health === 'unhealthy' || o.state === 'restarting' || o.state === 'exited',
     )
@@ -464,7 +501,14 @@ async function collectLogs(
   const since = new Date(Date.now() - 10 * 60 * 1000).toISOString()
   const parts: string[] = []
   for (const service of failing.slice(0, 2)) {
-    const obs = await inspectService(project, service)
+    // Diagnosis is a courtesy on an alert that is going out regardless. A docker that
+    // cannot be read here costs this service's logs, never the alert or the rollback.
+    let obs: ServiceObservation
+    try {
+      obs = await inspectService(project, service)
+    } catch {
+      continue
+    }
     if (obs.healthLog.length > 0) {
       parts.push(`${service} healthcheck:\n${obs.healthLog.join('\n')}`)
     }

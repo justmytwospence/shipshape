@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { Verifier, DEFAULT_VERIFY, type VerifyConfig } from '../src/deploy/verify.ts'
-import { parseInspect, projectName, missing } from '../src/deploy/probe.ts'
+import { Verifier, DEFAULT_VERIFY, runVerify, type VerifyConfig } from '../src/deploy/verify.ts'
+import { DockerUnreadable, parseInspect, projectName, missing } from '../src/deploy/probe.ts'
 import { expectedRef } from '../src/deploy/run.ts'
 import type { ServiceObservation, ServiceSnapshot } from '../src/deploy/probe.ts'
 
@@ -40,6 +40,8 @@ const snap = (over: Partial<ServiceSnapshot> = {}): ServiceSnapshot[] => [
     restartCount: 0,
     hadHealthcheck: false,
     running: true,
+    state: 'running',
+    restartPolicy: 'unless-stopped',
     ...over,
   },
 ]
@@ -229,6 +231,24 @@ test('three blind rounds is an error, not a failure', () => {
   assert.equal(ver.push([], 0), null)
   assert.equal(ver.push([], 5000), null)
   assert.equal(ver.push([], 10_000)?.kind, 'error')
+})
+
+test('a verifier that cannot ask docker returns error, never failed', async () => {
+  // End to end through the loop. Before the reader was strict, this same blindness came
+  // back as `absent`, failed the deploy ten seconds in, and the rollback reverted main.
+  let t = 0
+  const verdict = await runVerify(['svc'], snap(), cfg, {
+    observe: async () => {
+      throw new DockerUnreadable('x')
+    },
+    probe: async () => undefined,
+    expectedImageRef: () => null,
+    sleep: async (ms) => {
+      t += ms
+    },
+    now: () => t,
+  })
+  assert.equal(verdict.kind, 'error')
 })
 
 test('the deadline is a failure, not a default pass', () => {

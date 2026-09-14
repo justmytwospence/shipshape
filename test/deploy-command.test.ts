@@ -64,6 +64,13 @@ test('a refusal says nothing was attempted', () => {
   assert.match(s, /Nothing was attempted/)
 })
 
+test('a docker that could not be asked says nothing was touched', () => {
+  // Even under rm-first: the read comes before the removal, so nothing can be DOWN.
+  const s = failureState({ ok: false, phase: 'inspect', reason: 'x' }, 'rm-first')
+  assert.match(s, /Nothing was touched/)
+  assert.doesNotMatch(s, /DOWN/)
+})
+
 test('the old pair of knobs folds into one switch, conservatively', () => {
   // `merge.auto` and `deploy.mode` asked one question twice and could disagree. The
   // reading is: nothing runs unattended unless the file said so in both places.

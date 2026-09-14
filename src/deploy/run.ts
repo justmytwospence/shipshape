@@ -1,7 +1,14 @@
 import { execa } from 'execa'
 import { join } from 'node:path'
 import { env, inBlackout, loadPolicy, type Policy } from '../config.ts'
-import { httpProbe, inspectService, projectName, snapshotTarget, type ServiceSnapshot } from './probe.ts'
+import {
+  DockerUnreadable,
+  httpProbe,
+  inspectService,
+  projectName,
+  snapshotTarget,
+  type ServiceSnapshot,
+} from './probe.ts'
 import { includedStacks, scanRepo } from '../compose/scan.ts'
 import { DEFAULT_VERIFY, runVerify, type Verdict } from './verify.ts'
 import { getDb, logEvent } from '../db.ts'
@@ -53,8 +60,11 @@ export interface DeployTarget {
  * A plain `up` that fails leaves the old container running; the same failure after
  * `rm -sf` leaves the service DOWN. Reporting both as "the service is running whatever
  * it was" was false in exactly the case that needed the operator out of bed.
+ *
+ * `inspect` comes before either: docker could not be asked what is there, so the deploy
+ * stopped before its first command and nothing on the host was touched.
  */
-export type DeployPhase = 'refused' | 'rm' | 'up' | 'verify'
+export type DeployPhase = 'refused' | 'inspect' | 'rm' | 'up' | 'verify'
 
 export type DeployOutcome =
   | { ok: true; healthy: boolean; detail: string; verdict?: Verdict; snapshot?: ServiceSnapshot[] }
@@ -151,7 +161,21 @@ export async function deploy(
   // Before anything is replaced: what is running now. It cannot be recovered afterwards
   // -- the container this is about to remove is the only record of it -- and it is both
   // the rollback target and the baseline the restart counter is measured against.
-  const snapshot = await snapshotTarget(project, target.services)
+  let snapshot: ServiceSnapshot[]
+  try {
+    snapshot = await snapshotTarget(project, target.services)
+  } catch (err) {
+    if (!(err instanceof DockerUnreadable)) throw err
+    // A docker that cannot say what is there now cannot say what came up afterwards
+    // either. Stop before the first command and say so, rather than record a baseline
+    // of guesses and hand the result to a verifier just as blind.
+    const n = target.services.length
+    return {
+      ok: false,
+      phase: 'inspect',
+      reason: `could not ask docker whether ${target.services.join(', ')} ${n === 1 ? 'is' : 'are'} running: ${err.message}`,
+    }
+  }
 
   if (target.strategy === 'rm-first') {
     const rm = removeArgs(target)
@@ -353,9 +377,11 @@ export function manualCommand(target: DeployTarget): string {
  * What a failed deploy left behind, in the operator's terms.
  *
  * Only a plain `up` is safe to describe as leaving the old container in place; every
- * other phase either removed it first or never got that far.
+ * other phase either removed it first or never got that far. `inspect` never got as far
+ * as anything, whatever the strategy -- the read comes before the removal.
  */
 export function failureState(outcome: Extract<DeployOutcome, { ok: false }>, strategy: DeployTarget['strategy']): string {
+  if (outcome.phase === 'inspect') return 'Nothing was touched: shipshape does not guess whether a service is running.'
   if (outcome.phase === 'up' && strategy === 'rm-first') {
     return 'The old container was removed and the new one did not start — the service is DOWN.'
   }
@@ -426,11 +452,18 @@ export async function deployForPr(
       detail: `${outcome.reason}${outcome.stderr ? `\n${outcome.stderr}` : ''}`,
     })
     const down = outcome.phase === 'up' && target.strategy === 'rm-first'
+    // No command to paste when docker could not be asked: compose was never the problem,
+    // and running it by hand while docker cannot say what is there is the very guess the
+    // deploy declined to make. What fixes it is docker answering.
+    const next =
+      outcome.phase === 'inspect'
+        ? 'Press Try again on the update once docker answers.'
+        : `Retry with:\n${manualCommand(target)}`
     await notify({
       title: down
         ? `shipshape: ${target.stack} is DOWN — deploy failed`
         : `shipshape: deploy failed — ${target.stack}`,
-      body: `#${prNumber} merged but ${target.services.join(', ')} did not deploy.\n\n${outcome.reason}\n\n${failureState(outcome, target.strategy)}\n\nRetry with:\n${manualCommand(target)}`,
+      body: `#${prNumber} merged but ${target.services.join(', ')} did not deploy.\n\n${outcome.reason}\n\n${failureState(outcome, target.strategy)}\n\n${next}`,
       priority: down ? 5 : 4,
       tags: ['rotating_light'],
     })

@@ -123,37 +123,164 @@ export function missing(service: string): ServiceObservation {
   }
 }
 
-/** Look one service up, scoped to its compose project so no other stack can answer. */
+/**
+ * Docker could not be asked -- as opposed to Docker answering that there is nothing there.
+ *
+ * The two used to be one value. A `docker ps` that failed -- no permission on the
+ * socket, a daemon restarting underneath it, a call that never came back -- produced an
+ * empty list, and an empty list read as `absent`. The verifier treats a persistent
+ * absence as a hard failure, so a verifier that could not see anything reported "no
+ * container" ten seconds in, failed a deploy that had worked, and reverted main. The
+ * soak made the same mistake more quietly and alerted "degraded" on a socket error.
+ *
+ * So not being able to ask is its own answer, thrown rather than returned, and every
+ * caller has to decide what blindness means for it instead of inheriting a guess.
+ */
+export class DockerUnreadable extends Error {
+  override name = 'DockerUnreadable'
+}
+
+/** The parts of a finished docker invocation this module reads. Shaped like execa's result. */
+export interface ExecResult {
+  exitCode?: number
+  stdout?: unknown
+  stderr?: unknown
+  timedOut?: boolean
+}
+
+/** One docker invocation. Injected, so every reading below is testable with no daemon. */
+export type DockerExec = (args: string[]) => Promise<ExecResult>
+
+export const dockerExec: DockerExec = (args) =>
+  execa('docker', args, { reject: false, timeout: 20_000 })
+
+/** The line of stderr that says what went wrong; docker puts it last. */
+function lastLine(s: unknown): string {
+  const lines = String(s ?? '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+  return (lines.at(-1) ?? '').slice(0, 200)
+}
+
+/**
+ * The container ids `docker ps` listed, or a throw when it could not list them.
+ *
+ * An empty list is only an answer when the exit code says docker gave one.
+ */
+export function readPs(r: ExecResult): string[] {
+  if (r.timedOut) throw new DockerUnreadable(lastLine(r.stderr) || 'docker ps did not answer')
+  if ((r.exitCode ?? 1) !== 0) throw new DockerUnreadable(lastLine(r.stderr) || 'docker ps failed')
+  return String(r.stdout ?? '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+}
+
+/**
+ * What `docker inspect` said about these containers: their observations, `'gone'` when
+ * docker says they no longer exist, or a throw when docker could not be read.
+ *
+ * The exit code is read before stdout, and that order is the point. `docker inspect`
+ * prints `[]` on stdout even when it cannot connect to the daemon at all, so stdout is
+ * never trusted without the exit code -- an empty array on its own is evidence of
+ * nothing. "No such object" is the one failure that is an answer: the container was
+ * removed between `ps` and `inspect`.
+ */
+export function readInspect(service: string, r: ExecResult): ServiceObservation[] | 'gone' {
+  if (r.timedOut) throw new DockerUnreadable(lastLine(r.stderr) || 'docker inspect did not answer')
+  if ((r.exitCode ?? 1) !== 0) {
+    if (/No such object/i.test(String(r.stderr ?? ''))) return 'gone'
+    throw new DockerUnreadable(lastLine(r.stderr) || 'docker inspect failed')
+  }
+
+  let raw: unknown
+  try {
+    raw = JSON.parse(String(r.stdout ?? ''))
+  } catch {
+    throw new DockerUnreadable('docker inspect returned something unreadable')
+  }
+  if (!Array.isArray(raw) || raw.some((c) => typeof c !== 'object' || c === null)) {
+    throw new DockerUnreadable('docker inspect returned something unreadable')
+  }
+  if (raw.length === 0) return 'gone'
+
+  const obs = raw.map((c) => parseInspect(service, c))
+  // A container with no State.Status has told us nothing about whether it is running,
+  // and every reader downstream would have to guess. Guessing is what this replaces.
+  if (obs.some((o) => o.state === 'unknown')) {
+    throw new DockerUnreadable(`docker inspect gave no state for ${service}`)
+  }
+  return obs
+}
+
+/** Docker's states, most alive first. Anything unlisted ranks below all of them. */
+const ALIVE = ['running', 'restarting', 'paused', 'created', 'exited', 'dead', 'removing']
+
+/**
+ * The one container that speaks for a service when several carry its labels.
+ *
+ * Compose can leave more than one: a scaled service, or a recreate interrupted between
+ * creating the new container and removing the old. Reading only the first id `ps` listed
+ * let whichever happened to come first answer for all of them, so a leftover corpse
+ * could report a running service as exited. The most alive one wins; among equals, the
+ * first listed.
+ */
+export function primary(obs: ServiceObservation[]): ServiceObservation {
+  const rank = (state: string): number => {
+    const i = ALIVE.indexOf(state)
+    return i === -1 ? ALIVE.length : i
+  }
+  let best = obs[0]
+  if (!best) throw new Error('primary() needs at least one observation')
+  for (const o of obs) if (rank(o.state) < rank(best.state)) best = o
+  return best
+}
+
+/**
+ * Look one service up, scoped to its compose project so no other stack can answer.
+ *
+ * Strict about "docker says there is no container" versus "docker could not be asked",
+ * because the two lead to opposite actions. This used to return `missing` for both -- a
+ * failed `ps`, a failed `inspect`, output it could not parse -- and `absent` is a hard
+ * failure to the verifier: a verifier blinded by a socket permission or a restarting
+ * daemon failed deploys that had worked, and the rollback that followed reverted main.
+ * Now only docker's own answer is `absent`; anything else throws `DockerUnreadable`, and
+ * the caller decides what to do knowing it could not see.
+ */
 export async function inspectService(
   project: string,
   service: string,
+  exec: DockerExec = dockerExec,
 ): Promise<ServiceObservation> {
-  const ps = await execa(
-    'docker',
-    [
-      'ps',
-      '--all',
-      '--filter',
-      `label=com.docker.compose.project=${project}`,
-      '--filter',
-      `label=com.docker.compose.service=${service}`,
-      '--format',
-      '{{.ID}}',
-    ],
-    { reject: false, timeout: 20_000 },
-  )
-  const id = String(ps.stdout ?? '').split('\n').find((l) => l.trim())
-  if (!id) return missing(service)
+  const ps = async (): Promise<string[]> =>
+    readPs(
+      await exec([
+        'ps',
+        '--all',
+        '--filter',
+        `label=com.docker.compose.project=${project}`,
+        '--filter',
+        `label=com.docker.compose.service=${service}`,
+        '--format',
+        '{{.ID}}',
+      ]),
+    )
 
-  const ins = await execa('docker', ['inspect', id], { reject: false, timeout: 20_000 })
-  if ((ins.exitCode ?? 1) !== 0) return missing(service)
-  try {
-    const arr = JSON.parse(String(ins.stdout)) as unknown[]
-    if (!arr[0]) return missing(service)
-    return parseInspect(service, arr[0])
-  } catch {
-    return missing(service)
+  let ids = await ps()
+  if (ids.length === 0) return missing(service)
+
+  let found = readInspect(service, await exec(['inspect', ...ids]))
+  if (found === 'gone') {
+    // Removed between the two calls -- compose recreating it, or an `rm -sf` mid-deploy.
+    // Ask once more, so a container caught mid-replacement is read as its replacement
+    // rather than as nothing. Gone twice running is an answer.
+    ids = await ps()
+    if (ids.length === 0) return missing(service)
+    found = readInspect(service, await exec(['inspect', ...ids]))
+    if (found === 'gone') return missing(service)
   }
+  return primary(found)
 }
 
 export interface ServiceSnapshot {
@@ -162,7 +289,25 @@ export interface ServiceSnapshot {
   imageId: string | null
   restartCount: number
   hadHealthcheck: boolean
+  /** Running or restarting: either way the restart policy is still trying to run it. */
   running: boolean
+  /** The docker state it was read in; `absent` when docker listed no container. */
+  state: string
+  restartPolicy: string
+}
+
+/** The part of an observation worth keeping once the container it describes may be gone. */
+export function snapshotOf(o: ServiceObservation): ServiceSnapshot {
+  return {
+    service: o.service,
+    imageRef: o.imageRef,
+    imageId: o.imageId,
+    restartCount: o.restartCount,
+    hadHealthcheck: o.health !== 'none',
+    running: o.state === 'running' || o.state === 'restarting',
+    state: o.state,
+    restartPolicy: o.restartPolicy,
+  }
 }
 
 /**
@@ -171,20 +316,16 @@ export interface ServiceSnapshot {
  * Recorded rather than recomputed because by the time a deploy has failed, the thing it
  * replaced is already gone -- this is the previous-good state every rollback design in
  * the survey keeps somewhere, and the baseline the restart counter is measured against.
+ *
+ * Throws `DockerUnreadable` rather than recording a guess: a baseline that says "absent"
+ * because docker could not be asked is false, and the deploy built on it would be too.
  */
 export async function snapshotTarget(
   project: string,
   services: string[],
 ): Promise<ServiceSnapshot[]> {
   const obs = await Promise.all(services.map((s) => inspectService(project, s)))
-  return obs.map((o) => ({
-    service: o.service,
-    imageRef: o.imageRef,
-    imageId: o.imageId,
-    restartCount: o.restartCount,
-    hadHealthcheck: o.health !== 'none',
-    running: o.state === 'running',
-  }))
+  return obs.map(snapshotOf)
 }
 
 /** Container logs since the deploy began, bounded — the diagnosis nobody was collecting. */

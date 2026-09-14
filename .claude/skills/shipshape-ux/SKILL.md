@@ -135,7 +135,15 @@ rung.
   summary on the row rather than behind a click, and a link out for every release. It is a
   tab, not a seventh destination -- the six below still stand.
 - **Services** — every service, its watch status, and its effective configuration with
-  provenance (label / default / inferred / locked).
+  provenance (label / default / inferred / locked). Three lines say where release notes
+  come from: **upstream** (the repository, and how it was found — a likely match says it is
+  one), **notes** (where else they are read from), and **packaging** (a LinuxServer image's
+  container repository, which has container changes only). **Change** on either opens the
+  link dialog: **Preview** first, and **Write it to the compose file** only from the preview
+  it was checked against. **Look again** repeats the lookup now, spending Docker Hub pulls
+  if it has to. The **Unlinked** filter lists watched services with no certain upstream, and
+  "Link the upstream" is the words wherever that gap shows — a review read without notes, a
+  release with no project, the change pane.
 - **Activity** — the log, coalesced.
 - **Settings** — the defaults, Pause, review, your comments, notifications, schedule;
   Advanced holds everything else; `/docs` explains the model.

@@ -27,9 +27,19 @@ but has two problems here:
 2. **No extension point for an LLM.** Renovate has no hook that can write to a PR body,
    so any AI summary has to be a separate bot commenting afterwards.
 
-shipshape resolves the source repo in three tiers — OCI annotations, then a curated
-override map (the LinuxServer API's `project_url` field resolves their entire tier for
-free), then Claude web search for the residue — and caches the answer permanently.
+shipshape finds the source repository by asking, most certain first: a short curated map
+for Docker Official Images; LinuxServer's API and, where that names a website, the
+repository their build file reads releases from; the image's own OCI annotation; its
+ghcr.io path; a GitHub link on its Docker Hub, Quay or GitLab page; a source label in its
+config, unless it was inherited from a base image; and a GitHub repository with the
+image's own owner and name. Every inferred repository is checked against GitHub, and a
+packaging repository is never the answer. One authoritative signal, or two agreeing, make
+it certain; anything else is only likely. A found repository is kept, a lookup that failed
+is retried with backoff rather than remembered as "nothing", and a clean "nothing found"
+is looked at again after a week. The scan looks up every watched image this way, without
+spending Docker Hub pulls. What no signal reaches, `shipshape.source` and
+`shipshape.changelog` say — and the service's page writes them, after previewing what the
+link leads to.
 
 It also fixes a subtler thing. WUD's compose trigger recreates a container by cloning the
 *running* container's config and swapping only the image, so it never re-reads the
@@ -224,7 +234,12 @@ takes effect on the next scan without recreating anything.
       shipshape.pr: on-request      # the original spelling of the on-request rung,
                                    #   still honoured; shipshape.policy now expresses
                                    #   the whole ladder in one label
-      shipshape.source: https://github.com/owner/repo   # if the image lacks an OCI source label
+      shipshape.source: owner/repo  # the upstream repository, when shipshape cannot find it;
+                                   #   a github.com link works too, and is written as owner/repo
+      shipshape.changelog: https://example.com/release-notes
+                                   # where the notes are when GitHub releases do not have
+                                   #   them: an https page, or a path in the repository
+                                   #   such as CHANGELOG.md. Read alongside any releases.
       shipshape.propose: service    # none | service | compose-file | compose-dir | repo
                                    #   how far a drafted change may reach, derived from
                                    #   where the compose file sits. Any text file inside
@@ -234,14 +249,32 @@ takes effect on the next scan without recreating anything.
       shipshape.deploy: rm-first    # recreate rather than update (re-reads image env)
 ```
 
+### Where the release notes come from
+
+For each update, shipshape reads the notes for exactly the versions it crosses — after the
+running version, up to and including the proposed one: the upstream's GitHub releases in
+that range, prereleases marked; the sections of its changelog file for those versions
+(`CHANGELOG`, `CHANGES`, `HISTORY`, `NEWS`, `RELEASE_NOTES`, or a directory of one file per
+version), leaving out what a release already says; the notes linked by
+`shipshape.changelog`; and the newest commits between the two tags. Image tags and release
+names are matched by the version they name, so `2.96.22-cpu` meets `v2.96.22` and
+`4.137.0-ls364` meets `v4.137.0`. The review is told where the repository came from, how
+sure that is, and what was and was not found. A rate limit or an outage marks the reading
+incomplete; the verdict stands, and is read again later.
+
+Prereleases follow the stream a service is on. A service running a stable release is not
+offered a prerelease; one already on a prerelease line — minuspod's maintainer marks most
+releases as prereleases — keeps moving along it.
+
 ### Letting the model decide (opt-in, off by default)
 
 `shipshape.policy: model` defers the auto-versus-review question to the changelog
 review, instead of deciding it by version magnitude. It is the one place a model can
 *raise* a rung rather than only lower it, so promotion requires all of:
 
-- the image resolves to a real upstream (its own OCI annotation, a curated override,
-  LinuxServer's API, or your `shipshape.source` label);
+- the image resolves to a real upstream with certainty — its own OCI annotation, a curated
+  override, LinuxServer, your `shipshape.source` label, or two independent signals agreeing.
+  A likely match is enough to read release notes from, and not enough for this;
 - **every URL the verdict cited lives under that upstream repository** — this is the
   actual guard. Web search is domain-restricted but page fetches are not, and GitHub
   hosts content anyone can create, so "it turned up in a search" proves nothing;

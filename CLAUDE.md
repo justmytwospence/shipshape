@@ -41,8 +41,12 @@ routes it touched:
 ```
 node bin/shots.mjs --label my-change --routes / /updates          # dev server
 node bin/shots.mjs --label after --compare baseline               # side-by-side sheet
-node bin/shots.mjs --base http://10.0.74.70:8080 --label prod     # the deployed container
+node bin/shots.mjs --base http://<container-ip>:8080 --label prod  # the deployed container
 ```
+
+The container's address changes every time it is recreated. Find it with
+`docker inspect shipshape --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}'`
+and use the `10.0.74.x` one.
 
 It needs a CDP endpoint. This host is headless, so run one in a container that shares the
 host's network (CDP stays bound to 127.0.0.1):
@@ -140,6 +144,40 @@ before touching views. The load-bearing ones:
 - htmx does not swap on a 4xx: an action that fails returns 200 with the unchanged
   fragment and a warning toast (`HX-Trigger`).
 
+## Upstream links and release notes
+
+Which repository an image comes from, and what its release notes say, feed detection (the
+prerelease stream), the review, the model tier's `linked` guard, pull request bodies and
+three pages. It went wrong in every one of those places separately before it was pulled
+into one place, so keep it there:
+
+- **One accessor.** `sourceFor` / `sourceForSync` in `src/resolver/index.ts` apply labels
+  and the cache together. Nothing outside `src/resolver/` reads the `resolutions` table or
+  the `source_label` / `changelog_label` columns; `test/resolver-boundary.test.ts` fails on
+  a new reader.
+- **One version key.** Match an image tag, a release name, a changelog heading or a file
+  name through `versionKey` / `inRange` in `src/versions/key.ts`, never by stripping a `v`
+  by hand. It already knows variants, LinuxServer builds, `pkg@1.2.3`, `version-` prefixes,
+  dash-encoded versions and floating tags.
+- **A failure to look is never `none`.** A rate limit, a timeout or a Hub budget stop is
+  recorded as an error and retried with backoff. Only a clean answer is written as "nothing
+  found", and a repository already found survives a failed lookup.
+- **Bump `RESOLVER_VERSION`** whenever tier logic changes, so rows written by the old logic
+  are looked at again.
+- **Upstream calls go through the clients**: `src/upstream/github.ts` (classified failures,
+  ETag cache) and `src/upstream/safe-fetch.ts` for any link an operator typed, which must
+  never reach an address inside the lab. Tests use `test/helpers/http.ts` — `mockFetch`
+  plus `assertAllMocked`, which catches the call a degrading caller would otherwise swallow
+  — and mock DNS with `t.mock.method(dns.promises, 'lookup', …)`.
+- **Measure before changing a tier.** `npm run resolve-report -- --dry-run --why` shows
+  what a fresh look would find for every watched image without writing anything
+  (`--allow-billed` includes the Docker Hub walk, `--without-overrides` shows what the
+  curated map is still for). Run it against an online backup of the database, or in the
+  container as `node dist/bin/resolve-report.js`.
+- **The curated map is the last resort.** Add an entry only when no tier can find the
+  repository; remove one when `--without-overrides` finds the same repository with
+  certainty.
+
 ## Getting a change running
 
 A change is not done when it is committed; it is done when it is running.
@@ -148,8 +186,8 @@ A change is not done when it is committed; it is done when it is running.
 # from the PRIMARY checkout (/home/spencer/homelab), never a worktree --
 # compose resolves relative volume paths and the project name from the checkout it runs in
 docker compose -f shipshape/docker-compose.yaml up -d --build
-curl -s http://10.0.74.70:8080/health
-node shipshape/app/bin/shots.mjs --base http://10.0.74.70:8080 --label prod-after
+curl -s http://<container-ip>:8080/health
+node shipshape/app/bin/shots.mjs --base http://<container-ip>:8080 --label prod-after
 ```
 
 Then commit the submodule pointer in the parent repo. shipshape excludes its own stack, so

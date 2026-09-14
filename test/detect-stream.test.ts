@@ -67,8 +67,19 @@ const releases = (repo: string, list: [string, boolean][]) => ({
     json(list.map(([tag_name, prerelease]) => ({ tag_name, name: tag_name, published_at: null, body: '', draft: false, prerelease }))),
 })
 
+/** An upstream already found, so these tests are about the stream and nothing else. */
+function resolved(repository: string, repo: string): void {
+  const now = new Date().toISOString()
+  getDb()
+    .prepare(
+      `INSERT INTO resolutions (registry, repository, source_url, tier, confidence, resolved_at, checked_at, resolver_version)
+       VALUES ('docker.io', ?, ?, 'description', 'high', ?, ?, 2)`,
+    )
+    .run(repository, repo, now, now)
+}
+
 test('n8n on stable 2.38.4 is offered the patch, not the beta', async (t) => {
-  // n8n resolves through the curated map, so only tags and releases are fetched.
+  resolved('n8nio/n8n', 'n8n-io/n8n')
   const h = mockFetch(t, [
     hubTags('n8nio/n8n', ['2.38.4', '2.38.5', '2.39.0', '2.39.1']),
     releases('n8n-io/n8n', [['n8n@2.39.1', true], ['n8n@2.39.0', true], ['n8n@2.38.5', false], ['n8n@2.38.4', false]]),
@@ -131,6 +142,7 @@ test("code-server's stream is read from coder's releases, never from its packagi
 })
 
 test('when GitHub cannot be read, updates keep flowing rather than freezing', async (t) => {
+  resolved('n8nio/n8n', 'n8n-io/n8n')
   const h = mockFetch(t, [
     hubTags('n8nio/n8n', ['2.38.4', '2.39.1']),
     { url: 'https://api.github.com/repos/n8n-io/n8n/releases?per_page=100&page=1', reply: () => status(403, { 'x-ratelimit-remaining': '0' }) },

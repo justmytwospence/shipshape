@@ -6,6 +6,7 @@ import { actionsFor, isTransient, primaryVerb, type ActionContext, type Verb } f
 import { LIVE_STATES, sqlIn, type UpdateState } from './state.ts'
 import { refLinks, registryName, type RefLinks } from '../links.ts'
 import { parseImageRef } from '../images/ref.ts'
+import { readRecordedPlan } from '../deploy/runstate.ts'
 import { sourceForSync } from '../resolver/index.ts'
 
 /**
@@ -441,12 +442,23 @@ export function inboxRecent(hours = 24, limit = 20): RecentItem[] {
   // reading the status alone would say the member that was never started "verified". An
   // older row it was linked to keeps saying what that row did. Anything unrecognised still
   // falls to `failed`, which is why the new status has to be named here at all.
+  //
+  // The row's recorded plan says it too, and outlasts the state: once a later merge
+  // overtakes the update it reads superseded, and without the plan arm Recently turned the
+  // member that was never started into "verified". A row that rolled back or could not be
+  // run keeps its own word. The CASE inside json_each keeps a malformed snapshot from
+  // failing the whole list.
   const deployed = db
     .prepare(
       `SELECT d.finished_at AS at,
               CASE WHEN d.status = 'left-stopped' THEN 'left-stopped'
                    WHEN u.state = 'left-stopped'
                         AND d.id = (SELECT MAX(du2.deploy_id) FROM deploy_updates du2 WHERE du2.update_id = u.id)
+                     THEN 'left-stopped'
+                   WHEN d.status NOT IN ('rolled-back', 'error')
+                        AND EXISTS (SELECT 1
+                                      FROM json_each(CASE WHEN json_valid(d.snapshot) THEN d.snapshot ELSE '{}' END, '$.left') j
+                                     WHERE json_extract(j.value, '$.service') = u.service)
                      THEN 'left-stopped'
                    WHEN d.status = 'verified' THEN 'verified' WHEN d.status = 'degraded' THEN 'degraded'
                    WHEN d.status = 'rolled-back' THEN 'rolled-back' WHEN d.status = 'deployed' THEN 'deployed'
@@ -575,11 +587,21 @@ export function updateTimeline(id: number): Milestone[] {
       'rolled-back': { label: 'rolled back to the previous version', level: 'error' },
       error: { label: 'the deploy could not be run', level: 'error' },
     }
-    // The update's own state wins over the row's status when it was left stopped. A group
-    // deploy is one row for both halves, so the row can say deployed or verified about the
-    // member that came up while this one was never started -- and the soak that row is
-    // waiting on is not a step this update will take.
-    const key = v.state === 'left-stopped' ? 'left-stopped' : v.deploy.status
+    // Left stopped wins over the row's status. A group deploy is one row for both halves, so
+    // the row can say deployed or verified about the member that came up while this one was
+    // never started -- and the soak that row is waiting on is not a step this update takes.
+    //
+    // Read from the row's recorded plan, not only the update's state. The state stops saying
+    // left-stopped once a later merge overtakes the update and it reads superseded, and the
+    // history then claimed "verified" for the member that was never started. A row that
+    // rolled back, or could not be run, is named by what it did instead.
+    const leftHere =
+      readRecordedPlan(d?.snapshot ?? null)?.left.some((l) => l.service === v.service) ?? false
+    const key =
+      v.state === 'left-stopped' ||
+      (leftHere && v.deploy.status !== 'rolled-back' && v.deploy.status !== 'error')
+        ? 'left-stopped'
+        : v.deploy.status
     const f = finished[key]
     if (f) {
       out.push({
@@ -590,7 +612,7 @@ export function updateTimeline(id: number): Milestone[] {
         level: f.level,
       })
     }
-    if (v.deploy.status === 'deployed' && v.deploy.recheckAt && v.state !== 'left-stopped') {
+    if (v.deploy.status === 'deployed' && v.deploy.recheckAt && key !== 'left-stopped') {
       out.push({
         at: v.deploy.recheckAt,
         kind: 'verified',

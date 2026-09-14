@@ -25,6 +25,7 @@ const {
   listUpdates,
   updatesForService,
 } = await import('../src/updates/queries.ts')
+const { retireOvertaken } = await import('../src/updates/overtaken.ts')
 
 after(() => rmSync(dir, { recursive: true, force: true }))
 
@@ -272,6 +273,54 @@ test('the timeline of a left-stopped update ends there', () => {
     assert.equal(last.label, 'left stopped — it was not running')
     assert.ok(!timeline.some((m) => m.future), `${id}: no soak ahead of it`)
   }
+})
+
+test('a left-stopped member still reads left stopped once a later merge overtakes it', () => {
+  // n8n #91 left n8n-import stopped while n8n verified on the same row. The next group bump
+  // merged, retireOvertaken moved n8n-import's update to superseded -- and its history
+  // started saying "verified", because only the update's state had said left stopped.
+  const db = getDb()
+  const left = addUpdate({ service: 'n8n-import', state: 'left-stopped', fromTag: '2.38.5', toTag: '2.38.7' })
+  const prA = addPr(left, { number: 91, state: 'merged', sha: 'abc' })
+  const up = addUpdate({ service: 'n8n', state: 'verified', fromTag: '2.38.5', toTag: '2.38.7' })
+  db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(prA, up)
+  const dep = addDeploy(left, { status: 'verified', prId: prA })
+  db.prepare(`INSERT INTO deploy_updates (deploy_id, update_id) VALUES (?, ?)`).run(dep, up)
+  db.prepare(`UPDATE deploys SET snapshot = ? WHERE id = ?`).run(
+    JSON.stringify({
+      v: 1,
+      at: ago(3),
+      seen: [],
+      up: ['n8n'],
+      left: [
+        { service: 'n8n-import', state: 'exited', why: 'not-running', restartPolicy: 'no', oldRef: 'n8nio/n8n:2.38.5' },
+      ],
+      restored: [],
+    }),
+    dep,
+  )
+  // Order is the whole question for retireOvertaken, so #91 merged strictly before #95.
+  db.prepare(`UPDATE prs SET merged_at = ? WHERE id = ?`).run(ago(3), prA)
+  const next = addUpdate({ service: 'n8n-import', state: 'merged', fromTag: '2.38.7', toTag: '2.38.8' })
+  addPr(next, { number: 95, state: 'merged', sha: 'def' })
+
+  retireOvertaken()
+  assert.equal(updateView(left)!.state, 'superseded', 'the precondition: it was overtaken')
+
+  const timeline = updateTimeline(left)
+  const kinds = timeline.map((m) => m.kind).join(', ')
+  assert.ok(timeline.some((m) => m.kind === 'left-stopped'), kinds)
+  assert.ok(!timeline.some((m) => m.kind === 'verified'), `never started, so never verified: ${kinds}`)
+  assert.ok(!timeline.some((m) => m.future), kinds)
+
+  const recent = inboxRecent(24)
+  const leftKinds = recent.filter((r) => r.updateId === left).map((r) => r.kind)
+  assert.ok(leftKinds.includes('left-stopped'), leftKinds.join(', '))
+  assert.ok(!leftKinds.includes('verified'), leftKinds.join(', '))
+  assert.ok(
+    recent.some((r) => r.updateId === up && r.kind === 'verified'),
+    'the half that came up on the same row still verified',
+  )
 })
 
 test('a service page shows its whole history, not just what is live', () => {

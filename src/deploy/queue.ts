@@ -287,7 +287,11 @@ export async function runDeployJob(
     markUpdates(job.id, 'deploying')
 
     try {
-      const outcome = await deployForPr(job.pr_number ?? 0, target, job.id, { carried, io: opts.io })
+      const outcome = await deployForPr(job.pr_number ?? 0, target, job.id, {
+        carried,
+        io: opts.io,
+        trigger: job.trigger,
+      })
       ran = true
 
       // The versions, not the timing: `deploys.detail` keeps "up in Ns" for the timeline.

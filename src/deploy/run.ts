@@ -16,6 +16,7 @@ import { includedStacks, scanRepo } from '../compose/scan.ts'
 import { DEFAULT_VERIFY, runVerify, type Verdict } from './verify.ts'
 import { getDb, logEvent } from '../db.ts'
 import { notify } from '../notify/index.ts'
+import type { DeployTrigger } from './queue.ts'
 import {
   countsAsRunning,
   leftClause,
@@ -697,13 +698,22 @@ export function failureState(outcome: Extract<DeployOutcome, { ok: false }>, str
  * deploy declined to make, so what fixes it is docker answering. And not for an orphan
  * either, where docker did answer: pressing Try again finds the same container every time
  * until someone removes it or brings it up from the project that owns it.
+ *
+ * The button it names is the one the update will actually offer. A merge that did not land
+ * goes back to merged and offers Try again; a Redeploy goes back to a moved rolling tag,
+ * which offers Redeploy and nothing called Try again.
  */
-export function nextStep(outcome: Extract<DeployOutcome, { ok: false }>, target: DeployTarget): string {
+export function nextStep(
+  outcome: Extract<DeployOutcome, { ok: false }>,
+  target: DeployTarget,
+  trigger?: DeployTrigger,
+): string {
+  const again = trigger === 'redeploy' ? 'Redeploy' : 'Try again'
   if (outcome.phase === 'inspect' && outcome.cause === 'orphan') {
     const rm = outcome.container ? ` (docker rm -f ${outcome.container})` : ''
-    return `Remove that container${rm} or bring it up from its own compose project, then press Try again on the update.`
+    return `Remove that container${rm} or bring it up from its own compose project, then press ${again} on the update.`
   }
-  if (outcome.phase === 'inspect') return 'Press Try again on the update once docker answers.'
+  if (outcome.phase === 'inspect') return `Press ${again} on the update once docker answers.`
   return `Retry with:\n${manualCommand(target)}`
 }
 
@@ -712,7 +722,12 @@ export async function deployForPr(
   prNumber: number,
   target: DeployTarget,
   deployId?: number,
-  opts: { carried?: ReadonlySet<string>; io?: DeployIo } = {},
+  opts: {
+    carried?: ReadonlySet<string>
+    io?: DeployIo
+    /** Who asked, so the alert names the button this update offers. */
+    trigger?: DeployTrigger
+  } = {},
 ): Promise<DeployOutcome> {
   const outcome = await deploy(target, {
     carried: opts.carried,
@@ -793,7 +808,7 @@ export async function deployForPr(
     // exactly what the deploy declined to. A failed pull has that plan in memory only.
     const meant = outcome.plan?.up ?? outcome.up ?? target.services
     const named = meant.length ? meant : target.services
-    const next = nextStep(outcome, { ...target, services: meant })
+    const next = nextStep(outcome, { ...target, services: meant }, opts.trigger)
     await notify({
       title: down
         ? `shipshape: ${target.stack} is DOWN — deploy failed`

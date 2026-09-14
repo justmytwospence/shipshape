@@ -104,6 +104,13 @@ test('the next step is a command, except where a command is the wrong answer', (
   assert.match(orphan, /its own compose project, then press Try again/)
 })
 
+test('a Redeploy is told to press Redeploy, the only button a rolling update offers', () => {
+  const blind = { ok: false as const, phase: 'inspect' as const, reason: 'could not ask docker' }
+  assert.equal(nextStep(blind, target(), 'redeploy'), 'Press Redeploy on the update once docker answers.')
+  assert.equal(nextStep(blind, target(), 'queue'), 'Press Try again on the update once docker answers.')
+  assert.match(nextStep({ ...blind, cause: 'orphan' }, target(), 'redeploy'), /then press Redeploy on the update\.$/)
+})
+
 test('a refusal says nothing was attempted', () => {
   const s = failureState({ ok: false, phase: 'refused', reason: 'excluded stack' }, 'up')
   assert.match(s, /Nothing was attempted/)

@@ -39,6 +39,9 @@ globalThis.fetch = (async (_url: unknown, init: { headers: Record<string, string
 
 const { getDb } = await import('../src/db.ts')
 const { deployForPr } = await import('../src/deploy/run.ts')
+const { claimJob, linkDeployUpdates, runDeployJob } = await import('../src/deploy/queue.ts')
+const { contextFor } = await import('../src/updates/verbs.ts')
+const { actionsFor } = await import('../src/updates/actions.ts')
 const { composeCalls, fakeIo } = await import('./helpers/deploy-io.ts')
 type DeployTarget = import('../src/deploy/run.ts').DeployTarget
 
@@ -101,6 +104,38 @@ test('an orphan container says how to clear it, not to wait for docker', async (
     sent[0]!.body,
     /\n\nRemove that container \(docker rm -f bitwarden\) or bring it up from its own compose project, then press Try again on the update\.$/,
   )
+})
+
+test('a Redeploy that could not ask docker names the button a rolling update offers', async () => {
+  const db = getDb()
+  const now = new Date().toISOString()
+  const updateId = Number(
+    db
+      .prepare(
+        `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detail, detected_at, updated_at)
+         VALUES ('actual', 'actual', 'actualbudget/actual-server', 'latest@sha256:aaaa', 'latest@sha256:bbbb',
+                 'digest', 'manual', 'detected', 'rolling', ?, ?)`,
+      )
+      .run(now, now).lastInsertRowid,
+  )
+  const deployId = Number(
+    db
+      .prepare(
+        `INSERT INTO deploys (pr_number, pr_id, stack, services, strategy, ok, healthy, status, attempts, created_at, trigger)
+         VALUES (NULL, NULL, 'actual', 'actual', 'up', 0, 0, 'pending', 0, ?, 'redeploy')`,
+      )
+      .run(now).lastInsertRowid,
+  )
+  linkDeployUpdates(deployId, null, [updateId])
+
+  await runDeployJob(claimJob(deployId)!, { pull: true, io: fakeIo({ actual: 'unreadable' }) })
+
+  assert.equal(sent.length, 1)
+  assert.match(sent[0]!.body, /\n\nPress Redeploy on the update once docker answers\.$/)
+  assert.doesNotMatch(sent[0]!.body, /Try again/)
+  // And the button it names is really there.
+  assert.ok(actionsFor(contextFor(updateId)!.ctx).includes('redeploy'))
+  assert.ok(!actionsFor(contextFor(updateId)!.ctx).includes('retry'))
 })
 
 // ---------------------------------------------------------------- an up that fails

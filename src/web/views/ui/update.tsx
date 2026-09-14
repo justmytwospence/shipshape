@@ -371,6 +371,15 @@ export const VerdictBlock: FC<{ update: UpdateView }> = ({ update }) => {
             </ol>
           </div>
         ) : null}
+        {/* The review said what it could without notes; where they are is fixable here. */}
+        {v.notesInRange === 0 ? (
+          <p class="text-xs">
+            Read without release notes for this range.{' '}
+            <a href={`/services/${update.stack}/${update.service}`} class="link">
+              Link the upstream
+            </a>
+          </p>
+        ) : null}
         <p class="text-xs opacity-50">
           {v.sources.length > 0 ? (
             <>

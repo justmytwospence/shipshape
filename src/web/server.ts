@@ -49,14 +49,15 @@ import {
 } from './views/ui/settings.tsx'
 import type { StatusData } from './views/ui/status.tsx'
 import { authHealth } from '../health/github-auth.ts'
-import { ServiceDetail, ServicesList } from './views/ui/services.tsx'
+import { LinkPreviewPane, ServiceDetail, ServicesList } from './views/ui/services.tsx'
 import { ActivityList, KINDS as ACTIVITY_KINDS, type ActivityRow } from './views/ui/activity.tsx'
 import {
   filterServices as filterServiceRows,
   serviceDetail,
   serviceRows,
 } from '../updates/services.ts'
-import { setServiceLabel } from '../gitops/labels.ts'
+import { setServiceLabels, type LabelChange, type LabelKey } from '../gitops/labels.ts'
+import { previewLink } from '../resolver/preview.ts'
 import { InboxList, type InboxData } from './views/ui/inbox.tsx'
 import { ListCount, MergePreview, ScanStatus } from './views/ui/parts.tsx'
 import { UpdateDetail, UpdateRow } from './views/ui/update.tsx'
@@ -200,6 +201,9 @@ function repoParts(): { owner: string; repo: string } {
   const [owner, repo] = env.githubRepo.split('/') as [string, string]
   return { owner, repo }
 }
+
+/** The labels a browser may write. */
+const LABEL_KEYS = ['policy', 'watch', 'source', 'changelog'] as const
 
 /** A promise's value, its error, or 'timeout' once `ms` have passed -- whichever comes first. */
 async function within<T>(p: Promise<T>, ms: number): Promise<T | Error | 'timeout'> {
@@ -633,6 +637,40 @@ export function createApp(): Hono {
   })
 
   /**
+   * What a repository or notes link would give this service, before anything is written. The
+   * write form comes back inside this fragment, so what is written is what was shown. Capped at
+   * 15 seconds, and always a 200: htmx swaps nothing on an error.
+   */
+  app.get('/services/:stack/:service/link/preview', async (c) => {
+    const { policy } = loadPolicy()
+    const stack = c.req.param('stack')
+    const service = c.req.param('service')
+    const svc = scanRepo(env.repoDir, policy.exclude_stacks).find(
+      (s) => s.stack === stack && s.service === service,
+    )
+    if (!svc) return c.html(LinkPreviewPane({ failure: `${stack}/${service} is no longer here.` }) as string)
+    const outcome = await within(
+      previewLink({
+        stack,
+        service,
+        source: c.req.query('source') ?? '',
+        changelog: c.req.query('changelog') ?? '',
+        current: { source: svc.sourceLabel, changelog: svc.changelogLabel },
+      }),
+      15_000,
+    )
+    if (outcome === 'timeout') {
+      return c.html(
+        LinkPreviewPane({ failure: 'Checking the link took longer than 15 seconds. Try again in a moment.' }) as string,
+      )
+    }
+    if (outcome instanceof Error) {
+      return c.html(LinkPreviewPane({ failure: `Could not check the link: ${outcome.message}` }) as string)
+    }
+    return c.html(LinkPreviewPane({ preview: outcome, ctx: ctxString(ctxOf(c, 'services')) }) as string)
+  })
+
+  /**
    * Change what happens to this service without you, by writing the label into its
    * compose file and committing it.
    *
@@ -644,14 +682,27 @@ export function createApp(): Hono {
     const stack = c.req.param('stack')
     const service = c.req.param('service')
     const body = await c.req.parseBody()
-    const key = String(body.key ?? 'policy') as 'policy' | 'watch'
-    const raw = String(body.value ?? '')
-    const result = await setServiceLabel({
-      stack,
-      service,
-      key,
-      value: raw === '' ? null : raw,
-    })
+    const changes: LabelChange[] = []
+    if (body.link !== undefined) {
+      // From the link dialog's preview: the repository and the notes link, whichever it sent,
+      // in one commit.
+      for (const key of ['source', 'changelog'] as const) {
+        if (body[key] === undefined) continue
+        const value = String(body[key]).trim()
+        changes.push({ key, value: value === '' ? null : value })
+      }
+    } else {
+      const key = String(body.key ?? 'policy')
+      if (!(LABEL_KEYS as readonly string[]).includes(key)) {
+        toastHeader(c, 'warn', `shipshape does not write a "${key}" label.`)
+        if (!c.req.header('HX-Request')) return c.redirect(`/services/${stack}/${service}`, 303)
+        const found = servicePane(stack, service, ctxOf(c, 'services'))
+        return c.html(found ? (found.pane as string) : '')
+      }
+      const raw = String(body.value ?? '')
+      changes.push({ key: key as LabelKey, value: raw === '' ? null : raw })
+    }
+    const result = await setServiceLabels({ stack, service, changes })
     // The labels module leaves the images table to its caller, and nothing refreshed it, so
     // the pane answered from the last scan until the next one. Refresh this service's row.
     if (result.ok) refreshServiceLabels(stack, service)
@@ -1296,6 +1347,7 @@ function diffFragment(id: number): string {
       DiffView({
         result,
         links: row && ref ? refLinks(ref, row.to_tag, source?.repo ?? null) : undefined,
+        service: row ? { stack: row.stack, service: row.service } : undefined,
         prNumber: pr?.number ?? null,
         prUrl: pr ? `https://github.com/${env.githubRepo}/pull/${pr.number}` : null,
         prScope: pr?.scope ?? null,

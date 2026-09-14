@@ -3,7 +3,11 @@ import { parseImageRef, type ImageRef } from '../images/ref.ts'
 import { ghRequest, rawFile, type GhFailure } from '../upstream/github.ts'
 import { releaseIndex, type IndexedRelease } from '../upstream/releases.ts'
 import { compareKeys, inRange, sameVersion, versionKey, type VersionKey } from '../versions/key.ts'
-import { SECTION_CAP, TOTAL_CAP, sectionize, sectionsInRange, type Section } from './sectionize.ts'
+import { SECTION_CAP, TOTAL_CAP, fileVersion, sectionize, sectionsInRange, type Section } from './sectionize.ts'
+import { externalNotes, type ExternalNotes } from './external.ts'
+import type { ChangelogTarget } from '../resolver/labels.ts'
+
+export { fileVersion } from './sectionize.ts'
 
 /**
  * Everything the changelog review is shown about one update, and an honest account of what
@@ -36,6 +40,8 @@ export interface NotesSource {
   confidence: string | null
   detail: string | null
   packagingRepo?: string | null
+  /** `shipshape.changelog`, when a service names where its notes are. */
+  changelog?: { value: string; target: ChangelogTarget } | null
 }
 
 export interface NotesBundle {
@@ -48,6 +54,8 @@ export interface NotesBundle {
   /** Recent release names that could not be placed against the image's versions. */
   unplaced: string[]
   changelog: { file: string; sections: Section[]; omitted: string[] } | null
+  /** What the link in `shipshape.changelog` gave, when there is one. */
+  external: ExternalNotes | null
   commits: { from: string; to: string; total: number; subjects: string[] } | null
   container: { date: string; desc: string }[]
   fetches: Fetched[]
@@ -64,6 +72,8 @@ export interface NotesEvidence {
   range: { from: string; to: string; approximate: boolean }
   releases: number
   changelogSections: number
+  /** Sections for the range from the link in `shipshape.changelog`. */
+  linkedSections: number
   commits: number
   omitted: number
   fetches: Fetched[]
@@ -102,6 +112,7 @@ export async function assembleNotes(o: {
     omitted: [],
     unplaced: [],
     changelog: null,
+    external: null,
     commits: null,
     container: [],
     fetches: [],
@@ -112,18 +123,27 @@ export async function assembleNotes(o: {
   await containerChanges(b, ref)
 
   const repo = o.source.repo
+  const linked = o.source.changelog?.target ?? null
+  // Read whether or not a repository is known: a vendor's page is how plex's notes arrive.
+  if (linked?.kind === 'url') await linkedNotes(b, linked, repo, range)
+
   if (!repo) {
+    if (linked?.kind === 'path') {
+      b.notes.push(`shipshape.changelog names ${linked.path}, a path in the upstream repository, and no upstream repository is known.`)
+    }
     b.notes.push(
-      o.source.packagingRepo
-        ? `No upstream repository is known for this image. ${o.source.packagingRepo} packages it, and has only container changes.`
-        : 'No upstream repository is known for this image, so no release notes could be fetched directly.',
+      b.external
+        ? 'No upstream repository is known for this image; the notes linked by shipshape.changelog are what there is.'
+        : o.source.packagingRepo
+          ? `No upstream repository is known for this image. ${o.source.packagingRepo} packages it, and has only container changes.`
+          : 'No upstream repository is known for this image, so no release notes could be fetched directly.',
     )
     b.fetches.push({ what: 'releases', outcome: 'skipped', detail: 'no upstream repository' })
     return b
   }
 
   const all = await releases(b, repo, range)
-  await changelog(b, repo, range, all)
+  await changelog(b, repo, range, all, linked?.kind === 'path' ? linked.path : null)
   if (range.from && range.to) await commits(b, repo, o.fromTag, o.toTag, range, all)
   else b.fetches.push({ what: 'commits', outcome: 'skipped', detail: 'the tags name no versions to compare' })
   return b
@@ -137,16 +157,51 @@ export function evidenceOf(b: NotesBundle): NotesEvidence {
     range: { from: b.range.from, to: b.range.to, approximate: b.range.approximate },
     releases: b.releases.length,
     changelogSections: b.changelog?.sections.length ?? 0,
+    linkedSections: b.external?.sections.length ?? 0,
     commits: b.commits?.subjects.length ?? 0,
-    omitted: b.omitted.length + (b.changelog?.omitted.length ?? 0),
+    omitted: b.omitted.length + (b.changelog?.omitted.length ?? 0) + (b.external?.omitted.length ?? 0),
     fetches: b.fetches,
     incomplete: b.incomplete,
   }
 }
 
-/** Notes that describe the range: release bodies and changelog sections. Commits are not notes. */
+/**
+ * Notes that describe the range: release bodies, changelog sections, and linked sections.
+ * Commits are not notes, and neither is the unplaced beginning of a linked page.
+ */
 export function notesInRange(b: NotesBundle): number {
-  return b.releases.filter((r) => r.body.trim().length > 0).length + (b.changelog?.sections.length ?? 0)
+  return (
+    b.releases.filter((r) => r.body.trim().length > 0).length +
+    (b.changelog?.sections.length ?? 0) +
+    (b.external?.sections.length ?? 0)
+  )
+}
+
+async function linkedNotes(
+  b: NotesBundle,
+  target: Extract<ChangelogTarget, { kind: 'url' }>,
+  repo: string | null,
+  range: Range,
+): Promise<void> {
+  const res = await externalNotes(target, repo, { from: range.from, to: range.to })
+  if (!res.ok) {
+    b.fetches.push({ what: 'linked notes', outcome: res.transient ? 'unreachable' : 'not-found', detail: res.reason })
+    b.notes.push(`The notes linked by shipshape.changelog could not be read: ${res.reason}.`)
+    if (res.transient) b.incomplete = true
+    return
+  }
+  const n = res.notes
+  b.external = n
+  b.fetches.push({
+    what: 'linked notes',
+    outcome: n.sections.length > 0 || n.excerpt ? 'found' : 'none',
+    detail:
+      n.sections.length > 0
+        ? `${n.sections.length} sections of ${target.url} in the range`
+        : n.excerpt
+          ? `nothing on ${target.url} could be placed in the range, so its beginning is shown`
+          : `none of the ${n.totalSections} sections of ${target.url} are in the range`,
+  })
 }
 
 // ------------------------------------------------------------------ the range
@@ -270,29 +325,52 @@ interface Entry {
   type: string
 }
 
-async function changelog(b: NotesBundle, repo: string, range: Range, all: IndexedRelease[]): Promise<void> {
+async function changelog(
+  b: NotesBundle,
+  repo: string,
+  range: Range,
+  all: IndexedRelease[],
+  /** A path from `shipshape.changelog`, which replaces discovery. */
+  override: string | null,
+): Promise<void> {
   if (!range.to) {
     b.fetches.push({ what: 'changelog', outcome: 'skipped', detail: 'the tags name no versions to find in a changelog' })
     return
   }
-  const root = await listing(repo, '')
-  if (!root.ok) {
-    if (root.kind !== 'not-found') failed(b, 'changelog', root.kind, `${repo}'s files`, root.detail, root.resetAt)
-    return
-  }
 
-  let found = pick(root.entries)
-  if (!found.file && !found.dir) {
-    const docs = root.entries.find((e) => e.type === 'dir' && e.name.toLowerCase() === 'docs')
-    if (docs) {
-      const inside = await listing(repo, docs.path)
-      if (inside.ok) found = pick(inside.entries)
+  let found: { file: Entry | null; dir: Entry | null }
+  if (override) {
+    // Tried as a file first; a path that is not one is tried as a directory below.
+    found = { file: { name: override.split('/').pop() ?? override, path: override, type: 'file' }, dir: null }
+  } else {
+    const root = await listing(repo, '')
+    if (!root.ok) {
+      if (root.kind !== 'not-found') failed(b, 'changelog', root.kind, `${repo}'s files`, root.detail, root.resetAt)
+      return
+    }
+    found = pick(root.entries)
+    if (!found.file && !found.dir) {
+      const docs = root.entries.find((e) => e.type === 'dir' && e.name.toLowerCase() === 'docs')
+      if (docs) {
+        const inside = await listing(repo, docs.path)
+        if (inside.ok) found = pick(inside.entries)
+      }
     }
   }
 
   // A section a substantive release body already covers would say the same thing twice.
   const covered = (s: Section) =>
     all.some((r) => r.key && s.key && sameVersion(r.key, s.key) && r.body.trim().length >= SUBSTANTIVE)
+
+  if (found.file) {
+    const text = await rawFile(repo, found.file.path)
+    if (!text.ok && text.kind === 'not-found' && override) {
+      found = { file: null, dir: { name: found.file.name, path: override, type: 'dir' } }
+    } else if (!text.ok) {
+      if (text.kind !== 'not-found') failed(b, 'changelog', text.kind, found.file.path, text.detail)
+      return
+    }
+  }
 
   if (found.file) {
     const text = await rawFile(repo, found.file.path)
@@ -319,6 +397,10 @@ async function changelog(b: NotesBundle, repo: string, range: Range, all: Indexe
     const dir = await listing(repo, found.dir.path)
     if (!dir.ok) {
       if (dir.kind !== 'not-found') failed(b, 'changelog', dir.kind, found.dir.path, dir.detail)
+      else if (override) {
+        b.fetches.push({ what: 'changelog', outcome: 'not-found', detail: `shipshape.changelog names ${override}, which ${repo} does not have` })
+        b.notes.push(`shipshape.changelog names ${override}, which ${repo} does not have.`)
+      }
       return
     }
     // One file per version, named for it: grocy's `83_4.7.1_2026-09-04.md`.
@@ -372,15 +454,6 @@ function pick(entries: Entry[]): { file: Entry | null; dir: Entry | null } {
   return { file, dir }
 }
 
-/** The version a per-version file is named for, from its name's tokens. */
-export function fileVersion(name: string, family: VersionKey['family']): VersionKey | null {
-  const stem = name.replace(/\.(md|markdown|rst|txt|adoc)$/i, '')
-  const keys = stem
-    .split(/[_\s]+|-(?=v?\d)/)
-    .map((t) => versionKey(t))
-    .filter((k): k is VersionKey => !!k && !k.partial)
-  return keys.find((k) => k.family === family) ?? null
-}
 
 async function listing(
   repo: string,

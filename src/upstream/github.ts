@@ -123,10 +123,10 @@ export async function getRepo(repo: string): Promise<GhResult<RepoInfo | null>> 
 
 export type RawFile = { ok: true; text: string } | { ok: false; kind: GhFailure; status?: number; detail: string }
 
-/** A file on a repository's default branch, through raw.githubusercontent.com, which does not
- *  count against the API rate limit. */
-export async function rawFile(repo: string, path: string): Promise<RawFile> {
-  const url = `https://raw.githubusercontent.com/${repo}/HEAD/${path}`
+/** A file on a repository's default branch, or at `ref`, through raw.githubusercontent.com,
+ *  which does not count against the API rate limit. */
+export async function rawFile(repo: string, path: string, ref = 'HEAD'): Promise<RawFile> {
+  const url = `https://raw.githubusercontent.com/${repo}/${ref}/${path}`
   let res: Response
   try {
     await pace('raw.githubusercontent.com')

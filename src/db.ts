@@ -686,6 +686,15 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     ALTER TABLE verdicts ADD COLUMN evidence TEXT;
   `,
   },
+  {
+    id: '021-changelog-label',
+    sql: `
+    -- shipshape.changelog: where an image's release notes are when GitHub releases do not
+    -- have them -- a vendor's page, a file in the repository. Read from the compose files
+    -- like every other label, so it lives in git and changing it needs no invalidation.
+    ALTER TABLE images ADD COLUMN changelog_label TEXT;
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

@@ -149,6 +149,17 @@ test('every comment in the file survives an insert', () => {
   assert.deepEqual(comments(text), comments(FIXTURE))
 })
 
+test('a link is written bare when YAML reads it back unchanged, and stays one line', () => {
+  // The `#` of a fragment follows no space, so it is part of the value, not a comment.
+  const text = ok(setLabel(FIXTURE, 'plain', 'shipshape.changelog', 'https://example.com/notes#v2'))
+  assert.ok(text.includes('      shipshape.changelog: https://example.com/notes#v2\n'), text)
+  const js = parse(text) as { services: Record<string, { labels?: Record<string, unknown> }> }
+  assert.equal(js.services.plain!.labels!['shipshape.changelog'], 'https://example.com/notes#v2')
+
+  const src = ok(setLabel(FIXTURE, 'plain', 'shipshape.source', 'AsamK/signal-cli'))
+  assert.ok(src.includes('      shipshape.source: AsamK/signal-cli\n'), src)
+})
+
 test('the round-trip check rejects nothing on a clean edit but the parse stays intact', () => {
   const text = ok(setLabel(FIXTURE, 'jellyfin', 'shipshape.policy', 'model'))
   const js = parse(text) as { services: Record<string, { labels?: Record<string, unknown> }> }

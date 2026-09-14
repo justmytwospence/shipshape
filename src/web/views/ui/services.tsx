@@ -3,6 +3,7 @@ import { Icon } from './icon.tsx'
 import { EmptyState, Mono, Relative, Search, ServiceName, Tabs } from './parts.tsx'
 import { GroupHeader, UpdateRow } from './update.tsx'
 import type { UpdateView } from '../../../updates/queries.ts'
+import type { LinkPreview } from '../../../resolver/preview.ts'
 
 /**
  * Every service shipshape can see, and what it has been told about each one.
@@ -233,6 +234,8 @@ export interface ServiceDetailData {
   config: ConfigLine[]
   history: UpdateView[]
   canEdit: boolean
+  /** What the link dialog starts from: the labels as the compose file has them. */
+  link?: { source: string | null; changelog: string | null; inferred: string | null }
 }
 
 const SOURCE_CLS: Record<Provenance, string> = {
@@ -354,6 +357,15 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
                   Change
                 </button>
               ) : null}
+              {(line.key === 'upstream' || line.key === 'notes') && data.canEdit ? (
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-xs tap"
+                  data-open={`#link-${svc.stack}-${svc.service}`}
+                >
+                  Change
+                </button>
+              ) : null}
               {line.key === 'upstream' && svc.image ? (
                 <button
                   type="button"
@@ -376,6 +388,7 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
       </section>
 
       {data.canEdit ? <RungDialog svc={svc} ctx={ctx} /> : null}
+      {data.canEdit ? <LinkDialog svc={svc} link={data.link} ctx={ctx} /> : null}
 
       <section class="border-base-300 border-t">
         <GroupHeader title="History" count={data.history.length} />
@@ -452,3 +465,175 @@ const RungDialog: FC<{ svc: ServiceRowData; ctx?: string }> = ({ svc, ctx }) => 
     </form>
   </dialog>
 )
+
+/**
+ * Where a service's release notes are, written into its compose file as `shipshape.source`
+ * and `shipshape.changelog`.
+ *
+ * Preview first, and the write only from the preview: a wrong repository is the quiet kind
+ * of wrong -- its releases read as this image's and nothing looks broken -- so the dialog
+ * shows what the link leads to before it offers to commit it. The write form lives inside
+ * the preview it was checked against, so what is written is what was shown.
+ */
+const LinkDialog: FC<{ svc: ServiceRowData; link?: ServiceDetailData['link']; ctx?: string }> = ({ svc, link, ctx }) => {
+  const id = `${svc.stack}-${svc.service}`
+  return (
+    <dialog id={`link-${id}`} class="modal modal-bottom sm:modal-middle">
+      <div class="modal-box pb-safe">
+        <h3 class="text-base font-semibold">Where the release notes are</h3>
+        <p class="mt-1 text-xs opacity-70">
+          {svc.stack}/{svc.service}. Written into its compose file as labels, so the link travels
+          with the service. Leave a box empty to remove that label.
+        </p>
+        <form
+          class="mt-2 flex flex-col"
+          hx-get={`/services/${svc.stack}/${svc.service}/link/preview${ctx ? `?${ctx}` : ''}`}
+          hx-target={`#link-preview-${id}`}
+          hx-swap="innerHTML"
+          hx-disabled-elt="find button[type=submit]"
+          hx-indicator="#busy"
+        >
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Upstream repository</legend>
+            <input
+              type="text"
+              name="source"
+              value={link?.source ?? ''}
+              class="input input-sm w-full font-mono"
+              placeholder="owner/repo, or a github.com link"
+              autocomplete="off"
+            />
+            <p class="label whitespace-normal">
+              {link?.inferred ? `Found without a label: ${link.inferred}` : 'shipshape has found no repository on its own.'}
+            </p>
+          </fieldset>
+          <fieldset class="fieldset">
+            <legend class="fieldset-legend">Release notes, when GitHub releases do not have them</legend>
+            <input
+              type="text"
+              name="changelog"
+              value={link?.changelog ?? ''}
+              class="input input-sm w-full font-mono"
+              placeholder="https://… or a file such as CHANGELOG.md"
+              autocomplete="off"
+            />
+          </fieldset>
+          <div class="modal-action mt-3">
+            <button type="button" class="btn btn-ghost btn-sm tap" onclick="this.closest('dialog').close()">
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-sm tap">
+              Preview
+            </button>
+          </div>
+        </form>
+        <div id={`link-preview-${id}`} class="mt-2" aria-live="polite"></div>
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+      </form>
+    </dialog>
+  )
+}
+
+/** The preview, and from it the write. Returned alone, into the dialog it was asked from. */
+export const LinkPreviewPane: FC<{ preview?: LinkPreview; failure?: string; ctx?: string }> = ({ preview, failure, ctx }) => {
+  if (failure) return <p class="text-warning text-xs">{failure}</p>
+  if (!preview) return null
+  const p = preview
+  if (!p.source && !p.changelog) {
+    return <p class="text-xs opacity-70">Nothing to change: both boxes say what the compose file already says.</p>
+  }
+  return (
+    <div class="border-base-300 flex flex-col gap-2 rounded border p-2 text-xs">
+      {p.source ? <SourceLines s={p.source} runningTag={p.runningTag} /> : null}
+      {p.changelog ? <NotesLines n={p.changelog} runningTag={p.runningTag} /> : null}
+      {p.writable ? (
+        <form
+          hx-post={`/services/${p.stack}/${p.service}/labels${ctx ? `?${ctx}` : ''}`}
+          hx-target={`#svc-card-${p.stack}-${p.service}`}
+          hx-swap="outerHTML"
+          hx-disabled-elt="find button[type=submit]"
+          hx-indicator="#busy"
+          onsubmit="this.closest('dialog').close()"
+        >
+          <input type="hidden" name="link" value="1" />
+          {p.source ? <input type="hidden" name="source" value={p.values.source} /> : null}
+          {p.changelog ? <input type="hidden" name="changelog" value={p.values.changelog} /> : null}
+          <div class="modal-action mt-1">
+            <button type="submit" class="btn btn-primary btn-sm tap">
+              Write it to the compose file
+            </button>
+          </div>
+        </form>
+      ) : (
+        <p class="text-warning">Change what is marked above, then preview again.</p>
+      )}
+    </div>
+  )
+}
+
+const SourceLines: FC<{ s: NonNullable<LinkPreview['source']>; runningTag: string | null }> = ({ s, runningTag }) => {
+  if (s.removing) {
+    return (
+      <p>
+        <span class="font-medium">shipshape.source will be removed.</span>{' '}
+        {s.inferred?.repo
+          ? `shipshape will use ${s.inferred.repo}, which it found without the label.`
+          : 'shipshape has found no repository of its own for this image.'}
+      </p>
+    )
+  }
+  if (!s.ok) return <p class="text-error">{s.reason}</p>
+  const r = s.releases
+  return (
+    <div class="flex flex-col gap-0.5">
+      <p>
+        <span class="font-mono">{s.repo}</span>
+        {s.forkOf ? <span class="text-warning"> · a fork of {s.forkOf}</span> : null}
+        {s.archived ? <span class="text-warning"> · archived</span> : null}
+      </p>
+      {r ? (
+        <p class="opacity-80">
+          {r.count === 0
+            ? 'No GitHub releases.'
+            : `${r.count === 100 ? '100 or more' : r.count} GitHub releases, the newest ${r.newest}${r.newestPrerelease ? ' (a prerelease)' : ''}.`}{' '}
+          {runningTag
+            ? s.runningRelease
+              ? `The running version has one: ${s.runningRelease}.`
+              : `None of them is the running version, ${runningTag}.`
+            : null}
+        </p>
+      ) : null}
+      {s.reason ? <p class="text-warning">{s.reason}</p> : null}
+      {s.inferred?.repo && s.inferred.repo.toLowerCase() !== (s.repo ?? '').toLowerCase() ? (
+        <p class="opacity-70">Without the label, shipshape found {s.inferred.repo}.</p>
+      ) : null}
+    </div>
+  )
+}
+
+const NotesLines: FC<{ n: NonNullable<LinkPreview['changelog']>; runningTag: string | null }> = ({ n, runningTag }) => {
+  if (n.removing) return <p class="font-medium">shipshape.changelog will be removed.</p>
+  if (!n.ok) return <p class="text-error">{n.reason}</p>
+  return (
+    <div class="flex flex-col gap-0.5">
+      {n.where ? (
+        <p class="break-words">
+          Read {Math.max(1, Math.round(n.bytes / 1024))} KB from <span class="font-mono">{n.where}</span>
+        </p>
+      ) : null}
+      {n.reason ? <p class="text-warning">{n.reason}</p> : null}
+      {n.where ? (
+        <p class="opacity-80">
+          {n.sections === 0
+            ? 'It has no version headings, so reviews will be shown its beginning.'
+            : `${n.sections} sections named for versions${runningTag ? (n.runningSection ? `, including the running ${runningTag}` : `; none for the running ${runningTag}`) : ''}.`}
+        </p>
+      ) : null}
+      {n.excerpt ? (
+        <blockquote class="border-base-300 line-clamp-4 border-l-2 pl-2 whitespace-pre-line opacity-70">{n.excerpt}</blockquote>
+      ) : null}
+    </div>
+  )
+}

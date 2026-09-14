@@ -70,7 +70,7 @@ function referenceSection(g: UpdateGroup, sources: Map<number, string | null>): 
     if (!source) {
       lines.push(
         `  <sub>No upstream repository resolved for this image, so the review had no release notes to read. ` +
-          `A \`shipshape.source\` label on the service fixes that permanently.</sub>`,
+          `A \`shipshape.source\` label on the service fixes that permanently -- shipshape's page for the service previews and writes one.</sub>`,
       )
     }
   }

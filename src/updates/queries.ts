@@ -57,6 +57,8 @@ export interface UpdateView {
     error: string | null
     attempts: number
     nextAttemptAt: string | null
+    /** How many notes the review had for its range; null for a review from before that was kept. */
+    notesInRange: number | null
   } | null
   deploy: {
     id: number
@@ -133,11 +135,12 @@ function verdictFor(u: RawUpdate): UpdateView['verdict'] {
   const v = getDb()
     .prepare(
       `SELECT recommendation, confidence, severity, summary, breaking_changes, migration_steps,
-              sources, model, created_at, error, attempts, next_attempt_at
+              sources, model, created_at, error, attempts, next_attempt_at, evidence
          FROM verdicts WHERE image = ? AND from_tag = ? AND to_tag = ?`,
     )
     .get(u.image, u.from_tag, u.to_tag) as
     | {
+        evidence: string | null
         recommendation: string | null
         confidence: string | null
         severity: string | null
@@ -175,6 +178,18 @@ function verdictFor(u: RawUpdate): UpdateView['verdict'] {
     error: v.error,
     attempts: v.attempts ?? 0,
     nextAttemptAt: v.next_attempt_at,
+    notesInRange: notesOf(v.evidence),
+  }
+}
+
+/** Release bodies, changelog sections and linked sections the review was given for its range. */
+function notesOf(evidence: string | null): number | null {
+  if (!evidence) return null
+  try {
+    const e = JSON.parse(evidence) as { releases?: number; changelogSections?: number; linkedSections?: number }
+    return (e.releases ?? 0) + (e.changelogSections ?? 0) + (e.linkedSections ?? 0)
+  } catch {
+    return null
   }
 }
 

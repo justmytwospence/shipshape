@@ -91,7 +91,7 @@ export const ReleaseRow: FC<{
         {summary ?? NO_REVIEW}
       </p>
 
-      {l.releases || l.source || l.docs || l.tag || l.image ? (
+      {l.releases || l.source || l.docs || l.tag || l.image || !l.source ? (
         <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
           {l.releases ? (
             <a href={l.releases} target="_blank" rel="noreferrer" class={LINK}>
@@ -117,6 +117,12 @@ export const ReleaseRow: FC<{
           {!l.releases && !l.source && (l.tag || l.image) ? (
             <a href={(l.tag ?? l.image) as string} target="_blank" rel="noreferrer" class={LINK}>
               {release.registry}
+            </a>
+          ) : null}
+          {/* The way to fix the dead end, on the row that has it. */}
+          {!l.source ? (
+            <a href={`/services/${release.stack}/${release.service}`} class={LINK}>
+              Link the upstream
             </a>
           ) : null}
         </div>

@@ -201,6 +201,9 @@ export function renderPrompt(t: AnalyzeTarget, b: NotesBundle): string {
   if (b.changelog && b.changelog.omitted.length > 0) {
     parts.push(`Changelog sections in the range left out for length: ${b.changelog.omitted.join(', ')}`)
   }
+  if (b.external && b.external.omitted.length > 0) {
+    parts.push(`Linked sections in the range left out for length: ${b.external.omitted.join(', ')}`)
+  }
   if (b.unplaced.length > 0) {
     parts.push(`Recent releases whose names could not be placed against these versions: ${b.unplaced.join(', ')}`)
   }
@@ -223,6 +226,16 @@ export function renderPrompt(t: AnalyzeTarget, b: NotesBundle): string {
       `\nFrom ${b.changelog.file}, the sections for this range that no release above already covers:\n\n${b.changelog.sections
         .map((sec) => `## ${sec.heading}\n${sec.body}`)
         .join('\n\n')}`,
+    )
+  }
+  if (b.external && (b.external.sections.length > 0 || b.external.excerpt)) {
+    const ex = b.external
+    parts.push(
+      ex.sections.length > 0
+        ? `\nFrom ${ex.link}, which the operator linked as this image's release notes, the sections for this range:\n\n${ex.sections
+            .map((sec) => `## ${sec.heading}\n${sec.body}`)
+            .join('\n\n')}`
+        : `\nFrom ${ex.link}, which the operator linked as this image's release notes. Nothing on it could be placed in this range, so this is its beginning:\n\n${ex.excerpt}`,
     )
   }
   if (b.commits && b.commits.subjects.length > 0) {

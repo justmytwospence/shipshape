@@ -111,6 +111,16 @@ test('verdicts gain their evidence, and none from before is read again for lack 
   assert.equal(flagged, 0)
 })
 
+test('services gain a notes link, and no service has one until someone writes it', (t) => {
+  if (!have) return t.skip('set SHIPSHAPE_LIVE_DB to an online backup to run this')
+  const d = db.getDb()
+  const cols = (d.prepare(`PRAGMA table_info(images)`).all() as { name: string }[]).map((c) => c.name)
+  assert.ok(cols.includes('changelog_label'))
+  assert.ok((d.prepare(`SELECT COUNT(*) c FROM images`).get() as { c: number }).c > 0, 'the copy should carry real services')
+  // Filled by the next scan from the compose files, never invented by the migration.
+  assert.equal((d.prepare(`SELECT COUNT(*) c FROM images WHERE changelog_label IS NOT NULL`).get() as { c: number }).c, 0)
+})
+
 test('the rollout watermark is set to now, not to the beginning of time', (t) => {
   if (!have) return t.skip('set SHIPSHAPE_LIVE_DB to an online backup to run this')
   const rows = db

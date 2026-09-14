@@ -12,7 +12,35 @@
  * and produced `repos/O`.
  */
 
+import { checkUrl } from '../upstream/hosts.ts'
+
 export type ParsedSource = { ok: true; repo: string } | { ok: false; reason: string }
+
+export type ChangelogTarget = { kind: 'url'; url: string } | { kind: 'path'; path: string }
+export type ParsedChangelog = ({ ok: true } & ChangelogTarget) | { ok: false; reason: string }
+
+/**
+ * An operator's `shipshape.changelog` value: where this image's release notes are when the
+ * upstream repository's GitHub releases do not have them. An https link on a public host --
+ * a vendor's release-notes page, a file on another forge -- or a path to a file or directory
+ * in the upstream repository.
+ */
+export function parseChangelogLabel(raw: string | null | undefined): ParsedChangelog {
+  const value = (raw ?? '').trim()
+  if (!value) return { ok: false, reason: 'it is empty' }
+  if (value.length > 500) return { ok: false, reason: 'it is longer than 500 characters' }
+  if (value.includes('$')) return { ok: false, reason: 'it contains "$", which compose would interpolate' }
+  if (/\s/.test(value)) return { ok: false, reason: 'it contains whitespace' }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value)) {
+    const checked = checkUrl(value)
+    return checked.ok ? { ok: true, kind: 'url', url: value } : { ok: false, reason: checked.reason }
+  }
+  const path = value.replace(/^\.\//, '').replace(/\/+$/, '')
+  if (value.startsWith('/') || !/^[A-Za-z0-9._\-/]{1,200}$/.test(path) || path.split('/').some((s) => s === '' || s === '..')) {
+    return { ok: false, reason: 'write an https:// link, or a path inside the repository such as CHANGELOG.md' }
+  }
+  return { ok: true, kind: 'path', path }
+}
 
 const OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/
 const REPO = /^[A-Za-z0-9._-]{1,100}$/

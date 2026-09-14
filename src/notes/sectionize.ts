@@ -166,3 +166,13 @@ function rstHeadings(lines: string[]): Heading[] {
   }
   return out
 }
+
+/** The version a per-version file is named for, from its name's tokens: grocy's `83_4.7.1_2026-09-04.md`. */
+export function fileVersion(name: string, family: VersionKey['family']): VersionKey | null {
+  const stem = name.replace(/\.(md|markdown|rst|txt|adoc)$/i, '')
+  const keys = stem
+    .split(/[_\s]+|-(?=v?\d)/)
+    .map((t) => versionKey(t))
+    .filter((k): k is VersionKey => !!k && !k.partial)
+  return keys.find((k) => k.family === family) ?? null
+}

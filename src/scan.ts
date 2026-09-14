@@ -137,11 +137,11 @@ function syncInventory(services: ScannedService[]): void {
   const upsert = db.prepare(
     `INSERT INTO images (stack, service, compose_file, image_ref, registry, repository,
                          current_tag, current_digest, watched, pattern, tag_include,
-                         policy_label, source_label, claude_label, deploy_label,
+                         policy_label, source_label, changelog_label, claude_label, deploy_label,
                          probe_port, archive_pre, network_mode, unwatchable, last_seen_at)
      VALUES (@stack, @service, @compose_file, @image_ref, @registry, @repository,
              @current_tag, @current_digest, @watched, @pattern, @tag_include,
-             @policy_label, @source_label, @claude_label, @deploy_label,
+             @policy_label, @source_label, @changelog_label, @claude_label, @deploy_label,
              @probe_port, @archive_pre, @network_mode, @unwatchable, @last_seen_at)
      ON CONFLICT(stack, service) DO UPDATE SET
        compose_file = excluded.compose_file, image_ref = excluded.image_ref,
@@ -149,7 +149,8 @@ function syncInventory(services: ScannedService[]): void {
        current_tag = excluded.current_tag, current_digest = excluded.current_digest,
        watched = excluded.watched, pattern = excluded.pattern,
        tag_include = excluded.tag_include, policy_label = excluded.policy_label,
-       source_label = excluded.source_label, claude_label = excluded.claude_label,
+       source_label = excluded.source_label, changelog_label = excluded.changelog_label,
+       claude_label = excluded.claude_label,
        deploy_label = excluded.deploy_label, probe_port = excluded.probe_port,
        archive_pre = excluded.archive_pre, network_mode = excluded.network_mode,
        unwatchable = excluded.unwatchable,
@@ -172,6 +173,7 @@ function syncInventory(services: ScannedService[]): void {
         tag_include: s.tagInclude,
         policy_label: s.policyLabel,
         source_label: s.sourceLabel,
+        changelog_label: s.changelogLabel ?? null,
         claude_label: s.claudeLabel,
         deploy_label: s.deployLabel,
         probe_port: s.probePort,
@@ -201,11 +203,20 @@ export function refreshServiceLabels(stack: string, service: string): boolean {
   if (!svc) return false
   getDb()
     .prepare(
-      `UPDATE images SET watched = ?, policy_label = ?, source_label = ?, claude_label = ?,
-                         deploy_label = ?
+      `UPDATE images SET watched = ?, policy_label = ?, source_label = ?, changelog_label = ?,
+                         claude_label = ?, deploy_label = ?
        WHERE stack = ? AND service = ?`,
     )
-    .run(svc.watched ? 1 : 0, svc.policyLabel, svc.sourceLabel, svc.claudeLabel, svc.deployLabel, stack, service)
+    .run(
+      svc.watched ? 1 : 0,
+      svc.policyLabel,
+      svc.sourceLabel,
+      svc.changelogLabel ?? null,
+      svc.claudeLabel,
+      svc.deployLabel,
+      stack,
+      service,
+    )
   return true
 }
 

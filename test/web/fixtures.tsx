@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { InboxAside, InboxList } from '../../src/web/views/ui/inbox.tsx'
 import { UpdateDetail, UpdateRow } from '../../src/web/views/ui/update.tsx'
-import { ServiceDetail, ServicesList } from '../../src/web/views/ui/services.tsx'
+import { LinkPreviewPane, ServiceDetail, ServicesList } from '../../src/web/views/ui/services.tsx'
 import { ActivityList } from '../../src/web/views/ui/activity.tsx'
 import { SettingsForm } from '../../src/web/views/ui/settings.tsx'
 import { StatusBody } from '../../src/web/views/ui/status.tsx'
@@ -263,6 +263,54 @@ const SETTING_GROUPS = [
   },
 ]
 
+/** A link preview that can be written, and one that cannot: both render, so the class gate covers both. */
+export const LINK_PREVIEW = {
+  stack: 'media',
+  service: 'jellyfin',
+  runningTag: '10.9.11',
+  source: {
+    input: 'https://github.com/JellyFin/Jellyfin',
+    removing: false,
+    ok: true,
+    reason: null,
+    repo: 'jellyfin/jellyfin',
+    checked: true,
+    forkOf: null,
+    archived: false,
+    releases: { count: 100, newest: 'v10.10.0', newestPrerelease: false },
+    runningRelease: 'v10.9.11',
+    inferred: { repo: 'jellyfin/jellyfin-web', tier: 'lookup' as const, confidence: 'medium' },
+  },
+  changelog: {
+    input: 'https://jellyfin.org/posts/',
+    removing: false,
+    ok: true,
+    reason: 'jellyfin.org answered 503, so this is the copy from earlier',
+    where: 'https://jellyfin.org/posts/',
+    bytes: 48_213,
+    sections: 12,
+    runningSection: false,
+    excerpt: '- Fixed subtitles on Android TV\n- Faster library scans',
+  },
+  writable: true,
+  values: { source: 'jellyfin/jellyfin', changelog: 'https://jellyfin.org/posts/' },
+}
+
+export const LINK_PREVIEW_REFUSED = {
+  ...LINK_PREVIEW,
+  source: {
+    ...LINK_PREVIEW.source,
+    ok: false,
+    checked: false,
+    reason: 'GitHub has no repository jellyfin/jellyfn',
+    repo: 'jellyfin/jellyfn',
+    releases: null,
+    runningRelease: null,
+  },
+  changelog: { ...LINK_PREVIEW.changelog, removing: true },
+  writable: false,
+}
+
 export const STATUS = {
   version: '0.1.0',
   repoDir: '/srv/compose',
@@ -376,9 +424,11 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
         source: 'label' as const,
         note: 'label on media/jellyfin-web, which runs the same image',
       },
+      { key: 'notes', value: 'https://jellyfin.org/posts/', source: 'label' as const, note: 'read alongside any GitHub releases' },
     ],
     history: [UPDATES.waiting!],
     canEdit: true,
+    link: { source: 'jellyfin/jellyfin', changelog: 'https://jellyfin.org/posts/', inferred: 'jellyfin/jellyfin' },
   }
   return {
     // pages
@@ -487,6 +537,8 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
     'service-detail': String(
       ServiceDetail({ data: serviceData, ctx: 'list=services', listHref: '/services' }),
     ),
+    'link-preview': String(LinkPreviewPane({ preview: LINK_PREVIEW as never, ctx: 'list=services' })),
+    'link-preview-refused': String(LinkPreviewPane({ preview: LINK_PREVIEW_REFUSED as never, ctx: 'list=services' })),
     activity: String(ActivityList({ rows: ACTIVITY, repo: 'you/repo', more: null })),
     settings: String(SettingsForm({ groups: SETTING_GROUPS, readyCount: 2 })),
     status: String(StatusBody({ data: STATUS })),

@@ -81,6 +81,8 @@ export interface ScannedService {
   tagInclude: string | null
   policyLabel: string | null
   sourceLabel: string | null
+  /** `shipshape.changelog`: where the release notes are when GitHub releases do not have them. */
+  changelogLabel: string | null
   claudeLabel: string | null
   deployLabel: string | null
   /** Port this service serves HTTP on, per its own traefik loadbalancer label. */
@@ -195,6 +197,7 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
     const tagInclude = label('tag.include')
     const policyLabel = label('policy')
     const sourceLabel = label('source')
+    const changelogLabel = label('changelog')
     const claudeLabel = label('claude')
     const deployLabel = label('deploy')
     // Traefik already knows which port each service answers on -- 76 of them declare it.
@@ -243,6 +246,7 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
       tagInclude,
       policyLabel,
       sourceLabel,
+      changelogLabel,
       claudeLabel,
       deployLabel,
       probePort,

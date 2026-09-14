@@ -15,9 +15,9 @@ import {
   relation,
   type RankedMention,
 } from './guards.ts'
-import { normaliseSourceUrl, parseSourceLabel } from './labels.ts'
+import { normaliseSourceUrl, parseChangelogLabel, parseSourceLabel, type ChangelogTarget } from './labels.ts'
 
-export { normaliseSourceUrl, parseSourceLabel } from './labels.ts'
+export { normaliseSourceUrl, parseChangelogLabel, parseSourceLabel, type ChangelogTarget } from './labels.ts'
 
 /**
  * Image -> upstream source repository, and the one way to ask.
@@ -106,6 +106,13 @@ export interface InvalidLabel {
   reason: string
 }
 
+export interface ChangelogLabelInfo {
+  value: string
+  /** The service whose label this is -- not always the one asking. */
+  from: ServiceKey
+  target: ChangelogTarget
+}
+
 export interface SourceInfo {
   repo: string | null
   tier: ResolutionTier
@@ -118,6 +125,10 @@ export interface SourceInfo {
   label: SourceLabelInfo | null
   /** The requesting service's own label, when it could not be parsed. */
   invalidLabel: InvalidLabel | null
+  /** `shipshape.changelog`: where the release notes are when GitHub releases do not have them. */
+  changelog: ChangelogLabelInfo | null
+  /** The requesting service's own `shipshape.changelog`, when it could not be parsed. */
+  invalidChangelog: InvalidLabel | null
   checkedAt: string | null
   nextCheckAt: string | null
   /** The last lookup's failure, when it failed. */
@@ -134,6 +145,8 @@ export interface SourceOpts {
    * last scan's copy; pass null to say it has none.
    */
   ownLabel?: string | null
+  /** That service's `shipshape.changelog`, likewise: omit for the last scan's copy. */
+  ownChangelog?: string | null
   /** The tag to walk for annotations. Defaults to the image's current tag. */
   tag?: string | null
   /** Look again even when the cached answer is fresh. */
@@ -341,17 +354,57 @@ interface LabelRow {
   stack: string
   service: string
   source_label: string | null
+  changelog_label: string | null
 }
 
 function readLabels(image: ImageKey): LabelRow[] {
   return getDb()
     .prepare(
-      `SELECT stack, service, source_label FROM images
-       WHERE registry = ? AND repository = ? AND source_label IS NOT NULL AND source_label != ''
+      `SELECT stack, service, source_label, changelog_label FROM images
+       WHERE registry = ? AND repository = ?
+         AND ((source_label IS NOT NULL AND source_label != '')
+           OR (changelog_label IS NOT NULL AND changelog_label != ''))
        ORDER BY stack, service`,
     )
     .all(image.registry, image.repository) as LabelRow[]
 }
+
+/**
+ * The notes link that applies: the service's own, else the first valid one on another service
+ * running the image. Unlike a repository, two links are not a disagreement worth reporting --
+ * a vendor page and a changelog file can both be right.
+ */
+function pickChangelog(
+  rows: LabelRow[],
+  opts: SourceOpts,
+): { changelog: ChangelogLabelInfo | null; invalidChangelog: InvalidLabel | null } {
+  const me = opts.service
+  const ownRaw = me
+    ? opts.ownChangelog !== undefined
+      ? opts.ownChangelog
+      : (rows.find((r) => sameService(me, r))?.changelog_label ?? null)
+    : null
+  let invalidChangelog: InvalidLabel | null = null
+  if (me && ownRaw?.trim()) {
+    const p = parseChangelogLabel(ownRaw)
+    if (p.ok) return { changelog: { value: ownRaw.trim(), from: me, target: targetOf(p) }, invalidChangelog: null }
+    invalidChangelog = { from: me, value: ownRaw.trim(), reason: p.reason }
+  }
+  for (const r of rows) {
+    if (sameService(me, r) || !r.changelog_label?.trim()) continue
+    const p = parseChangelogLabel(r.changelog_label)
+    if (p.ok) {
+      return {
+        changelog: { value: r.changelog_label.trim(), from: { stack: r.stack, service: r.service }, target: targetOf(p) },
+        invalidChangelog,
+      }
+    }
+  }
+  return { changelog: null, invalidChangelog }
+}
+
+const targetOf = (p: ChangelogTarget): ChangelogTarget =>
+  p.kind === 'url' ? { kind: 'url', url: p.url } : { kind: 'path', path: p.path }
 
 const sameService = (a: ServiceKey | undefined, b: ServiceKey): boolean =>
   !!a && a.stack === b.stack && a.service === b.service
@@ -464,6 +517,7 @@ function compose(
   now = Date.now(),
 ): SourceInfo {
   const { label, invalidLabel } = pickLabel(labels, opts)
+  const { changelog, invalidChangelog } = pickChangelog(labels, opts)
   // A packaging repository is never the answer, even in a row written before that was known.
   const packaged = isPackagingRepo(row?.source_url)
   const found = row?.source_url && !packaged ? row.source_url : null
@@ -478,6 +532,8 @@ function compose(
     packagingRepo: row?.packaging_repo ?? (packaged ? row!.source_url : null),
     label,
     invalidLabel,
+    changelog,
+    invalidChangelog,
     checkedAt: row?.checked_at ?? null,
     nextCheckAt: row?.next_check_at ?? null,
     error: row?.error ?? null,

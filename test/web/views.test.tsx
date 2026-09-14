@@ -295,6 +295,28 @@ test('merging and rolling back ask twice', () => {
   assert.match(verified, /data-open="#confirm-rollback-13"/)
 })
 
+test('a link is previewed before it is written, inside the dialog it was asked from', () => {
+  const html = VIEWS['service-detail']!
+  assert.match(html, /data-open="#link-media-jellyfin"/)
+  assert.match(html, /<dialog id="link-media-jellyfin" class="modal modal-bottom sm:modal-middle">/)
+  const dialog = html.slice(html.indexOf('<dialog id="link-media-jellyfin"'))
+  const end = dialog.indexOf('</dialog>')
+  assert.match(dialog, /hx-get="\/services\/media\/jellyfin\/link\/preview\?list=services"/)
+  assert.match(dialog, /hx-target="#link-preview-media-jellyfin"/)
+  // The preview lands inside the dialog, never in the pane behind it...
+  const target = dialog.indexOf('id="link-preview-media-jellyfin"')
+  assert.ok(target > 0 && target < end, 'the preview target is inside the dialog')
+  // ...and nothing in the dialog writes on its own: the write form arrives with a preview.
+  assert.doesNotMatch(dialog.slice(0, end), /hx-post/)
+
+  const preview = VIEWS['link-preview']!
+  assert.match(preview, /hx-post="\/services\/media\/jellyfin\/labels\?list=services"/)
+  assert.match(preview, /hx-target="#svc-card-media-jellyfin"/)
+  assert.match(preview, /name="source" value="jellyfin\/jellyfin"/)
+  assert.match(preview, /Write it to the compose file/)
+  assert.doesNotMatch(VIEWS['link-preview-refused']!, /hx-post/, 'a refused link offers no write')
+})
+
 test('only a row that is in flight polls', () => {
   assert.doesNotMatch(VIEWS['update-row']!, /hx-trigger="every/, 'a settled row is quiet')
   assert.match(VIEWS['update-row-transient']!, /hx-get="\/updates\/11\/card\?list=inbox"/)

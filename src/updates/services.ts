@@ -172,7 +172,11 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
   const source = image
     ? sourceForSync(
         { registry: image.registry, repository: image.repository },
-        { service: { stack, service }, ownLabel: live ? live.sourceLabel : undefined },
+        {
+          service: { stack, service },
+          ownLabel: live ? live.sourceLabel : undefined,
+          ownChangelog: live ? live.changelogLabel : undefined,
+        },
       )
     : null
   config.push({
@@ -181,6 +185,16 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
     source: source?.tier === 'label' ? 'label' : source?.repo ? 'inferred' : 'none',
     note: source ? upstreamNote(source, { stack, service }) : undefined,
   })
+  config.push({
+    key: 'notes',
+    value: source?.changelog?.value ?? (source?.repo ? '(GitHub releases and changelog files)' : '(none)'),
+    source: source?.changelog ? 'label' : source?.repo ? 'inferred' : 'none',
+    note: source ? notesNote(source, { stack, service }) : undefined,
+  })
+  // The container's own changes, which the application's notes never mention.
+  if (source?.packagingRepo) {
+    config.push({ key: 'packaging', value: source.packagingRepo, source: 'inferred', note: 'container changes only' })
+  }
   if (image?.deploy_label) {
     config.push({ key: 'deploy', value: image.deploy_label, source: 'label' })
   }
@@ -195,7 +209,25 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
     history: updatesForService(stack, service),
     // Editing writes into the compose file, which only exists where one was found.
     canEdit: !!image?.compose_file,
+    link: {
+      source: live ? live.sourceLabel : null,
+      changelog: live ? live.changelogLabel : null,
+      inferred: source?.inferred?.repo ?? null,
+    },
   }
+}
+
+/** The line under `notes`: which label applies, and why one was ignored. */
+export function notesNote(s: SourceInfo, me: { stack: string; service: string }): string | undefined {
+  const parts: string[] = []
+  if (s.invalidChangelog) {
+    parts.push(`shipshape.changelog "${s.invalidChangelog.value}" ignored: ${s.invalidChangelog.reason}`)
+  }
+  if (s.changelog && (s.changelog.from.stack !== me.stack || s.changelog.from.service !== me.service)) {
+    parts.push(`label on ${s.changelog.from.stack}/${s.changelog.from.service}, which runs the same image`)
+  }
+  if (s.changelog) parts.push('read alongside any GitHub releases')
+  return parts.length > 0 ? parts.join(' · ') : undefined
 }
 
 /** For rows written before the resolver recorded its own detail. */

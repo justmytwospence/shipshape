@@ -5,19 +5,22 @@ import { botIdentity, env } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { setLabel } from '../compose/edit.ts'
 import { TIER_LABELS } from '../policy.ts'
+import { parseChangelogLabel, parseSourceLabel } from '../resolver/labels.ts'
 import { git, withGitLock } from './repo.ts'
 import { syncMain } from './sync.ts'
 
 /**
- * The write path for a service's update policy: splice `shipshape.policy` or
- * `shipshape.watch` into its compose file, gate the result, commit, publish.
+ * The write path for a service's labels: splice `shipshape.policy`, `shipshape.watch`,
+ * `shipshape.source` or `shipshape.changelog` into its compose file, gate the result, commit,
+ * publish.
  *
  * This edits the LIVE checkout -- the same file `docker compose` deploys from -- so it
  * carries the same guardrails as the settings page's policy.yaml writes: refuse unless
  * the checkout is on main, refuse if the target file has uncommitted changes (a browser
  * click must never fold a hand-edit into shipshape's commit), and revert the bytes the
  * moment any gate disagrees. The caller re-scans afterwards; nothing here touches the
- * images table.
+ * images table, and nothing here touches the network before the commit: a link is checked
+ * for what it is, not fetched.
  */
 
 export interface SetServiceLabelResult {
@@ -26,36 +29,79 @@ export interface SetServiceLabelResult {
   sha?: string
 }
 
+export type LabelKey = 'policy' | 'watch' | 'source' | 'changelog'
+
+export interface LabelChange {
+  key: LabelKey
+  /** null removes the label. */
+  value: string | null
+}
+
 const WATCH_VALUES = new Set(['true', 'false'])
 
 export async function setServiceLabel(o: {
   stack: string
   service: string
-  key: 'policy' | 'watch'
+  key: LabelKey
   value: string | null
+}): Promise<SetServiceLabelResult> {
+  return setServiceLabels({ stack: o.stack, service: o.service, changes: [{ key: o.key, value: o.value }] })
+}
+
+/** Several labels on one service, in one commit: a repository and its notes link go together. */
+export async function setServiceLabels(o: {
+  stack: string
+  service: string
+  changes: LabelChange[]
 }): Promise<SetServiceLabelResult> {
   return withGitLock('label-edit', () => run(o))
 }
 
-async function run(o: {
-  stack: string
-  service: string
-  key: 'policy' | 'watch'
-  value: string | null
-}): Promise<SetServiceLabelResult> {
-  const { stack, service, key, value } = o
-
-  // The file is the wrong place to discover a typo: an unknown policy label narrows to
-  // `manual` on read (a typo must never grant reach), so a bad value would not break
-  // anything -- it would sit in the file meaning something other than what it says.
-  if (key === 'policy' && value !== null && !(TIER_LABELS as readonly string[]).includes(value)) {
-    return {
-      ok: false,
-      message: `"${value}" is not a policy shipshape accepts (${TIER_LABELS.join(', ')}).`,
+/**
+ * A change as it will be written, or why it is refused. The file is the wrong place to
+ * discover a typo: an unknown policy narrows to `manual` on read, an unparseable source is
+ * ignored with a note -- either way the file would say something other than what it means.
+ */
+function prepare(c: LabelChange): { ok: true; change: LabelChange } | { ok: false; message: string } {
+  if (c.value === null) return { ok: true, change: c }
+  switch (c.key) {
+    case 'policy':
+      return (TIER_LABELS as readonly string[]).includes(c.value)
+        ? { ok: true, change: c }
+        : { ok: false, message: `"${c.value}" is not a policy shipshape accepts (${TIER_LABELS.join(', ')}).` }
+    case 'watch':
+      return WATCH_VALUES.has(c.value)
+        ? { ok: true, change: c }
+        : { ok: false, message: `shipshape.watch is "true" or "false", not "${c.value}".` }
+    case 'source': {
+      // Written as `owner/repo`, whichever form it was typed in: the file stays readable, and
+      // two services on one image are compared as the same string.
+      const p = parseSourceLabel(c.value)
+      return p.ok
+        ? { ok: true, change: { key: 'source', value: p.repo } }
+        : { ok: false, message: `shipshape.source "${c.value}" was not written: ${p.reason}.` }
+    }
+    case 'changelog': {
+      const p = parseChangelogLabel(c.value)
+      return p.ok
+        ? { ok: true, change: { key: 'changelog', value: c.value.trim() } }
+        : { ok: false, message: `shipshape.changelog "${c.value}" was not written: ${p.reason}.` }
     }
   }
-  if (key === 'watch' && value !== null && !WATCH_VALUES.has(value)) {
-    return { ok: false, message: `shipshape.watch is "true" or "false", not "${value}".` }
+}
+
+async function run(o: { stack: string; service: string; changes: LabelChange[] }): Promise<SetServiceLabelResult> {
+  const { stack, service } = o
+
+  // The last word on each key, in the order given.
+  const byKey = new Map<LabelKey, LabelChange>()
+  for (const c of o.changes) byKey.set(c.key, c)
+  if (byKey.size === 0) return { ok: false, message: 'Nothing was asked to change.' }
+  const changes: LabelChange[] = []
+  for (const c of byKey.values()) {
+    const p = prepare(c)
+    if (!p.ok) return { ok: false, message: p.message }
+    changes.push(p.change)
   }
 
   const head = await git(env.repoDir, ['symbolic-ref', '--short', 'HEAD'], { allowFail: true })
@@ -105,24 +151,28 @@ async function run(o: {
     return { ok: false, message: `Cannot read ${rel}: ${(err as Error).message}` }
   }
 
-  const labelKey = `shipshape.${key}`
-  const first = setLabel(original, service, labelKey, value)
-  if (!first.ok) return { ok: false, message: `${rel}: ${first.reason}` }
-  let next = first.text
-
-  // Writing a policy while `shipshape.pr: on-request` stands would be silently inert:
-  // tierFor lets the pr label win, so the service stays held whatever the new policy
-  // says. Remove it in the same commit. (Removal of the policy itself leaves pr alone
-  // -- that is a return to label-less defaults, not a statement about holds.)
+  let next = original
   let removedPr = false
-  if (key === 'policy' && value !== null) {
-    const second = setLabel(next, service, 'shipshape.pr', null)
-    if (!second.ok) return { ok: false, message: `${rel}: ${second.reason}` }
-    removedPr = second.text !== next
-    next = second.text
+  for (const c of changes) {
+    const edited = setLabel(next, service, `shipshape.${c.key}`, c.value)
+    if (!edited.ok) return { ok: false, message: `${rel}: ${edited.reason}` }
+    next = edited.text
+
+    // Writing a policy while `shipshape.pr: on-request` stands would be silently inert:
+    // tierFor lets the pr label win, so the service stays held whatever the new policy
+    // says. Remove it in the same commit. (Removal of the policy itself leaves pr alone
+    // -- that is a return to label-less defaults, not a statement about holds.)
+    if (c.key === 'policy' && c.value !== null) {
+      const second = setLabel(next, service, 'shipshape.pr', null)
+      if (!second.ok) return { ok: false, message: `${rel}: ${second.reason}` }
+      removedPr ||= second.text !== next
+      next = second.text
+    }
   }
 
-  const verb = value === null ? `shipshape.${key} removed` : `shipshape.${key}=${value}`
+  const verb = changes
+    .map((c) => (c.value === null ? `shipshape.${c.key} removed` : `shipshape.${c.key}=${c.value}`))
+    .join(', ')
   if (next === original) {
     return { ok: true, message: `${rel} already says ${verb}; nothing to commit.` }
   }
@@ -163,7 +213,7 @@ async function run(o: {
     .split('\n')
     .filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l))
   const offending = changed.filter(
-    (l) => !/^[+-]\s*(shipshape\.(policy|watch|pr):|labels:\s*$)/.test(l),
+    (l) => !/^[+-]\s*(shipshape\.(policy|watch|pr|source|changelog):|labels:\s*$)/.test(l),
   )
   if (changed.length === 0 || offending.length > 0) {
     await restore()

@@ -161,6 +161,27 @@ test('"Look again" always answers, and says why when there is nothing to look up
   assert.equal(plain.headers.get('location'), '/services/nope/nope')
 })
 
+test('a link preview answers with a fragment, even for a service that is gone', async () => {
+  const res = await app.request('/services/nope/nope/link/preview?source=o/r', { headers: { 'HX-Request': 'true' } })
+  assert.equal(res.status, 200)
+  const html = await res.text()
+  assert.match(html, /no longer here/)
+  assert.doesNotMatch(html, /<html/)
+})
+
+test('writing a link answers with the reason it was not written', async () => {
+  // Refused before any file is looked for: the link itself is the problem.
+  const res = await app.request('/services/nope/nope/labels', {
+    method: 'POST',
+    body: new URLSearchParams({ link: '1', source: 'o/r', changelog: 'http://notes.example/x' }),
+    headers: { 'HX-Request': 'true', 'content-type': 'application/x-www-form-urlencoded' },
+  })
+  assert.equal(res.status, 200)
+  const trigger = JSON.parse(res.headers.get('HX-Trigger') ?? '{}')
+  assert.equal(trigger.toast?.level, 'warn')
+  assert.match(trigger.toast?.text ?? '', /only https/)
+})
+
 test('an operator verb always answers, whether or not it was allowed', async () => {
   // htmx swaps nothing on a 4xx: a refusal that returned one would look like a button
   // that did nothing. Every verb replies 200 with a sentence, and says which it was in

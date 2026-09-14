@@ -22,7 +22,7 @@ delete process.env.GITHUB_REPO
 delete process.env.GITHUB_TOKEN
 
 const { getDb } = await import('../src/db.ts')
-const { setServiceLabel } = await import('../src/gitops/labels.ts')
+const { setServiceLabel, setServiceLabels } = await import('../src/gitops/labels.ts')
 
 after(() => {
   rmSync(data, { recursive: true, force: true })
@@ -199,4 +199,63 @@ test('writing the value the file already has commits nothing', async () => {
   assert.equal(r.sha, undefined)
   assert.match(r.message, /nothing to commit/)
   assert.equal(g(['rev-list', '--count', 'HEAD']), '1')
+})
+
+// ---------------------------------------------------------------------------------------
+// Where the release notes are
+// ---------------------------------------------------------------------------------------
+
+test('a repository and its notes link go into one commit, the repository written as owner/repo', async () => {
+  const r = await setServiceLabels({
+    stack: 'media',
+    service: 'jellyfin',
+    changes: [
+      { key: 'source', value: 'https://github.com/jellyfin/jellyfin.git' },
+      { key: 'changelog', value: 'https://jellyfin.org/posts/' },
+    ],
+  })
+  assert.equal(r.ok, true, r.message)
+  const text = readFileSync(FILE, 'utf8')
+  assert.ok(text.includes('      shipshape.source: jellyfin/jellyfin\n'), text)
+  assert.ok(text.includes('      shipshape.changelog: https://jellyfin.org/posts/\n'), text)
+  assert.ok(text.includes('# the media server'), 'comments survive')
+  assert.equal(g(['rev-list', '--count', 'HEAD']), '2', 'one commit for both')
+  assert.equal(
+    g(['log', '-1', '--pretty=%s']),
+    'chore(shipshape): media/jellyfin: shipshape.source=jellyfin/jellyfin, shipshape.changelog=https://jellyfin.org/posts/',
+  )
+  assert.equal(g(['status', '--porcelain']), '')
+})
+
+test('an unusable repository or notes link is refused before the file is touched, good changes with it', async () => {
+  for (const change of [
+    { key: 'source' as const, value: 'gitlab.com/o/r' },
+    { key: 'source' as const, value: 'o/r\nimage: evil' },
+    { key: 'changelog' as const, value: 'https://192.168.1.10/notes' },
+    { key: 'changelog' as const, value: '../../etc/passwd' },
+  ]) {
+    const r = await setServiceLabels({
+      stack: 'media',
+      service: 'jellyfin',
+      changes: [{ key: 'policy', value: 'manual' }, change],
+    })
+    assert.equal(r.ok, false, JSON.stringify(change))
+    assert.match(r.message, /was not written/)
+    assert.equal(readFileSync(FILE, 'utf8'), COMPOSE, 'the file is untouched')
+    assert.equal(g(['rev-list', '--count', 'HEAD']), '1')
+  }
+})
+
+test('removing a notes link removes its line and nothing else', async () => {
+  resetRepo({
+    'media/docker-compose.yaml': COMPOSE.replace(
+      '      shipshape.pr: on-request\n',
+      '      shipshape.pr: on-request\n      shipshape.changelog: CHANGELOG.md\n',
+    ),
+  })
+  seedImage()
+  const r = await setServiceLabel({ stack: 'media', service: 'jellyfin', key: 'changelog', value: null })
+  assert.equal(r.ok, true, r.message)
+  assert.equal(readFileSync(FILE, 'utf8'), COMPOSE)
+  assert.equal(g(['log', '-1', '--pretty=%s']), 'chore(shipshape): media/jellyfin: shipshape.changelog removed')
 })

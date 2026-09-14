@@ -55,7 +55,9 @@ export const DiffView: FC<{
   prScope?: string | null
   proposal?: ProposalSummary
   canPropose?: boolean
-}> = ({ result, links, prUrl, prNumber, prScope, proposal }) => (
+  /** Whose service this is, so a missing upstream can be linked from here. */
+  service?: { stack: string; service: string }
+}> = ({ result, links, prUrl, prNumber, prScope, proposal, service }) => (
   <div class="text-sm">
     {'error' in result ? (
       <p class="text-xs opacity-60">{result.error}</p>
@@ -118,6 +120,12 @@ export const DiffView: FC<{
       {/* How the *image* is configured, which the project's own README rarely covers. */}
       {links?.docs && <Ext href={links.docs}>image docs</Ext>}
       {prUrl && prNumber ? <Ext href={prUrl}>pull request #{prNumber}</Ext> : null}
+      {/* No project means no release notes; the service's page is where that is fixed. */}
+      {links && !links.source && service ? (
+        <a href={`/services/${service.stack}/${service.service}`} class="btn btn-ghost btn-xs tap font-normal">
+          link the upstream
+        </a>
+      ) : null}
     </p>
   </div>
 )

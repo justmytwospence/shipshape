@@ -1,12 +1,18 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename, join } from 'node:path'
 import {
   DockerUnreadable,
+  findForeign,
+  foreignFrom,
   inspectService,
   parseInspect,
   primary,
   readInspect,
   readPs,
+  stackDir,
   type ExecResult,
 } from '../src/deploy/probe.ts'
 
@@ -108,6 +114,44 @@ test('any running container makes the service running', async () => {
   assert.equal(obs.state, 'running')
   assert.equal(obs.id, 'b')
   assert.deepEqual(calls[1], ['inspect', 'a', 'b'], 'every listed container is read, not the first')
+})
+
+test('a container from another project in the same directory is an orphan', () => {
+  // Compose's own lookup and the project-scoped `ps` both miss a container started under an
+  // older project name. Without this, a running orphan would read "left stopped (no container)".
+  const listed = [
+    'abc\tbitwarden\t/srv/homelab/bitwarden\tbitwarden',
+    'def\tother\t/srv/homelab/other\tbitwarden',
+    'ghi\tbw-old\t/srv/homelab/bitwarden\tbitwarden',
+  ].join('\n')
+  assert.equal(foreignFrom(listed, 'bitwarden', 'bitwarden'), 'compose project "bw-old" (bitwarden)')
+  assert.equal(foreignFrom('', 'bitwarden', 'bitwarden'), null)
+  assert.equal(foreignFrom('abc\t\t\tbitwarden', 'bitwarden', 'bitwarden'), null, 'no compose labels is no project')
+  assert.equal(foreignFrom('abc\tbw-old\t\tbitwarden', 'homelab', ''), null, 'no working directory is no match')
+})
+
+test('the orphan check is as strict about docker as every other read', async () => {
+  const blind = scripted([{ exitCode: 1, stderr: 'permission denied while trying to connect' }], [])
+  await assert.rejects(findForeign('bitwarden', 'bitwarden', 'bitwarden', blind.exec), DockerUnreadable)
+
+  const seen = scripted([{ exitCode: 0, stdout: 'ghi\tbw-old\t/srv/homelab/bitwarden\tbitwarden\n' }], [])
+  assert.equal(
+    await findForeign('bitwarden', 'bitwarden', 'bitwarden', seen.exec),
+    'compose project "bw-old" (bitwarden)',
+  )
+  assert.deepEqual(seen.calls[0]!.slice(0, 4), ['ps', '--all', '--filter', 'label=com.docker.compose.service=bitwarden'])
+})
+
+test('a root or included stack lives in the repository directory', () => {
+  const repo = mkdtempSync(join(tmpdir(), 'homelab-'))
+  try {
+    writeFileSync(join(repo, 'docker-compose.yaml'), 'include:\n  - pihole/docker-compose.yaml\n')
+    assert.equal(stackDir('root', repo), basename(repo))
+    assert.equal(stackDir('pihole', repo), basename(repo))
+    assert.equal(stackDir('bitwarden', repo), 'bitwarden')
+  } finally {
+    rmSync(repo, { recursive: true, force: true })
+  }
 })
 
 test('vanished between ps and inspect reads absent', async () => {

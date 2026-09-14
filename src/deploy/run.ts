@@ -3,16 +3,29 @@ import { join } from 'node:path'
 import { env, inBlackout, loadPolicy, type Policy } from '../config.ts'
 import {
   DockerUnreadable,
+  findForeign,
   httpProbe,
   inspectService,
+  missing,
   projectName,
-  snapshotTarget,
+  snapshotOf,
+  type ServiceObservation,
   type ServiceSnapshot,
 } from './probe.ts'
 import { includedStacks, scanRepo } from '../compose/scan.ts'
 import { DEFAULT_VERIFY, runVerify, type Verdict } from './verify.ts'
 import { getDb, logEvent } from '../db.ts'
 import { notify } from '../notify/index.ts'
+import {
+  leftClause,
+  observeSet,
+  ownerFrom,
+  planRun,
+  restoredClause,
+  type LeftService,
+  type RecordedPlan,
+  type RunPlan,
+} from './runstate.ts'
 
 /**
  * Bringing a merged change up on the host.
@@ -20,7 +33,7 @@ import { notify } from '../notify/index.ts'
  * A change is not done when it is committed; it is done when it is running. Everything
  * before this point only rearranged text.
  *
- * Four things make this narrower than "run compose and hope":
+ * Five things make this narrower than "run compose and hope":
  *
  * 1. **It must never deploy itself.** `docker compose up -d shipshape` replaces the
  *    container running this code, killing the process mid-command -- so the deploy
@@ -40,6 +53,15 @@ import { notify } from '../notify/index.ts'
  * 4. **A deploy that starts is not a deploy that worked.** Compose exits 0 as soon as
  *    the container is created; a service that crash-loops thirty seconds later still
  *    looks like success. Health is checked afterwards, and a failure is loud.
+ *
+ * 5. **It never changes whether a service is running.** Every shipshape verb chooses a
+ *    version; none of them means "start my service". So each service is read from docker
+ *    immediately before acting: one that is running is brought up on the new version and
+ *    verified, and one that is stopped, paused or has no container is left exactly as it
+ *    was -- no create, no pull, no start, no rm -- and the outcome says what compose and
+ *    `docker start` would each bring back. A docker that cannot be asked fails the deploy
+ *    before its first command, because guessing either way changes state. The table,
+ *    and the one exception for shipshape's own failed attempts, are in runstate.ts.
  */
 
 export interface DeployTarget {
@@ -66,9 +88,66 @@ export interface DeployTarget {
  */
 export type DeployPhase = 'refused' | 'inspect' | 'rm' | 'up' | 'verify'
 
+/**
+ * What a deploy did.
+ *
+ * `ok` means shipshape did what it set out to: it may have brought nothing up, when
+ * nothing was running, and then `healthy` is false and `up` is empty -- a truthful no-op,
+ * not a failure. `up`, `left` and `restored` are the two halves of a group that was only
+ * partly running, and `notes` are the sentences that explain the left half. `plan` is what
+ * was written to `deploys.snapshot` before the first command; a failure carries it only
+ * once it exists, which is after the read and the pull.
+ */
 export type DeployOutcome =
-  | { ok: true; healthy: boolean; detail: string; verdict?: Verdict; snapshot?: ServiceSnapshot[] }
-  | { ok: false; phase: DeployPhase; reason: string; stderr?: string; snapshot?: ServiceSnapshot[] }
+  | {
+      ok: true
+      healthy: boolean
+      detail: string
+      verdict?: Verdict
+      up: string[]
+      left: LeftService[]
+      restored: string[]
+      notes: string[]
+      plan: RecordedPlan
+    }
+  | { ok: false; phase: DeployPhase; reason: string; stderr?: string; plan?: RecordedPlan }
+
+/**
+ * Everything a deploy asks of the outside world, in one seam.
+ *
+ * The promises that matter are about what is *not* run -- no compose at all when nothing
+ * is running, the plan recorded before the first command, `--no-deps` on the running
+ * subset only -- and those can only be asserted against a docker that records what it was
+ * asked. `realIo` is the one that talks to the host.
+ */
+export interface DeployIo {
+  /** Strict: throws `DockerUnreadable` rather than reading a failure as no container. */
+  observe(project: string, service: string): Promise<ServiceObservation>
+  /** A container of this service from another compose project, described; null when none. */
+  foreign(project: string, stack: string, service: string): Promise<string | null>
+  exec(args: string[], opts: { cwd: string; timeout: number }): Promise<{ exitCode?: number; stderr?: unknown }>
+  verify(
+    target: DeployTarget,
+    project: string,
+    snapshot: ServiceSnapshot[],
+    policy: Policy,
+    pinned: Map<string, string | null>,
+  ): Promise<Verdict>
+  peers(stack: string): { service: string; network_mode: string | null }[]
+  /** What the compose file pins now, per service of the stack. */
+  pinned(stack: string, policy: Policy): Map<string, string | null>
+  now(): number
+}
+
+export const realIo: DeployIo = {
+  observe: (project, service) => inspectService(project, service),
+  foreign: (project, stack, service) => findForeign(project, stack, service),
+  exec: (args, opts) => execa('docker', args, { cwd: opts.cwd, reject: false, timeout: opts.timeout }),
+  verify: (target, project, snapshot, policy, pinned) => verifyDeploy(target, project, snapshot, policy, pinned),
+  peers: (stack) => stackPeers(stack),
+  pinned: (stack, policy) => pinnedRefs(stack, policy),
+  now: () => Date.now(),
+}
 
 /**
  * Stacks that are part of the root compose project rather than their own.
@@ -165,10 +244,40 @@ export function refuseReason(
   return null
 }
 
+/**
+ * Why a deploy stopped before its first command: docker could not say what is there.
+ *
+ * One sentence for every reader of docker on this path -- the target, its namespace
+ * owners, the orphan check -- because to the operator they are the same failure.
+ */
+function unreadableReason(services: string[], err: Error): string {
+  return `could not ask docker whether ${services.join(', ')} ${services.length === 1 ? 'is' : 'are'} running: ${err.message}`
+}
+
+type DeployFailure = Extract<DeployOutcome, { ok: false }>
+
+/**
+ * Bring up what is running, leave what is not, and verify what came up.
+ *
+ * The order is the promise. Read every service; plan; pull only what the plan brings up;
+ * read and plan again, because a pull can take minutes and a service stopped meanwhile
+ * must drop out; write the plan down; and only then remove or recreate anything. A
+ * deploy that brings nothing up runs no compose command at all.
+ *
+ * `carried` names the services shipshape's own earlier attempt left down (see
+ * `carriedFor`); `record` is called with the plan immediately before the first command
+ * that changes anything, or before returning when nothing will.
+ */
 export async function deploy(
   target: DeployTarget,
-  opts: { skipBlackout?: boolean } = {},
+  opts: {
+    skipBlackout?: boolean
+    carried?: ReadonlySet<string>
+    record?: (p: RecordedPlan) => void
+    io?: DeployIo
+  } = {},
 ): Promise<DeployOutcome> {
+  const io = opts.io ?? realIo
   const { policy } = loadPolicy()
   const refusal = refuseReason(target, {
     selfStack: env.selfStack,
@@ -179,64 +288,145 @@ export async function deploy(
   })
   if (refusal) return { ok: false, phase: 'refused', reason: refusal }
 
-  const started = Date.now()
   const project = projectName(target.stack)
+  const services = [...new Set(target.services)]
+  const ownerOf = ownerFrom(io.peers(target.stack))
+  const pinned = io.pinned(target.stack, policy)
+  const carried = opts.carried ?? new Set<string>()
+  const started = io.now()
 
-  // Before anything is replaced: what is running now. It cannot be recovered afterwards
-  // -- the container this is about to remove is the only record of it -- and it is both
-  // the rollback target and the baseline the restart counter is measured against.
-  let snapshot: ServiceSnapshot[]
-  try {
-    snapshot = await snapshotTarget(project, target.services)
-  } catch (err) {
-    if (!(err instanceof DockerUnreadable)) throw err
-    // A docker that cannot say what is there now cannot say what came up afterwards
-    // either. Stop before the first command and say so, rather than record a baseline
-    // of guesses and hand the result to a verifier just as blind.
-    const n = target.services.length
-    return {
-      ok: false,
-      phase: 'inspect',
-      reason: `could not ask docker whether ${target.services.join(', ')} ${n === 1 ? 'is' : 'are'} running: ${err.message}`,
+  // What is there now, and what that means. It cannot be recovered afterwards -- the
+  // container this is about to remove is the only record of it -- and it is the plan, the
+  // rollback target and the baseline the restart counter is measured against.
+  const look = async (): Promise<{ seen: Map<string, ServiceObservation>; plan: RunPlan } | DeployFailure> => {
+    try {
+      const names = observeSet(services, ownerOf)
+      const obs = await Promise.all(names.map((s) => io.observe(project, s)))
+      const seen = new Map(names.map((s, n) => [s, obs[n]!]))
+      for (const s of services) {
+        if (seen.get(s)?.found) continue
+        // No container under this project is only "no container" if no other project is
+        // holding one from the same directory. A running orphan would otherwise read as
+        // left stopped, which is false in the one way that matters.
+        const desc = await io.foreign(project, target.stack, s)
+        if (desc) {
+          return {
+            ok: false,
+            phase: 'inspect',
+            reason: `${s} has a container from ${desc}, so shipshape cannot tell whether it is this service`,
+          }
+        }
+      }
+      return { seen, plan: planRun({ services, seen, ownerOf, carried }) }
+    } catch (err) {
+      if (!(err instanceof DockerUnreadable)) throw err
+      // A docker that cannot say what is there cannot say whether it is running, and
+      // either guess changes state: starting a parked service, or leaving a running one
+      // on the old version while reporting it stopped. Stop before the first command.
+      return { ok: false, phase: 'inspect', reason: unreadableReason(target.services, err) }
     }
   }
+
+  let read = await look()
+  if ('ok' in read) return read
+
+  if (target.pull && read.plan.up.length > 0) {
+    // Only what will come up is pulled: a dormant service costs no Docker Hub pull. Then
+    // look again, because the pull is the long wait on this path -- anything that stopped
+    // during it drops out, and anything that started is pulled once more before it is
+    // brought up.
+    const pulled = new Set<string>()
+    const pull = async (names: string[]): Promise<DeployFailure | null> => {
+      const pu = pullArgs({ ...target, services: names })
+      const p = await io.exec(pu.args, { cwd: pu.cwd, timeout: 600_000 })
+      if ((p.exitCode ?? 1) !== 0) {
+        return { ok: false, phase: 'up', reason: 'could not pull the new image', stderr: tail(p.stderr) }
+      }
+      for (const s of names) pulled.add(s)
+      return null
+    }
+    const first = await pull(read.plan.up)
+    if (first) return first
+    read = await look()
+    if ('ok' in read) return read
+    const extra = read.plan.up.filter((s) => !pulled.has(s))
+    if (extra.length > 0) {
+      const again = await pull(extra)
+      if (again) return again
+    }
+  }
+  const { seen, plan } = read
+
+  const recorded: RecordedPlan = {
+    v: 1,
+    at: new Date(io.now()).toISOString(),
+    seen: services.map((s) => snapshotOf(seen.get(s) ?? missing(s))),
+    ...plan,
+  }
+  opts.record?.(recorded)
+
+  const notes = [
+    ...plan.restored.map(restoredClause),
+    ...plan.left.map((l) => leftClause(l, pinned.get(l.service) ?? null)),
+  ]
+
+  if (plan.up.length === 0) {
+    return {
+      ok: true,
+      healthy: false,
+      up: [],
+      left: plan.left,
+      restored: [],
+      notes,
+      plan: recorded,
+      detail: notes.join('; '),
+    }
+  }
+
+  // From here on, only the running subset exists as far as compose is concerned: named
+  // explicitly, under --no-deps, so nothing left stopped is reached through the graph.
+  const upTarget: DeployTarget = { ...target, services: plan.up }
 
   if (target.strategy === 'rm-first') {
-    const rm = removeArgs(target)
-    const r = await execa('docker', rm.args, { cwd: rm.cwd, reject: false, timeout: 120_000 })
+    const rm = removeArgs(upTarget)
+    const r = await io.exec(rm.args, { cwd: rm.cwd, timeout: 120_000 })
     if ((r.exitCode ?? 1) !== 0) {
-      return { ok: false, phase: 'rm', reason: 'could not remove the old container', stderr: tail(r.stderr), snapshot }
+      return { ok: false, phase: 'rm', reason: 'could not remove the old container', stderr: tail(r.stderr), plan: recorded }
     }
   }
 
-  if (target.pull) {
-    const pu = pullArgs(target)
-    const p = await execa('docker', pu.args, { cwd: pu.cwd, reject: false, timeout: 600_000 })
-    if ((p.exitCode ?? 1) !== 0) {
-      return { ok: false, phase: 'up', reason: 'could not pull the new image', stderr: tail(p.stderr), snapshot }
-    }
-  }
-
-  const up = composeArgs(target)
-  const r = await execa('docker', up.args, { cwd: up.cwd, reject: false, timeout: 600_000 })
+  const up = composeArgs(upTarget)
+  const r = await io.exec(up.args, { cwd: up.cwd, timeout: 600_000 })
   if ((r.exitCode ?? 1) !== 0) {
-    return { ok: false, phase: 'up', reason: 'compose failed', stderr: tail(r.stderr), snapshot }
+    return { ok: false, phase: 'up', reason: 'compose failed', stderr: tail(r.stderr), plan: recorded }
   }
 
-  const verdict = await verifyDeploy(target, project, snapshot, policy)
-  const secs = Math.round((Date.now() - started) / 1000)
+  const verdict = await io.verify(
+    upTarget,
+    project,
+    recorded.seen.filter((s) => plan.up.includes(s.service)),
+    policy,
+    pinned,
+  )
+  const secs = Math.round((io.now() - started) / 1000)
+  const names = plan.up.join(', ')
   const healthy = verdict.kind === 'passed' || verdict.kind === 'degraded'
+  const also = notes.length > 0 ? `; ${notes.join('; ')}` : ''
   return {
     ok: true,
     healthy,
     verdict,
-    snapshot,
+    up: plan.up,
+    left: plan.left,
+    restored: plan.restored,
+    notes,
+    plan: recorded,
     detail:
       verdict.kind === 'passed'
-        ? `${target.services.join(', ')} up in ${secs}s`
+        ? `${names} up in ${secs}s${also}`
         : verdict.kind === 'degraded'
-          ? `${target.services.join(', ')} up in ${secs}s, with warnings — ${verdict.detail}`
-          : `${target.services.join(', ')} — ${verdict.detail}`,
+          ? `${names} up in ${secs}s, with warnings — ${verdict.detail}${also}`
+          : `${names} — ${verdict.detail}${plan.left.length ? `; left stopped: ${plan.left.map((l) => l.service).join(', ')}` : ''}`,
   }
 }
 
@@ -258,12 +448,45 @@ export function expectedRef(
   return fromFile.get(service) ?? fromDb.get(service) ?? null
 }
 
+/**
+ * What the compose file pins RIGHT NOW for each service of a stack, read from disk rather
+ * than from the database.
+ *
+ * `images.image_ref` is a snapshot taken by the last scan, and the scan runs once a day. A
+ * deploy happens seconds after a merge, so that row still holds the tag from before the
+ * bump -- and comparing the (correct) running container against it made every single
+ * unattended deploy fail `image-mismatch` and roll back. It never showed up while
+ * `paused: true`, because nothing had ever deployed unattended.
+ *
+ * The file is the source of truth everywhere else in shipshape, and by this point it has
+ * been fast-forwarded (or reverted, for a rollback), so read it. Read once per deploy,
+ * before anything runs, because two readers need it: the verifier's image check, and the
+ * sentence that tells an operator which version compose would bring a left service up on.
+ */
+function pinnedRefs(stack: string, policy: Policy): Map<string, string | null> {
+  const pinned = new Map<string, string | null>()
+  try {
+    // `imageRaw` is the ref exactly as written in the file, which is what `image_ref`
+    // stores and what the container reports -- the three have to be the same shape or
+    // the comparison is meaningless.
+    for (const svc of scanRepo(env.repoDir, policy.exclude_stacks)) {
+      if (svc.stack === stack) pinned.set(svc.service, svc.imageRaw ?? null)
+    }
+  } catch {
+    // Unreadable compose files are the deploy's problem, not the verifier's. Falling
+    // back to the database keeps the old behaviour rather than skipping the check, and
+    // a left clause without a version says "the version in the compose file".
+  }
+  return pinned
+}
+
 /** Wire the pure verifier to the real docker, and to this service's declared probe port. */
 async function verifyDeploy(
   target: DeployTarget,
   project: string,
   snapshot: ServiceSnapshot[],
   policy: Policy,
+  pinned: Map<string, string | null>,
 ): Promise<Verdict> {
   const db = getDb()
   const meta = new Map(
@@ -275,28 +498,6 @@ async function verifyDeploy(
     }),
   )
 
-  // What the compose file pins RIGHT NOW, read from disk rather than from the database.
-  //
-  // `images.image_ref` is a snapshot taken by the last scan, and the scan runs once a
-  // day. A deploy happens seconds after a merge, so that row still holds the tag from
-  // before the bump -- and comparing the (correct) running container against it made
-  // every single unattended deploy fail `image-mismatch` and roll back. It never showed
-  // up while `paused: true`, because nothing had ever deployed unattended.
-  //
-  // The file is the source of truth everywhere else in shipshape, and by this point it
-  // has been fast-forwarded, so read it.
-  const pinned = new Map<string, string | null>()
-  try {
-    // `imageRaw` is the ref exactly as written in the file, which is what `image_ref`
-    // stores and what the container reports -- the three have to be the same shape or
-    // the comparison is meaningless.
-    for (const svc of scanRepo(env.repoDir, policy.exclude_stacks)) {
-      if (svc.stack === target.stack) pinned.set(svc.service, svc.imageRaw ?? null)
-    }
-  } catch {
-    // Unreadable compose files are the deploy's problem, not the verifier's. Falling
-    // back to the database keeps the old behaviour rather than skipping the check.
-  }
   const expectedImageRef = (service: string): string | null =>
     expectedRef(service, pinned, new Map([...meta].map(([k, v]) => [k, v.image_ref ?? null])))
 
@@ -421,13 +622,34 @@ export async function deployForPr(
   prNumber: number,
   target: DeployTarget,
   deployId?: number,
+  opts: { carried?: ReadonlySet<string>; io?: DeployIo } = {},
 ): Promise<DeployOutcome> {
-  const outcome = await deploy(target)
+  const outcome = await deploy(target, {
+    carried: opts.carried,
+    io: opts.io,
+    // Written before the first command rather than with the result, because the reader
+    // that needs it most is the one that runs after this process did not finish: a
+    // reclaimed attempt, or the next deploy of a service this one left down.
+    record:
+      deployId !== undefined
+        ? (p) => {
+            getDb().prepare(`UPDATE deploys SET snapshot = ? WHERE id = ?`).run(JSON.stringify(p), deployId)
+          }
+        : undefined,
+  })
   const now = new Date().toISOString()
   const detail = outcome.ok
     ? outcome.detail
     : `${outcome.reason}${outcome.stderr ? `\n${outcome.stderr}` : ''}`
-  const status = !outcome.ok ? 'failed' : outcome.healthy ? 'deployed' : 'failed'
+  // Nothing brought up is its own status, not `deployed`: nothing is soaking, and nothing
+  // is verified. `healthy` stays 0 for it, which is what keeps it from ever being carried.
+  const status = !outcome.ok
+    ? 'failed'
+    : outcome.up.length === 0
+      ? 'left-stopped'
+      : outcome.healthy
+        ? 'deployed'
+        : 'failed'
 
   if (deployId === undefined) {
     // No queue row: a deploy asked for directly rather than by a merge. Record it as
@@ -476,20 +698,38 @@ export async function deployForPr(
       detail: `${outcome.reason}${outcome.stderr ? `\n${outcome.stderr}` : ''}`,
     })
     const down = outcome.phase === 'up' && target.strategy === 'rm-first'
+    // Once there is a plan, the failure is about the services it meant to bring up: the
+    // ones it left were never touched, and a pasted command that named them would start
+    // exactly what the deploy declined to.
+    const named = outcome.plan?.up.length ? outcome.plan.up : target.services
     // No command to paste when docker could not be asked: compose was never the problem,
     // and running it by hand while docker cannot say what is there is the very guess the
     // deploy declined to make. What fixes it is docker answering.
     const next =
       outcome.phase === 'inspect'
         ? 'Press Try again on the update once docker answers.'
-        : `Retry with:\n${manualCommand(target)}`
+        : `Retry with:\n${manualCommand({ ...target, services: outcome.plan?.up ?? target.services })}`
     await notify({
       title: down
         ? `shipshape: ${target.stack} is DOWN — deploy failed`
         : `shipshape: deploy failed — ${target.stack}`,
-      body: `#${prNumber} merged but ${target.services.join(', ')} did not deploy.\n\n${outcome.reason}\n\n${failureState(outcome, target.strategy)}\n\n${next}`,
+      body: `#${prNumber} merged but ${named.join(', ')} did not deploy.\n\n${outcome.reason}\n\n${failureState(outcome, target.strategy)}\n\n${next}`,
       priority: down ? 5 : 4,
       tags: ['rotating_light'],
+    })
+    return outcome
+  }
+
+  if (outcome.up.length === 0) {
+    // Nothing was running, so nothing was started, and nothing went wrong: an Activity
+    // line, not an alert. The update reads Left stopped and the detail says what compose
+    // and `docker start` would each bring back.
+    logEvent({
+      level: 'info',
+      kind: 'deploy',
+      stack: target.stack,
+      message: `${target.stack} left stopped`,
+      detail: outcome.detail,
     })
     return outcome
   }

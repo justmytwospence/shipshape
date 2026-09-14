@@ -1,8 +1,9 @@
 import { getDb, logEvent } from '../db.ts'
 import { env, loadPolicy } from '../config.ts'
 import { notify } from '../notify/index.ts'
-import { deployForPr, type DeployTarget } from './run.ts'
+import { deployForPr, type DeployIo, type DeployTarget } from './run.ts'
 import { handleFailure } from './rollback.ts'
+import { readRecordedPlan, recheckServices } from './runstate.ts'
 import {
   captureLogs,
   DockerUnreadable,
@@ -262,7 +263,7 @@ export async function drainDeployQueue(): Promise<{ ran: number }> {
  */
 export async function runDeployJob(
   job: DeployJob,
-  opts: { pull?: boolean } = {},
+  opts: { pull?: boolean; io?: DeployIo } = {},
 ): Promise<boolean> {
   const db = getDb()
   const { policy } = loadPolicy()
@@ -280,14 +281,42 @@ export async function runDeployJob(
     // rolling redeploy never merged anything: the tag moved upstream and still has, so it
     // goes back to `detected`, where Redeploy is offered again.
     const notLanded = job.trigger === 'redeploy' ? 'detected' : 'merged'
+    // Read before this attempt records a plan of its own, so the only plan of this row it
+    // can find is one an interrupted run of it wrote.
+    const carried = carriedFor(job.stack, target.services, job.id)
     markUpdates(job.id, 'deploying')
 
     try {
-      const outcome = await deployForPr(job.pr_number ?? 0, target, job.id)
+      const outcome = await deployForPr(job.pr_number ?? 0, target, job.id, { carried, io: opts.io })
       ran = true
 
-      if (outcome.ok && outcome.healthy) {
-        markUpdates(job.id, 'deployed')
+      // The versions, not the timing: `deploys.detail` keeps "up in Ns" for the timeline.
+      // The link only when there is a pull request -- a redeploy has none, and used to
+      // record "#null deployed" pointing at /pull/null.
+      const members = carriedUpdates(job.id)
+      const change = changeText(members)
+      const service = members.length === 1 ? members[0]!.service : undefined
+      const url =
+        job.pr_number != null ? `https://github.com/${env.githubRepo}/pull/${job.pr_number}` : undefined
+      const leftList = outcome.ok
+        ? outcome.left.map((l) => ({ service: l.service, absent: l.state === 'absent' || l.state === 'removing' }))
+        : []
+
+      // A service the deploy left is finished with, whatever became of the half that came
+      // up: the merge stands and nothing more is owed. Marked first, so every branch below
+      // moves only the services it actually brought up.
+      if (outcome.ok) markUpdates(job.id, 'left-stopped', { services: outcome.left.map((l) => l.service) })
+
+      if (outcome.ok && outcome.up.length === 0) {
+        // Nothing was running, so nothing was started and there is nothing to soak. The
+        // line says so under its own heading; a redeploy with no pull request says nothing,
+        // since nothing landed and nothing changed.
+        const line = deployLine({ prNumber: job.pr_number, change, broughtUp: 0, left: leftList })
+        if (line) {
+          await routine({ category: line.category, stack: job.stack, service, summary: line.summary, detail: outcome.detail, url })
+        }
+      } else if (outcome.ok && outcome.healthy) {
+        markUpdates(job.id, 'deployed', { services: outcome.up })
         // Passing the window is not the same as being fine. The failures a window misses
         // are the slow ones, so nothing reads `verified` until the soak has also passed.
         const soak = policy.deploy.soak_s
@@ -297,37 +326,37 @@ export async function runDeployJob(
             job.id,
           )
         } else {
-          markUpdates(job.id, 'verified')
+          markUpdates(job.id, 'verified', { services: outcome.up })
           db.prepare(`UPDATE deploys SET status = 'verified' WHERE id = ?`).run(job.id)
         }
-        // The versions, not the timing: `deploys.detail` keeps "up in Ns" for the timeline.
-        // The link only when there is a pull request -- a redeploy has none, and used to
-        // record "#null deployed" pointing at /pull/null.
-        const members = carriedUpdates(job.id)
         const degraded = outcome.verdict?.kind === 'degraded' ? outcome.verdict : null
         const line = deployLine({
           prNumber: job.pr_number,
-          change: changeText(members),
-          broughtUp: target.services.length,
-          left: [],
+          change,
+          broughtUp: outcome.up.length,
+          left: leftList,
           warnings: degraded !== null,
         })
         if (line) {
           await routine({
             category: line.category,
             stack: job.stack,
-            service: members.length === 1 ? members[0]!.service : undefined,
+            service,
             summary: line.summary,
-            detail: degraded?.detail,
-            url:
-              job.pr_number != null
-                ? `https://github.com/${env.githubRepo}/pull/${job.pr_number}`
-                : undefined,
+            // The warnings, then a sentence per service left or brought back: the summary
+            // names them, and this is where each one says what compose would do.
+            detail:
+              [degraded ? `with warnings — ${degraded.detail}` : null, ...outcome.notes].filter(Boolean).join('\n') ||
+              undefined,
+            url,
           })
         }
       } else if (outcome.ok && outcome.verdict?.kind === 'failed') {
-        // Verification said no. Everything from here is remediation.
-        const logs = await collectLogs(job.stack, target.services, outcome.verdict)
+        // Verification said no. Everything from here is remediation -- of what came up, and
+        // only that: the services left stopped were never touched, so neither their logs
+        // nor the command an operator is handed should reach them.
+        const upTarget: DeployTarget = { ...target, services: outcome.up }
+        const logs = await collectLogs(job.stack, outcome.up, outcome.verdict)
         db.prepare(`UPDATE deploys SET verdict = ?, diagnosis = ? WHERE id = ?`).run(
           JSON.stringify(outcome.verdict),
           JSON.stringify({ logs }),
@@ -336,19 +365,23 @@ export async function runDeployJob(
         const { rolledBack } = await handleFailure({
           prNumber: job.pr_number ?? 0,
           prId: prIdFor(job.id),
-          target,
+          target: upTarget,
           verdict: outcome.verdict,
           logs,
+          // The automatic rollback puts back what this attempt brought up, even if the
+          // failure took it down: the up-set is known here and no longer in docker.
+          carry: new Set(outcome.up),
         })
         // Tombstone only when the tree no longer carries the change. If it still does,
-        // the update is still live and re-deploying it is a legitimate retry.
-        markUpdates(job.id, rolledBack ? 'failed' : notLanded)
+        // the update is still live and re-deploying it is a legitimate retry. A revert
+        // takes the whole merge out, the left half with it.
+        markUpdates(job.id, rolledBack ? 'failed' : notLanded, rolledBack ? {} : { services: outcome.up })
         db.prepare(`UPDATE deploys SET status = ? WHERE id = ?`).run(
           rolledBack ? 'rolled-back' : 'failed',
           job.id,
         )
       } else {
-        markUpdates(job.id, notLanded)
+        markUpdates(job.id, notLanded, outcome.ok ? { services: outcome.up } : {})
       }
     } catch (err) {
       // The row stays `running` and reclaimStale will retry it once. Never rethrow:
@@ -411,7 +444,7 @@ export async function runRechecks(
   const db = getDb()
   const due = db
     .prepare(
-      `SELECT id, pr_number, stack, services FROM deploys
+      `SELECT id, pr_number, stack, services, snapshot FROM deploys
        WHERE recheck_at IS NOT NULL AND recheck_at <= ? AND status = 'deployed'`,
     )
     .all(new Date(now()).toISOString()) as {
@@ -419,12 +452,15 @@ export async function runRechecks(
     pr_number: number | null
     stack: string
     services: string
+    snapshot: string | null
   }[]
   if (due.length === 0) return { checked: 0 }
 
   for (const row of due) {
     const project = projectName(row.stack)
-    const services = row.services.split(' ').filter(Boolean)
+    // What came up, not everything the row names: a member left stopped was never started,
+    // and looking at it would call a service nobody touched degraded.
+    const services = recheckServices(row.services, row.snapshot)
     let obs: ServiceObservation[]
     try {
       obs = await Promise.all(services.map((svc) => observe(project, svc)))
@@ -454,7 +490,7 @@ export async function runRechecks(
 
     if (bad.length === 0) {
       db.prepare(`UPDATE deploys SET status = 'verified' WHERE id = ?`).run(row.id)
-      markUpdates(row.id, 'verified')
+      markUpdates(row.id, 'verified', { services })
       logEvent({
         level: 'info',
         kind: 'deploy',
@@ -515,6 +551,56 @@ export function carriedUpdates(
         WHERE du.deploy_id = ? ORDER BY u.id`,
     )
     .all(deployId) as { service: string; from_tag: string; to_tag: string }[]
+}
+
+/** Statuses of an attempt that ended without the service healthy on what it brought up. */
+const CARRY_FROM = new Set(['failed', 'error', 'rolled-back'])
+
+/**
+ * The services shipshape's own earlier attempt left down, which this deploy puts back up
+ * unless someone has visibly stopped them since.
+ *
+ * The rule that a deploy never starts a stopped service needs this one exception, or it
+ * reads shipshape's damage back as an operator's decision. minuspod #79 and #93 are the
+ * shape: both deploys (rows 23 and 24) were rm-first, removed the old container, and
+ * failed mid-"Recreate", leaving minuspod DOWN. The next merge on minuspod, and Try again
+ * on the DOWN alert that asked for exactly that, would both find no container and leave
+ * it down, reporting "left stopped (no container)" about an outage shipshape caused.
+ *
+ * So, per service, the newest recorded plan that names it -- up or left -- decides. It is
+ * carried when that plan brought it up, and either the plan is this very row (an attempt
+ * interrupted after recording, now re-run) or the attempt failed with nothing healthy on
+ * it: `failed`, `error`, or `rolled-back` with `healthy = 0`. Newest-that-names-it is what
+ * breaks the chain: a later plan that verified it, or left it stopped, is the later word.
+ * An operator rollback that came back healthy never carries, and neither do rows with no
+ * plan -- legacy rows, refusals, and attempts docker could not be asked about.
+ *
+ * Carried does not mean started regardless: `planRun` still leaves a carried service that
+ * is paused, removing, or exited under a restart policy that would otherwise be restarting
+ * it, because that is someone stopping it after shipshape's attempt.
+ */
+export function carriedFor(stack: string, services: readonly string[], deployId: number): Set<string> {
+  const rows = getDb()
+    .prepare(
+      `SELECT id, status, healthy, snapshot FROM deploys
+        WHERE stack = ? AND id <= ? AND snapshot IS NOT NULL
+        ORDER BY id DESC LIMIT 50`,
+    )
+    .all(stack, deployId) as { id: number; status: string; healthy: number; snapshot: string }[]
+  const plans = rows.flatMap((row) => {
+    const plan = readRecordedPlan(row.snapshot)
+    return plan ? [{ row, plan }] : []
+  })
+
+  const out = new Set<string>()
+  for (const s of new Set(services)) {
+    const newest = plans.find(({ plan }) => plan.up.includes(s) || plan.left.some((l) => l.service === s))
+    if (!newest || !newest.plan.up.includes(s)) continue
+    if (newest.row.id === deployId || (CARRY_FROM.has(newest.row.status) && newest.row.healthy === 0)) {
+      out.add(s)
+    }
+  }
+  return out
 }
 
 /** The pull request a deploy row belongs to. */

@@ -3,6 +3,7 @@ import { env, loadPolicy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { notify } from '../notify/index.ts'
 import { deploy, manualCommand, type DeployTarget } from './run.ts'
+import type { LeftService, RecordedPlan } from './runstate.ts'
 import type { Verdict } from './verify.ts'
 
 /**
@@ -81,13 +82,27 @@ export interface RollbackResult {
   ok: boolean
   detail: string
   revertSha?: string
+  /** What the redeploy of the reverted tree brought up, when it got that far. */
+  up?: string[]
+  /** What it left as it was, and the sentences that say why. */
+  left?: LeftService[]
+  notes?: string[]
 }
 
-/** Revert the merge in the live checkout and bring the previous version back up. */
+/**
+ * Revert the merge in the live checkout and put the previous version back.
+ *
+ * "Back" follows the same rule as every deploy: a service that is running comes back up on
+ * the old version, and one that is not stays as it is -- the revert alone is then the whole
+ * rollback, and compose brings it up on the old version whenever it next runs. `carried`
+ * is how shipshape's own failed attempt still gets undone, and `record` writes the plan to
+ * the caller's row before the first command.
+ */
 export async function performRollback(
   target: DeployTarget,
   mergeSha: string,
   mergeMethod: string,
+  opts: { carried?: ReadonlySet<string>; record?: (p: RecordedPlan) => void } = {},
 ): Promise<RollbackResult> {
   const repo = env.repoDir
 
@@ -115,14 +130,34 @@ export async function performRollback(
 
   // Deploy the reverted tree straight away. The image it wants is the one that was
   // running minutes ago, so its layers are local and this is a recreate, not a pull.
-  const back = await deploy(target, { skipBlackout: true })
+  const back = await deploy(target, { skipBlackout: true, carried: opts.carried, record: opts.record })
   if (!back.ok) {
     return { ok: false, detail: `reverted ${gitPart.revertSha}, but the redeploy failed: ${back.reason}` }
+  }
+  if (back.up.length === 0) {
+    // Nothing was running to put back. The revert stands, and that is a rollback that
+    // worked -- not "did not come back healthy", which would page someone about a service
+    // that was stopped before any of this began.
+    return {
+      ok: true,
+      detail: `reverted ${gitPart.revertSha}; ${back.detail}`,
+      revertSha: gitPart.revertSha,
+      up: [],
+      left: back.left,
+      notes: back.notes,
+    }
   }
   if (!back.healthy) {
     return { ok: false, detail: `reverted ${gitPart.revertSha}, but the previous version did not come back healthy` }
   }
-  return { ok: true, detail: `rolled back to the previous version`, revertSha: gitPart.revertSha }
+  return {
+    ok: true,
+    detail: `rolled back to the previous version${back.left.length ? `; ${back.notes.join('; ')}` : ''}`,
+    revertSha: gitPart.revertSha,
+    up: back.up,
+    left: back.left,
+    notes: back.notes,
+  }
 }
 
 /**
@@ -137,6 +172,11 @@ export async function handleFailure(opts: {
   target: DeployTarget
   verdict: Verdict
   logs: string
+  /**
+   * The failed attempt's up-set. The rollback puts these back even when the failure left
+   * them down -- a crash-looping or exited new container is shipshape's doing, not a stop.
+   */
+  carry: ReadonlySet<string>
 }): Promise<{ rolledBack: boolean }> {
   const { policy } = loadPolicy()
   const row = getDb()
@@ -173,6 +213,7 @@ export async function handleFailure(opts: {
     opts.target,
     row!.merge_commit_sha!,
     policy.merge_method,
+    { carried: opts.carry },
   )
 
   if (result.ok) {
@@ -188,7 +229,11 @@ export async function handleFailure(opts: {
       title: `shipshape: ${opts.target.stack} failed and was rolled back`,
       body:
         `#${opts.prNumber}: ${opts.verdict.detail}\n\n` +
-        `Rolled back and healthy again. main carries revert ${result.revertSha}.\n\n` +
+        // "Healthy again" only when everything it meant to put back came up; otherwise say
+        // what was left, and why, rather than claim a state nobody checked.
+        (result.left?.length
+          ? `Rolled back. main carries revert ${result.revertSha}. ${result.notes!.join('; ')}.\n\n`
+          : `Rolled back and healthy again. main carries revert ${result.revertSha}.\n\n`) +
         `This version will not be offered again. Use Try again on the update page to re-land it.` +
         tail,
       priority: 4,

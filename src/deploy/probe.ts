@@ -311,21 +311,59 @@ export function snapshotOf(o: ServiceObservation): ServiceSnapshot {
 }
 
 /**
- * What was running before the deploy.
+ * The directory a stack's compose project is named after, before compose normalises it.
  *
- * Recorded rather than recomputed because by the time a deploy has failed, the thing it
- * replaced is already gone -- this is the previous-good state every rollback design in
- * the survey keeps somewhere, and the baseline the restart counter is measured against.
- *
- * Throws `DockerUnreadable` rather than recording a guess: a baseline that says "absent"
- * because docker could not be asked is false, and the deploy built on it would be too.
+ * The same rule as `projectName`: a root or included stack lives in the repository
+ * directory itself, and every other stack in its own.
  */
-export async function snapshotTarget(
+export function stackDir(stack: string, repoDir = env.repoDir): string {
+  return stack === 'root' || includedStacks(repoDir).has(stack) ? basename(repoDir) : stack
+}
+
+/**
+ * A container for this service from some other compose project started out of the same
+ * directory, described for the operator -- or null when there is none.
+ *
+ * `stdout` is `docker ps` lines of id, project, working directory and name, tab-separated.
+ * A different project name from the same directory is the tell of a stack brought up
+ * historically under another name (the homelab's "orphaned containers" gotcha): compose
+ * cannot see it, the project-scoped lookup cannot see it, and without this check a running
+ * orphan would be reported as "left stopped (no container)".
+ */
+export function foreignFrom(stdout: string, project: string, dir: string): string | null {
+  for (const line of stdout.split('\n')) {
+    const [, proj, wd, name] = line.split('\t')
+    if (proj && proj !== project && wd && basename(wd) === dir) {
+      return `compose project "${proj}" (${name ?? ''})`
+    }
+  }
+  return null
+}
+
+/**
+ * Look for a container of this service that the project-scoped lookup cannot see.
+ *
+ * Only asked about a service `inspectService` found no container for, so it costs one
+ * extra `ps` in the rare case and nothing otherwise. Strict in the same way: a docker that
+ * could not list containers throws `DockerUnreadable` rather than answering "none".
+ */
+export async function findForeign(
   project: string,
-  services: string[],
-): Promise<ServiceSnapshot[]> {
-  const obs = await Promise.all(services.map((s) => inspectService(project, s)))
-  return obs.map(snapshotOf)
+  stack: string,
+  service: string,
+  exec: DockerExec = dockerExec,
+): Promise<string | null> {
+  const lines = readPs(
+    await exec([
+      'ps',
+      '--all',
+      '--filter',
+      `label=com.docker.compose.service=${service}`,
+      '--format',
+      '{{.ID}}\t{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.project.working_dir"}}\t{{.Names}}',
+    ]),
+  )
+  return foreignFrom(lines.join('\n'), project, stackDir(stack))
 }
 
 /** Container logs since the deploy began, bounded — the diagnosis nobody was collecting. */

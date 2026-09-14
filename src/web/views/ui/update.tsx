@@ -105,7 +105,8 @@ const ActionButton: FC<{
  *
  * Merging is not a preference, it is a change to a running host: what follows -- verify,
  * soak, and an automatic rollback if it fails -- is the part worth knowing before rather
- * than after.
+ * than after. Both lists state intent, written before any outcome is known, so neither
+ * promises to start a service: a deploy never changes whether one is running.
  */
 const Confirm: FC<{
   update: UpdateView
@@ -120,14 +121,14 @@ const Confirm: FC<{
       ? [
           `squash #${update.pr?.number} into main`,
           'sync the checkout on this host',
-          `bring ${update.stack} up with docker compose`,
+          `bring ${update.stack} up with docker compose, or leave it stopped if it is not running`,
           'watch it for five minutes',
           'soak for thirty more before calling it verified',
           'put the old version back automatically if it fails',
         ]
       : [
           `revert the commit that landed ${update.toTag}`,
-          `bring ${update.stack} back up on ${update.fromTag}`,
+          `put ${update.stack} back on ${update.fromTag}, running only if it is running now`,
           'publish the revert so the next scan does not re-offer it',
         ]
   return (

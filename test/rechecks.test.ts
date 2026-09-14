@@ -71,6 +71,20 @@ test('a soak that cannot ask docker looks again later and calls nothing degraded
   assert.equal(event.detail, 'permission denied')
 })
 
+test('an old row without a plan is rechecked as before', async () => {
+  // Rows written before plans were recorded soak every service they name.
+  const id = soaking()
+  const looked: string[] = []
+  await runRechecks({
+    observe: async (_project, service) => {
+      looked.push(service)
+      return { ...missing(service), found: true, id: 'c1', state: 'running', restartPolicy: 'unless-stopped' }
+    },
+  })
+  assert.deepEqual(looked, ['jellyfin'])
+  assert.equal(deployRow(id).status, 'verified')
+})
+
 test('a soak that can ask still verifies', async () => {
   const id = soaking()
   await runRechecks({

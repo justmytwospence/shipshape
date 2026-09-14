@@ -2,7 +2,7 @@ import { getDb, logEvent } from '../db.ts'
 import { loadPolicy } from '../config.ts'
 import { setState, type UpdateState } from './state.ts'
 import { actionsFor, refusalFor, type ActionContext, type Verb } from './actions.ts'
-import { claimJob, linkDeployUpdates, runDeployJob } from '../deploy/queue.ts'
+import { carriedFor, claimJob, linkDeployUpdates, runDeployJob } from '../deploy/queue.ts'
 import { performRollback, revertCommand } from '../deploy/rollback.ts'
 import { stackPeers, withNamespacePeers, type DeployTarget } from '../deploy/run.ts'
 import { syncMain } from '../gitops/sync.ts'
@@ -265,10 +265,12 @@ async function startQueuedDeploy(row: UpdateRow): Promise<VerbResult> {
   if (!job) return { ok: false, message: 'that deploy is already running' }
 
   void detach(runDeployJob(job), `deploy of ${row.stack}`)
+  // Said before the outcome is known, so it states the rule rather than promising a start
+  // that may not happen.
   return {
     ok: true,
     transient: true,
-    message: `Deploying ${row.stack} — verifying, then soaking before it reads verified.`,
+    message: `Deploying ${row.stack} — anything not running is left stopped.`,
   }
 }
 
@@ -299,7 +301,7 @@ async function startRedeploy(row: UpdateRow): Promise<VerbResult> {
   return {
     ok: true,
     transient: true,
-    message: `Pulling and redeploying ${row.stack}.`,
+    message: `Redeploying ${row.stack} — anything not running is left stopped.`,
   }
 }
 
@@ -370,15 +372,26 @@ async function rollback(row: UpdateRow, ctx: ActionContext): Promise<VerbResult>
     .run(ctx.prNumber ?? null, target.stack, target.services.join(' '), target.strategy, now, now)
   const deployId = Number(info.lastInsertRowid)
   linkDeployUpdates(deployId, null, [row.id])
+  // Roll back applies the rule every deploy does -- it chooses a version, it does not start
+  // a service -- with the same exception: what shipshape's own failed attempt left down
+  // goes back up. Read now, before this row records a plan of its own.
+  const carried = carriedFor(target.stack, target.services, deployId)
 
   void detach(
     (async () => {
-      const result = await performRollback(target, sha, policy.merge_method)
+      const result = await performRollback(target, sha, policy.merge_method, {
+        carried,
+        record: (p) => {
+          db.prepare(`UPDATE deploys SET snapshot = ? WHERE id = ?`).run(JSON.stringify(p), deployId)
+        },
+      })
       const finished = new Date().toISOString()
       if (result.ok) {
+        // `healthy` only when something came up: a rollback that left everything stopped
+        // verified nothing, and a healthy row is the one thing that never carries.
         db.prepare(
-          `UPDATE deploys SET status = 'rolled-back', ok = 1, healthy = 1, detail = ?, finished_at = ? WHERE id = ?`,
-        ).run(result.detail, finished, deployId)
+          `UPDATE deploys SET status = 'rolled-back', ok = 1, healthy = ?, detail = ?, finished_at = ? WHERE id = ?`,
+        ).run(result.up && result.up.length === 0 ? 0 : 1, result.detail, finished, deployId)
         setState(row.id, 'failed', 'rolled back by the operator')
         logEvent({
           level: 'warn',
@@ -411,7 +424,7 @@ async function rollback(row: UpdateRow, ctx: ActionContext): Promise<VerbResult>
   return {
     ok: true,
     transient: true,
-    message: `Reverting ${row.to_tag} and bringing ${row.stack} back up on ${row.from_tag}.`,
+    message: `Reverting ${row.to_tag}. ${row.stack} goes back to ${row.from_tag}; anything not running stays stopped.`,
   }
 }
 

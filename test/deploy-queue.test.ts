@@ -7,9 +7,8 @@ import { join } from 'node:path'
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'shipshape-test-'))
 
 const { getDb } = await import('../src/db.ts')
-const { enqueueDeploy, claimJob, dueJobs, hasPendingDeploys, markUpdates } = await import(
-  '../src/deploy/queue.ts'
-)
+const { enqueueDeploy, claimJob, dueJobs, hasPendingDeploys, linkDeployUpdates, markUpdates } =
+  await import('../src/deploy/queue.ts')
 
 /**
  * The queue exists for one guarantee: a merge that has been recorded cannot be forgotten.
@@ -21,7 +20,9 @@ const { enqueueDeploy, claimJob, dueJobs, hasPendingDeploys, markUpdates } = awa
  */
 
 function reset(): void {
-  getDb().exec(`DELETE FROM deploys; DELETE FROM prs; DELETE FROM updates; DELETE FROM pr_updates;`)
+  getDb().exec(
+    `DELETE FROM deploy_updates; DELETE FROM deploys; DELETE FROM prs; DELETE FROM updates; DELETE FROM pr_updates;`,
+  )
 }
 
 const target = (over: Partial<{ stack: string; services: string[]; strategy: 'up' | 'rm-first' }> = {}) => ({
@@ -211,4 +212,123 @@ test('lifecycle states reach every update behind the deploy', () => {
     .prepare(`SELECT state FROM updates WHERE id = ?`)
     .get(Number(u.lastInsertRowid)) as { state: string }
   assert.equal(row.state, 'deploying')
+})
+
+/**
+ * What a deploy moves is what it carried, not everything on its pull request.
+ *
+ * `markUpdates` used to join through the pull request. A retry pressed on one group member
+ * moved all of them, a rolling redeploy with no pull request moved nothing, and a deploy
+ * that brought up half a group had no way to say which half.
+ */
+
+function update(
+  service: string,
+  over: Partial<{ stack: string; from: string; to: string; state: string }> = {},
+): number {
+  const now = new Date().toISOString()
+  const info = getDb()
+    .prepare(
+      `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state,
+                            detected_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'minor', 'auto', ?, ?, ?)`,
+    )
+    .run(
+      over.stack ?? 'n8n',
+      service,
+      `img/${service}`,
+      over.from ?? '2.38.5',
+      over.to ?? '2.38.7',
+      over.state ?? 'merged',
+      now,
+      now,
+    )
+  return Number(info.lastInsertRowid)
+}
+
+const stateOf = (id: number) =>
+  (getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(id) as { state: string }).state
+
+/** The n8n group as #8 merged it: two members, one pull request, one queued deploy. */
+function n8nGroup(): { prId: number; deployId: number; importId: number; n8nId: number } {
+  const db = getDb()
+  const prId = pr(8)
+  const importId = update('n8n-import')
+  const n8nId = update('n8n')
+  const link = db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`)
+  link.run(prId, importId)
+  link.run(prId, n8nId)
+  enqueueDeploy({
+    prId,
+    prNumber: 8,
+    target: target({ stack: 'n8n', services: ['n8n-import', 'n8n'] }),
+    now: new Date().toISOString(),
+  })
+  const deployId = (db.prepare(`SELECT id FROM deploys WHERE stack = 'n8n'`).get() as { id: number }).id
+  return { prId, deployId, importId, n8nId }
+}
+
+test('markUpdates follows what the deploy carried', () => {
+  const { deployId, importId, n8nId } = n8nGroup()
+
+  markUpdates(deployId, 'deploying', { services: ['n8n'] })
+  assert.equal(stateOf(n8nId), 'deploying')
+  assert.equal(stateOf(importId), 'merged', 'the member that was not named stays where it was')
+
+  // Nothing named is nothing moved, never "all of them".
+  markUpdates(deployId, 'x', { services: [] })
+  assert.equal(stateOf(n8nId), 'deploying')
+  assert.equal(stateOf(importId), 'merged')
+})
+
+test('a retry of one member moves only that member', () => {
+  // Try again is pressed on one update. Its row belongs to the same pull request as the
+  // group, and marking through that pull request moved the sibling it never carried.
+  const { prId, importId, n8nId } = n8nGroup()
+  const info = getDb()
+    .prepare(
+      `INSERT INTO deploys (pr_number, pr_id, stack, services, strategy, ok, healthy,
+                            status, attempts, created_at, trigger)
+       VALUES (8, ?, 'n8n', 'n8n-import n8n', 'up', 0, 0, 'pending', 0, ?, 'retry')`,
+    )
+    .run(prId, new Date().toISOString())
+  const retryId = Number(info.lastInsertRowid)
+  linkDeployUpdates(retryId, prId, [n8nId])
+
+  markUpdates(retryId, 'deployed')
+  assert.equal(stateOf(n8nId), 'deployed')
+  assert.equal(stateOf(importId), 'merged')
+})
+
+test('a deploy with no pull request still moves its update', () => {
+  // A rolling-tag redeploy. There is no pull request to join through, so the update used
+  // to stay in whatever state it was pressed in, whatever the deploy did.
+  const updateId = update('actual', {
+    stack: 'actual',
+    from: 'latest@sha256:aaa',
+    to: 'latest@sha256:bbb',
+    state: 'detected',
+  })
+  const info = getDb()
+    .prepare(
+      `INSERT INTO deploys (pr_number, pr_id, stack, services, strategy, ok, healthy,
+                            status, attempts, created_at, trigger)
+       VALUES (NULL, NULL, 'actual', 'actual', 'up', 0, 0, 'pending', 0, ?, 'redeploy')`,
+    )
+    .run(new Date().toISOString())
+  const deployId = Number(info.lastInsertRowid)
+  linkDeployUpdates(deployId, null, [updateId])
+
+  markUpdates(deployId, 'deploying')
+  assert.equal(stateOf(updateId), 'deploying')
+  assert.equal(claimJob(deployId)!.trigger, 'redeploy')
+})
+
+test('claimed jobs know who asked for them', () => {
+  // A redeploy that does not land leaves its update somewhere different from a merge that
+  // does not, so the job has to carry who asked for it.
+  enqueueDeploy({ prId: pr(50), prNumber: 50, target: target({ stack: 'asked' }), now: new Date().toISOString() })
+  const id = (getDb().prepare(`SELECT id FROM deploys WHERE stack = 'asked'`).get() as { id: number }).id
+  assert.equal(dueJobs().find((j) => j.id === id)!.trigger, 'queue')
+  assert.equal(claimJob(id)!.trigger, 'queue')
 })

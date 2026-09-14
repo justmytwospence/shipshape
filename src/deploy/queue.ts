@@ -55,6 +55,7 @@ export interface DeployJob {
   services: string
   strategy: 'up' | 'rm-first'
   attempts: number
+  trigger: DeployTrigger
 }
 
 /**
@@ -76,7 +77,7 @@ export function claimJob(id: number): DeployJob | null {
   if (claimed.changes === 0) return null
   return db
     .prepare(
-      `SELECT id, pr_number, stack, services, strategy, attempts FROM deploys WHERE id = ?`,
+      `SELECT id, pr_number, stack, services, strategy, attempts, trigger FROM deploys WHERE id = ?`,
     )
     .get(id) as DeployJob
 }
@@ -199,7 +200,7 @@ function reclaimStale(): void {
 export function dueJobs(limit = MAX_PER_TICK): DeployJob[] {
   return getDb()
     .prepare(
-      `SELECT id, pr_number, stack, services, strategy, attempts
+      `SELECT id, pr_number, stack, services, strategy, attempts, trigger
        FROM deploys WHERE status = 'pending' ORDER BY created_at, id LIMIT ?`,
     )
     .all(limit) as DeployJob[]
@@ -273,6 +274,11 @@ export async function runDeployJob(
       strategy: job.strategy,
       pull: opts.pull,
     }
+    // Where an update goes back to when its deploy did not land. A merge that did not come
+    // up is still merged -- the change is in the tree and deploying it again is a retry. A
+    // rolling redeploy never merged anything: the tag moved upstream and still has, so it
+    // goes back to `detected`, where Redeploy is offered again.
+    const notLanded = job.trigger === 'redeploy' ? 'detected' : 'merged'
     markUpdates(job.id, 'deploying')
 
     try {
@@ -316,13 +322,13 @@ export async function runDeployJob(
         })
         // Tombstone only when the tree no longer carries the change. If it still does,
         // the update is still live and re-deploying it is a legitimate retry.
-        markUpdates(job.id, rolledBack ? 'failed' : 'merged')
+        markUpdates(job.id, rolledBack ? 'failed' : notLanded)
         db.prepare(`UPDATE deploys SET status = ? WHERE id = ?`).run(
           rolledBack ? 'rolled-back' : 'failed',
           job.id,
         )
       } else {
-        markUpdates(job.id, 'merged')
+        markUpdates(job.id, notLanded)
       }
     } catch (err) {
       // The row stays `running` and reclaimStale will retry it once. Never rethrow:
@@ -520,14 +526,32 @@ async function collectLogs(
   return parts.join('\n\n').slice(0, 4000)
 }
 
-/** Move every update behind a deploy row to the same lifecycle state. */
-export function markUpdates(deployId: number, state: string): void {
+/**
+ * Move the updates a deploy carried to a lifecycle state.
+ *
+ * It follows `deploy_updates` -- what this row carried -- and not the pull request the row
+ * belongs to. Those were treated as the same thing, and they are not. A retry links the
+ * one update it was pressed on, so marking through the pull request moved every sibling
+ * in its group as well. A redeploy of a rolling tag has no pull request at all, so it
+ * moved nothing, and the update never left the state it was pressed in. And a deploy
+ * that brings up only part of a group has to move its services separately, which a join
+ * on the pull request cannot say.
+ *
+ * `services` narrows it to the updates for those services. An empty list moves nothing:
+ * a caller that brought no service up must never be read as meaning all of them.
+ */
+export function markUpdates(
+  deployId: number,
+  state: string,
+  opts: { services?: readonly string[] } = {},
+): void {
+  if (opts.services && opts.services.length === 0) return
+  const list = opts.services ? JSON.stringify([...opts.services]) : null
   getDb()
     .prepare(
       `UPDATE updates SET state = ?, updated_at = ?
-       WHERE id IN (SELECT pu.update_id FROM deploys d
-                    JOIN pr_updates pu ON pu.pr_id = d.pr_id
-                    WHERE d.id = ?)`,
+        WHERE id IN (SELECT du.update_id FROM deploy_updates du JOIN updates u ON u.id = du.update_id
+                      WHERE du.deploy_id = ? AND (? IS NULL OR u.service IN (SELECT value FROM json_each(?))))`,
     )
-    .run(state, new Date().toISOString(), deployId)
+    .run(state, new Date().toISOString(), deployId, list, list)
 }

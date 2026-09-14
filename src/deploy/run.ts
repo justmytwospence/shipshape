@@ -82,6 +82,22 @@ export function isRootStack(stack: string, repoDir = env.repoDir): boolean {
   return stack === 'root' || includedStacks(repoDir).has(stack)
 }
 
+/**
+ * `compose up` for exactly the services a deploy means, and nothing they depend on.
+ *
+ * `--no-deps` is always there because `up -d svc` on its own reaches past `svc`: it
+ * starts any `depends_on` service that is stopped, and recreates any running one whose
+ * section of the file has an unrelated pending edit (compose probe 3a, 3c, 3r-e). An
+ * update to one service must not start a database someone stopped, or restart a sibling
+ * on a change nobody merged. So everything a deploy does mean is named explicitly
+ * instead -- every member of a group, and the namespace followers `withNamespacePeers`
+ * adds -- and compose still orders several named services correctly under the flag
+ * (probe 4b).
+ *
+ * `manualCommand`, the pull request comment and the alert commands are all built from
+ * this, so the command an operator pastes carries the flag too. `pullArgs` slices at
+ * `up`, so a pull never sees it.
+ */
 export function composeArgs(
   target: DeployTarget,
   repoDir = env.repoDir,
@@ -93,11 +109,19 @@ export function composeArgs(
   const services = [...new Set(target.services)]
   if (isRootStack(target.stack, repoDir)) {
     // No -f: the root compose file is the project, and its networks are defined there.
-    return { cwd, args: ['compose', 'up', '-d', ...services] }
+    return { cwd, args: ['compose', 'up', '-d', '--no-deps', ...services] }
   }
   return {
     cwd,
-    args: ['compose', '-f', `${target.stack}/docker-compose.yaml`, 'up', '-d', ...services],
+    args: [
+      'compose',
+      '-f',
+      `${target.stack}/docker-compose.yaml`,
+      'up',
+      '-d',
+      '--no-deps',
+      ...services,
+    ],
   }
 }
 

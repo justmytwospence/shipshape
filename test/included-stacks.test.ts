@@ -60,7 +60,7 @@ test('an included stack gets no -f, because that invocation fails outright', () 
   const dir = repo(WITH_INCLUDES)
   const args = composeArgs({ stack: 'pihole', services: ['pihole'], strategy: 'up' }, dir)
   assert.ok(!args.args.includes('-f'), 'scoping to its own file loses the root networks')
-  assert.deepEqual(args.args, ['compose', 'up', '-d', 'pihole'])
+  assert.deepEqual(args.args, ['compose', 'up', '-d', '--no-deps', 'pihole'])
 })
 
 test('an ordinary stack still gets its own file', () => {

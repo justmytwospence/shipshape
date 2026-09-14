@@ -22,7 +22,7 @@ const target = (over: Partial<DeployTarget> = {}): DeployTarget => ({
 test('the pasted command matches what the automatic path would run', () => {
   assert.equal(
     manualCommand(target()),
-    'docker compose -f jellyfin/docker-compose.yaml up -d jellyfin',
+    'docker compose -f jellyfin/docker-compose.yaml up -d --no-deps jellyfin',
   )
 })
 
@@ -30,7 +30,7 @@ test('the root stack gets no -f, because that is the invocation that fails', () 
   // `-f root/docker-compose.yaml` is not a path, and even the real root file scoped with
   // -f loses the networks it defines: "refers to undefined network".
   const cmd = manualCommand(target({ stack: 'root', services: ['pihole'] }))
-  assert.equal(cmd, 'docker compose up -d pihole')
+  assert.equal(cmd, 'docker compose up -d --no-deps pihole')
   assert.ok(!cmd.includes('-f'))
 })
 
@@ -43,7 +43,7 @@ test('rm-first is two commands, removal first', () => {
   const lines = manualCommand(target({ strategy: 'rm-first' })).split('\n')
   assert.equal(lines.length, 2)
   assert.match(lines[0]!, /compose -f jellyfin\/docker-compose\.yaml rm -sf jellyfin/)
-  assert.match(lines[1]!, /up -d jellyfin/)
+  assert.match(lines[1]!, /up -d --no-deps jellyfin/)
 })
 
 test('a failed up after rm-first says the service is down', () => {

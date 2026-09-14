@@ -55,6 +55,19 @@ const FRAGMENTS = [
   '/settings/digest',
 ]
 
+test('a section that lives only on Advanced still explains itself there', async () => {
+  // Prose used to be dropped on Advanced wholesale, so Deploys -- which has nothing on
+  // General -- rendered its essay nowhere, including the only explanation of Left stopped.
+  const { SECTION_PROSE } = await import('../../src/settings/prose.ts')
+  const advanced = await (await app.request('/settings/advanced')).text()
+  assert.match(advanced, /A deploy never changes whether a service is running\./)
+  // A section with decisions on General keeps its essay there and does not repeat it.
+  const general = await (await app.request('/settings')).text()
+  const essay = SECTION_PROSE['Changelog review'][0]!.slice(0, 30)
+  assert.ok(general.includes(essay), 'the General essay renders where its decisions are')
+  assert.ok(!advanced.includes(essay), 'and is not repeated beside the tuning knobs')
+})
+
 test('/about is gone, not moved', async () => {
   // It was absorbed into /settings behind the Explain switch. Deliberately a 404 rather
   // than a redirect: a redirect would keep a second name for a page alive indefinitely,

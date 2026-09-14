@@ -1042,9 +1042,12 @@ export function createApp(): Hono {
       }))
       // The prose belongs with the decisions. On Advanced these are tuning knobs whose
       // own `about` text is the explanation, and repeating the section essay there would
-      // bury them.
+      // bury them -- but a section with nothing on General (Deploys, Merging, Pull
+      // requests, Config proposals) is not repeating anything, and suppressing it there
+      // meant its essay rendered nowhere at all, including why an update reads Left stopped.
+      const onGeneral = SETTINGS.some((d) => d.section === title && !d.advanced)
       if (items.length > 0) {
-        groups.push({ title, prose: advanced ? undefined : SECTION_PROSE[title], items })
+        groups.push({ title, prose: advanced && onGeneral ? undefined : SECTION_PROSE[title], items })
       }
     }
     return groups

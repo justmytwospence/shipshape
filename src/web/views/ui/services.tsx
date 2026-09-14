@@ -336,19 +336,9 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
           Effective configuration
         </h3>
         <div class="divide-base-300 border-base-300 divide-y border-y text-xs">
-          {data.config.map((line) => (
-            <div class="flex min-h-11 items-center gap-3 lg:min-h-7">
-              <span class="w-24 shrink-0 opacity-70">{line.key}</span>
-              <span class="min-w-0 flex-1">
-                {/* Wrapped on a phone, where a badge and a button leave the value a narrow
-                    column and truncation cut the upstream repository's name in half. */}
-                <span class="block font-mono break-words lg:truncate">{line.value}</span>
-                {line.note ? <span class="block opacity-60">{line.note}</span> : null}
-              </span>
-              <span class={`badge badge-xs badge-soft ${SOURCE_CLS[line.source]}`}>
-                {line.source}
-              </span>
-              {line.key === 'policy' && data.canEdit ? (
+          {data.config.map((line) => {
+            const actions = [
+              line.key === 'policy' && data.canEdit ? (
                 <button
                   type="button"
                   class="btn btn-ghost btn-xs tap"
@@ -356,8 +346,8 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
                 >
                   Change
                 </button>
-              ) : null}
-              {(line.key === 'upstream' || line.key === 'notes') && data.canEdit ? (
+              ) : null,
+              (line.key === 'upstream' || line.key === 'notes') && data.canEdit ? (
                 <button
                   type="button"
                   class="btn btn-ghost btn-xs tap"
@@ -365,8 +355,8 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
                 >
                   Change
                 </button>
-              ) : null}
-              {line.key === 'upstream' && svc.image ? (
+              ) : null,
+              line.key === 'upstream' && svc.image ? (
                 <button
                   type="button"
                   class="btn btn-ghost btn-xs tap"
@@ -378,9 +368,36 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
                 >
                   Look again
                 </button>
-              ) : null}
-            </div>
-          ))}
+              ) : null,
+            ].filter((a) => a !== null)
+            return (
+              <div class="flex min-h-11 flex-wrap items-center gap-x-3 lg:min-h-7 lg:flex-nowrap">
+                <span class="w-24 shrink-0 opacity-70">{line.key}</span>
+                <span class="min-w-0 flex-1">
+                  {/* Wrapped on a phone, where a badge and a button leave the value a narrow
+                      column and truncation cut the upstream repository's name in half. */}
+                  <span class="block font-mono break-words lg:truncate">{line.value}</span>
+                  {line.note ? <span class="block opacity-60">{line.note}</span> : null}
+                </span>
+                <span class={`badge badge-xs badge-soft ${SOURCE_CLS[line.source]}`}>
+                  {line.source}
+                </span>
+                {/* Two buttons beside a badge left the upstream value four characters wide on
+                    a phone, so there they take a line of their own; one still fits beside. */}
+                {actions.length > 0 ? (
+                  <span
+                    class={
+                      actions.length > 1
+                        ? 'flex basis-full justify-end gap-1 pb-1 lg:basis-auto lg:pb-0'
+                        : 'flex gap-1'
+                    }
+                  >
+                    {actions}
+                  </span>
+                ) : null}
+              </div>
+            )
+          })}
         </div>
         {data.composeFile ? (
           <p class="mt-1.5 font-mono text-xs opacity-50">{data.composeFile}</p>

@@ -39,6 +39,8 @@ export interface StatusData {
   spentUsd: number
   deploys: { at: string | null; stack: string; services: string; status: string; trigger: string }[]
   budgets: { key: string; value: number; window: string | null }[]
+  /** Where watched images' release notes come from: how many are certain, likely, or unknown. */
+  upstream?: { total: number; linked: number; likely: number; notFound: number; notLooked: number; failing: number }
   /** True in the sandbox dev server, where the credentials are deliberately absent. */
   sandbox?: boolean
 }
@@ -175,6 +177,27 @@ const Block: FC<{ children?: unknown }> = ({ children }) => (
   <section class="mb-6 break-inside-avoid">{children}</section>
 )
 
+/** How many watched images have a certain source for their release notes, and a way to the rest. */
+const UpstreamCounts: FC<{ u: NonNullable<StatusData['upstream']> }> = ({ u }) => {
+  const rest = [
+    u.likely ? `${u.likely} likely` : '',
+    u.notFound ? `${u.notFound} not found` : '',
+    u.notLooked ? `${u.notLooked} not looked up yet` : '',
+    u.failing ? `${u.failing} could not be looked up` : '',
+  ].filter(Boolean)
+  return (
+    <>
+      {`${u.linked} of ${u.total} linked`}
+      {rest.length > 0 ? ` · ${rest.join(' · ')}` : ''}
+      {u.total > u.linked ? (
+        <a href="/services?filter=unlinked" class="link ml-2 font-sans">
+          Show them
+        </a>
+      ) : null}
+    </>
+  )
+}
+
 export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
   const counters = data.budgets.filter((b) => !RESTATED.has(b.key))
   const hub = hubPulls(data.budgets)
@@ -212,6 +235,9 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
                 // belongs against the scan it describes, where it reads as a result.
                 ...(data.scan.counts && tally(data.scan.counts)
                   ? ([['found', tally(data.scan.counts)]] as [string, unknown][])
+                  : []),
+                ...(data.upstream && data.upstream.total > 0
+                  ? ([['upstream', <UpstreamCounts u={data.upstream} />]] as [string, unknown][])
                   : []),
                 [
                   'next scan',

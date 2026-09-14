@@ -27,7 +27,7 @@ setMinSpacingForTests(0)
 after(() => rmSync(dir, { recursive: true, force: true }))
 
 beforeEach(() => {
-  getDb().exec(`DELETE FROM images; DELETE FROM resolutions; DELETE FROM budgets;`)
+  getDb().exec(`DELETE FROM images; DELETE FROM resolutions; DELETE FROM budgets; DELETE FROM http_cache;`)
   resetResolverMemo()
 })
 
@@ -77,6 +77,13 @@ function stored(img: { registry: string; repository: string }) {
 const past = () => new Date(Date.now() - 60_000).toISOString()
 const annotated = (repo: string) =>
   json({ annotations: { 'org.opencontainers.image.source': `https://github.com/${repo}` } })
+
+// On Docker Hub the free tiers go around the billed walk: the image's page before it, and a
+// repository with the image's name after. Every annotation found is checked against GitHub.
+const HUB_PAGE = { url: 'https://hub.docker.com/v2/repositories/ttlequals0/minuspod/', reply: () => json({ description: 'Removes ads.' }) }
+const NO_NAMESAKE = { url: 'https://api.github.com/repos/ttlequals0/minuspod', reply: () => status(404) }
+const MINUSPOD_REPO = { url: 'https://api.github.com/repos/ttlequals0/MinusPod', reply: () => json({ full_name: 'ttlequals0/MinusPod' }) }
+const pulls = (h: { calls: { url: string }[] }) => h.calls.filter((c) => c.url.startsWith('https://registry-1.docker.io/')).length
 
 // -------------------------------------------------------------------------------------
 // Labels, per image
@@ -176,7 +183,7 @@ test('a curated image needs no network at all, and is kept for good', async (t) 
 test('a Docker Hub budget stop is recorded as a failure and retried, not cached as none', async (t) => {
   image('minuspod', 'minuspod', HUB, { tag: '2.96.17-cpu' })
   getDb().prepare(`INSERT INTO budgets (key, value, window, updated_at) VALUES ('dockerhub.pulls', 10, NULL, ?)`).run(new Date().toISOString())
-  const h = mockFetch(t, [{ url: MANIFEST, reply: () => annotated('ttlequals0/MinusPod') }])
+  const h = mockFetch(t, [HUB_PAGE, NO_NAMESAKE, MINUSPOD_REPO, { url: MANIFEST, reply: () => annotated('ttlequals0/MinusPod') }])
 
   const first = await sourceFor(HUB)
   assert.equal(first.repo, null)
@@ -185,11 +192,12 @@ test('a Docker Hub budget stop is recorded as a failure and retried, not cached 
   assert.equal(row.attempts, 1)
   assert.match(row.error ?? '', /budget/)
   assert.ok(Date.parse(row.next_check_at!) > Date.now(), 'retried later, not never')
-  assert.equal(h.calls.length, 0, 'the budget stopped it before any request')
+  assert.equal(pulls(h), 0, 'the budget stopped the walk before any pull')
+  const asked = h.calls.length
 
   // Within the backoff nothing is asked again.
   await sourceFor(HUB)
-  assert.equal(h.calls.length, 0)
+  assert.equal(h.calls.length, asked)
 
   // Once due, with budget to spend, the image is looked up and the failure cleared.
   getDb().exec(`UPDATE budgets SET value = 150`)
@@ -206,6 +214,8 @@ test('a failed lookup never downgrades a repository already found', async (t) =>
   image('minuspod', 'minuspod', HUB, { tag: '2.96.17-cpu' })
   cached(HUB, { source_url: 'ttlequals0/MinusPod', tier: 'annotation', next_check_at: past() })
   const h = mockFetch(t, [
+    HUB_PAGE,
+    NO_NAMESAKE,
     {
       url: MANIFEST,
       reply: () => {
@@ -224,6 +234,9 @@ test('a clean "nothing found" is kept for a week, then looked at again', async (
   image('minuspod', 'minuspod', HUB, { tag: '2.96.17-cpu' })
   let annotate = false
   const h = mockFetch(t, [
+    HUB_PAGE,
+    NO_NAMESAKE,
+    MINUSPOD_REPO,
     { url: MANIFEST, reply: () => (annotate ? annotated('ttlequals0/MinusPod') : status(404)) },
   ])
 
@@ -233,8 +246,9 @@ test('a clean "nothing found" is kept for a week, then looked at again', async (
   const inDays = (Date.parse(row.next_check_at!) - Date.now()) / 86_400_000
   assert.ok(inDays > 6.9 && inDays <= 7, `next look in ${inDays} days`)
 
+  const asked = h.calls.length
   await sourceFor(HUB)
-  assert.equal(h.calls.length, 1, 'inside the week, nothing is asked again')
+  assert.equal(h.calls.length, asked, 'inside the week, nothing is asked again')
 
   annotate = true
   getDb().prepare(`UPDATE resolutions SET next_check_at = ?`).run(past())
@@ -245,7 +259,7 @@ test('a clean "nothing found" is kept for a week, then looked at again', async (
 test('rows written by an older resolver are looked at again', async (t) => {
   image('minuspod', 'minuspod', HUB, { tag: '2.96.17-cpu' })
   cached(HUB, { tier: 'none', resolver_version: 0 })
-  const h = mockFetch(t, [{ url: MANIFEST, reply: () => annotated('ttlequals0/MinusPod') }])
+  const h = mockFetch(t, [HUB_PAGE, MINUSPOD_REPO, { url: MANIFEST, reply: () => annotated('ttlequals0/MinusPod') }])
   assert.equal((await sourceFor(HUB)).repo, 'ttlequals0/MinusPod')
   assertAllMocked(h)
 })
@@ -263,6 +277,7 @@ test('a LinuxServer API outage is a failure, never the packaging repo, and is no
           : status(503),
     },
     // The manifest walk would find linuxserver/docker-heimdall. It must not be reached.
+    { url: 'https://api.github.com/repos/linuxserver/Heimdall', reply: () => json({ full_name: 'linuxserver/Heimdall' }) },
   ])
 
   const down = await sourceFor(heimdall)
@@ -274,6 +289,6 @@ test('a LinuxServer API outage is a failure, never the packaging repo, and is no
   const s = await sourceFor(heimdall)
   assert.equal(s.repo, 'linuxserver/Heimdall')
   assert.equal(s.tier, 'lsio')
-  assert.equal(h.calls.length, 2, 'the failed fetch was not memoised')
+  assert.equal(h.calls.filter((c) => c.url === LSIO).length, 2, 'the failed fetch was not memoised')
   assertAllMocked(h)
 })

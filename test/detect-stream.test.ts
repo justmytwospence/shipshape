@@ -19,7 +19,7 @@ const { setMinSpacingForTests } = await import('../src/registry/http.ts')
 const { detect } = await import('../src/detect.ts')
 const { resetResolverMemo } = await import('../src/resolver/index.ts')
 const { parseImageRef } = await import('../src/images/ref.ts')
-const { mockFetch, assertAllMocked, json, status } = await import('./helpers/http.ts')
+const { mockFetch, assertAllMocked, json, status, text } = await import('./helpers/http.ts')
 type ScannedService = import('../src/compose/scan.ts').ScannedService
 
 setMinSpacingForTests(0)
@@ -85,7 +85,7 @@ test('minuspod on 2.96.17 is offered its next prerelease, because that is its st
   getDb()
     .prepare(
       `INSERT INTO resolutions (registry, repository, source_url, tier, confidence, resolved_at, checked_at, resolver_version)
-       VALUES ('docker.io', 'ttlequals0/minuspod', 'ttlequals0/MinusPod', 'annotation', 'high', ?, ?, 1)`,
+       VALUES ('docker.io', 'ttlequals0/minuspod', 'ttlequals0/MinusPod', 'annotation', 'high', ?, ?, 2)`,
     )
     .run(now, now)
   const h = mockFetch(t, [
@@ -98,10 +98,11 @@ test('minuspod on 2.96.17 is offered its next prerelease, because that is its st
   assertAllMocked(h)
 })
 
-test("a packaging repository's prerelease flags are never applied to the application", async (t) => {
-  // Until LinuxServer images resolve to their real upstream, code-server resolves to
-  // linuxserver/docker-code-server, whose prerelease flags mark container build branches.
-  // They say nothing about coder's releases, so no release is even fetched.
+test("code-server's stream is read from coder's releases, never from its packaging repo's", async (t) => {
+  // A row written before packaging repositories were told apart names
+  // linuxserver/docker-code-server, whose prerelease flags mark container build branches. It
+  // is looked at again, LinuxServer's build file names coder/code-server, and coder's
+  // releases decide: 4.138.0 is a prerelease there, so the stable service gets 4.137.0.
   const now = new Date().toISOString()
   getDb()
     .prepare(
@@ -109,10 +110,23 @@ test("a packaging repository's prerelease flags are never applied to the applica
        VALUES ('lscr.io', 'linuxserver/code-server', 'linuxserver/docker-code-server', 'annotation', 'high', ?, ?, 1)`,
     )
     .run(now, now)
-  const h = mockFetch(t, [hubTags('linuxserver/code-server', ['4.136.2-ls363', '4.137.0-ls364'])])
+  const h = mockFetch(t, [
+    hubTags('linuxserver/code-server', ['4.136.2-ls363', '4.137.0-ls364', '4.138.0-ls365']),
+    {
+      url: 'https://api.linuxserver.io/api/v1/images?include_config=false&include_deprecated=false',
+      reply: () => json({ data: { repositories: { linuxserver: [{ name: 'code-server', project_url: 'https://coder.com' }] } } }),
+    },
+    {
+      url: 'https://raw.githubusercontent.com/linuxserver/docker-code-server/HEAD/Jenkinsfile',
+      reply: () => text(`EXT_RELEASE = sh(script: '''curl -sX GET https://api.github.com/repos/coder/code-server/releases/latest''')`),
+    },
+    { url: 'https://api.github.com/repos/coder/code-server', reply: () => json({ full_name: 'coder/code-server', fork: false }) },
+    releases('coder/code-server', [['v4.138.0', true], ['v4.137.0', false], ['v4.136.2', false]]),
+  ])
   const d = await detect(svc('code-server', 'code-server', 'lscr.io/linuxserver/code-server:4.136.2-ls363', 'lsio-ls'))
   assert.equal(d.status === 'update' && d.tag, '4.137.0-ls364')
-  assert.equal(d.status === 'update' && d.stream, undefined)
+  assert.match((d.status === 'update' && d.stream) || '', /stable stream/)
+  assert.ok(!h.calls.some((c) => c.url.includes('docker-code-server/releases')), 'the packaging repo is never read')
   assertAllMocked(h)
 })
 

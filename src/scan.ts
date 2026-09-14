@@ -5,6 +5,7 @@ import { detect, type Detection } from './detect.ts'
 import { checkDigest, shortDigest, type DigestCheck } from './digests.ts'
 import { tierFor } from './policy.ts'
 import type { TagInfo } from './registry/index.ts'
+import { resolveWatched } from './resolver/index.ts'
 import type { Magnitude } from './versions/patterns.ts'
 import { LIVE_STATES, REFUSED_STATES, sqlIn } from './updates/state.ts'
 
@@ -45,6 +46,24 @@ export async function runScan(trigger: 'cron' | 'manual'): Promise<ScanResult> {
     const { policy } = loadPolicy()
     const services = scanRepo(env.repoDir, policy.exclude_stacks)
     syncInventory(services)
+
+    // Where each watched image comes from, for the ones never looked up or due another look.
+    // Most images used to be looked up only when an update needed release notes, so the
+    // Services page called them unresolved indefinitely. Before detection, so an update found
+    // below already has its upstream. Unbilled and bounded: see resolveWatched.
+    try {
+      const r = await resolveWatched({ allowBilled: false, limit: 60, budgetMs: 90_000 })
+      if (r.looked > 0) {
+        logEvent({
+          level: 'info',
+          kind: 'scan',
+          message: 'looked up upstream repositories',
+          detail: `${r.looked} of ${r.due} due, ${r.linked} linked${r.failed ? `, ${r.failed} could not be looked up` : ''}`,
+        })
+      }
+    } catch (err) {
+      logEvent({ level: 'error', kind: 'scan', message: 'upstream lookups failed', detail: (err as Error).message })
+    }
 
     for (const svc of services) {
       if (!svc.watched) continue

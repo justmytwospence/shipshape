@@ -21,13 +21,14 @@ export function serviceRows(): ServiceRowData[] {
   return (
     getDb()
       .prepare(
-        `SELECT stack, service, repository, current_tag, watched, unwatchable,
+        `SELECT stack, service, registry, repository, current_tag, watched, unwatchable,
                 last_status, last_detail, constrained_from, last_seen_at, policy_label
            FROM images ORDER BY stack, service`,
       )
       .all() as {
       stack: string
       service: string
+      registry: string
       repository: string | null
       current_tag: string | null
       watched: number
@@ -50,7 +51,14 @@ export function serviceRows(): ServiceRowData[] {
     constrainedFrom: r.constrained_from,
     lastSeenAt: r.last_seen_at,
     policy: r.policy_label,
+    upstream: upstreamState(r),
   }))
+}
+
+function upstreamState(r: { stack: string; service: string; registry: string; repository: string | null }): ServiceRowData['upstream'] {
+  if (!r.repository) return 'none'
+  const s = sourceForSync({ registry: r.registry, repository: r.repository }, { service: { stack: r.stack, service: r.service } })
+  return s.repo ? (s.confidence === 'high' ? 'linked' : 'likely') : 'none'
 }
 
 export function filterServices(
@@ -68,6 +76,11 @@ export function filterServices(
         break
       case 'unwatchable':
         if (!r.unwatchable) return false
+        break
+      case 'unlinked':
+        // Watched services whose release notes have no certain source: nothing found, or
+        // only a likely match.
+        if (!r.watched || r.upstream === 'linked') return false
         break
       case 'attention':
         // A pinned service whose newer release is suppressed by its own tag filter
@@ -185,10 +198,15 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
   }
 }
 
+/** For rows written before the resolver recorded its own detail. */
 const TIER_WORDS: Partial<Record<string, string>> = {
-  override: "from shipshape's curated map",
-  lsio: 'from the LinuxServer API',
-  annotation: "from the image's OCI source label",
+  override: "shipshape's curated map",
+  lsio: "LinuxServer's API names it as the project",
+  'lsio-build': "LinuxServer's build file",
+  annotation: "the image's OCI source label",
+  'ghcr-path': 'published under the same path on ghcr.io',
+  description: "linked from the image's description",
+  lookup: "a GitHub repository with the image's owner and name",
 }
 
 /**
@@ -209,9 +227,12 @@ export function upstreamNote(s: SourceInfo, me: { stack: string; service: string
     )
   }
   if (!s.label && s.repo) {
-    const via = TIER_WORDS[s.tier]
+    const via = s.detail ?? TIER_WORDS[s.tier]
     if (via) parts.push(via)
+    if (s.confidence !== 'high') parts.push('a likely match, not a certain one -- set shipshape.source to confirm it')
   }
+  if (!s.repo && s.packagingRepo) parts.push(`${s.packagingRepo} packages it, and has only container changes`)
+  if (!s.label && !s.repo && s.detail) parts.push(s.detail)
   if (s.error) {
     const when = s.nextCheckAt ? `; trying again ${s.nextCheckAt.slice(0, 16).replace('T', ' ')} UTC` : ''
     parts.push(`couldn't look: ${s.error}${when}`)

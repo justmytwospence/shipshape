@@ -26,12 +26,15 @@ export interface ServiceRowData {
   lastSeenAt?: string | null
   /** The `shipshape.policy` label, when one is set. */
   policy?: string | null
+  /** Whether the repository its release notes come from is certain, only likely, or unknown. */
+  upstream?: 'linked' | 'likely' | 'none'
 }
 
 export const FILTERS = [
   { key: 'all', label: 'All' },
   { key: 'watched', label: 'Watched' },
   { key: 'unlabelled', label: 'Unlabelled' },
+  { key: 'unlinked', label: 'Unlinked' },
   { key: 'unwatchable', label: 'Not watchable' },
   { key: 'attention', label: 'Needs attention' },
 ] as const
@@ -347,6 +350,19 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
                   data-open={`#rung-${svc.stack}-${svc.service}`}
                 >
                   Change
+                </button>
+              ) : null}
+              {line.key === 'upstream' && svc.image ? (
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-xs tap"
+                  hx-post={`/services/${svc.stack}/${svc.service}/resolve${ctx ? `?${ctx}` : ''}`}
+                  hx-target={`#${cardId}`}
+                  hx-swap="outerHTML"
+                  hx-disabled-elt="this"
+                  hx-indicator="#busy"
+                >
+                  Look again
                 </button>
               ) : null}
             </div>

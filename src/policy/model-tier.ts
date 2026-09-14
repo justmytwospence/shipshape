@@ -15,9 +15,10 @@ import type { ResolutionTier } from '../resolver/index.ts'
  * The guards exist because "the model read the changelog and it looked fine" is not a
  * security property. These are:
  *
- * - **linked** — the image resolved to a real upstream through its own OCI annotation,
- *   a curated override, LinuxServer's API, or an operator's label. An image nobody can
- *   tie to a source is not a candidate, because there is nothing authoritative to read.
+ * - **linked** — the image resolved to a real upstream with certainty: its own OCI
+ *   annotation, a curated override, LinuxServer, an operator's label, or two independent
+ *   signals agreeing. An image nobody can tie to a source is not a candidate, because there
+ *   is nothing authoritative to read -- and neither is one tied only by a likely guess.
  * - **sourced** — every URL the verdict cited lives under that upstream repository.
  *   This is the actual injection guard. Web search is restricted to a domain allowlist
  *   but `web_fetch` is not, and GitHub hosts content anyone can create, so "it appeared
@@ -43,6 +44,8 @@ export interface ModelTierInput {
   resolutionTier: ResolutionTier
   /** `owner/repo` of the resolved upstream, when there is one. */
   sourceRepo: string | null
+  /** How sure the resolver is of that repository. Only a certain one counts as linked. */
+  resolutionConfidence: 'high' | 'medium' | 'low' | null
   /** URLs the verdict cited as evidence. */
   sources: string[]
   recommendation: 'approve' | 'caution' | 'block' | 'unavailable'
@@ -68,11 +71,18 @@ export interface ModelTierAssessment {
 export function assess(i: ModelTierInput): ModelTierAssessment {
   const guards: Guard[] = []
 
-  const linked = i.resolutionTier !== 'none' && !!i.sourceRepo
+  // A repository the resolver only thinks likely -- found by its name, or linked from a
+  // description -- is good enough to read release notes from, and not to extend trust to.
+  const found = i.resolutionTier !== 'none' && !!i.sourceRepo
+  const linked = found && i.resolutionConfidence === 'high'
   guards.push({
     name: 'linked',
     passed: linked,
-    detail: linked ? `resolved via ${i.resolutionTier}` : 'no upstream repository identified',
+    detail: linked
+      ? `resolved via ${i.resolutionTier}`
+      : found
+        ? `${i.sourceRepo} is only a likely match (${i.resolutionTier}, ${i.resolutionConfidence ?? 'unknown'} confidence)`
+        : 'no upstream repository identified',
   })
 
   const offRepo = linked ? i.sources.filter((s) => !isUnder(s, i.sourceRepo!)) : []

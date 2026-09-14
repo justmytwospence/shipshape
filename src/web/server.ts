@@ -11,7 +11,7 @@ import { buildUpdateDiff, type DiffHunk } from '../diff.ts'
 import { parseImageRef } from '../images/ref.ts'
 import { refLinks } from '../links.ts'
 import { isScanning, refreshServiceLabels, scanOne } from '../scan.ts'
-import { sourceForSync } from '../resolver/index.ts'
+import { sourceCounts, sourceFor, sourceForSync, type SourceInfo } from '../resolver/index.ts'
 import { runScanNow, scheduleInfo } from '../scheduler.ts'
 import { setState } from '../updates/state.ts'
 import { actionsFor, refusalFor } from '../updates/actions.ts'
@@ -199,6 +199,36 @@ function gh(): Octokit {
 function repoParts(): { owner: string; repo: string } {
   const [owner, repo] = env.githubRepo.split('/') as [string, string]
   return { owner, repo }
+}
+
+/** A promise's value, its error, or 'timeout' once `ms` have passed -- whichever comes first. */
+async function within<T>(p: Promise<T>, ms: number): Promise<T | Error | 'timeout'> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), ms)
+  })
+  try {
+    return await Promise.race([p.catch((err: unknown) => (err instanceof Error ? err : new Error(String(err)))), timeout])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** What "Look again" found, as the sentence its toast says. */
+function lookedAgain(s: SourceInfo): string {
+  const found = s.inferred?.repo
+  if (!found) {
+    if (s.error) return `Could not look it up: ${s.error}`
+    return s.packagingRepo
+      ? `No upstream repository found. ${s.packagingRepo} packages it, and has only container changes.`
+      : 'No upstream repository found.'
+  }
+  const likely = s.inferred?.confidence === 'high' ? '' : ', a likely match'
+  const label =
+    s.label && s.label.repo.toLowerCase() !== found.toLowerCase()
+      ? ` Its shipshape.source label, ${s.label.repo}, still decides.`
+      : ''
+  return `Found ${found}${likely}.${label}`
 }
 
 export function createApp(): Hono {
@@ -554,6 +584,14 @@ export function createApp(): Hono {
     const svc = scanRepo(env.repoDir, policy.exclude_stacks).find(
       (s) => s.stack === stack && s.service === service,
     )
+    if (svc?.ref) {
+      // Its upstream as well, when nothing has looked it up yet or the answer is due. Unbilled,
+      // like the sweep: "Look again" is the button that spends pulls.
+      await sourceFor(
+        { registry: svc.ref.registry, repository: svc.ref.repository },
+        { service: { stack, service }, ownLabel: svc.sourceLabel, allowBilled: false },
+      ).catch(() => undefined)
+    }
     if (svc?.watched) await scanOne(svc, policy)
     const found = servicePane(stack, service, ctxOf(c, 'services'))
     if (!found) {
@@ -562,6 +600,36 @@ export function createApp(): Hono {
     }
     // The pane, whichever button asked: the row's check button targets the pane too.
     return c.html(found.pane as string)
+  })
+
+  /**
+   * Look again for the repository this service's image comes from, now, spending what that
+   * takes -- the Docker Hub manifest walk included. A label does not stop it: the pane shows
+   * what was found underneath. The answer is waited on for 30 seconds; a slower one carries on
+   * and shows the next time the pane loads.
+   */
+  app.post('/services/:stack/:service/resolve', async (c) => {
+    const { policy } = loadPolicy()
+    const stack = c.req.param('stack')
+    const service = c.req.param('service')
+    const svc = scanRepo(env.repoDir, policy.exclude_stacks).find(
+      (s) => s.stack === stack && s.service === service,
+    )
+    if (!svc?.ref) {
+      toastHeader(c, 'warn', `${stack}/${service} has no image to look up`)
+    } else {
+      const look = sourceFor(
+        { registry: svc.ref.registry, repository: svc.ref.repository },
+        { service: { stack, service }, ownLabel: svc.sourceLabel, force: true, allowBilled: true },
+      )
+      const outcome = await within(look, 30_000)
+      if (outcome === 'timeout') toastHeader(c, 'info', 'Still looking. The answer will show here when it arrives.')
+      else if (outcome instanceof Error) toastHeader(c, 'warn', `Could not look: ${outcome.message}`)
+      else toastHeader(c, outcome.inferred?.repo || !outcome.error ? 'info' : 'warn', lookedAgain(outcome))
+    }
+    if (!c.req.header('HX-Request')) return c.redirect(`/services/${stack}/${service}`, 303)
+    const found = servicePane(stack, service, ctxOf(c, 'services'))
+    return c.html(found ? (found.pane as string) : '')
   })
 
   /**
@@ -991,6 +1059,7 @@ export function createApp(): Hono {
       budgets: db
         .prepare(`SELECT key, value, window FROM budgets ORDER BY key`)
         .all() as StatusData['budgets'],
+      upstream: sourceCounts(),
       sandbox: !!process.env.SHIPSHAPE_UI_DEV,
     }
   }

@@ -286,6 +286,7 @@ export const STATUS = {
   ],
   spend: [{ model: 'claude-haiku-4-5', purpose: 'verdict', calls: 34, cost: 3.63 }],
   budgetUsd: 10,
+  upstream: { total: 96, linked: 58, likely: 4, notFound: 12, notLooked: 20, failing: 2 },
   spentUsd: 8.03,
   deploys: [
     { at: ago(2), stack: 'media', services: 'jellyfin', status: 'verified', trigger: 'queue' },

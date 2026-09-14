@@ -197,7 +197,7 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
           { registry: ref.registry, repository: ref.repository },
           { service: { stack: r.stack, service: r.service }, ownLabel: svcFor(r)?.sourceLabel },
         )
-        return { ...r, resolution_tier: source.tier, source_url: source.repo }
+        return { ...r, resolution_tier: source.tier, source_url: source.repo, source_confidence: source.confidence }
       }),
       policy,
       number,
@@ -240,6 +240,7 @@ function resolveModelTier(
     migration_steps: string | null
     resolution_tier: string | null
     source_url: string | null
+    source_confidence: string | null
   }[],
   policy: Policy,
   number: number,
@@ -256,6 +257,7 @@ function resolveModelTier(
     const a = assess({
       resolutionTier: (r.resolution_tier ?? 'none') as ResolutionTier,
       sourceRepo: r.source_url,
+      resolutionConfidence: (r.source_confidence ?? null) as never,
       sources: parseArray(r.sources),
       recommendation: (r.verdict_error ? 'unavailable' : (r.recommendation ?? 'unavailable')) as never,
       confidence: (r.confidence ?? 'low') as never,

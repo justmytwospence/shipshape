@@ -5,6 +5,7 @@ import { assess, isUnder } from '../src/policy/model-tier.ts'
 const clean = {
   resolutionTier: 'annotation' as const,
   sourceRepo: 'acme/widget',
+  resolutionConfidence: 'high' as const,
   sources: ['https://github.com/acme/widget/releases/tag/v2.0.0'],
   recommendation: 'approve' as const,
   confidence: 'high' as const,
@@ -23,6 +24,16 @@ test('an image nobody can tie to a source is never promoted', () => {
   // nothing.
   assert.equal(assess({ ...clean, resolutionTier: 'none', sourceRepo: null }).promote, false)
   assert.match(assess({ ...clean, resolutionTier: 'none', sourceRepo: null }).reason, /linked/)
+})
+
+test('a repository the resolver only thinks likely is not linked', () => {
+  // Found by the image's name, or linked from its description: good enough to read notes
+  // from, not to extend trust to.
+  const a = assess({ ...clean, resolutionTier: 'lookup', resolutionConfidence: 'medium' })
+  assert.equal(a.promote, false)
+  assert.match(a.reason, /linked/)
+  assert.match(a.guards[0]!.detail ?? '', /only a likely match/)
+  assert.equal(assess({ ...clean, resolutionTier: 'description', resolutionConfidence: 'high' }).promote, true)
 })
 
 test('evidence from outside the upstream repository blocks promotion', () => {

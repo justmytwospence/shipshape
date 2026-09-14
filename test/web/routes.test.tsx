@@ -38,6 +38,7 @@ const PAGES = [
   '/services',
   '/services?group=stack',
   '/services?filter=watched&q=x',
+  '/services?filter=unlinked',
   '/activity',
   '/activity?kind=deploy&level=problems&q=x',
   '/settings',
@@ -144,6 +145,20 @@ test('checking one service answers even when it has been removed', async () => {
   const res = await app.request('/services/nope/nope/check', { method: 'POST' })
   assert.equal(res.status, 200)
   assert.match(res.headers.get('HX-Trigger') ?? '', /no longer here/)
+})
+
+test('"Look again" always answers, and says why when there is nothing to look up', async () => {
+  // The same rule as Check now: a 4xx would read as a button that did nothing.
+  const res = await app.request('/services/nope/nope/resolve', { method: 'POST', headers: { 'HX-Request': 'true' } })
+  assert.equal(res.status, 200)
+  const trigger = JSON.parse(res.headers.get('HX-Trigger') ?? '{}')
+  assert.equal(trigger.toast?.level, 'warn')
+  assert.match(trigger.toast?.text ?? '', /has no image to look up/)
+  assert.doesNotMatch(await res.text(), /<html/)
+
+  const plain = await app.request('/services/nope/nope/resolve', { method: 'POST' })
+  assert.equal(plain.status, 303)
+  assert.equal(plain.headers.get('location'), '/services/nope/nope')
 })
 
 test('an operator verb always answers, whether or not it was allowed', async () => {

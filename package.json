@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test 'test/**/*.test.ts' 'test/web/*.test.tsx'",
     "migrate-labels": "tsx src/bin/migrate-labels.ts",
+    "resolve-report": "tsx src/bin/resolve-report.ts",
     "dev:ui": "node bin/dev-ui.mjs",
     "shots": "node bin/shots.mjs",
     "css": "tailwindcss -i src/styles/app.css -o public/app.css --minify",

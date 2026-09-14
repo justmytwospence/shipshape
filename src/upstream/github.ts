@@ -96,6 +96,49 @@ export async function ghRequest<T>(path: string, opts: GhRequestOpts<T> = {}): P
   return staleOr<T>(cached, failure)
 }
 
+export interface RepoInfo {
+  /** The name GitHub uses now: renames followed, its capitalisation. */
+  fullName: string
+  fork: boolean
+  archived: boolean
+  parent: string | null
+}
+
+/**
+ * A repository, or null when GitHub has none by that name. Every repository the resolver
+ * infers is checked here before it is believed: a description can link a repository that
+ * has since been deleted, and an image name can match a fork.
+ */
+export async function getRepo(repo: string): Promise<GhResult<RepoInfo | null>> {
+  const r = await ghRequest<RepoInfo>(`/repos/${repo}`, {
+    cacheKey: `github:/repos/${repo.toLowerCase()}`,
+    trim: (raw) => {
+      const b = raw as { full_name: string; fork?: boolean; archived?: boolean; parent?: { full_name?: string } }
+      return { fullName: b.full_name, fork: !!b.fork, archived: !!b.archived, parent: b.parent?.full_name ?? null }
+    },
+  })
+  if (!r.ok && r.kind === 'not-found') return { ok: true, data: null, fromCache: false }
+  return r
+}
+
+export type RawFile = { ok: true; text: string } | { ok: false; kind: GhFailure; status?: number; detail: string }
+
+/** A file on a repository's default branch, through raw.githubusercontent.com, which does not
+ *  count against the API rate limit. */
+export async function rawFile(repo: string, path: string): Promise<RawFile> {
+  const url = `https://raw.githubusercontent.com/${repo}/HEAD/${path}`
+  let res: Response
+  try {
+    await pace('raw.githubusercontent.com')
+    res = await fetch(url, { headers: { 'user-agent': USER_AGENT }, signal: AbortSignal.timeout(TIMEOUT_MS) })
+  } catch (err) {
+    return { ok: false, kind: 'network', detail: `GitHub could not be reached (${(err as Error).message})` }
+  }
+  if (res.ok) return { ok: true, text: await res.text() }
+  const { kind } = classifyFailure(res.status, res.headers)
+  return { ok: false, kind, status: res.status, detail: describe(kind, res.status, `${repo}/${path}`) }
+}
+
 /**
  * What an error status means. Exported for the tests.
  *

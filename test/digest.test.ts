@@ -145,6 +145,21 @@ test('html output escapes everything that came from outside', () => {
   assert.match(html, /href="https:\/\/x\/\?a=1&amp;b=2"/)
 })
 
+test('a detail of several lines keeps its line breaks in html', () => {
+  // A degraded group deploy that also left a member records its warning and each left
+  // service on their own lines. HTML collapses a newline to a space, so without this they
+  // ran together into one sentence.
+  const html = renderHtml([
+    row({
+      category: 'deployed',
+      summary: '#91 deployed with warnings — a -> b',
+      detail: 'with warnings — x\ny left stopped (exited) — compose brings it up on b',
+      url: 'https://gh/91',
+    }),
+  ])!
+  assert.match(html, /white-space:pre-line[^>]*>with warnings — x\ny left stopped/)
+})
+
 test('an empty batch has no html either', () => {
   assert.equal(renderHtml([]), null)
 })

@@ -556,11 +556,14 @@ export function renderHtml(
     out.push(`<p style="margin:1.2em 0 .3em;font-weight:600">${esc(section.heading)}</p>`)
     out.push(`<ul style="margin:0;padding-left:1.2em">`)
     for (const r of section.items) {
+      // The detail keeps its line breaks (pre-line): it is lines -- a deploy's warnings, then
+      // one sentence per service it left or brought back, or a held update's reasons -- and
+      // HTML would otherwise collapse them into one run-on sentence.
       const text = `${esc(where(r))}${esc(r.summary)}`
       out.push(
         `<li style="margin:.2em 0">${
           r.url ? `<a href="${esc(r.url)}" style="color:#2f6f57">${text}</a>` : text
-        }${r.detail ? `<div style="color:#6b6b66;font-size:.92em">${esc(r.detail)}</div>` : ''}</li>`,
+        }${r.detail ? `<div style="color:#6b6b66;font-size:.92em;white-space:pre-line">${esc(r.detail)}</div>` : ''}</li>`,
       )
     }
     if (section.more > 0) {

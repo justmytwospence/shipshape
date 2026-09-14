@@ -1,4 +1,5 @@
 import { getDb } from '../db.ts'
+import { ghRequest } from '../upstream/github.ts'
 import { registryFetch } from './http.ts'
 
 /**
@@ -51,19 +52,19 @@ export async function fetchReleases(
   ownerRepo: string,
   githubToken: string,
 ): Promise<GhRelease[]> {
-  const res = await fetch(
-    `https://api.github.com/repos/${ownerRepo}/releases?per_page=${MAX_RELEASES}`,
-    {
-      headers: {
-        accept: 'application/vnd.github+json',
-        'user-agent': 'shipshape/0.1',
-        ...(githubToken ? { authorization: `Bearer ${githubToken}` } : {}),
-      },
-    },
+  // Through the shared client, which gives this call the timeout it never had -- a hung
+  // connection here used to hold detection open indefinitely.
+  const res = await ghRequest<GhRelease[]>(
+    `/repos/${ownerRepo}/releases?per_page=${MAX_RELEASES}`,
+    { token: githubToken },
   )
-  if (!res.ok) return []
-  const body = (await res.json()) as GhRelease[]
-  return body.filter((r) => !r.draft && !r.prerelease)
+  if (!res.ok) {
+    // Unreachable is still an exception, as it was when fetch threw: the caller reports
+    // "release probing failed" rather than claiming the releases confirmed no tags.
+    if (res.kind === 'network') throw new Error(res.detail)
+    return []
+  }
+  return res.data.filter((r) => !r.draft && !r.prerelease)
 }
 
 /**

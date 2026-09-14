@@ -29,15 +29,20 @@ const lastRequestAt = new Map<string, number>()
 
 /** Minimum spacing between requests to the same host. Cheap insurance against tripping
  *  a rate limiter during a 144-image scan. */
-const MIN_SPACING_MS = 120
+let minSpacingMs = 120
+
+/** Tests exercise request sequences, not politeness, so they turn the spacing off. */
+export function setMinSpacingForTests(ms: number): void {
+  minSpacingMs = ms
+}
 
 /** Per-request ceiling. Generous enough for a slow registry, short enough that a dead
  *  connection cannot hold the nightly scan open forever. */
 const REQUEST_TIMEOUT_MS = 30_000
 
-async function pace(host: string): Promise<void> {
+export async function pace(host: string): Promise<void> {
   const last = lastRequestAt.get(host) ?? 0
-  const wait = last + MIN_SPACING_MS - Date.now()
+  const wait = last + minSpacingMs - Date.now()
   if (wait > 0) await new Promise((r) => setTimeout(r, wait))
   lastRequestAt.set(host, Date.now())
 }
@@ -210,12 +215,12 @@ function recordHubHeaders(host: string, res: Response): void {
 
 // ---------------------------------------------------------------- response cache
 
-interface CacheRow {
+export interface CacheRow {
   etag: string | null
   body: string
 }
 
-function readCache(key: string): CacheRow | null {
+export function readCache(key: string): CacheRow | null {
   const row = getDb()
     .prepare(`SELECT etag, body FROM http_cache WHERE url = ?`)
     .get(key) as CacheRow | undefined

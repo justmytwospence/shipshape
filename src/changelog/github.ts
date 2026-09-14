@@ -1,4 +1,4 @@
-import { env } from '../config.ts'
+import { ghRequest } from '../upstream/github.ts'
 
 /**
  * Gathering the raw material a release judgement needs.
@@ -28,21 +28,11 @@ export interface ChangelogBundle {
   notes: string[]
 }
 
+/** Every failure is still null here, exactly as before. The classified result from
+ *  `ghRequest` is there for callers ready to say which failure happened. */
 async function ghJson<T>(path: string): Promise<T | null> {
-  try {
-    const res = await fetch(`https://api.github.com${path}`, {
-      headers: {
-        accept: 'application/vnd.github+json',
-        'user-agent': 'shipshape/0.1',
-        ...(env.githubToken ? { authorization: `Bearer ${env.githubToken}` } : {}),
-      },
-      signal: AbortSignal.timeout(20_000),
-    })
-    if (!res.ok) return null
-    return (await res.json()) as T
-  } catch {
-    return null
-  }
+  const res = await ghRequest<T>(path)
+  return res.ok ? res.data : null
 }
 
 /** Releases newest first, trimmed so one enormous body cannot crowd out the rest. */

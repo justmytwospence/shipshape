@@ -108,7 +108,7 @@ anything.
 | Rolling tag moved | **Redeploy** | Dismiss |
 | Failed / Rolled back | **Try again** | Skip · Acknowledge |
 | Verified / Degraded | **Roll back** | Acknowledge |
-| Left stopped | **Roll back** | — |
+| Left stopped | **Roll back** (a rolling tag: **Redeploy**) | — |
 | Review failed | **Re-run review** | Skip |
 
 A verb keeps its name through the whole flow: the button that says "Deploy" produces

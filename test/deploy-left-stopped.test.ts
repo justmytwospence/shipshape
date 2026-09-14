@@ -382,6 +382,11 @@ test('a redeploy of a stopped rolling service does nothing and says nothing', as
   assert.equal(deployRow(id).status, 'left-stopped')
   assert.equal(stateOf(updateId), 'left-stopped')
   assert.deepEqual(digestItems(), [])
+  // Nothing was pulled, so compose would start the image already here, not the move.
+  assert.equal(
+    deployRow(id).detail,
+    'actual left stopped (exited) — nothing was pulled, so compose brings it up on the image already on this host; Redeploy once it is running',
+  )
 })
 
 test('a redeploy that did not land leaves the tag moved', async () => {

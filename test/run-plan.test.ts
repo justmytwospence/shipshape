@@ -253,6 +253,21 @@ test('leftClause says what compose and docker start would do', () => {
   )
 })
 
+test('a Redeploy that left a rolling tag says nothing was pulled', () => {
+  const ref = 'actualbudget/actual-server:latest'
+  const stopped = left({ service: 'actual', oldRef: ref, restartPolicy: 'unless-stopped' })
+  assert.equal(
+    leftClause(stopped, ref, { pull: true }),
+    'actual left stopped (exited) — nothing was pulled, so compose brings it up on the latest image already on this host; Redeploy once it is running',
+  )
+  assert.doesNotMatch(leftClause(stopped, ref, { pull: true }), /compose brings it up on latest$/)
+  assert.equal(
+    leftClause(stopped, ref),
+    'actual left stopped (exited) — compose brings it up on latest',
+    'a merge pins a real version, so its clause is unchanged',
+  )
+})
+
 test('the namespace and carry clauses read as the operator examples do', () => {
   assert.equal(
     leftClause(left({ service: 'deluge', why: 'owner-down', owner: 'deluge-gluetun' }), null),

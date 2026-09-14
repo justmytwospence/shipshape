@@ -226,12 +226,22 @@ export function versionOf(ref: string | null): string | null {
  * `pinnedRef` is what the compose file pins now. The resume clause appears only when the
  * old container's version is known and differs, because "docker start would resume
  * 1.37.3" about a container already on 1.37.3 is noise that reads like a warning.
+ *
+ * `pull` is a Redeploy, which pulls only what it brings up. For a rolling tag the version
+ * in the file is the same word before and after the move -- `latest` -- so "compose brings
+ * it up on latest" promised the moved image while compose's default pull policy starts the
+ * one already on this host. It says that instead, and that Redeploy is still the way to
+ * adopt the move.
  */
-export function leftClause(l: LeftService, pinnedRef: string | null): string {
+export function leftClause(l: LeftService, pinnedRef: string | null, opts: { pull?: boolean } = {}): string {
   const s = l.service
   const n = versionOf(pinnedRef)
   const o = versionOf(l.oldRef)
-  const upOn = n ? `compose brings it up on ${n}` : 'compose brings it up on the version in the compose file'
+  const upOn = opts.pull
+    ? `nothing was pulled, so compose brings it up on the ${n ? `${n} ` : ''}image already on this host; Redeploy once it is running`
+    : n
+      ? `compose brings it up on ${n}`
+      : 'compose brings it up on the version in the compose file'
   const resume = o !== null && n !== null && o !== n
   const word = l.state === 'created' ? 'created, never started' : l.state
 

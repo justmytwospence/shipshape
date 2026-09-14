@@ -397,7 +397,7 @@ export async function deploy(
 
   const notes = [
     ...plan.restored.map(restoredClause),
-    ...plan.left.map((l) => leftClause(l, pinned.get(l.service) ?? null)),
+    ...plan.left.map((l) => leftClause(l, pinned.get(l.service) ?? null, { pull: !!target.pull })),
   ]
 
   if (plan.up.length === 0) {

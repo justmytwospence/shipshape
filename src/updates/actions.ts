@@ -136,6 +136,13 @@ export function actionsFor(c: ActionContext): Verb[] {
       // to acknowledge -- only the version itself to take back. Roll back reads the service
       // again before it acts, the same as every deploy, so a stopped service stays stopped:
       // it puts the old version in the file without bringing anything up.
+      //
+      // A rolling tag has no merge to take back, and its move is not in any file: a Redeploy
+      // that found the service stopped pulled nothing, and the scan has already advanced its
+      // baseline, so nothing would ever offer this digest again. Redeploy stays on offer --
+      // once the service is running it pulls and recreates, and while it is still stopped
+      // it just reads Left stopped again.
+      if (ROLLING(c)) out.push('redeploy')
       if (c.mergeCommitSha) out.push('rollback')
       break
 

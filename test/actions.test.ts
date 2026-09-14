@@ -83,6 +83,15 @@ test('a left-stopped update offers Roll back and nothing else', () => {
   assert.deepEqual(actionsFor(ctx({ state: 'left-stopped', deployStatus: 'left-stopped' })), [])
 })
 
+test('a rolling tag left stopped still offers Redeploy', () => {
+  // Its move is in no file and the scan's baseline has already advanced: without the button,
+  // nothing would ever offer this digest again.
+  assert.deepEqual(
+    actionsFor(ctx({ state: 'left-stopped', detail: 'rolling', deployStatus: 'left-stopped' })),
+    ['redeploy'],
+  )
+})
+
 test('a service that went degraded after the soak can be acknowledged', () => {
   const a = actionsFor(ctx({ state: 'deployed', deployStatus: 'degraded', mergeCommitSha: 'x' }))
   assert.deepEqual(a, ['rollback', 'ack'])
@@ -117,6 +126,7 @@ test('every state names exactly one button, and names it first', () => {
     ctx({ state: 'deployed', deployStatus: 'degraded', mergeCommitSha: 'x' }),
     ctx({ state: 'verified', deployStatus: 'verified', mergeCommitSha: 'x' }),
     ctx({ state: 'left-stopped', deployStatus: 'left-stopped', mergeCommitSha: 'x' }),
+    ctx({ state: 'left-stopped', detail: 'rolling', deployStatus: 'left-stopped' }),
     ctx({ state: 'failed' }),
     ctx({ state: 'skipped' }),
     ctx({ state: 'superseded' }),

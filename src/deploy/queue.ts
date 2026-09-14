@@ -514,10 +514,21 @@ export async function runRechecks(
     }
 
     const detail = bad.map((b) => `${b.service}: ${b.found ? b.state : 'gone'}`).join('; ')
-    db.prepare(`UPDATE deploys SET status = 'degraded', detail = ? WHERE id = ?`).run(
-      `soak failed — ${detail}`,
-      row.id,
-    )
+    // A row that left a service carries that service's sentence in its detail -- what compose
+    // and docker start would each bring back -- and the left member's timeline reads it from
+    // nowhere else. So the soak failure goes on a line of its own after it rather than over
+    // it. A new line, not "; ": the digest quotes a deploy's last line, which is then still
+    // the soak failure.
+    if (readRecordedPlan(row.snapshot)?.left.length) {
+      db.prepare(
+        `UPDATE deploys SET status = 'degraded', detail = COALESCE(detail || char(10), '') || ? WHERE id = ?`,
+      ).run(`soak failed — ${detail}`, row.id)
+    } else {
+      db.prepare(`UPDATE deploys SET status = 'degraded', detail = ? WHERE id = ?`).run(
+        `soak failed — ${detail}`,
+        row.id,
+      )
+    }
     logEvent({
       level: 'error',
       kind: 'deploy',

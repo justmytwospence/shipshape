@@ -10,7 +10,8 @@ import { scanRepo, type ScannedService } from '../compose/scan.ts'
 import { buildUpdateDiff, type DiffHunk } from '../diff.ts'
 import { parseImageRef } from '../images/ref.ts'
 import { refLinks } from '../links.ts'
-import { isScanning, scanOne } from '../scan.ts'
+import { isScanning, refreshServiceLabels, scanOne } from '../scan.ts'
+import { sourceForSync } from '../resolver/index.ts'
 import { runScanNow, scheduleInfo } from '../scheduler.ts'
 import { setState } from '../updates/state.ts'
 import { actionsFor, refusalFor } from '../updates/actions.ts'
@@ -583,6 +584,9 @@ export function createApp(): Hono {
       key,
       value: raw === '' ? null : raw,
     })
+    // The labels module leaves the images table to its caller, and nothing refreshed it, so
+    // the pane answered from the last scan until the next one. Refresh this service's row.
+    if (result.ok) refreshServiceLabels(stack, service)
     toastHeader(c, result.ok ? 'info' : 'warn', result.message)
     if (!c.req.header('HX-Request')) return c.redirect(`/services/${stack}/${service}`, 303)
     const found = servicePane(stack, service, ctxOf(c, 'services'))
@@ -1187,12 +1191,19 @@ function diffFragment(id: number): string {
     // Links point at the TARGET tag: this panel is where the merge decision happens.
     const row = db
       .prepare(
-        `SELECT u.image, u.to_tag, r.source_url FROM updates u
+        `SELECT u.image, u.to_tag, u.stack, u.service FROM updates u
          JOIN images i ON i.stack = u.stack AND i.service = u.service
-         LEFT JOIN resolutions r ON r.registry = i.registry AND r.repository = i.repository
          WHERE u.id = ?`,
       )
-      .get(id) as { image: string; to_tag: string; source_url: string | null } | undefined
+      .get(id) as { image: string; to_tag: string; stack: string; service: string } | undefined
+    const ref = row ? parseImageRef(row.image) : null
+    const source =
+      row && ref
+        ? sourceForSync(
+            { registry: ref.registry, repository: ref.repository },
+            { service: { stack: row.stack, service: row.service } },
+          )
+        : null
 
     const proposal = pr
       ? (db
@@ -1215,7 +1226,7 @@ function diffFragment(id: number): string {
     return (
       DiffView({
         result,
-        links: row ? refLinks(parseImageRef(row.image), row.to_tag, row.source_url) : undefined,
+        links: row && ref ? refLinks(ref, row.to_tag, source?.repo ?? null) : undefined,
         prNumber: pr?.number ?? null,
         prUrl: pr ? `https://github.com/${env.githubRepo}/pull/${pr.number}` : null,
         prScope: pr?.scope ?? null,

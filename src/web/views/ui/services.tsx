@@ -333,7 +333,10 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
           {data.config.map((line) => (
             <div class="flex min-h-11 items-center gap-3 lg:min-h-7">
               <span class="w-24 shrink-0 opacity-70">{line.key}</span>
-              <span class="min-w-0 flex-1 truncate font-mono">{line.value}</span>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate font-mono">{line.value}</span>
+                {line.note ? <span class="block opacity-60">{line.note}</span> : null}
+              </span>
               <span class={`badge badge-xs badge-soft ${SOURCE_CLS[line.source]}`}>
                 {line.source}
               </span>

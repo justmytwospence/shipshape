@@ -17,7 +17,7 @@ import { foldGroupMagnitude, shouldOpenPr, type EffectiveTier } from '../policy.
 import type { Magnitude } from '../versions/patterns.ts'
 import { bumpImage } from './editor.ts'
 import { prBody, short } from './body.ts'
-import { resolveSource } from '../resolver/index.ts'
+import { sourceFor } from '../resolver/index.ts'
 import { alreadyCommented, mark } from './comments.ts'
 import { authorArgs, ensureWorkRepo, git, httpsUrl, withGitLock } from './repo.ts'
 import { syncMain } from './sync.ts'
@@ -1068,7 +1068,7 @@ function prTitle(g: UpdateGroup): string {
  * `analyze()`, which runs a minute *after* the pull request opens, so at this point most
  * images have no row -- and a reference section that said "no upstream resolved" for
  * almost every pull request would be worse than none. Nothing extra is spent: the answer
- * is cached permanently and analysis would have made the identical call moments later.
+ * is cached and analysis would have made the identical call moments later.
  *
  * Note it is not read through groups.ts's `sourceRepoFor`, which falls back to the
  * image's own repository path when nothing resolves. That fallback is right for deciding
@@ -1080,13 +1080,11 @@ async function sourceRepos(g: UpdateGroup): Promise<Map<number, string | null>> 
   for (const m of g.members) {
     const ref = parseImageRef(m.image)
     try {
-      const r = await resolveSource({
-        registry: ref.registry,
-        repository: ref.repository,
-        tag: ref.tag ?? m.from_tag,
-        sourceLabel: sourceLabelFor(m.stack, m.service),
-      })
-      out.set(m.id, r.sourceRepo)
+      const r = await sourceFor(
+        { registry: ref.registry, repository: ref.repository },
+        { service: { stack: m.stack, service: m.service }, tag: ref.tag ?? m.from_tag },
+      )
+      out.set(m.id, r.repo)
     } catch {
       // A pull request must open whether or not a registry is reachable. Links are the
       // one part of it that is genuinely optional.
@@ -1094,14 +1092,6 @@ async function sourceRepos(g: UpdateGroup): Promise<Map<number, string | null>> 
     }
   }
   return out
-}
-
-/** The service's `shipshape.source` label, as recorded by the last scan. */
-function sourceLabelFor(stack: string, service: string): string | null {
-  const row = getDb()
-    .prepare(`SELECT source_label FROM images WHERE stack = ? AND service = ?`)
-    .get(stack, service) as { source_label: string | null } | undefined
-  return row?.source_label ?? null
 }
 
 

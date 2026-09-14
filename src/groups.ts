@@ -1,4 +1,5 @@
 import { getDb } from './db.ts'
+import { sourceForSync } from './resolver/index.ts'
 
 /**
  * Which updates must land in the same pull request.
@@ -149,21 +150,22 @@ export function makeLookups(services: { stack: string; service: string; groupLab
   groupLabelFor: (stack: string, service: string) => string | null
 } {
   const rows = getDb()
-    .prepare(
-      `SELECT i.stack, i.service, i.repository, r.source_url
-       FROM images i LEFT JOIN resolutions r
-         ON r.registry = i.registry AND r.repository = i.repository`,
-    )
-    .all() as { stack: string; service: string; repository: string; source_url: string | null }[]
+    .prepare(`SELECT stack, service, registry, repository FROM images`)
+    .all() as { stack: string; service: string; registry: string; repository: string }[]
 
   const bySvc = new Map(rows.map((r) => [`${r.stack}/${r.service}`, r]))
   const labels = new Map(services.map((s) => [`${s.stack}/${s.service}`, s.groupLabel]))
   return {
     sourceRepoFor: (stack, service) => {
       const r = bySvc.get(`${stack}/${service}`)
+      if (!r) return null
+      const source = sourceForSync(
+        { registry: r.registry, repository: r.repository },
+        { service: { stack, service } },
+      )
       // Fall back to the repository path itself: n8n and n8n-import share one image,
       // which is the same identity even before any resolution exists.
-      return r?.source_url ?? r?.repository ?? null
+      return source.repo ?? r.repository
     },
     groupLabelFor: (stack, service) => labels.get(`${stack}/${service}`) ?? null,
   }

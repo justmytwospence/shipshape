@@ -112,11 +112,21 @@ test('a release links to its changelog even though nothing reviewed it', () => {
 test('a release whose service was deleted keeps its place in the history', () => {
   // No images row: the service is gone from the compose file. An inner join here would
   // quietly drop the releases it did have, which is history disappearing.
-  addUpdate({ service: 'retired', magnitude: 'minor', detectedAt: ago(6) })
+  addUpdate({ service: 'retired', magnitude: 'minor', detectedAt: ago(6), image: 'ghcr.io/acme/unresolved' })
 
   const row = listReleases().find((r) => r.service === 'retired')
   assert.ok(row, 'a retired service keeps its releases')
   assert.equal(row.links.releases, null, 'with nothing resolved there is no changelog link')
+})
+
+test('a deleted service keeps its release links when its image is resolved', () => {
+  // The source is keyed by the update's own image, not by the service's current row, so
+  // removing a service from the compose file no longer strips the links from its history.
+  resolve('ghcr.io', 'acme/kept', 'acme/kept')
+  addUpdate({ service: 'retired-kept', magnitude: 'minor', detectedAt: ago(6), image: 'ghcr.io/acme/kept' })
+
+  const row = listReleases().find((r) => r.service === 'retired-kept')
+  assert.ok(row?.links.releases?.includes('acme/kept'), 'its releases still link to the changelog')
 })
 
 test('the feed can still be narrowed by size and search', () => {
@@ -131,4 +141,30 @@ test('the feed can still be narrowed by size and search', () => {
     searched.map((r) => r.service),
     ['filterable'],
   )
+})
+
+test('a service linked only by its label still links to its release notes', () => {
+  // signal-cli carries shipshape.source and has never had a resolution row. The feed joined
+  // the resolution cache, so it showed a registry link instead of the project.
+  const now = new Date().toISOString()
+  getDb()
+    .prepare(
+      `INSERT OR REPLACE INTO images (stack, service, compose_file, image_ref, registry, repository,
+             current_tag, watched, source_label, last_seen_at)
+       VALUES ('openclaw', 'signal-cli', 'openclaw/docker-compose.yaml',
+               'registry.gitlab.com/packaging/signal-cli/signal-cli-native:v0-14-7-1',
+               'registry.gitlab.com', 'packaging/signal-cli/signal-cli-native', 'v0-14-7-1', 1,
+               'https://github.com/AsamK/signal-cli', ?)`,
+    )
+    .run(now)
+  getDb()
+    .prepare(
+      `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state,
+                            detail, detected_at, updated_at)
+       VALUES ('openclaw', 'signal-cli', 'registry.gitlab.com/packaging/signal-cli/signal-cli-native:v0-14-7-1',
+               'v0-14-7-1', 'v0-14-8-1', 'minor', 'auto', 'pr_open', NULL, ?, ?)`,
+    )
+    .run(now, now)
+  const [release] = listReleases({ q: 'signal-cli' })
+  assert.equal(release?.links.source, 'https://github.com/AsamK/signal-cli')
 })

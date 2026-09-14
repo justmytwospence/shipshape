@@ -82,6 +82,21 @@ test('the digest barrier arrives with nothing owed', (t) => {
   assert.ok(pending >= 0)
 })
 
+test('the resolution cache learns when to look again', (t) => {
+  if (!have) return t.skip('set SHIPSHAPE_LIVE_DB to an online backup to run this')
+  const d = db.getDb()
+  const cols = (d.prepare(`PRAGMA table_info(resolutions)`).all() as { name: string }[]).map((c) => c.name)
+  for (const c of ['confidence', 'checked_at', 'next_check_at', 'attempts', 'error', 'resolver_version', 'evidence', 'packaging_repo']) {
+    assert.ok(cols.includes(c), c)
+  }
+  // Every none written before this could not tell a failure from an absence, so every one
+  // is due for another look -- none may be left permanent.
+  const stuck = (d.prepare(`SELECT COUNT(*) c FROM resolutions WHERE tier = 'none' AND next_check_at IS NULL`).get() as { c: number }).c
+  assert.equal(stuck, 0)
+  const unmarked = (d.prepare(`SELECT COUNT(*) c FROM resolutions WHERE tier != 'none' AND confidence IS NULL`).get() as { c: number }).c
+  assert.equal(unmarked, 0)
+})
+
 test('the rollout watermark is set to now, not to the beginning of time', (t) => {
   if (!have) return t.skip('set SHIPSHAPE_LIVE_DB to an online backup to run this')
   const rows = db

@@ -5,6 +5,7 @@ import { env } from '../config.ts'
 import { patternFor } from '../detect.ts'
 import { tierFor } from '../policy.ts'
 import { updatesForService } from './queries.ts'
+import { sourceForSync, type SourceInfo } from '../resolver/index.ts'
 import type { ConfigLine, ServiceDetailData, ServiceRowData } from '../web/views/ui/services.tsx'
 
 /**
@@ -95,7 +96,7 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
   const db = getDb()
   const image = db
     .prepare(
-      `SELECT compose_file, pattern, tag_include, policy_label, source_label, claude_label,
+      `SELECT compose_file, pattern, tag_include, policy_label, claude_label,
               deploy_label, registry, repository
          FROM images WHERE stack = ? AND service = ?`,
     )
@@ -105,7 +106,6 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
         pattern: string | null
         tag_include: string | null
         policy_label: string | null
-        source_label: string | null
         claude_label: string | null
         deploy_label: string | null
         registry: string
@@ -154,15 +154,19 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
   if (image?.tag_include) {
     config.push({ key: 'tag filter', value: image.tag_include, source: 'label' })
   }
-  const resolution = image
-    ? (db
-        .prepare(`SELECT source_url, tier FROM resolutions WHERE registry = ? AND repository = ?`)
-        .get(image.registry, image.repository) as { source_url: string; tier: string } | undefined)
-    : undefined
+  // Through the accessor, with the live label: the pane has just scanned the compose file,
+  // and a label edited a moment ago is the one that should show.
+  const source = image
+    ? sourceForSync(
+        { registry: image.registry, repository: image.repository },
+        { service: { stack, service }, ownLabel: live ? live.sourceLabel : undefined },
+      )
+    : null
   config.push({
     key: 'upstream',
-    value: image?.source_label ?? resolution?.source_url ?? '(unresolved)',
-    source: image?.source_label ? 'label' : resolution ? 'inferred' : 'none',
+    value: source?.repo ?? '(unresolved)',
+    source: source?.tier === 'label' ? 'label' : source?.repo ? 'inferred' : 'none',
+    note: source ? upstreamNote(source, { stack, service }) : undefined,
   })
   if (image?.deploy_label) {
     config.push({ key: 'deploy', value: image.deploy_label, source: 'label' })
@@ -179,4 +183,40 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
     // Editing writes into the compose file, which only exists where one was found.
     canEdit: !!image?.compose_file,
   }
+}
+
+const TIER_WORDS: Partial<Record<string, string>> = {
+  override: "from shipshape's curated map",
+  lsio: 'from the LinuxServer API',
+  annotation: "from the image's OCI source label",
+}
+
+/**
+ * The line under `upstream`: where the answer came from, and anything about it worth
+ * acting on. Several can apply at once, so they are joined.
+ */
+export function upstreamNote(s: SourceInfo, me: { stack: string; service: string }): string | undefined {
+  const parts: string[] = []
+  if (s.invalidLabel) {
+    parts.push(`shipshape.source "${s.invalidLabel.value}" ignored: ${s.invalidLabel.reason}`)
+  }
+  if (s.label && (s.label.from.stack !== me.stack || s.label.from.service !== me.service)) {
+    parts.push(`label on ${s.label.from.stack}/${s.label.from.service}, which runs the same image`)
+  }
+  if (s.label && s.label.conflicts.length > 0) {
+    parts.push(
+      `labels disagree: ${s.label.conflicts.map((c) => `${c.stack}/${c.service} says ${c.value}`).join(', ')}`,
+    )
+  }
+  if (!s.label && s.repo) {
+    const via = TIER_WORDS[s.tier]
+    if (via) parts.push(via)
+  }
+  if (s.error) {
+    const when = s.nextCheckAt ? `; trying again ${s.nextCheckAt.slice(0, 16).replace('T', ' ')} UTC` : ''
+    parts.push(`couldn't look: ${s.error}${when}`)
+  } else if (!s.label && !s.inferred) {
+    parts.push('not looked up yet')
+  }
+  return parts.length > 0 ? parts.join(' · ') : undefined
 }

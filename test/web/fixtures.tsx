@@ -369,6 +369,12 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
       { key: 'policy', value: 'manual', source: 'label' as const },
       { key: 'major', value: 'manual', source: 'locked' as const },
       { key: 'pattern', value: 'semver', source: 'inferred' as const },
+      {
+        key: 'upstream',
+        value: 'jellyfin/jellyfin',
+        source: 'label' as const,
+        note: 'label on media/jellyfin-web, which runs the same image',
+      },
     ],
     history: [UPDATES.waiting!],
     canEdit: true,

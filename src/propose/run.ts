@@ -7,7 +7,7 @@ import { getDb, logEvent } from '../db.ts'
 import { budgetExhausted } from '../analyze/claude.ts'
 import { scanRepo } from '../compose/scan.ts'
 import { routine } from '../notify/digest.ts'
-import { resolveSource } from '../resolver/index.ts'
+import { sourceFor } from '../resolver/index.ts'
 import { parseImageRef } from '../images/ref.ts'
 import { postIssueComment } from '../gitops/comments.ts'
 import { ensureWorkRepo, git, httpsUrl, withGitLock } from '../gitops/repo.ts'
@@ -165,11 +165,10 @@ async function draftFor(c: Candidate): Promise<boolean> {
     const abs = join(repoDir, c.composeFile)
     const before = readFileSync(abs, 'utf8')
     const ref = parseImageRef(c.image)
-    const resolved = await resolveSource({
-      registry: ref.registry,
-      repository: ref.repository,
-      tag: ref.tag ?? c.fromTag,
-    })
+    const source = await sourceFor(
+      { registry: ref.registry, repository: ref.repository },
+      { service: { stack: c.stack, service: c.service }, tag: ref.tag ?? c.fromTag },
+    )
 
     // Scope is resolved from the compose file at draft time, so a label edited since
     // the pull request opened takes effect.
@@ -191,7 +190,7 @@ async function draftFor(c: Candidate): Promise<boolean> {
       toTag: c.toTag,
       service: c.service,
       composeBlock: blockFor(before, c.service),
-      sourceRepo: resolved.sourceRepo,
+      sourceRepo: source.repo,
       verdict: {
         summary: verdict.summary,
         breaking_changes: JSON.parse(verdict.breaking_changes) as string[],

@@ -5,7 +5,7 @@ import { prompt } from '../prompts/index.ts'
 import { costOf, reportUnknownModels } from './pricing.ts'
 import { webTools } from './tools.ts'
 import { assemble } from '../changelog/github.ts'
-import { resolveSource } from '../resolver/index.ts'
+import { sourceFor } from '../resolver/index.ts'
 import { parseImageRef } from '../images/ref.ts'
 
 /**
@@ -93,6 +93,9 @@ export interface AnalyzeTarget {
   image: string
   fromTag: string
   toTag: string
+  /** The service asking, so its own `shipshape.source` label is the one that applies. */
+  stack?: string
+  service?: string
   /** When shipshape first saw the proposed tag in the registry. */
   observedAt?: string
   /** The service's compose block, so config-relevant changes can be flagged concretely. */
@@ -105,13 +108,18 @@ export async function analyze(target: AnalyzeTarget): Promise<Verdict | { error:
   if (!env.anthropicApiKey) return { error: 'ANTHROPIC_API_KEY is not set' }
 
   const ref = parseImageRef(target.image)
-  const resolved = await resolveSource({
-    registry: ref.registry,
-    repository: ref.repository,
-    tag: ref.tag ?? target.fromTag,
-  })
+  // With the service, so a `shipshape.source` label counts here too. It did not: the review
+  // resolved without it, and a labelled service's changelog was read as if its upstream were
+  // unknown.
+  const source = await sourceFor(
+    { registry: ref.registry, repository: ref.repository },
+    {
+      service: target.stack && target.service ? { stack: target.stack, service: target.service } : undefined,
+      tag: ref.tag ?? target.fromTag,
+    },
+  )
   const bundle = await assemble({
-    sourceRepo: resolved.sourceRepo,
+    sourceRepo: source.repo,
     repository: ref.repository,
     fromTag: target.fromTag,
     toTag: target.toTag,
@@ -135,7 +143,7 @@ export async function analyze(target: AnalyzeTarget): Promise<Verdict | { error:
           EMIT_VERDICT,
         ],
         tool_choice: { type: 'any' },
-        messages: [{ role: 'user', content: renderPrompt(target, bundle, resolved.sourceRepo) }],
+        messages: [{ role: 'user', content: renderPrompt(target, bundle, source.repo) }],
       },
       { timeout: 180_000 },
     )

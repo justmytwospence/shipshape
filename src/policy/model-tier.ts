@@ -1,3 +1,4 @@
+import type { ResolutionTier } from '../resolver/index.ts'
 /**
  * Letting the model decide what is routine, without letting it be talked into it.
  *
@@ -35,7 +36,7 @@
  * has no path to affect the outcome.
  */
 
-export type ResolutionTier = 'label' | 'annotation' | 'override' | 'lsio' | 'none'
+export type { ResolutionTier }
 
 export interface ModelTierInput {
   /** How the upstream repository was identified. `none` means it never was. */

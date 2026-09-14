@@ -8,7 +8,7 @@ import {
   type TagInfo,
 } from './registry/index.ts'
 import { probeByReleases } from './registry/probe.ts'
-import { resolveSource, guessFromImagePath } from './resolver/index.ts'
+import { sourceFor, guessFromImagePath } from './resolver/index.ts'
 import { fetchPrereleaseTags, normaliseReleaseTag } from './changelog/github.ts'
 import { selectUpdate, type Comparison } from './versions/compare.ts'
 import { inferPattern, isPatternKind, type PatternKind } from './versions/patterns.ts'
@@ -94,13 +94,11 @@ export async function detect(svc: ScannedService): Promise<Detection> {
       // resolveSource and probeByReleases both make network calls, and an exception
       // from either would otherwise escape detect() entirely and abort the scan.
       try {
-        const resolved = await resolveSource({
-          registry: ref.registry,
-          repository: ref.repository,
-          tag: ref.tag,
-          sourceLabel: svc.sourceLabel,
-        })
-        const sourceRepo = resolved.sourceRepo ?? guessFromImagePath(ref.registry, ref.repository)
+        const source = await sourceFor(
+          { registry: ref.registry, repository: ref.repository },
+          { service: { stack: svc.stack, service: svc.service }, ownLabel: svc.sourceLabel, tag: ref.tag },
+        )
+        const sourceRepo = source.repo ?? guessFromImagePath(ref.registry, ref.repository)
         if (!sourceRepo) {
           return {
             status: 'unresolvable',
@@ -198,13 +196,11 @@ async function prereleaseTagsAmong(
   tags: string[],
 ): Promise<Set<string>> {
   try {
-    const resolved = await resolveSource({
-      registry: ref.registry,
-      repository: ref.repository,
-      tag: currentTag,
-      sourceLabel: svc.sourceLabel,
-    })
-    const sourceRepo = resolved.sourceRepo ?? guessFromImagePath(ref.registry, ref.repository)
+    const source = await sourceFor(
+      { registry: ref.registry, repository: ref.repository },
+      { service: { stack: svc.stack, service: svc.service }, ownLabel: svc.sourceLabel, tag: currentTag },
+    )
+    const sourceRepo = source.repo ?? guessFromImagePath(ref.registry, ref.repository)
     if (!sourceRepo) return new Set()
 
     const pre = await fetchPrereleaseTags(sourceRepo)

@@ -361,6 +361,8 @@ test('a service says where each of its settings came from', () => {
     assert.match(html, new RegExp(`>${source}</span>`), source)
   }
   assert.match(html, /media\/docker-compose\.yaml/, 'and which file it is in')
+  // A note is shown as text under its value, not hidden in a title a phone cannot hover.
+  assert.match(html, />label on media\/jellyfin-web, which runs the same image</, 'and why, when there is more to say')
   assert.match(html, /list=service&amp;stack=media&amp;service=jellyfin/, 'its history rows lead back here')
 })
 

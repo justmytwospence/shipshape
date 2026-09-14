@@ -6,6 +6,7 @@ import { getDb, logEvent } from '../db.ts'
 import { routine } from '../notify/digest.ts'
 import { analyze, budgetExhausted, type Verdict } from './claude.ts'
 import { verdictHolds, type Confidence } from '../policy.ts'
+import { backoffUntil } from '../backoff.ts'
 
 /**
  * Analysing open pull requests and folding the result back into them.
@@ -143,6 +144,8 @@ export async function runAnalysisPass(limit = 3): Promise<AnalysisRun> {
         image: row.image,
         fromTag: row.from_tag,
         toTag: row.to_tag,
+        stack: row.stack,
+        service: row.service,
         observedAt: row.detected_at,
         composeSnippet: composeSnippet(row.stack, row.service),
       })
@@ -251,8 +254,7 @@ export function recordVerdict(
  * hour forever.
  */
 export function nextAttemptAt(attempts: number, now = Date.now()): string {
-  const backoffMs = Math.min(15 * 60_000 * 4 ** Math.max(0, attempts - 1), 24 * 60 * 60_000)
-  return new Date(now + backoffMs).toISOString()
+  return backoffUntil(attempts, { baseMs: 15 * 60_000, capMs: 24 * 60 * 60_000 }, now)
 }
 
 export function recordFailure(

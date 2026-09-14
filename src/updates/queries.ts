@@ -6,6 +6,7 @@ import { actionsFor, isTransient, primaryVerb, type ActionContext, type Verb } f
 import { LIVE_STATES, sqlIn, type UpdateState } from './state.ts'
 import { refLinks, registryName, type RefLinks } from '../links.ts'
 import { parseImageRef } from '../images/ref.ts'
+import { sourceForSync } from '../resolver/index.ts'
 
 /**
  * What the pages read.
@@ -643,10 +644,6 @@ export interface ReleaseView extends UpdateView {
   registry: string
 }
 
-interface RawRelease extends RawUpdate {
-  source_url: string | null
-}
-
 export function listReleases(
   opts: { q?: string; magnitude?: string; limit?: number } = {},
 ): ReleaseView[] {
@@ -663,31 +660,39 @@ export function listReleases(
     args.push(like, like, like)
   }
 
-  // Both joins are one-to-one -- images is keyed by (stack, service) and resolutions by
-  // (registry, repository) -- so neither can multiply the rows. Both are LEFT joins
-  // because this is history: a service deleted from the compose file loses its images
-  // row, and the releases it did have should not disappear from the feed along with it.
-  // Without a resolved source repository refLinks falls back to what the image reference
-  // alone can produce, which is the registry rather than the changelog.
+  // The source comes from the one accessor, with the service's label applied, rather than
+  // from a join on the resolution cache -- which is how a labelled service showed a registry
+  // link here instead of its release notes. It is keyed by the update's own image reference,
+  // so a release whose service has since left the compose file keeps its links. Without a
+  // source, refLinks falls back to what the image reference alone can produce, which is the
+  // registry rather than the changelog.
   const rows = getDb()
     .prepare(
       `SELECT u.id, u.stack, u.service, u.image, u.from_tag, u.to_tag, u.magnitude, u.tier,
-              u.state, u.detail, u.detected_at, u.updated_at, u.acked_at, r.source_url
+              u.state, u.detail, u.detected_at, u.updated_at, u.acked_at
          FROM updates u
-         LEFT JOIN images i ON i.stack = u.stack AND i.service = u.service
-         LEFT JOIN resolutions r ON r.registry = i.registry AND r.repository = i.repository
        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
        ORDER BY u.detected_at DESC, u.id DESC
        LIMIT ?`,
     )
-    .all(...args, opts.limit ?? 200) as RawRelease[]
+    .all(...args, opts.limit ?? 200) as RawUpdate[]
 
   const repo = repoName()
+  // Most of a feed is the same few services over and over; ask once for each.
+  const sources = new Map<string, string | null>()
   return rows.map((r) => {
     const ref = parseImageRef(r.image)
+    const key = `${ref.registry}/${ref.repository}|${r.stack}/${r.service}`
+    if (!sources.has(key)) {
+      const s = sourceForSync(
+        { registry: ref.registry, repository: ref.repository },
+        { service: { stack: r.stack, service: r.service } },
+      )
+      sources.set(key, s.repo)
+    }
     return {
       ...toView(r, repo),
-      links: refLinks(ref, r.to_tag, r.source_url),
+      links: refLinks(ref, r.to_tag, sources.get(key) ?? null),
       registry: registryName(ref.registry),
     }
   })

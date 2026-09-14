@@ -641,6 +641,38 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     ALTER TABLE verdicts ADD COLUMN rerun_requested_at TEXT;
   `,
   },
+  {
+    id: '019-resolution-cache',
+    sql: `
+    -- The resolution cache stops being permanent.
+    --
+    -- It was written once per image and returned forever, which turned a Docker Hub budget
+    -- stop or a registry timeout during the manifest walk into a 'none' that never healed,
+    -- and meant a better resolver never reached an image that already had a row.
+    -- resolved_at was recorded and never read.
+    --
+    -- A lookup failure is now recorded as one (error, attempts, a backed-off next_check_at)
+    -- and never downgrades a repository already found. A clean "nothing found" is looked at
+    -- again after a week. resolver_version marks rows written by older tier logic, so a
+    -- change to that logic reaches them. confidence, evidence and packaging_repo are for the
+    -- tiers that follow; nothing reads them yet except to show them.
+    ALTER TABLE resolutions ADD COLUMN confidence TEXT;
+    ALTER TABLE resolutions ADD COLUMN checked_at TEXT;
+    ALTER TABLE resolutions ADD COLUMN next_check_at TEXT;
+    ALTER TABLE resolutions ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE resolutions ADD COLUMN error TEXT;
+    ALTER TABLE resolutions ADD COLUMN resolver_version INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE resolutions ADD COLUMN evidence TEXT;
+    ALTER TABLE resolutions ADD COLUMN packaging_repo TEXT;
+
+    -- Every existing none was written by code that could not tell a failure from an
+    -- absence, so every one of them is due for another look now.
+    UPDATE resolutions SET
+      checked_at = resolved_at,
+      confidence = CASE WHEN tier = 'none' THEN NULL ELSE 'high' END,
+      next_check_at = CASE WHEN tier = 'none' THEN strftime('%Y-%m-%dT%H:%M:%SZ', 'now') END;
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

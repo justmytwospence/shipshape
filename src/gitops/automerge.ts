@@ -5,7 +5,8 @@ import { canAutoMerge, foldGroupMagnitude, foldGroupTier, tierFor } from '../pol
 import { scanRepo } from '../compose/scan.ts'
 import type { Magnitude } from '../versions/patterns.ts'
 import { assess, type ResolutionTier } from '../policy/model-tier.ts'
-import { normaliseSourceUrl } from '../resolver/index.ts'
+import { sourceForSync } from '../resolver/index.ts'
+import { parseImageRef } from '../images/ref.ts'
 
 /**
  * Merging what policy already allows, without a human.
@@ -118,13 +119,10 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
     .prepare(
       `SELECT u.stack, u.service, u.magnitude, u.detail, u.image, u.from_tag, u.to_tag,
               v.recommendation, v.confidence, v.error AS verdict_error,
-              v.sources, v.breaking_changes, v.migration_steps,
-              r.tier AS resolution_tier, r.source_url
+              v.sources, v.breaking_changes, v.migration_steps
        FROM updates u
        JOIN pr_updates pu ON pu.update_id = u.id
        LEFT JOIN verdicts v ON v.image = u.image AND v.from_tag = u.from_tag AND v.to_tag = u.to_tag
-       LEFT JOIN images i ON i.stack = u.stack AND i.service = u.service
-       LEFT JOIN resolutions r ON r.registry = i.registry AND r.repository = i.repository
        -- A superseded row describes an update that has been overtaken. It must not be
        -- allowed to supply the magnitude, tier or verdict that justifies a merge: the
        -- successor rewrites the same line, so merging this one lands a version nobody is
@@ -146,8 +144,6 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
     sources: string | null
     breaking_changes: string | null
     migration_steps: string | null
-    resolution_tier: string | null
-    source_url: string | null
   }[]
 
   if (rows.length === 0) return { number, merge: false, reason: 'no updates recorded for it' }
@@ -191,18 +187,17 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
     // guard must pass; anything else falls back to what static policy alone would say,
     // which for a major is a human.
     //
-    // The `linked` guard asks how the upstream repository was identified, and the
-    // resolution cache cannot answer for a service whose upstream is known only from a
-    // `shipshape.source` label -- resolveSource short-circuits on the label and never
-    // writes a row. So the label is folded in here, where the compose files are already
-    // in hand, rather than left to make the guard quietly unsatisfiable.
+    // The `linked` guard asks how the upstream repository was identified. The accessor
+    // answers with the live compose label applied, so a service known only from a
+    // `shipshape.source` label is linked here exactly as it is everywhere else.
     tier = resolveModelTier(
       rows.map((r) => {
-        const label = svcFor(r)?.sourceLabel
-        const fromLabel = label ? normaliseSourceUrl(label) : null
-        return fromLabel
-          ? { ...r, resolution_tier: 'label', source_url: fromLabel }
-          : r
+        const ref = parseImageRef(r.image)
+        const source = sourceForSync(
+          { registry: ref.registry, repository: ref.repository },
+          { service: { stack: r.stack, service: r.service }, ownLabel: svcFor(r)?.sourceLabel },
+        )
+        return { ...r, resolution_tier: source.tier, source_url: source.repo }
       }),
       policy,
       number,

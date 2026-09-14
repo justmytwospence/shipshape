@@ -166,6 +166,30 @@ function syncInventory(services: ScannedService[]): void {
   })()
 }
 
+/**
+ * Refresh one service's label columns from its compose file, without a full scan.
+ *
+ * A label edited from the UI is committed to the compose file, and every reader that goes
+ * through the database saw the old value until the next scan -- the Services pane among
+ * them, which is exactly where the edit was made. Only the label columns: running
+ * `syncInventory` from here would also delete every row this pass did not just see.
+ */
+export function refreshServiceLabels(stack: string, service: string): boolean {
+  const { policy } = loadPolicy()
+  const svc = scanRepo(env.repoDir, policy.exclude_stacks).find(
+    (s) => s.stack === stack && s.service === service,
+  )
+  if (!svc) return false
+  getDb()
+    .prepare(
+      `UPDATE images SET watched = ?, policy_label = ?, source_label = ?, claude_label = ?,
+                         deploy_label = ?
+       WHERE stack = ? AND service = ?`,
+    )
+    .run(svc.watched ? 1 : 0, svc.policyLabel, svc.sourceLabel, svc.claudeLabel, svc.deployLabel, stack, service)
+  return true
+}
+
 // ------------------------------------------------------------------ persistence
 
 const LIVE_IN = sqlIn(LIVE_STATES)

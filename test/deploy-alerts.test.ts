@@ -88,3 +88,27 @@ test('a pull that fails names only what it meant to bring up', async () => {
     `a pasted command must not start what the deploy left stopped:\n${lines.join('\n')}`,
   )
 })
+
+// ---------------------------------------------------------------- an up that fails
+
+test('a plain up that fails after recreating pages that the service is DOWN', async () => {
+  const io = fakeIo({ app: ['running', 'created'] }, { exitCode: (c) => (c.includes(' up ') ? 1 : 0) })
+  await deployForPr(7, { stack: 'scratch', services: ['app'], strategy: 'up' }, undefined, { io })
+
+  assert.equal(sent.length, 1)
+  // Titles travel as HTTP headers, so the em dash arrives transliterated.
+  assert.equal(sent[0]!.title, 'shipshape: scratch is DOWN - deploy failed')
+  assert.equal(sent[0]!.priority, '5')
+  assert.match(sent[0]!.body, /The old container was replaced and the new one did not start — the service is DOWN\./)
+  assert.doesNotMatch(sent[0]!.body, /running whatever it was/)
+})
+
+test('a plain up that fails before recreating is not DOWN', async () => {
+  const io = fakeIo({ app: 'running' }, { exitCode: (c) => (c.includes(' up ') ? 1 : 0) })
+  await deployForPr(7, { stack: 'scratch', services: ['app'], strategy: 'up' }, undefined, { io })
+
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0]!.title, 'shipshape: deploy failed - scratch')
+  assert.equal(sent[0]!.priority, '4')
+  assert.match(sent[0]!.body, /running whatever it was/)
+})

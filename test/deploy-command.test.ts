@@ -59,6 +59,37 @@ test('a failed plain up says the old container is still there', () => {
   assert.ok(!s.includes('DOWN'))
 })
 
+test('a failed plain up whose container did not come back says the service is down', () => {
+  // Compose had recreated before the start failed: the old container is gone either way.
+  const s = failureState(
+    { ok: false, phase: 'up', reason: 'compose failed', after: [{ service: 'app', state: 'created' }] },
+    'up',
+  )
+  assert.match(s, /replaced and the new one did not start — the service is DOWN/)
+
+  const still = failureState(
+    { ok: false, phase: 'up', reason: 'compose failed', after: [{ service: 'app', state: 'running' }] },
+    'up',
+  )
+  assert.match(still, /running whatever it was/, 'compose failed before recreating anything')
+  assert.doesNotMatch(still, /DOWN/)
+
+  const blind = failureState(
+    { ok: false, phase: 'up', reason: 'compose failed', after: [{ service: 'app', state: 'unknown' }] },
+    'up',
+  )
+  assert.match(blind, /check whether the service is running/)
+  assert.doesNotMatch(blind, /DOWN|running whatever it was/)
+})
+
+test('rm-first whose container is running again is not down', () => {
+  const s = failureState(
+    { ok: false, phase: 'up', reason: 'compose failed', after: [{ service: 'app', state: 'running' }] },
+    'rm-first',
+  )
+  assert.doesNotMatch(s, /DOWN/)
+})
+
 test('a refusal says nothing was attempted', () => {
   const s = failureState({ ok: false, phase: 'refused', reason: 'excluded stack' }, 'up')
   assert.match(s, /Nothing was attempted/)

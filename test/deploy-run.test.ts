@@ -143,6 +143,23 @@ test('a compose failure after the plan carries the plan', async () => {
   assert.deepEqual(out.plan?.up, ['immich-server'])
 })
 
+test('a plain up that fails reads what compose left behind', async () => {
+  // Compose recreates before it starts, so a start-time failure has already destroyed the
+  // old container: on the real host the only container left was `created`.
+  const io = fakeIo({ bitwarden: ['running', 'created'] }, { exitCode: (c) => (c.includes(' up ') ? 1 : 0) })
+  const out = await deploy(bitwarden, { io })
+  assert.ok(!out.ok)
+  assert.equal(out.phase, 'up')
+  assert.deepEqual(out.after, [{ service: 'bitwarden', state: 'created' }])
+  assert.equal(io.calls.filter((c) => c === 'observe bitwarden').length, 2, 'once to plan, once after the failure')
+
+  const blind = await deploy(bitwarden, {
+    io: fakeIo({ bitwarden: ['running', 'unreadable'] }, { exitCode: (c) => (c.includes(' up ') ? 1 : 0) }),
+  })
+  assert.ok(!blind.ok)
+  assert.deepEqual(blind.after, [{ service: 'bitwarden', state: 'unknown' }], 'a read that fails is not a guess')
+})
+
 test('refusals still come before docker is asked', async () => {
   const io = fakeIo({ shipshape: 'running' })
   const out = await deploy({ stack: 'shipshape', services: ['shipshape'], strategy: 'up' }, { io })

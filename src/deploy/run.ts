@@ -17,6 +17,7 @@ import { DEFAULT_VERIFY, runVerify, type Verdict } from './verify.ts'
 import { getDb, logEvent } from '../db.ts'
 import { notify } from '../notify/index.ts'
 import {
+  countsAsRunning,
   leftClause,
   observeSet,
   ownerFrom,
@@ -79,9 +80,11 @@ export interface DeployTarget {
 
 /**
  * `phase` exists because the alert text depends on it and nothing else can recover it.
- * A plain `up` that fails leaves the old container running; the same failure after
- * `rm -sf` leaves the service DOWN. Reporting both as "the service is running whatever
- * it was" was false in exactly the case that needed the operator out of bed.
+ * An `up` that fails after `rm -sf` leaves the service DOWN, and so does a plain `up` that
+ * fails once compose has recreated -- which is why a failed `up` also carries what docker
+ * says is there afterwards (see `downAfter`). Reporting every failed `up` as "the service
+ * is running whatever it was" was false in exactly the case that needed the operator out
+ * of bed.
  *
  * `inspect` comes before either: docker could not be asked what is there, so the deploy
  * stopped before its first command and nothing on the host was touched. `pull` comes after
@@ -100,7 +103,9 @@ export type DeployPhase = 'refused' | 'inspect' | 'pull' | 'rm' | 'up' | 'verify
  * was written to `deploys.snapshot` before the first command; a failure carries it only
  * once it exists, which is after the read and the pull. A pull that fails has a plan in
  * memory but nothing recorded, so it carries `up` alone: what it meant to bring up, which
- * is all the alert may name or hand back as a command.
+ * is all the alert may name or hand back as a command. A compose `up` that fails carries
+ * `after`: each service it meant to bring up, as docker read it once compose had given up
+ * (`unknown` when docker could not say).
  */
 export type DeployOutcome =
   | {
@@ -114,7 +119,15 @@ export type DeployOutcome =
       notes: string[]
       plan: RecordedPlan
     }
-  | { ok: false; phase: DeployPhase; reason: string; stderr?: string; plan?: RecordedPlan; up?: string[] }
+  | {
+      ok: false
+      phase: DeployPhase
+      reason: string
+      stderr?: string
+      plan?: RecordedPlan
+      up?: string[]
+      after?: { service: string; state: string }[]
+    }
 
 /**
  * Everything a deploy asks of the outside world, in one seam.
@@ -402,7 +415,19 @@ export async function deploy(
   const up = composeArgs(upTarget)
   const r = await io.exec(up.args, { cwd: up.cwd, timeout: 600_000 })
   if ((r.exitCode ?? 1) !== 0) {
-    return { ok: false, phase: 'up', reason: 'compose failed', stderr: tail(r.stderr), plan: recorded }
+    // Compose may already have destroyed the old container before it failed (see
+    // `downAfter`), so what is there now is read rather than assumed. A read that fails is
+    // only `unknown`: this is the path to an alert, and the alert goes out regardless.
+    const after = await Promise.all(
+      plan.up.map(async (s) => {
+        try {
+          return { service: s, state: (await io.observe(project, s)).state }
+        } catch {
+          return { service: s, state: 'unknown' }
+        }
+      }),
+    )
+    return { ok: false, phase: 'up', reason: 'compose failed', stderr: tail(r.stderr), plan: recorded, after }
   }
 
   const verdict = await io.verify(
@@ -603,18 +628,46 @@ export function manualCommand(target: DeployTarget): string {
 }
 
 /**
+ * Whether a failed `up` left a service it meant to bring up not running.
+ *
+ * Docker's answer, read after the failure, and not the strategy's. Compose v2 recreates by
+ * creating the new container, stopping and removing the old one, and only then starting the
+ * new -- so a plain `up` that fails at start (a missing binary, a port already allocated, a
+ * bind source that is not there) has already destroyed what was running. Probed on this
+ * host, docker 26.1.4 and compose 2.27.1: "Recreated", then "OCI runtime create failed",
+ * exit 1, and the one container left was `created`. The alert said "running whatever it
+ * was" at priority 4.
+ *
+ * rm-first is DOWN unless docker says every service is running, because its removal
+ * certainly ran; for a plain `up`, a read that could not be made proves nothing either way.
+ */
+export function downAfter(outcome: Extract<DeployOutcome, { ok: false }>, strategy: DeployTarget['strategy']): boolean {
+  if (outcome.phase !== 'up') return false
+  const after = outcome.after ?? []
+  if (after.some((a) => a.state !== 'unknown' && !countsAsRunning(a.state))) return true
+  return strategy === 'rm-first' && !(after.length > 0 && after.every((a) => countsAsRunning(a.state)))
+}
+
+/**
  * What a failed deploy left behind, in the operator's terms.
  *
- * Only a plain `up` is safe to describe as leaving the old container in place; every
- * other phase either removed it first or never got that far. `inspect` never got as far
- * as anything, whatever the strategy -- the read comes before the removal -- and `pull`
- * stopped before the removal too.
+ * A failed `up` is described from `downAfter`: DOWN when docker says so, a warning when it
+ * could not say, and "running whatever it was" only when every service still is -- compose
+ * failed before recreating anything. `inspect` never got as far as anything, whatever the
+ * strategy -- the read comes before the removal -- and `pull` stopped before the removal too.
  */
 export function failureState(outcome: Extract<DeployOutcome, { ok: false }>, strategy: DeployTarget['strategy']): string {
   if (outcome.phase === 'inspect') return 'Nothing was touched: shipshape does not guess whether a service is running.'
   if (outcome.phase === 'pull') return 'Nothing was removed or recreated; the service is running whatever it was.'
-  if (outcome.phase === 'up' && strategy === 'rm-first') {
-    return 'The old container was removed and the new one did not start — the service is DOWN.'
+  if (outcome.phase === 'up') {
+    if (downAfter(outcome, strategy)) {
+      return strategy === 'rm-first'
+        ? 'The old container was removed and the new one did not start — the service is DOWN.'
+        : 'The old container was replaced and the new one did not start — the service is DOWN.'
+    }
+    if (outcome.after?.some((a) => a.state === 'unknown')) {
+      return 'Compose may have replaced the old container before it failed — check whether the service is running.'
+    }
   }
   if (outcome.phase === 'rm') {
     return 'The old container may be partly stopped; nothing was recreated.'
@@ -703,7 +756,7 @@ export async function deployForPr(
       message: `deploy of ${target.stack} failed after #${prNumber} merged`,
       detail: `${outcome.reason}${outcome.stderr ? `\n${outcome.stderr}` : ''}`,
     })
-    const down = outcome.phase === 'up' && target.strategy === 'rm-first'
+    const down = downAfter(outcome, target.strategy)
     // Once there is a plan, the failure is about the services it meant to bring up: the
     // ones it left were never touched, and a pasted command that named them would start
     // exactly what the deploy declined to. A failed pull has that plan in memory only.

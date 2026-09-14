@@ -11,7 +11,8 @@ import {
   type ServiceObservation,
 } from './probe.ts'
 import type { Verdict } from './verify.ts'
-import { routine } from '../notify/digest.ts'
+import { deployLine, routine } from '../notify/digest.ts'
+import { changeText } from '../gitops/body.ts'
 import { withGitLock } from '../gitops/repo.ts'
 import { syncMain } from '../gitops/sync.ts'
 
@@ -299,12 +300,31 @@ export async function runDeployJob(
           markUpdates(job.id, 'verified')
           db.prepare(`UPDATE deploys SET status = 'verified' WHERE id = ?`).run(job.id)
         }
-        await routine({
-          category: 'deployed',
-          stack: job.stack,
-          summary: `#${job.pr_number} deployed — ${outcome.detail}`,
-          url: `https://github.com/${env.githubRepo}/pull/${job.pr_number}`,
+        // The versions, not the timing: `deploys.detail` keeps "up in Ns" for the timeline.
+        // The link only when there is a pull request -- a redeploy has none, and used to
+        // record "#null deployed" pointing at /pull/null.
+        const members = carriedUpdates(job.id)
+        const degraded = outcome.verdict?.kind === 'degraded' ? outcome.verdict : null
+        const line = deployLine({
+          prNumber: job.pr_number,
+          change: changeText(members),
+          broughtUp: target.services.length,
+          left: [],
+          warnings: degraded !== null,
         })
+        if (line) {
+          await routine({
+            category: line.category,
+            stack: job.stack,
+            service: members.length === 1 ? members[0]!.service : undefined,
+            summary: line.summary,
+            detail: degraded?.detail,
+            url:
+              job.pr_number != null
+                ? `https://github.com/${env.githubRepo}/pull/${job.pr_number}`
+                : undefined,
+          })
+        }
       } else if (outcome.ok && outcome.verdict?.kind === 'failed') {
         // Verification said no. Everything from here is remediation.
         const logs = await collectLogs(job.stack, target.services, outcome.verdict)
@@ -477,6 +497,24 @@ export function hasDueRechecks(): boolean {
     )
     .get() as { c: number }
   return row.c > 0
+}
+
+/**
+ * The updates a deploy row carried, with the versions each moves between.
+ *
+ * Through `deploy_updates` rather than the pull request, for the same reasons
+ * `markUpdates` is: a retry carries one member, and a redeploy has no pull request.
+ */
+export function carriedUpdates(
+  deployId: number,
+): { service: string; from_tag: string; to_tag: string }[] {
+  return getDb()
+    .prepare(
+      `SELECT u.service, u.from_tag, u.to_tag
+         FROM deploy_updates du JOIN updates u ON u.id = du.update_id
+        WHERE du.deploy_id = ? ORDER BY u.id`,
+    )
+    .all(deployId) as { service: string; from_tag: string; to_tag: string }[]
 }
 
 /** The pull request a deploy row belongs to. */

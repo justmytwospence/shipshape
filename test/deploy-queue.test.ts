@@ -7,8 +7,15 @@ import { join } from 'node:path'
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'shipshape-test-'))
 
 const { getDb } = await import('../src/db.ts')
-const { enqueueDeploy, claimJob, dueJobs, hasPendingDeploys, linkDeployUpdates, markUpdates } =
-  await import('../src/deploy/queue.ts')
+const {
+  carriedUpdates,
+  enqueueDeploy,
+  claimJob,
+  dueJobs,
+  hasPendingDeploys,
+  linkDeployUpdates,
+  markUpdates,
+} = await import('../src/deploy/queue.ts')
 
 /**
  * The queue exists for one guarantee: a merge that has been recorded cannot be forgotten.
@@ -322,6 +329,27 @@ test('a deploy with no pull request still moves its update', () => {
   markUpdates(deployId, 'deploying')
   assert.equal(stateOf(updateId), 'deploying')
   assert.equal(claimJob(deployId)!.trigger, 'redeploy')
+})
+
+test('a deploy knows the versions of what it carried, and only that', () => {
+  // The digest line is built from this. A retry pressed on one member must not name the
+  // sibling it never brought up.
+  const { prId, n8nId, deployId } = n8nGroup()
+  assert.deepEqual(carriedUpdates(deployId), [
+    { service: 'n8n-import', from_tag: '2.38.5', to_tag: '2.38.7' },
+    { service: 'n8n', from_tag: '2.38.5', to_tag: '2.38.7' },
+  ])
+
+  const info = getDb()
+    .prepare(
+      `INSERT INTO deploys (pr_number, pr_id, stack, services, strategy, ok, healthy,
+                            status, attempts, created_at, trigger)
+       VALUES (8, ?, 'n8n', 'n8n', 'up', 0, 0, 'pending', 0, ?, 'retry')`,
+    )
+    .run(prId, new Date().toISOString())
+  const retryId = Number(info.lastInsertRowid)
+  linkDeployUpdates(retryId, prId, [n8nId])
+  assert.deepEqual(carriedUpdates(retryId), [{ service: 'n8n', from_tag: '2.38.5', to_tag: '2.38.7' }])
 })
 
 test('claimed jobs know who asked for them', () => {

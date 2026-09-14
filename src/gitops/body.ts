@@ -26,6 +26,35 @@ export function short(ref: string): string {
   return at === -1 ? ref : `${ref.slice(0, at)}@${ref.slice(at + 8, at + 20)}`
 }
 
+/**
+ * The versions a set of updates moves between, as one line: `1.37.2 -> 1.37.3`.
+ *
+ * One function, so the line a pull request opened with, the line it was retargeted with
+ * and the line its deploy records cannot drift apart. They were three hand-written
+ * template strings once, and the deploy's said something else entirely -- "jackett up in
+ * 47s" -- which answers how long it took when the reader wanted to know what landed.
+ *
+ * A group whose members all move between the same two tags is written once, after their
+ * names, because that is what a group almost always is. Members on different tags are
+ * each written out: folding them onto the first member's tags would state a version one
+ * of them never ran. `named` puts the service in front of a lone update too, for the
+ * places that have nothing else saying which service it is.
+ */
+export function changeText(
+  members: readonly { service: string; from_tag: string; to_tag: string }[],
+  opts: { named?: boolean } = {},
+): string | null {
+  const m = members[0]
+  if (!m) return null
+  const shared = members.every((x) => x.from_tag === m.from_tag && x.to_tag === m.to_tag)
+  if (shared) {
+    const arrow = `${short(m.from_tag)} -> ${short(m.to_tag)}`
+    if (members.length === 1) return `${opts.named ? `${m.service} ` : ''}${arrow}`
+    return `${members.map((x) => x.service).join(', ')} ${arrow}`
+  }
+  return members.map((x) => `${x.service} ${short(x.from_tag)} -> ${short(x.to_tag)}`).join(', ')
+}
+
 /** `[text](url)`, or bare text when there is no URL worth pointing at. */
 function link(text: string, url: string | null): string {
   return url ? `[${text}](${url})` : text

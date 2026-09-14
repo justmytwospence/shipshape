@@ -250,3 +250,16 @@ test('the html renderer collapses identically', () => {
   assert.match(html, /1 deployed/)
   assert.doesNotMatch(html, /opened/)
 })
+
+test('left stopped has its own heading, right after deployed', () => {
+  // The other answer to "did it land". An unlisted category is silently dropped, so this
+  // is also the test that it is listed at all. Recorded first, so the order cannot be the
+  // order of the rows.
+  const m = render([
+    row({ category: 'left-stopped', summary: '#2 merged — c -> d, left stopped (not running)', url: pr(2) }),
+    row({ category: 'went-wrong', summary: '#3 merged, but did not deploy', url: pr(3) }),
+    row({ category: 'deployed', summary: '#1 deployed — a -> b', url: pr(1) }),
+  ])!
+  assert.ok(m.body.indexOf('1 deployed') < m.body.indexOf('1 left stopped'), m.body)
+  assert.ok(m.body.indexOf('1 left stopped') < m.body.indexOf('1 went wrong'), m.body)
+})

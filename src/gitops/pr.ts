@@ -16,7 +16,7 @@ import { routine } from '../notify/digest.ts'
 import { foldGroupMagnitude, shouldOpenPr, type EffectiveTier } from '../policy.ts'
 import type { Magnitude } from '../versions/patterns.ts'
 import { bumpImage } from './editor.ts'
-import { prBody, short } from './body.ts'
+import { changeText, prBody, short } from './body.ts'
 import { sourceFor } from '../resolver/index.ts'
 import { alreadyCommented, mark } from './comments.ts'
 import { authorArgs, ensureWorkRepo, git, httpsUrl, withGitLock } from './repo.ts'
@@ -508,9 +508,7 @@ async function retargetPr(
       category: 'retargeted',
       stack: group.members[0]!.stack,
       service: one?.service,
-      summary: one
-        ? `${short(one.from_tag)} -> ${short(one.to_tag)} (#${pr.number})`
-        : `${describe(group)} (#${pr.number})`,
+      summary: `${changeText(group.members)} (#${pr.number})`,
       detail: was ? `#${pr.number} was targeting ${short(was)}` : undefined,
       url: `https://github.com/${env.githubRepo}/pull/${pr.number}`,
     })
@@ -877,10 +875,9 @@ async function openPr(repoDir: string, group: UpdateGroup, policy: Policy): Prom
     service: one?.service,
     // The digest prefixes every line with stack/service, so naming the service again
     // here reads as "servarr/radarr: radarr 5.28 -> 5.29". A group has no single
-    // service to prefix with, so there the names belong in the summary.
-    summary: one
-      ? `${short(one.from_tag)} -> ${short(one.to_tag)} (#${number})`
-      : `${describe(group)} (#${number})`,
+    // service to prefix with, so there the names belong in the summary -- which is what
+    // `changeText` does unnamed.
+    summary: `${changeText(members)} (#${number})`,
     url: `https://github.com/${env.githubRepo}/pull/${number}`,
   })
   logEvent({
@@ -1049,10 +1046,9 @@ function recordPr(opts: {
 
 // ------------------------------------------------------------------ rendering
 
+/** The group and its versions, named even when it is one service. See `changeText`. */
 function describe(g: UpdateGroup): string {
-  const m = g.members[0]!
-  const names = g.members.map((x) => x.service).join(', ')
-  return `${names} ${short(m.from_tag)} -> ${short(m.to_tag)}`
+  return changeText(g.members, { named: true }) ?? ''
 }
 
 function prTitle(g: UpdateGroup): string {

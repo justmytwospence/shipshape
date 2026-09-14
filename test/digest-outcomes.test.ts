@@ -133,6 +133,73 @@ test('a failure that a retry fixed is history', () => {
 })
 
 // ---------------------------------------------------------------------------------------
+// What landed, and at which version
+// ---------------------------------------------------------------------------------------
+
+test('the email from 2026-09-14 names versions and what was left stopped', () => {
+  // That morning's deployed lines said how long each deploy took. What the reader wanted
+  // was which version is running now, and whether a service that had been stopped was
+  // started by the update. This is the same batch as the digest now records it.
+  const batch = [
+    row({ category: 'opened', stack: 'bitwarden', service: 'bitwarden', summary: '1.37.2 -> 1.37.3 (#101)', url: pr(101) }),
+    row({
+      category: 'left-stopped',
+      stack: 'bitwarden',
+      service: 'bitwarden',
+      summary: '#101 merged — 1.37.2 -> 1.37.3, left stopped (not running)',
+      url: pr(101),
+    }),
+    row({ category: 'opened', stack: 'servarr', service: 'jackett', summary: 'v0.24.2572-ls26 -> v0.24.2586-ls28 (#102)', url: pr(102) }),
+    row({
+      category: 'deployed',
+      stack: 'servarr',
+      service: 'jackett',
+      summary: '#102 deployed — v0.24.2572-ls26 -> v0.24.2586-ls28',
+      url: pr(102),
+    }),
+  ]
+  const outcomes = new Map<number, Outcome>([
+    [101, outcome(true, 'left-stopped')],
+    [102, outcome(true, 'verified')],
+  ])
+
+  const m = render(reconcile(batch, outcomes))!
+  assert.equal(
+    m.body,
+    '1 deployed\n  servarr/jackett: #102 deployed — v0.24.2572-ls26 -> v0.24.2586-ls28\n\n' +
+      '1 left stopped\n  bitwarden/bitwarden: #101 merged — 1.37.2 -> 1.37.3, left stopped (not running)',
+  )
+  assert.doesNotMatch(m.body, /up in \d+s/)
+})
+
+test('a synthesized deployed line carries versions', () => {
+  // The recorded line is missing from the batch, so reconcile writes one. It says the same
+  // thing a recorded one would, versions included.
+  const batch = [row({ category: 'opened', stack: 'plex', summary: '1 -> 2 (#5)', url: pr(5) })]
+  const o: Outcome = { merged: true, deploy: { status: 'verified', detail: null }, change: '1 -> 2' }
+  assert.equal(render(reconcile(batch, new Map([[5, o]])))!.title, 'shipshape: #5 deployed — 1 -> 2')
+})
+
+test('a synthesized left-stopped line says so', () => {
+  const batch = [row({ category: 'opened', stack: 'bitwarden', summary: '1 -> 2 (#6)', url: pr(6) })]
+  const o: Outcome = { merged: true, deploy: { status: 'left-stopped', detail: null }, change: '1 -> 2' }
+  const m = render(reconcile(batch, new Map([[6, o]])))!
+  assert.equal(m.title, 'shipshape: #6 merged — 1 -> 2, left stopped')
+  assert.match(m.body, /^1 left stopped/)
+})
+
+test('went-wrong and merged lines do not change when versions are known', () => {
+  // Their payload is the reason or the next step, and the reason has a hundred characters.
+  const failed = [row({ category: 'opened', stack: 'jellyfin', summary: 'a -> b (#10)', url: pr(10) })]
+  const f: Outcome = { merged: true, deploy: { status: 'failed', detail: 'the reason' }, change: '1 -> 2' }
+  assert.equal(render(reconcile(failed, new Map([[10, f]])))!.title, 'shipshape: #10 merged, but did not deploy: the reason')
+
+  const ready = [row({ category: 'opened', stack: 'plex', summary: 'a -> b (#95)', url: pr(95) })]
+  const r: Outcome = { merged: true, deploy: { status: 'ready', detail: null }, change: '1 -> 2' }
+  assert.equal(render(reconcile(ready, new Map([[95, r]])))!.title, 'shipshape: #95 merged, ready to deploy')
+})
+
+// ---------------------------------------------------------------------------------------
 // Merges that have not finished
 // ---------------------------------------------------------------------------------------
 
@@ -215,7 +282,9 @@ test('the email says which channel failures went to', () => {
 // ---------------------------------------------------------------------------------------
 
 beforeEach(() => {
-  getDb().exec(`DELETE FROM deploys; DELETE FROM prs;`)
+  getDb().exec(
+    `DELETE FROM deploy_updates; DELETE FROM deploys; DELETE FROM pr_updates; DELETE FROM prs; DELETE FROM updates;`,
+  )
 })
 
 function insertPr(number: number, state: string): number {
@@ -249,12 +318,33 @@ test('outcomes come from the latest deploy, not the first', () => {
     merged: true,
     deploy: { status: 'verified', detail: 'minuspod up in 40s' },
     superseded: false,
+    change: null,
   })
 })
 
 test('an open pull request with no deploy reads as not merged', () => {
   insertPr(92, 'open')
-  assert.deepEqual(outcomesFor([row({ url: pr(92) })]).get(92), { merged: false, deploy: null, superseded: false })
+  assert.deepEqual(outcomesFor([row({ url: pr(92) })]).get(92), {
+    merged: false,
+    deploy: null,
+    superseded: false,
+    change: null,
+  })
+})
+
+test('outcomesFor reads the versions from the pull request', () => {
+  const id = insertPr(60, 'merged')
+  const now = new Date().toISOString()
+  const u = getDb()
+    .prepare(
+      `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state,
+                            detected_at, updated_at)
+       VALUES ('jellyfin', 'jellyfin', 'jellyfin/jellyfin', '1.0', '2.0', 'major', 'manual', 'merged', ?, ?)`,
+    )
+    .run(now, now)
+  getDb().prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(id, Number(u.lastInsertRowid))
+
+  assert.equal(outcomesFor([row({ url: pr(60) })]).get(60)!.change, '1.0 -> 2.0')
 })
 
 test('only pull requests in the batch are looked up, and unknown ones are skipped', () => {

@@ -1,5 +1,6 @@
 import { loadPolicy, env } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
+import { changeText } from '../gitops/body.ts'
 import { activeChannels, notify } from './index.ts'
 import { escapeHtml } from './email.ts'
 
@@ -37,6 +38,7 @@ export type Category =
   | 'superseded'
   | 'merged'
   | 'deployed'
+  | 'left-stopped'
   | 'held'
   | 'drafted'
   | 'revised'
@@ -63,6 +65,11 @@ const SECTIONS: { category: Category; heading: (n: number) => string }[] = [
   { category: 'superseded', heading: (n) => `${n} superseded and closed` },
   { category: 'merged', heading: (n) => `${n} merged` },
   { category: 'deployed', heading: (n) => `${n} deployed` },
+  // Straight after `deployed`, because it is the other answer to "did it land": the merge
+  // stands, and nothing was started because the service was not running. Filed under
+  // "merged" it would sit among the attended merges still waiting for a press, and that
+  // is exactly the distinction the reader needs to see at a glance.
+  { category: 'left-stopped', heading: (n) => `${n} left stopped` },
   // Next to `deployed` rather than at the end, because it is the other answer to the same
   // question. The alert with the detail has already gone out; this is the line that stops
   // the summary from contradicting it.
@@ -214,6 +221,9 @@ const PROGRESS: Record<Category, number> = {
   held: 5,
   merged: 6,
   deployed: 7,
+  // Level with `deployed`: both are where a merge's deploy concluded. Two records of the
+  // same pull request at this level keep the later one, as any tie does.
+  'left-stopped': 7,
   // Above `deployed`: a deploy that passed its window and then degraded, or was rolled
   // back, reached further than "deployed" and ended somewhere worse.
   'went-wrong': 8,
@@ -247,6 +257,8 @@ export interface Outcome {
   deploy: { status: string; detail: string | null } | null
   /** Every update it carried has been overtaken by a later merge. */
   superseded?: boolean
+  /** The versions its updates move between (see `changeText`), or null when unknown. */
+  change?: string | null
 }
 
 /** Deploy statuses that ended badly, and how to say so in one line. */
@@ -309,6 +321,9 @@ export function reconcile(rows: Row[], outcomes: Map<number, Outcome>): Row[] {
     })
 
     const status = o.deploy?.status ?? null
+    // Only the lines that claim something landed carry the versions. A went-wrong line's
+    // payload is its reason, and the versions would eat the hundred characters it has.
+    const v = o.change ? ` — ${o.change}` : ''
     // Before the failure check. A pull request a later merge has overtaken cannot deploy on
     // its own any more; whatever its own deploy did, the service's story continues on the
     // pull request that overtook it, and that is the line that carries any failure.
@@ -316,13 +331,65 @@ export function reconcile(rows: Row[], outcomes: Map<number, Outcome>): Row[] {
       if (best < PROGRESS.merged) added.push(row('merged', 'merged, overtaken by a later update'))
     } else if (status && WENT_WRONG[status]) {
       added.push(row('went-wrong', `${WENT_WRONG[status]}${reason(o.deploy!.detail)}`))
+    } else if (status === 'left-stopped' && best < PROGRESS['left-stopped']) {
+      added.push(row('left-stopped', `merged${v}, left stopped`))
     } else if ((status === 'deployed' || status === 'verified') && best < PROGRESS.deployed) {
-      added.push(row('deployed', 'deployed'))
+      added.push(row('deployed', `deployed${v}`))
     } else if (o.merged && best < PROGRESS.merged) {
       added.push(row('merged', (status && MERGED_WHILE[status]) || 'merged'))
     }
   }
   return added.length ? [...rows, ...added] : rows
+}
+
+/**
+ * The digest line a finished deploy records: what it moved between, and what it left.
+ *
+ * It used to be "#102 deployed — jackett up in 47s". The time is worth something on the
+ * timeline, and `deploys.detail` keeps it there; in a summary read the next morning it
+ * answers a question nobody asked while leaving out the one everybody did, which is what
+ * version is running now. So the line names the versions instead.
+ *
+ * A deploy that brought nothing up is not "deployed" and is not a failure either: the
+ * merge stands and the service was not running, so nothing was started. It gets its own
+ * category and says so. A group that brought up half of itself is deployed, and names the
+ * half it left, because "deployed" alone would claim both.
+ *
+ * `absent` separates a service with no container from one that is merely not running --
+ * the difference between "bin/homelab down" and "docker stop", which the reader acts on
+ * differently. A deploy with no pull request that brought nothing up records nothing:
+ * there is no merge to report, and a rolling redeploy of a stopped service changed
+ * nothing anyone would read about. Pure, so every wording is testable without a database.
+ */
+export function deployLine(o: {
+  prNumber: number | null
+  change: string | null
+  broughtUp: number
+  left: readonly { service: string; absent: boolean }[]
+  warnings?: boolean
+}): { category: 'deployed' | 'left-stopped'; summary: string } | null {
+  if (o.broughtUp === 0) {
+    if (o.prNumber == null) return null
+    const tag = o.left.length > 0 && o.left.every((l) => l.absent) ? 'no container' : 'not running'
+    return {
+      category: 'left-stopped',
+      summary: `#${o.prNumber} merged${o.change ? ` — ${o.change},` : ','} left stopped (${tag})`,
+    }
+  }
+
+  const head =
+    `${o.prNumber != null ? `#${o.prNumber} deployed` : 'redeployed'}` +
+    `${o.warnings ? ' with warnings' : ''}` +
+    `${o.change ? ` — ${o.change}` : ''}`
+  const stopped = o.left.filter((l) => !l.absent).map((l) => l.service)
+  const gone = o.left.filter((l) => l.absent).map((l) => l.service)
+  return {
+    category: 'deployed',
+    summary:
+      head +
+      (stopped.length ? `; ${stopped.join(', ')} left stopped (not running)` : '') +
+      (gone.length ? `; ${gone.join(', ')} left stopped (no container)` : ''),
+  }
 }
 
 /**
@@ -356,6 +423,13 @@ export function outcomesFor(rows: Row[]): Map<number, Outcome> {
   const deploy = db.prepare(
     `SELECT status, detail FROM deploys WHERE pr_number = ? ORDER BY id DESC LIMIT 1`,
   )
+  // From the pull request, not the deploy: this only feeds the lines reconcile writes
+  // when nothing recorded one, and what the pull request carried is what the line is about.
+  const members = db.prepare(
+    `SELECT u.service, u.from_tag, u.to_tag
+       FROM pr_updates pu JOIN updates u ON u.id = pu.update_id
+      WHERE pu.pr_id = ? ORDER BY u.id`,
+  )
   for (const n of numbers) {
     const p = pr.get(n) as { id: number; state: string } | undefined
     const d = deploy.get(n) as { status: string; detail: string | null } | undefined
@@ -365,6 +439,9 @@ export function outcomesFor(rows: Row[]): Map<number, Outcome> {
       merged: p?.state === 'merged',
       deploy: d ?? null,
       superseded: !!c && c.total > 0 && c.overtaken === c.total,
+      change: p
+        ? changeText(members.all(p.id) as { service: string; from_tag: string; to_tag: string }[])
+        : null,
     })
   }
   return out

@@ -554,7 +554,7 @@ export const SETTINGS: SettingDef[] = [
     label: 'Soak before verified',
     help: 'seconds; 0 to skip',
     about:
-      'A second look this long after a deploy passes, because the failures a window catches are the fast ones. Only after this does an update read verified. Nothing is ever rolled back at this point -- by then real state has accrued, so undoing it is your call.',
+      'A second look this long after a deploy passes, because the failures a window catches are the fast ones. Only after this does an update read verified. Nothing is ever rolled back at this point -- by then real state has accrued, so undoing it is your call. A service left stopped is not soaked — nothing was brought up.',
     advanced: true,
   },
 

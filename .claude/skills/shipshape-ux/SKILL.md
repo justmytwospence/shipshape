@@ -30,18 +30,19 @@ Scanning, pull requests and changelog reviews continue. A merge *you* press stil
 you are present, and that is the point: merging is the decision and deploying is carrying
 it out, so the two are not negotiated separately.
 
-**A merge always leads to a deploy shipshape watches**, so a failure is caught by the
-health check and rolled back inside the soak window. Withholding the deploy never avoided
-that risk, it only moved it — the merged version reaches the host anyway the next time
-anything recreates the stack, and it arrives then with nothing watching. The exception is
-named per service, on the `attended` and `on-request` rungs, rather than taken globally:
-infrastructure that carries the way back in, datastores, anything a rollback could not put
-back.
+**A merge always leads to a deploy shipshape watches** — of the services that are
+running — so a failure is caught by the health check and rolled back inside the soak
+window. Withholding the deploy never avoided that risk, it only moved it — the merged
+version reaches the host anyway the next time anything recreates the stack, and it
+arrives then with nothing watching. The exception is named per service, on the
+`attended` and `on-request` rungs, rather than taken globally: infrastructure that
+carries the way back in, datastores, anything a rollback could not put back.
 
 ## The stages
 
 `Detected · Held on request · Waiting on you · Auto-merging · Ready to deploy ·
-Deploying · Verifying · Verified · Failed · Rolled back · Skipped · Superseded`
+Deploying · Verifying · Verified · Left stopped · Failed · Rolled back · Skipped ·
+Superseded`
 
 **Superseded** is a stage of the *update*, not of its pull request. When a newer version
 appears the pull request is **retargeted** onto it -- same number, rebuilt branch, one
@@ -54,6 +55,17 @@ Merging always leads to a deploy: `compose up -d` → verify (health check, HTTP
 where a port is declared, crash watch) → soak → **Verified**. A hard failure inside the
 verify window rolls back automatically, once. After the soak nothing is rolled back
 automatically: a database may have migrated by then, and undoing that is a person's call.
+
+**A deploy never changes whether a service is running.** shipshape reads each service from
+docker just before acting. One that is running is brought up and verified; one that is
+stopped, paused or has no container is left exactly as it was and reads **Left stopped** —
+the merge stands, the compose file carries the new version, and compose brings it up on
+that version the next time anything runs it, while `docker start` on the old container
+resumes the old one, and the outcome says so. In a group the running members deploy and
+the rest are left, and both halves are reported. The one exception is a service
+shipshape's own failed attempt left down, which Try again, the next deploy and a rollback
+put back unless someone has visibly stopped it since. If docker cannot be asked, the
+deploy fails loudly and touches nothing.
 
 ## The review
 
@@ -96,6 +108,7 @@ anything.
 | Rolling tag moved | **Redeploy** | Dismiss |
 | Failed / Rolled back | **Try again** | Skip · Acknowledge |
 | Verified / Degraded | **Roll back** | Acknowledge |
+| Left stopped | **Roll back** | — |
 | Review failed | **Re-run review** | Skip |
 
 A verb keeps its name through the whole flow: the button that says "Deploy" produces

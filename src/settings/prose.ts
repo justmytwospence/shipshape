@@ -12,6 +12,12 @@ import type { SectionName } from '../settings.ts'
  * The rule for length: one paragraph on what this stage does, and one on the thing that
  * is surprising or load-bearing about it. Anything longer belongs in a service's own
  * `about`, which sits under the control it concerns.
+ *
+ * Deploys breaks that rule with a third paragraph, on purpose. That a deploy leaves a
+ * stopped service stopped is a rule about every setting in the section rather than one
+ * control's detail, so no `about` is the right home for it; and there is no `/docs` page
+ * to hold it instead, so this is the only place in the app that explains why an update
+ * reads Left stopped and what `docker start` would do to it.
  */
 export const SECTION_PROSE: Record<SectionName, string[]> = {
   Pause: [
@@ -49,6 +55,7 @@ export const SECTION_PROSE: Record<SectionName, string[]> = {
   Deploys: [
     'The checkout is fast-forwarded and the stack is brought up with a real `docker compose up -d`, which re-reads the whole file — labels, environment, networks — rather than cloning a running container and swapping its image. That difference is why this tool exists.',
     'Then it is verified: the container healthcheck where one exists, an HTTP probe where a port is already declared to traefik, and a crash watch that needs neither. Passing that window is not the same as being fine, so a deploy soaks before it reads verified. A hard failure inside the window is rolled back automatically, once; after the soak nothing is, because by then a database may have migrated and undoing that is your decision.',
+    'A deploy never changes whether a service is running. One that is running is brought up on the new version and verified; one that is stopped, paused or removed is left exactly as it was and reads Left stopped — the compose file carries the new version, so compose brings it up on it, while docker start on the old container would resume the old one. If shipshape cannot ask Docker, the deploy fails and touches nothing.',
   ],
   Notifications: [
     'Two kinds of message, and which is which is not configurable. Alerts — a deploy failed, a service came up unhealthy, sync is stuck — always send immediately. Routine outcomes — opened, merged, deployed, drafted, held — batch into one digest.',

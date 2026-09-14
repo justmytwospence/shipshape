@@ -62,6 +62,10 @@ registry poll ──▶ new tag ──▶ resolve source repo ──▶ fetch ch
                               docker compose up -d ──▶ health check ──▶ ntfy
 ```
 
+A service that is not running when its update lands is not started: the merge stands and
+the update reads Left stopped. Compose brings it up on the new version the next time it
+runs; `docker start` on the old container would resume the old one.
+
 ### Comment on a pull request and it does what you asked
 
 The pull request is the review surface, so it is also where you answer back. Comment on an
@@ -351,8 +355,9 @@ Two kinds of message, and which is which is **not** configurable:
 
 - **Alerts** — a deploy failed, a service came up unhealthy, sync is stuck on a conflict.
   Something is wrong now. These always send immediately.
-- **Routine** — a pull request opened, one merged, a deploy succeeded, a verdict held
-  something back. These batch into one digest per schedule.
+- **Routine** — a pull request opened, one merged, a deploy succeeded or left a stopped
+  service stopped, a verdict held something back. These batch into one digest per
+  schedule.
 
 So turning digests on can delay a success and can never hide a failure. That guarantee is
 worth more than the flexibility of batching everything, which is why there is no setting

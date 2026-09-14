@@ -28,6 +28,14 @@ test('a refused target is one the scan must not offer again', () => {
   }
 })
 
+test('left-stopped is neither live nor refused', () => {
+  // Merged and finished: the worklist has nothing to offer it, and the scan must stay free
+  // to offer the next version -- a service left stopped has not refused anything.
+  assert.ok(isUpdateState('left-stopped'))
+  assert.ok(!LIVE_STATES.includes('left-stopped'))
+  assert.ok(!REFUSED_STATES.includes('left-stopped'))
+})
+
 test('analyzed is gone', () => {
   // It was documented in the schema for months and written by nothing.
   assert.ok(!(UPDATE_STATES as readonly string[]).includes('analyzed'))

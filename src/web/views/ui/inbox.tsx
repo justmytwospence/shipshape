@@ -60,6 +60,7 @@ const RECENT: Record<RecentItem['kind'], { cls: string; verb: string }> = {
   merged: { cls: 'bg-info', verb: 'merged' },
   deployed: { cls: 'bg-info', verb: 'deployed' },
   verified: { cls: 'bg-success', verb: 'verified' },
+  'left-stopped': { cls: 'bg-base-300', verb: 'left stopped' },
   degraded: { cls: 'bg-warning', verb: 'went degraded' },
   failed: { cls: 'bg-error', verb: 'failed to deploy' },
   'rolled-back': { cls: 'bg-error', verb: 'was rolled back' },

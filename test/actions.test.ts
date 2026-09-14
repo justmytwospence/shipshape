@@ -73,6 +73,16 @@ test('rolling back needs a commit to revert', () => {
   assert.deepEqual(actionsFor(ctx({ state: 'verified', deployStatus: 'verified' })), [])
 })
 
+test('a left-stopped update offers Roll back and nothing else', () => {
+  // The merge stands and nothing was started: there is no deploy to try again and nothing
+  // outstanding to acknowledge, only the version itself to take back.
+  assert.deepEqual(
+    actionsFor(ctx({ state: 'left-stopped', deployStatus: 'left-stopped', mergeCommitSha: 'abc123' })),
+    ['rollback'],
+  )
+  assert.deepEqual(actionsFor(ctx({ state: 'left-stopped', deployStatus: 'left-stopped' })), [])
+})
+
 test('a service that went degraded after the soak can be acknowledged', () => {
   const a = actionsFor(ctx({ state: 'deployed', deployStatus: 'degraded', mergeCommitSha: 'x' }))
   assert.deepEqual(a, ['rollback', 'ack'])
@@ -106,6 +116,7 @@ test('every state names exactly one button, and names it first', () => {
     ctx({ state: 'deploying' }),
     ctx({ state: 'deployed', deployStatus: 'degraded', mergeCommitSha: 'x' }),
     ctx({ state: 'verified', deployStatus: 'verified', mergeCommitSha: 'x' }),
+    ctx({ state: 'left-stopped', deployStatus: 'left-stopped', mergeCommitSha: 'x' }),
     ctx({ state: 'failed' }),
     ctx({ state: 'skipped' }),
     ctx({ state: 'superseded' }),

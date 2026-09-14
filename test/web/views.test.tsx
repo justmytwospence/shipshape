@@ -295,6 +295,15 @@ test('merging and rolling back ask twice', () => {
   assert.match(verified, /data-open="#confirm-rollback-13"/)
 })
 
+test('a left-stopped update says so', () => {
+  // The badge word, not Verified: nothing was started, and saying it soaked would be false.
+  // Its colour, badge-ghost, is held to the stylesheet by the class gate above.
+  const html = VIEWS['update-left-stopped']!
+  assert.ok(html.includes('Left stopped'))
+  assert.doesNotMatch(html, />Verified</)
+  assert.match(html, /data-open="#confirm-rollback-14"/, 'Roll back is the one thing left to do')
+})
+
 test('a link is previewed before it is written, inside the dialog it was asked from', () => {
   const html = VIEWS['service-detail']!
   assert.match(html, /data-open="#link-media-jellyfin"/)

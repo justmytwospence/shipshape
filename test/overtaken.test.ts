@@ -115,6 +115,32 @@ test('a later update that was rolled back or dismissed has overtaken nothing', (
   }
 })
 
+test('a later left-stopped merge retires an older merged update', () => {
+  // #93 landed in the file on a stopped minuspod; the file names its tag either way.
+  const u79 = update({ from: '2.87.0-cpu', to: '2.96.15-cpu' })
+  pr(79, u79, { mergedAt: at(6) })
+  const u93 = update({ from: '2.96.15-cpu', to: '2.96.17-cpu', state: 'left-stopped' })
+  pr(93, u93, { mergedAt: at(30) })
+
+  assert.deepEqual(retireOvertaken().map((r) => [r.prNumber, r.byPrNumber]), [[79, 93]])
+  assert.deepEqual(stateOf(u79), { state: 'superseded', detail: 'overtaken by #93' })
+  assert.equal(stateOf(u93).state, 'left-stopped', 'the one that overtook is untouched')
+})
+
+test('a left-stopped update is itself retired by a later merge', () => {
+  // Otherwise two updates for one service would both read Left stopped, one of them naming
+  // a tag the compose file no longer carries.
+  const u79 = update({ from: 'a', to: 'b', state: 'left-stopped' })
+  deploy(pr(79, u79, { mergedAt: at(6) }), 79, u79, 'left-stopped')
+  const u93 = update({ from: 'b', to: 'c', state: 'left-stopped' })
+  pr(93, u93, { mergedAt: at(30) })
+
+  assert.deepEqual(retireOvertaken().map((r) => [r.prNumber, r.byPrNumber]), [[79, 93]])
+  assert.deepEqual(stateOf(u79), { state: 'superseded', detail: 'overtaken by #93' })
+  assert.equal(stateOf(u93).state, 'left-stopped', 'only the newest reads Left stopped')
+  assert.deepEqual(retireOvertaken(), [], 'and running it again changes nothing')
+})
+
 test('a merge for a different service overtakes nothing', () => {
   const minuspod = update({ from: 'a', to: 'b' })
   pr(79, minuspod, { mergedAt: at(6) })

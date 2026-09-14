@@ -191,6 +191,36 @@ export const UPDATES: Record<string, UpdateView> = {
     actions: ['rollback'],
     primary: 'rollback',
   }),
+  // Merged onto a service that was not running, so nothing was started. Done, not waiting,
+  // and only the version itself left to take back.
+  leftStopped: update({
+    id: 14,
+    stack: 'bitwarden',
+    service: 'bitwarden',
+    fromTag: '1.37.2',
+    toTag: '1.37.3',
+    state: 'left-stopped',
+    pr: {
+      number: 101,
+      state: 'merged',
+      scope: 'tag-only',
+      userOwned: false,
+      mergeCommitSha: 'abc1234',
+      held: null,
+      url: 'https://github.com/you/repo/pull/101',
+    },
+    deploy: {
+      id: 6,
+      status: 'left-stopped',
+      trigger: 'queue',
+      startedAt: ago(3),
+      finishedAt: ago(3),
+      recheckAt: null,
+      detail: 'bitwarden left stopped (exited) — compose brings it up on 1.37.3; docker start would resume 1.37.2',
+    },
+    actions: ['rollback'],
+    primary: 'rollback',
+  }),
 }
 
 export const MILESTONES: Milestone[] = [
@@ -527,6 +557,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
       UpdateRow({ update: UPDATES.ready!, ctx: 'list=updates&stage=open', showStage: true }),
     ),
     'update-verified': String(detail(UPDATES.verified!, 'list=updates&stage=done', '/updates')),
+    'update-left-stopped': String(detail(UPDATES.leftStopped!, 'list=updates&stage=done', '/updates')),
     'update-review-failed': String(
       detail(UPDATES.reviewFailed!, 'list=updates&stage=open', '/updates'),
     ),

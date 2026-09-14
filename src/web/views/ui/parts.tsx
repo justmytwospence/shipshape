@@ -52,6 +52,8 @@ export function stageOf(u: UpdateView): { label: string; cls: string; live?: boo
         : { label: 'Soaking', cls: 'badge-info', live: true }
     case 'verified':
       return { label: 'Verified', cls: 'badge-success' }
+    case 'left-stopped':
+      return { label: 'Left stopped', cls: 'badge-ghost' }
     case 'failed':
       return u.detail?.includes('rolled back') || d === 'rolled-back'
         ? { label: 'Rolled back', cls: 'badge-error' }

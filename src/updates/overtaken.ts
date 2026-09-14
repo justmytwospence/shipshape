@@ -20,8 +20,15 @@ import { getDb, logEvent } from '../db.ts'
  *   the file to where the later update started, which is where this one finished -- so
  *   this one's target is live again, not replaced.
  *
+ * A left-stopped update is overtaken the same way, and overtakes the same way, so only the
+ * newest merge for a service reads Left stopped. Its merge landed in the file just like a
+ * deployed one did; the service simply was not running to take it. Left alone, #79 and #93
+ * on a stopped minuspod would both read Left stopped, one of them naming a tag the compose
+ * file no longer carries.
+ *
  * Called when a pull request merges, and once at startup so updates stranded before this
- * existed are cleared too. Idempotent: an update it retires is no longer `merged`.
+ * existed are cleared too. Idempotent: an update it retires is no longer `merged` or
+ * `left-stopped`.
  */
 
 export interface Retired {
@@ -50,7 +57,7 @@ export function logRetired(retired: Retired[]): void {
 }
 
 /** States that mean a later update's target really is what the file now says. */
-const OVERTAKING = `('merged', 'deploying', 'deployed', 'verified')`
+const OVERTAKING = `('merged', 'deploying', 'deployed', 'verified', 'left-stopped')`
 
 export function retireOvertaken(now = new Date().toISOString()): Retired[] {
   const db = getDb()
@@ -64,7 +71,7 @@ export function retireOvertaken(now = new Date().toISOString()): Retired[] {
               (SELECT MAX(p.merged_at) FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
                 WHERE pu.update_id = u.id AND p.state = 'merged') AS merged_at
        FROM updates u
-       WHERE u.state = 'merged'
+       WHERE u.state IN ('merged', 'left-stopped')
          AND NOT EXISTS (
            SELECT 1 FROM deploy_updates du JOIN deploys d ON d.id = du.deploy_id
            WHERE du.update_id = u.id AND d.status IN ('pending', 'running')
@@ -89,7 +96,7 @@ export function retireOvertaken(now = new Date().toISOString()): Retired[] {
      ORDER BY p.merged_at ASC LIMIT 1`,
   )
   const retire = db.prepare(
-    `UPDATE updates SET state = 'superseded', detail = ?, updated_at = ? WHERE id = ? AND state = 'merged'`,
+    `UPDATE updates SET state = 'superseded', detail = ?, updated_at = ? WHERE id = ? AND state IN ('merged', 'left-stopped')`,
   )
 
   const out: Retired[] = []

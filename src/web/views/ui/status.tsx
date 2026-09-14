@@ -54,6 +54,7 @@ const CRED_CLS: Record<string, string> = {
 
 const DEPLOY_CLS: Record<string, string> = {
   verified: 'badge-success',
+  'left-stopped': 'badge-ghost',
   deployed: 'badge-info',
   degraded: 'badge-warning',
   failed: 'badge-error',

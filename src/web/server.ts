@@ -293,7 +293,7 @@ export function createApp(): Hono {
             OR (u.state = 'merged' AND d.status IN ('ready','pending'))
             OR (u.state = 'merged' AND d.status IN ('failed','error') AND u.acked_at IS NULL)
             OR (u.state = 'failed' AND u.acked_at IS NULL)
-            OR (d.status = 'degraded' AND u.acked_at IS NULL)`,
+            OR (d.status = 'degraded' AND u.acked_at IS NULL AND u.state <> 'left-stopped')`,
       ),
       updates: one(
         `SELECT COUNT(*) AS n FROM updates WHERE state IN ('detected','held','pr_open','merged')`,

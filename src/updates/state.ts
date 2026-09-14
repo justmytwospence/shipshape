@@ -16,6 +16,7 @@ export const UPDATE_STATES = [
   'deploying', // compose is running right now
   'deployed', // up and healthy, inside the soak window
   'verified', // soaked and still healthy -- terminal, success
+  'left-stopped', // merged, but its service was not running when the deploy came, so nothing was started -- terminal
   'failed', // deployed badly and was put back, or the operator gave up -- terminal
   'skipped', // the operator dismissed it -- terminal
   'superseded', // a newer target replaced it, or its pull request closed -- terminal

@@ -346,6 +346,11 @@ export function inboxNeedsYou(): AttentionItem[] {
 }
 
 function attentionKind(v: UpdateView): AttentionKind | null {
+  // Merged and nothing more is owed: the service was not running, so nothing was started,
+  // and that is the outcome rather than a problem. It is checked before the deploy status
+  // because a group's running half can go degraded on the same row, and that half is the
+  // one the inbox is about -- not the member that was left exactly as it was.
+  if (v.state === 'left-stopped') return null
   const d = v.deploy?.status
   const seen = !!v.ackedAt
 
@@ -388,7 +393,17 @@ export function inboxParked(): UpdateView[] {
 
 export interface RecentItem {
   at: string
-  kind: 'opened' | 'merged' | 'deployed' | 'verified' | 'degraded' | 'failed' | 'rolled-back' | 'skipped' | 'superseded'
+  kind:
+    | 'opened'
+    | 'merged'
+    | 'deployed'
+    | 'verified'
+    | 'left-stopped'
+    | 'degraded'
+    | 'failed'
+    | 'rolled-back'
+    | 'skipped'
+    | 'superseded'
   stack: string
   service: string
   fromTag: string
@@ -421,12 +436,21 @@ export function inboxRecent(hours = 24, limit = 20): RecentItem[] {
     )
     .all(since) as RecentItem[]
 
+  // A left-stopped update is named by its own state, not by the row's status, on the newest
+  // deploy that carried it: in a group the running half can verify on the same row, and
+  // reading the status alone would say the member that was never started "verified". An
+  // older row it was linked to keeps saying what that row did. Anything unrecognised still
+  // falls to `failed`, which is why the new status has to be named here at all.
   const deployed = db
     .prepare(
       `SELECT d.finished_at AS at,
-              CASE d.status WHEN 'verified' THEN 'verified' WHEN 'degraded' THEN 'degraded'
-                            WHEN 'rolled-back' THEN 'rolled-back'
-                            WHEN 'deployed' THEN 'deployed' ELSE 'failed' END AS kind,
+              CASE WHEN d.status = 'left-stopped' THEN 'left-stopped'
+                   WHEN u.state = 'left-stopped'
+                        AND d.id = (SELECT MAX(du2.deploy_id) FROM deploy_updates du2 WHERE du2.update_id = u.id)
+                     THEN 'left-stopped'
+                   WHEN d.status = 'verified' THEN 'verified' WHEN d.status = 'degraded' THEN 'degraded'
+                   WHEN d.status = 'rolled-back' THEN 'rolled-back' WHEN d.status = 'deployed' THEN 'deployed'
+                   ELSE 'failed' END AS kind,
               u.stack, u.service, u.from_tag AS fromTag, u.to_tag AS toTag,
               u.id AS updateId, d.pr_number AS prNumber, d.detail
          FROM deploys d JOIN deploy_updates du ON du.deploy_id = d.id
@@ -545,22 +569,28 @@ export function updateTimeline(id: number): Milestone[] {
     const finished: Record<string, { label: string; level?: Milestone['level'] }> = {
       deployed: { label: 'up and healthy — soaking' },
       verified: { label: 'verified' },
+      'left-stopped': { label: 'left stopped — it was not running' },
       degraded: { label: 'degraded after the soak', level: 'warn' },
       failed: { label: 'deploy failed', level: 'error' },
       'rolled-back': { label: 'rolled back to the previous version', level: 'error' },
       error: { label: 'the deploy could not be run', level: 'error' },
     }
-    const f = finished[v.deploy.status]
+    // The update's own state wins over the row's status when it was left stopped. A group
+    // deploy is one row for both halves, so the row can say deployed or verified about the
+    // member that came up while this one was never started -- and the soak that row is
+    // waiting on is not a step this update will take.
+    const key = v.state === 'left-stopped' ? 'left-stopped' : v.deploy.status
+    const f = finished[key]
     if (f) {
       out.push({
         at: v.deploy.finishedAt ?? v.deploy.startedAt,
-        kind: v.deploy.status,
+        kind: key,
         label: f.label,
         detail: v.deploy.detail ?? verifyDetail(d?.verdict),
         level: f.level,
       })
     }
-    if (v.deploy.status === 'deployed' && v.deploy.recheckAt) {
+    if (v.deploy.status === 'deployed' && v.deploy.recheckAt && v.state !== 'left-stopped') {
       out.push({
         at: v.deploy.recheckAt,
         kind: 'verified',
@@ -598,7 +628,9 @@ function verifyDetail(json: string | null | undefined): string | null {
 export const STAGE_FILTERS = {
   open: ['detected', 'held', 'pr_open', 'merged'],
   rolling: ['deploying', 'deployed'],
-  done: ['verified'],
+  // Left stopped is merged with nothing more owed by shipshape, so it is finished rather
+  // than open -- in Open it would sit in the list and the nav count forever.
+  done: ['verified', 'left-stopped'],
   closed: ['failed', 'skipped', 'superseded'],
 } as const satisfies Record<string, readonly UpdateState[]>
 

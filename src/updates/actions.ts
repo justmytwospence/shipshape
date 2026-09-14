@@ -50,6 +50,7 @@ export type DeployStatus =
   | 'running'
   | 'deployed'
   | 'verified'
+  | 'left-stopped'
   | 'degraded'
   | 'failed'
   | 'rolled-back'
@@ -128,6 +129,14 @@ export function actionsFor(c: ActionContext): Verb[] {
     case 'verified':
       if (c.mergeCommitSha) out.push('rollback')
       if (deploy === 'degraded' && !c.ackedAt) out.push('ack')
+      break
+
+    case 'left-stopped':
+      // The merge stands and nothing was started, so there is nothing to retry and nothing
+      // to acknowledge -- only the version itself to take back. Roll back reads the service
+      // again before it acts, the same as every deploy, so a stopped service stays stopped:
+      // it puts the old version in the file without bringing anything up.
+      if (c.mergeCommitSha) out.push('rollback')
       break
 
     case 'failed':

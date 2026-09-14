@@ -221,6 +221,59 @@ test('recent activity spans the merge, the deploy and the dismissal', () => {
   assert.deepEqual([...times].sort().reverse(), times)
 })
 
+test('a left-stopped update is done, not waiting on you', () => {
+  // Merged, and the service was not running, so nothing was started. Nothing more is owed:
+  // in Open it would sit in the list and the nav count forever.
+  const id = addUpdate({ service: 'bitwarden', state: 'left-stopped' })
+  addDeploy(id, { status: 'left-stopped' })
+
+  assert.equal(inboxNeedsYou().filter((i) => i.update.id === id).length, 0)
+  assert.ok(listUpdates({ stage: 'done' }).some((u) => u.id === id))
+  assert.ok(!listUpdates({ stage: 'open' }).some((u) => u.id === id))
+})
+
+test('a left-stopped update beside a sibling that degraded is still not in the inbox', () => {
+  // One row for a group: the running half went degraded, and that half is what the inbox
+  // is about -- not the member that was left exactly as it was.
+  const id = addUpdate({ service: 'n8n-import', state: 'left-stopped' })
+  addDeploy(id, { status: 'degraded' })
+  assert.equal(inboxNeedsYou().filter((i) => i.update.id === id).length, 0)
+})
+
+test('recent says left stopped, even when its deploy verified the other half', () => {
+  const left = addUpdate({ service: 'n8n-import', state: 'left-stopped' })
+  const dep = addDeploy(left, { status: 'verified' })
+  const up = addUpdate({ service: 'n8n', state: 'verified' })
+  getDb().prepare(`INSERT INTO deploy_updates (deploy_id, update_id) VALUES (?, ?)`).run(dep, up)
+
+  const recent = inboxRecent(24)
+  assert.equal(recent.find((r) => r.updateId === left)?.kind, 'left-stopped')
+  assert.equal(recent.find((r) => r.updateId === up)?.kind, 'verified', 'the half that came up still verified')
+})
+
+test('the timeline of a left-stopped update ends there', () => {
+  // A row that verified the running half, and one still soaking it: neither is a step this
+  // update takes, because nothing of it was started.
+  const verified = addUpdate({ service: 'n8n-import', state: 'left-stopped', fromTag: '2.38.5', toTag: '2.38.7' })
+  const prA = addPr(verified, { number: 91, state: 'merged', sha: 'abc' })
+  addDeploy(verified, { status: 'verified', prId: prA })
+
+  const soaking = addUpdate({ service: 'deluge', state: 'left-stopped', fromTag: 'v3.41.1', toTag: 'v3.41.3' })
+  const prB = addPr(soaking, { number: 92, state: 'merged', sha: 'def' })
+  const dep = addDeploy(soaking, { status: 'deployed', prId: prB })
+  getDb()
+    .prepare(`UPDATE deploys SET recheck_at = ? WHERE id = ?`)
+    .run(new Date(Date.now() + 1800_000).toISOString(), dep)
+
+  for (const id of [verified, soaking]) {
+    const timeline = updateTimeline(id)
+    const last = timeline.at(-1)!
+    assert.equal(last.kind, 'left-stopped', `${id}: ends left stopped`)
+    assert.equal(last.label, 'left stopped — it was not running')
+    assert.ok(!timeline.some((m) => m.future), `${id}: no soak ahead of it`)
+  }
+})
+
 test('a service page shows its whole history, not just what is live', () => {
   addUpdate({ service: 'jelly', state: 'verified', updatedAt: ago(50) })
   addUpdate({ service: 'jelly', state: 'pr_open' })

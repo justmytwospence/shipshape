@@ -39,7 +39,7 @@ globalThis.fetch = (async (_url: unknown, init: { headers: Record<string, string
 
 const { getDb } = await import('../src/db.ts')
 const { deployForPr } = await import('../src/deploy/run.ts')
-const { claimJob, linkDeployUpdates, runDeployJob } = await import('../src/deploy/queue.ts')
+const { claimJob, enqueueDeploy, linkDeployUpdates, runDeployJob } = await import('../src/deploy/queue.ts')
 const { contextFor } = await import('../src/updates/verbs.ts')
 const { actionsFor } = await import('../src/updates/actions.ts')
 const { composeCalls, fakeIo } = await import('./helpers/deploy-io.ts')
@@ -160,4 +160,50 @@ test('a plain up that fails before recreating is not DOWN', async () => {
   assert.equal(sent[0]!.title, 'shipshape: deploy failed - scratch')
   assert.equal(sent[0]!.priority, '4')
   assert.match(sent[0]!.body, /running whatever it was/)
+})
+
+// ---------------------------------------------------------------- verification said no
+
+test('a failed verdict alerts once, from the rollback, not also "roll back by hand"', async () => {
+  const db = getDb()
+  const now = new Date().toISOString()
+  const prId = Number(
+    db
+      .prepare(
+        `INSERT INTO prs (number, branch, head_sha_pushed, state, scope, created_at, merge_commit_sha)
+         VALUES (44, 'b44', 'sha', 'merged', 'tag-only', ?, 'abc1234')`,
+      )
+      .run(now).lastInsertRowid,
+  )
+  const updateId = Number(
+    db
+      .prepare(
+        `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at)
+         VALUES ('scratch', 'app', 'img/app', '1.0.0', '1.0.1', 'patch', 'auto', 'merged', ?, ?)`,
+      )
+      .run(now, now).lastInsertRowid,
+  )
+  db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(prId, updateId)
+  enqueueDeploy({ prId, prNumber: 44, target: { stack: 'scratch', services: ['app'], strategy: 'up' }, now })
+  const { id } = db.prepare(`SELECT MAX(id) id FROM deploys`).get() as { id: number }
+
+  const io = fakeIo(
+    { app: 'running' },
+    { verify: async () => ({ kind: 'failed' as const, detail: 'app: exited', findings: [] }) },
+  )
+  await runDeployJob(claimJob(id)!, { io })
+
+  // The checkout here is not a git repository, so the automatic rollback fails at its first
+  // git command and says so. What matters is that it is the only thing said.
+  assert.equal(sent.length, 1, sent.map((s) => s.title).join('\n'))
+  assert.doesNotMatch(sent[0]!.title, /unhealthy after deploy/)
+  assert.match(sent[0]!.title, /rollback failed/)
+})
+
+test('a verifier that could not see still alerts, because nothing else will', async () => {
+  const io = fakeIo({ app: 'running' }, { verify: async () => ({ kind: 'error' as const, detail: 'could not see' }) })
+  await deployForPr(45, { stack: 'scratch', services: ['app'], strategy: 'up' }, undefined, { io })
+
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0]!.title, 'shipshape: scratch unhealthy after deploy')
 })

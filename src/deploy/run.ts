@@ -843,6 +843,13 @@ export async function deployForPr(
       message: `${target.stack} deployed but is not healthy`,
       detail: outcome.detail,
     })
+    // A failed verdict is not this function's to announce. runDeployJob hands it to
+    // handleFailure, which alerts on every branch with what it did about it -- rolled back,
+    // rollback failed, or roll back by hand. Alerting here as well buzzed the phone at
+    // priority 5 with "roll back by hand" moments before shipshape did it, and undid
+    // handleFailure's deliberate priority 4 for a lab that put itself back. A blind
+    // verifier (`error`) never reaches handleFailure, so this is its only alert.
+    if (outcome.verdict?.kind === 'failed') return outcome
     await notify({
       title: `shipshape: ${target.stack} unhealthy after deploy`,
       body: `#${prNumber}: ${outcome.detail}\n\nThe new image is running and failing. Roll back with git revert and redeploy if it does not recover.`,

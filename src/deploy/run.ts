@@ -84,9 +84,11 @@ export interface DeployTarget {
  * it was" was false in exactly the case that needed the operator out of bed.
  *
  * `inspect` comes before either: docker could not be asked what is there, so the deploy
- * stopped before its first command and nothing on the host was touched.
+ * stopped before its first command and nothing on the host was touched. `pull` comes after
+ * the read and before any removal, so a pull that fails has removed nothing, whatever the
+ * strategy -- reported as `up` it read as DOWN under rm-first, about a service still running.
  */
-export type DeployPhase = 'refused' | 'inspect' | 'rm' | 'up' | 'verify'
+export type DeployPhase = 'refused' | 'inspect' | 'pull' | 'rm' | 'up' | 'verify'
 
 /**
  * What a deploy did.
@@ -96,7 +98,9 @@ export type DeployPhase = 'refused' | 'inspect' | 'rm' | 'up' | 'verify'
  * not a failure. `up`, `left` and `restored` are the two halves of a group that was only
  * partly running, and `notes` are the sentences that explain the left half. `plan` is what
  * was written to `deploys.snapshot` before the first command; a failure carries it only
- * once it exists, which is after the read and the pull.
+ * once it exists, which is after the read and the pull. A pull that fails has a plan in
+ * memory but nothing recorded, so it carries `up` alone: what it meant to bring up, which
+ * is all the alert may name or hand back as a command.
  */
 export type DeployOutcome =
   | {
@@ -110,7 +114,7 @@ export type DeployOutcome =
       notes: string[]
       plan: RecordedPlan
     }
-  | { ok: false; phase: DeployPhase; reason: string; stderr?: string; plan?: RecordedPlan }
+  | { ok: false; phase: DeployPhase; reason: string; stderr?: string; plan?: RecordedPlan; up?: string[] }
 
 /**
  * Everything a deploy asks of the outside world, in one seam.
@@ -336,22 +340,22 @@ export async function deploy(
     // during it drops out, and anything that started is pulled once more before it is
     // brought up.
     const pulled = new Set<string>()
-    const pull = async (names: string[]): Promise<DeployFailure | null> => {
+    const pull = async (names: string[], meant: string[]): Promise<DeployFailure | null> => {
       const pu = pullArgs({ ...target, services: names })
       const p = await io.exec(pu.args, { cwd: pu.cwd, timeout: 600_000 })
       if ((p.exitCode ?? 1) !== 0) {
-        return { ok: false, phase: 'up', reason: 'could not pull the new image', stderr: tail(p.stderr) }
+        return { ok: false, phase: 'pull', reason: 'could not pull the new image', stderr: tail(p.stderr), up: meant }
       }
       for (const s of names) pulled.add(s)
       return null
     }
-    const first = await pull(read.plan.up)
+    const first = await pull(read.plan.up, read.plan.up)
     if (first) return first
     read = await look()
     if ('ok' in read) return read
     const extra = read.plan.up.filter((s) => !pulled.has(s))
     if (extra.length > 0) {
-      const again = await pull(extra)
+      const again = await pull(extra, read.plan.up)
       if (again) return again
     }
   }
@@ -603,10 +607,12 @@ export function manualCommand(target: DeployTarget): string {
  *
  * Only a plain `up` is safe to describe as leaving the old container in place; every
  * other phase either removed it first or never got that far. `inspect` never got as far
- * as anything, whatever the strategy -- the read comes before the removal.
+ * as anything, whatever the strategy -- the read comes before the removal -- and `pull`
+ * stopped before the removal too.
  */
 export function failureState(outcome: Extract<DeployOutcome, { ok: false }>, strategy: DeployTarget['strategy']): string {
   if (outcome.phase === 'inspect') return 'Nothing was touched: shipshape does not guess whether a service is running.'
+  if (outcome.phase === 'pull') return 'Nothing was removed or recreated; the service is running whatever it was.'
   if (outcome.phase === 'up' && strategy === 'rm-first') {
     return 'The old container was removed and the new one did not start — the service is DOWN.'
   }
@@ -700,15 +706,16 @@ export async function deployForPr(
     const down = outcome.phase === 'up' && target.strategy === 'rm-first'
     // Once there is a plan, the failure is about the services it meant to bring up: the
     // ones it left were never touched, and a pasted command that named them would start
-    // exactly what the deploy declined to.
-    const named = outcome.plan?.up.length ? outcome.plan.up : target.services
+    // exactly what the deploy declined to. A failed pull has that plan in memory only.
+    const meant = outcome.plan?.up ?? outcome.up ?? target.services
+    const named = meant.length ? meant : target.services
     // No command to paste when docker could not be asked: compose was never the problem,
     // and running it by hand while docker cannot say what is there is the very guess the
     // deploy declined to make. What fixes it is docker answering.
     const next =
       outcome.phase === 'inspect'
         ? 'Press Try again on the update once docker answers.'
-        : `Retry with:\n${manualCommand({ ...target, services: outcome.plan?.up ?? target.services })}`
+        : `Retry with:\n${manualCommand({ ...target, services: meant })}`
     await notify({
       title: down
         ? `shipshape: ${target.stack} is DOWN — deploy failed`

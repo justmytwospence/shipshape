@@ -64,6 +64,14 @@ test('a refusal says nothing was attempted', () => {
   assert.match(s, /Nothing was attempted/)
 })
 
+test('a failed pull says nothing was removed, even under rm-first', () => {
+  // The pull comes before the removal. Reported as a failed `up`, it read as DOWN about a
+  // service that was still running on the image it already had.
+  const s = failureState({ ok: false, phase: 'pull', reason: 'could not pull the new image' }, 'rm-first')
+  assert.match(s, /Nothing was removed or recreated/)
+  assert.doesNotMatch(s, /DOWN/)
+})
+
 test('a docker that could not be asked says nothing was touched', () => {
   // Even under rm-first: the read comes before the removal, so nothing can be DOWN.
   const s = failureState({ ok: false, phase: 'inspect', reason: 'x' }, 'rm-first')

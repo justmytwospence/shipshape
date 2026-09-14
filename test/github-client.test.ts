@@ -21,7 +21,6 @@ delete process.env.REPO_DIR
 const { getDb } = await import('../src/db.ts')
 const { setMinSpacingForTests, readCache } = await import('../src/registry/http.ts')
 const { ghRequest, classifyFailure } = await import('../src/upstream/github.ts')
-const { fetchReleases, fetchCompare } = await import('../src/changelog/github.ts')
 const { mockFetch, assertAllMocked, json, status } = await import('./helpers/http.ts')
 
 setMinSpacingForTests(0)
@@ -169,46 +168,4 @@ test('the harness fails loudly on a request nothing expected', async (t) => {
   const h = mockFetch(t, [])
   await assert.rejects(() => fetch('https://example.invalid/x'), /unmocked fetch/)
   assert.deepEqual(h.unmatched, ['GET https://example.invalid/x'])
-})
-
-// -------------------------------------------------------------------------------------
-// The ported callers behave exactly as they did
-// -------------------------------------------------------------------------------------
-
-test('fetchReleases still drops drafts and prereleases and caps bodies', async (t) => {
-  const h = mockFetch(t, [
-    {
-      url: 'https://api.github.com/repos/o/r/releases?per_page=60',
-      reply: () =>
-        json([
-          { tag_name: 'v2', name: 'v2', published_at: 'p', body: 'y'.repeat(7000), draft: false, prerelease: false },
-          { tag_name: 'v3-rc', name: null, published_at: 'p', body: 'b', draft: false, prerelease: true },
-          { tag_name: 'v4', name: null, published_at: null, body: null, draft: true, prerelease: false },
-        ]),
-    },
-  ])
-  const releases = await fetchReleases('o/r')
-  assert.deepEqual(
-    releases.map((r) => [r.tag, r.body.length]),
-    [['v2', 6000]],
-  )
-  assertAllMocked(h)
-})
-
-test('fetchReleases still returns nothing on any failure', async (t) => {
-  const h = mockFetch(t, [{ url: /\/releases\?per_page=60$/, reply: () => status(500) }])
-  assert.deepEqual(await fetchReleases('o/r'), [])
-  assertAllMocked(h)
-})
-
-test('fetchCompare still tries the v-prefixed pair after a miss', async (t) => {
-  const h = mockFetch(t, [
-    { url: 'https://api.github.com/repos/o/r/compare/1.0...1.1', reply: () => status(404) },
-    {
-      url: 'https://api.github.com/repos/o/r/compare/v1.0...v1.1',
-      reply: () => json({ commits: [{ commit: { message: 'fix: a thing\n\nbody' } }] }),
-    },
-  ])
-  assert.deepEqual(await fetchCompare('o/r', '1.0', '1.1'), ['fix: a thing'])
-  assertAllMocked(h)
 })

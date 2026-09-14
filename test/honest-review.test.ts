@@ -75,17 +75,73 @@ test('caution holds a merge exactly as block does, so the backstop changes the l
 // The tags are facts
 // ---------------------------------------------------------------------------------------
 
-const noBundle = { releases: [], commits: [], containerChangelog: [], notes: [] } as never
+type NotesBundle = import('../src/notes/assemble.ts').NotesBundle
+
+const bundle = (o: Partial<NotesBundle> = {}): NotesBundle => ({
+  source: { repo: 'Jackett/Jackett', tier: 'lsio', confidence: 'high', detail: "LinuxServer's API names it as the project" },
+  range: { from: 'v0.24.2551-ls23', to: 'v0.24.2554-ls24', approximate: false, basis: 'the tags name the versions' },
+  releases: [],
+  omitted: [],
+  unplaced: [],
+  changelog: null,
+  commits: null,
+  container: [],
+  fetches: [],
+  notes: [],
+  incomplete: false,
+  ...o,
+})
+
+const jackett = { image: 'linuxserver/jackett:v0.24.2551-ls23', fromTag: 'v0.24.2551-ls23', toTag: 'v0.24.2554-ls24', observedAt: '2026-09-11T09:02:45.128Z' }
 
 test('the prompt states both tags were read from the registry', () => {
-  const text = renderPrompt(
-    { image: 'linuxserver/jackett:v0.24.2551-ls23', fromTag: 'v0.24.2551-ls23', toTag: 'v0.24.2554-ls24', observedAt: '2026-09-11T09:02:45.128Z' },
-    noBundle,
-    'Jackett/Jackett',
-  )
+  const text = renderPrompt(jackett, bundle())
   assert.match(text, /Current version: v0\.24\.2551-ls23 \(running now\)/)
   assert.match(text, /Proposed version: v0\.24\.2554-ls24 \(published in the registry, first seen 2026-09-11T09:02:45\.128Z\)/)
   assert.match(text, /Both tags were read from the registry and exist/)
+})
+
+test('the prompt says where the repository came from, how sure that is, and what was fetched', () => {
+  const text = renderPrompt(
+    { image: 'ttlequals0/minuspod:2.96.15-cpu', fromTag: '2.96.15-cpu', toTag: '2.96.17-cpu' },
+    bundle({
+      source: { repo: 'AsamK/signal-cli', tier: 'description', confidence: 'medium', detail: 'linked from its description on GitLab' },
+      range: { from: '2.96.15-cpu', to: '2.96.17-cpu', approximate: false, basis: 'the tags name the versions' },
+      fetches: [
+        { what: 'releases', outcome: 'rate-limited', detail: "GitHub's rate limit was reached" },
+        { what: 'changelog', outcome: 'found', detail: '2 sections of CHANGELOG.md in the range' },
+      ],
+      changelog: {
+        file: 'CHANGELOG.md',
+        sections: [{ heading: '[2.96.17] - 2026-09-10', key: null, unreleased: false, body: '### Added\n- Transcript cache' }],
+        omitted: [],
+      },
+    }),
+  )
+  assert.match(text, /Upstream repository: https:\/\/github\.com\/AsamK\/signal-cli \(identified from linked from its description on GitLab; a likely match, not confirmed\)/)
+  assert.match(text, /Version range: after 2\.96\.15-cpu, up to and including 2\.96\.17-cpu\n/)
+  assert.match(text, /- releases: rate-limited \(GitHub's rate limit was reached\)/)
+  assert.match(text, /From CHANGELOG\.md, the sections for this range[^\n]*\n\n## \[2\.96\.17\] - 2026-09-10\n### Added/)
+  assert.doesNotMatch(text, /No release notes for this range were retrieved/)
+})
+
+test('an approximate range says it is one, and nothing in range asks for a search', () => {
+  const text = renderPrompt(
+    { image: 'nousresearch/hermes-agent:latest', fromTag: 'latest@sha256:aaa', toTag: 'latest@sha256:bbb' },
+    bundle({ range: { from: 'latest@sha256:aaa', to: 'latest@sha256:bbb', approximate: true, basis: 'the tags float' } }),
+  )
+  assert.match(text, /-- approximate: the tags float/)
+  assert.match(text, /No release notes for this range were retrieved automatically/)
+})
+
+test('a confident approval with no notes in the range is read as medium, and nothing else moves', () => {
+  // The prompt asks for high confidence only on notes actually read, and a confident
+  // approval is the one that merges unattended.
+  assert.equal(normalise({ recommendation: 'approve', confidence: 'high' }, { notesInRange: 0 }).confidence, 'medium')
+  assert.equal(normalise({ recommendation: 'approve', confidence: 'high' }, { notesInRange: 2 }).confidence, 'high')
+  assert.equal(normalise({ recommendation: 'caution', confidence: 'high' }, { notesInRange: 0 }).confidence, 'high')
+  assert.equal(normalise({ recommendation: 'approve', confidence: 'high' }).confidence, 'high', 'no count, no judgement')
+  assert.equal(normalise({ recommendation: 'approve', confidence: 'high' }, { notesInRange: 0 }).recommendation, 'approve')
 })
 
 test('the system prompt forbids blocking on notes that could not be matched', () => {

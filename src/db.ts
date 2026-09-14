@@ -673,6 +673,19 @@ const MIGRATIONS: { id: string; sql: string }[] = [
       next_check_at = CASE WHEN tier = 'none' THEN strftime('%Y-%m-%dT%H:%M:%SZ', 'now') END;
   `,
   },
+  {
+    id: '020-verdict-evidence',
+    sql: `
+    -- What a verdict was based on: which repository and how it was identified, which
+    -- version range, what was found and what could not be fetched.
+    --
+    -- A review used to be told "no GitHub releases" whether the project had none or GitHub
+    -- had simply said "not now", and the verdict kept no trace of which. A verdict read
+    -- from incomplete notes -- a rate limit, an outage -- is now read again later, and until
+    -- then it stands, exactly as a verdict does while a requested re-read is pending.
+    ALTER TABLE verdicts ADD COLUMN evidence TEXT;
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

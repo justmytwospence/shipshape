@@ -76,3 +76,12 @@ test('a range excludes where you are and includes where you are going', () => {
   assert.ok(!inRange(k('2.96.22'), from, to))
   assert.ok(inRange(k('1.0.0'), null, to), 'no lower bound means everything up to the target')
 })
+
+test('a floating bound names a line: after 4 is after every 4.x, up to 5 includes every 5.x', () => {
+  assert.ok(!inRange(k('4.5.6'), k('4'), k('5')), 'the running line is not new')
+  assert.ok(inRange(k('5.0.0'), k('4'), k('5')))
+  assert.ok(inRange(k('5.3.1'), k('4'), k('5')))
+  assert.ok(!inRange(k('6.0.0'), k('4'), k('5')))
+  assert.ok(inRange(k('3.8.1'), k('3.7'), k('v3.8')), 'a two-part pin moves onto the next line')
+  assert.ok(!inRange(k('3.7.9'), k('v3.7'), k('3.8')))
+})

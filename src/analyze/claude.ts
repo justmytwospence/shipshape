@@ -4,7 +4,7 @@ import { getDb, logEvent } from '../db.ts'
 import { prompt } from '../prompts/index.ts'
 import { costOf, reportUnknownModels } from './pricing.ts'
 import { webTools } from './tools.ts'
-import { assemble } from '../changelog/github.ts'
+import { assembleNotes, evidenceOf, notesInRange, type NotesBundle, type NotesEvidence } from '../notes/assemble.ts'
 import { sourceFor } from '../resolver/index.ts'
 import { parseImageRef } from '../images/ref.ts'
 
@@ -102,7 +102,10 @@ export interface AnalyzeTarget {
   composeSnippet?: string
 }
 
-export async function analyze(target: AnalyzeTarget): Promise<Verdict | { error: string }> {
+/** A verdict, with what it was based on. */
+export type ReviewedVerdict = Verdict & { evidence?: NotesEvidence }
+
+export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | { error: string }> {
   const { policy } = loadPolicy()
   if (policy.claude.mode === 'off') return { error: 'analysis disabled' }
   if (!env.anthropicApiKey) return { error: 'ANTHROPIC_API_KEY is not set' }
@@ -118,11 +121,12 @@ export async function analyze(target: AnalyzeTarget): Promise<Verdict | { error:
       tag: ref.tag ?? target.fromTag,
     },
   )
-  const bundle = await assemble({
-    sourceRepo: source.repo,
-    repository: ref.repository,
+  const notes = await assembleNotes({
+    image: target.image,
     fromTag: target.fromTag,
     toTag: target.toTag,
+    source: source,
+    observedAt: target.observedAt,
   })
 
   const allowed = ['github.com', 'docs.linuxserver.io', 'api.linuxserver.io']
@@ -143,7 +147,7 @@ export async function analyze(target: AnalyzeTarget): Promise<Verdict | { error:
           EMIT_VERDICT,
         ],
         tool_choice: { type: 'any' },
-        messages: [{ role: 'user', content: renderPrompt(target, bundle, source.repo) }],
+        messages: [{ role: 'user', content: renderPrompt(target, notes) }],
       },
       { timeout: 180_000 },
     )
@@ -155,9 +159,9 @@ export async function analyze(target: AnalyzeTarget): Promise<Verdict | { error:
     if (!call) {
       return { error: 'the model did not return a verdict' }
     }
-    const verdict = normalise(call.input as Partial<Verdict>)
+    const verdict = normalise(call.input as Partial<Verdict>, { notesInRange: notesInRange(notes) })
     recordCost(res.usage, policy, policy.claude.model, 'verdict')
-    return verdict
+    return { ...verdict, evidence: evidenceOf(notes) }
   } catch (err) {
     return { error: (err as Error).message.slice(0, 300) }
   }
@@ -173,18 +177,33 @@ export async function analyze(target: AnalyzeTarget): Promise<Verdict | { error:
  * and so that it would break. Every one of those tags was in the registry; shipshape had
  * read it there. Exported for the tests.
  */
-export function renderPrompt(
-  t: AnalyzeTarget,
-  b: Awaited<ReturnType<typeof assemble>>,
-  sourceRepo: string | null,
-): string {
+export function renderPrompt(t: AnalyzeTarget, b: NotesBundle): string {
+  const s = b.source
+  const how = s.detail ?? s.tier
+  const certainty =
+    s.tier === 'label' ? 'set by the operator' : s.confidence === 'high' ? 'certain' : 'a likely match, not confirmed'
   const parts: string[] = [
     `Image: ${t.image}`,
     `Current version: ${t.fromTag} (running now)`,
     `Proposed version: ${t.toTag} (published in the registry${t.observedAt ? `, first seen ${t.observedAt}` : ''})`,
     `Both tags were read from the registry and exist. If the notes below do not reach the proposed version, the notes are incomplete -- not the image.`,
-    sourceRepo ? `Upstream repository: https://github.com/${sourceRepo}` : 'Upstream repository: unknown',
+    s.repo
+      ? `Upstream repository: https://github.com/${s.repo} (identified from ${how}; ${certainty})`
+      : 'Upstream repository: unknown',
+    `Version range: after ${b.range.from}, up to and including ${b.range.to}${b.range.approximate ? ` -- approximate: ${b.range.basis}` : ''}`,
   ]
+
+  // What was looked for and what came back, so a gap reads as a gap and not as "nothing changed".
+  if (b.fetches.length > 0) {
+    parts.push(`\nWhat shipshape fetched:\n${b.fetches.map((f) => `- ${f.what}: ${f.outcome}${f.detail ? ` (${f.detail})` : ''}`).join('\n')}`)
+  }
+  if (b.omitted.length > 0) parts.push(`Releases in the range left out for length: ${b.omitted.join(', ')}`)
+  if (b.changelog && b.changelog.omitted.length > 0) {
+    parts.push(`Changelog sections in the range left out for length: ${b.changelog.omitted.join(', ')}`)
+  }
+  if (b.unplaced.length > 0) {
+    parts.push(`Recent releases whose names could not be placed against these versions: ${b.unplaced.join(', ')}`)
+  }
 
   if (t.composeSnippet) {
     parts.push(
@@ -193,27 +212,38 @@ export function renderPrompt(
   }
 
   if (b.releases.length > 0) {
-    // Raw and unfiltered: matching image tags to release names is the model's job.
-    const slice = b.releases.slice(0, 25).map((r) => `## ${r.tag}${r.name && r.name !== r.tag ? ` — ${r.name}` : ''} (${r.published ?? 'undated'})\n${r.body || '(no release body)'}`)
+    const list = b.releases.map(
+      (r) =>
+        `## ${r.tag}${r.name && r.name !== r.tag ? ` — ${r.name}` : ''} (${r.published ?? 'undated'})${r.prerelease ? ' [prerelease]' : ''}\n${r.body || '(no release body)'}`,
+    )
+    parts.push(`\nUpstream releases in this range, newest first:\n\n${list.join('\n\n')}`)
+  }
+  if (b.changelog && b.changelog.sections.length > 0) {
     parts.push(
-      `\nUpstream releases, newest first. Identify which of these fall between the current and proposed versions — tag naming is often inconsistent:\n\n${slice.join('\n\n').slice(0, 45_000)}`,
+      `\nFrom ${b.changelog.file}, the sections for this range that no release above already covers:\n\n${b.changelog.sections
+        .map((sec) => `## ${sec.heading}\n${sec.body}`)
+        .join('\n\n')}`,
     )
   }
-  if (b.commits.length > 0) {
-    parts.push(`\nCommits between the two versions:\n${b.commits.map((c) => `- ${c}`).join('\n')}`)
-  }
-  if (b.containerChangelog.length > 0) {
+  if (b.commits && b.commits.subjects.length > 0) {
     parts.push(
-      `\nContainer packaging changes (separate from the application's own changes):\n${b.containerChangelog
+      `\nCommits between ${b.commits.from} and ${b.commits.to}, newest first (${b.commits.subjects.length} of ${b.commits.total}):\n${b.commits.subjects
+        .map((c) => `- ${c}`)
+        .join('\n')}`,
+    )
+  }
+  if (b.container.length > 0) {
+    parts.push(
+      `\nContainer packaging changes (separate from the application's own changes):\n${b.container
         .map((c) => `- ${c.date}: ${c.desc}`)
         .join('\n')}`,
     )
   }
   for (const n of b.notes) parts.push(`\nNote: ${n}`)
 
-  if (b.releases.length === 0) {
+  if (notesInRange(b) === 0) {
     parts.push(
-      `\nNo release notes were retrieved automatically. Search for this project's changelog before judging, and if you cannot find one, say so and grade accordingly.`,
+      `\nNo release notes for this range were retrieved automatically. Search for this project's changelog before judging, and if you cannot find one, say so and grade accordingly.`,
     )
   }
 
@@ -233,17 +263,23 @@ export function renderPrompt(
  * That cannot widen what a hostile changelog achieves. `caution` holds a merge exactly as
  * `block` does -- the gate refuses both -- so this changes what the hold is called and
  * never whether it holds. It only ever moves toward `caution`, never to `approve`.
+ *
+ * The second rule: an approval at `high` confidence when shipshape found no notes in the
+ * range is read as `medium`. The prompt asks for `high` only on notes actually read, and a
+ * confident approval is the one that merges unattended; lowering confidence can only hold.
  * Exported for the tests.
  */
-export function normalise(v: Partial<Verdict>): Verdict {
+export function normalise(v: Partial<Verdict>, ctx: { notesInRange?: number } = {}): Verdict {
   const asArray = (x: unknown): string[] =>
     Array.isArray(x) ? x.filter((s): s is string => typeof s === 'string') : []
   const breaking = asArray(v.breaking_changes)
   const claimed: Recommendation =
     v.recommendation === 'approve' || v.recommendation === 'block' ? v.recommendation : 'caution'
   const rec: Recommendation = claimed === 'block' && breaking.length === 0 ? 'caution' : claimed
-  const conf: Confidence =
+  const claimedConf: Confidence =
     v.confidence === 'high' || v.confidence === 'medium' ? v.confidence : 'low'
+  const conf: Confidence =
+    rec === 'approve' && claimedConf === 'high' && ctx.notesInRange === 0 ? 'medium' : claimedConf
   const sev: Severity =
     v.severity === 'none' || v.severity === 'low' || v.severity === 'medium' || v.severity === 'high'
       ? v.severity

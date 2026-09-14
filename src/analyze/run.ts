@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { env, loadPolicy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { routine } from '../notify/digest.ts'
-import { analyze, budgetExhausted, type Verdict } from './claude.ts'
+import { analyze, budgetExhausted, type ReviewedVerdict, type Verdict } from './claude.ts'
 import { verdictHolds, type Confidence } from '../policy.ts'
 import { backoffUntil } from '../backoff.ts'
 
@@ -99,11 +99,19 @@ export function pendingAnalysis(limit: number): PendingAnalysis[] {
          )
          OR (u.magnitude IN ('minor', 'major') AND u.detected_at >= ?)
        )
-       -- A verdict that arrived is done, unless someone asked for it to be read again.
+       -- A verdict that arrived is done, unless someone asked for it to be read again --
+       -- or its notes could not all be fetched (a rate limit, an outage), in which case it
+       -- is read again after an hour, three times at most. The old verdict stays in force
+       -- meanwhile, exactly as with a requested re-read.
        AND NOT EXISTS (
          SELECT 1 FROM verdicts v
          WHERE v.image = u.image AND v.from_tag = u.from_tag AND v.to_tag = u.to_tag
            AND v.error IS NULL AND v.rerun_requested_at IS NULL
+           AND NOT (
+             json_extract(v.evidence, '$.incomplete') = 1
+             AND COALESCE(json_extract(v.evidence, '$.attempt'), 1) <= ${INCOMPLETE_REREADS}
+             AND COALESCE(json_extract(v.evidence, '$.readAt'), v.created_at) <= ?
+           )
        )
        -- A failure that will fail again is not work. Without this, one unreachable
        -- changelog is retried on every poll cycle for as long as the pull request is
@@ -118,8 +126,18 @@ export function pendingAnalysis(limit: number): PendingAnalysis[] {
        ORDER BY rerun DESC, has_pr DESC, u.detected_at DESC
        LIMIT ?`,
     )
-    .all(sinceForUnreviewed(), new Date().toISOString(), limit) as PendingAnalysis[]
+    .all(
+      sinceForUnreviewed(),
+      new Date(Date.now() - INCOMPLETE_WAIT_MS).toISOString(),
+      new Date().toISOString(),
+      limit,
+    ) as PendingAnalysis[]
 }
+
+/** A reading whose notes could not all be fetched is tried again after this long... */
+const INCOMPLETE_WAIT_MS = 60 * 60_000
+/** ...this many times, and then left as it is. */
+const INCOMPLETE_REREADS = 3
 
 /** Analyse up to `limit` updates that want a verdict: open pull requests first. */
 export async function runAnalysisPass(limit = 3): Promise<AnalysisRun> {
@@ -213,38 +231,55 @@ function escape(s: string): string {
 /** Exported for the tests, like the rest of the bookkeeping here. */
 export function recordVerdict(
   row: { image: string; from_tag: string; to_tag: string },
-  v: Verdict,
+  v: ReviewedVerdict,
 ): void {
   const { policy } = loadPolicy()
-  getDb()
-    .prepare(
-      `INSERT INTO verdicts (image, from_tag, to_tag, summary, severity, breaking_changes,
-                             migration_steps, recommendation, confidence, sources, model,
-                             cost_usd, error, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)
-       ON CONFLICT(image, from_tag, to_tag) DO UPDATE SET
-         summary = excluded.summary, severity = excluded.severity,
-         breaking_changes = excluded.breaking_changes,
-         migration_steps = excluded.migration_steps,
-         recommendation = excluded.recommendation, confidence = excluded.confidence,
-         sources = excluded.sources, model = excluded.model, error = NULL,
-         next_attempt_at = NULL, rerun_requested_at = NULL,
-         created_at = excluded.created_at`,
-    )
-    .run(
-      row.image,
-      row.from_tag,
-      row.to_tag,
-      v.summary,
-      v.severity,
-      JSON.stringify(v.breaking_changes),
-      JSON.stringify(v.migration_steps),
-      v.recommendation,
-      v.confidence,
-      JSON.stringify(v.sources),
-      policy.claude.model,
-      new Date().toISOString(),
-    )
+  const db = getDb()
+  const now = new Date().toISOString()
+
+  // Which incomplete reading this is: the first, or a re-read of one that was also incomplete.
+  const prior = db
+    .prepare(`SELECT evidence FROM verdicts WHERE image = ? AND from_tag = ? AND to_tag = ?`)
+    .get(row.image, row.from_tag, row.to_tag) as { evidence: string | null } | undefined
+  let priorAttempt = 0
+  try {
+    const p = prior?.evidence ? (JSON.parse(prior.evidence) as { incomplete?: boolean; attempt?: number }) : null
+    if (p?.incomplete) priorAttempt = p.attempt ?? 1
+  } catch {
+    priorAttempt = 0
+  }
+  const evidence = v.evidence
+    ? JSON.stringify({ ...v.evidence, readAt: now, attempt: v.evidence.incomplete ? priorAttempt + 1 : 0 })
+    : null
+
+  db.prepare(
+    `INSERT INTO verdicts (image, from_tag, to_tag, summary, severity, breaking_changes,
+                           migration_steps, recommendation, confidence, sources, model,
+                           cost_usd, error, created_at, evidence)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+     ON CONFLICT(image, from_tag, to_tag) DO UPDATE SET
+       summary = excluded.summary, severity = excluded.severity,
+       breaking_changes = excluded.breaking_changes,
+       migration_steps = excluded.migration_steps,
+       recommendation = excluded.recommendation, confidence = excluded.confidence,
+       sources = excluded.sources, model = excluded.model, error = NULL,
+       next_attempt_at = NULL, rerun_requested_at = NULL,
+       created_at = excluded.created_at, evidence = excluded.evidence`,
+  ).run(
+    row.image,
+    row.from_tag,
+    row.to_tag,
+    v.summary,
+    v.severity,
+    JSON.stringify(v.breaking_changes),
+    JSON.stringify(v.migration_steps),
+    v.recommendation,
+    v.confidence,
+    JSON.stringify(v.sources),
+    policy.claude.model,
+    now,
+    evidence,
+  )
 }
 
 /**
@@ -275,9 +310,15 @@ export function recordFailure(
   // there is, so it stays -- writing the error over it would make the gate see "no
   // verdict", fall back to static policy, and merge what the verdict was holding.
   if (prior && prior.error === null && prior.recommendation !== null) {
+    // A re-read of incomplete notes that failed counts as one of its tries, and waits its
+    // hour again -- or the same failure would be retried on every poll cycle.
     db.prepare(
-      `UPDATE verdicts SET rerun_requested_at = NULL WHERE image = ? AND from_tag = ? AND to_tag = ?`,
-    ).run(row.image, row.from_tag, row.to_tag)
+      `UPDATE verdicts SET rerun_requested_at = NULL,
+         evidence = CASE WHEN json_extract(evidence, '$.incomplete') = 1
+           THEN json_set(evidence, '$.readAt', ?, '$.attempt', COALESCE(json_extract(evidence, '$.attempt'), 1) + 1)
+           ELSE evidence END
+       WHERE image = ? AND from_tag = ? AND to_tag = ?`,
+    ).run(new Date().toISOString(), row.image, row.from_tag, row.to_tag)
     logEvent({
       level: 'warn',
       kind: 'analysis',

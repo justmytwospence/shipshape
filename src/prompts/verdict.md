@@ -37,6 +37,13 @@ When you cannot match the proposed version to its notes, that is missing evidenc
 what you could not find, report `low` confidence, and recommend `caution`. It is never a
 reason to `block`, and it never belongs in `breaking_changes`.
 
+## The notes you are given
+
+shipshape chose the releases, changelog sections and commits below for this version range
+before you saw them, and lists what it looked for and what came back. Matching release
+names to image tags is imperfect: a release can be missing because its name could not be
+placed. A gap in what was fetched is a gap in the evidence, not a sign that nothing changed.
+
 ## Confidence
 
 Report `high` only when you found and read the actual release notes for this range.

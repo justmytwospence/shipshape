@@ -88,13 +88,27 @@ export function compareKeys(a: VersionKey, b: VersionKey): number | null {
   return compareNums(a.build, b.build)
 }
 
-/** `from < k <= to`. A null `from` means everything up to `to`. */
+/**
+ * `from < k <= to`. A null `from` means everything up to `to`. A partial bound names a line
+ * rather than a release: after `4` is after every 4.x, and up to `5` includes every 5.x.
+ */
 export function inRange(k: VersionKey, from: VersionKey | null, to: VersionKey): boolean {
-  const upper = compareKeys(k, to)
+  const upper = to.partial ? linePosition(k, to) : compareKeys(k, to)
   if (upper === null || upper > 0) return false
   if (!from) return true
-  const lower = compareKeys(k, from)
+  const lower = from.partial ? linePosition(k, from) : compareKeys(k, from)
   return lower !== null && lower > 0
+}
+
+/** Where a version sits against a line: below it, on it (0), or above it. */
+function linePosition(k: VersionKey, line: VersionKey): number | null {
+  if (k.family !== line.family) return null
+  for (let i = 0; i < line.core.length; i++) {
+    const a = k.core[i] ?? 0
+    const b = line.core[i]!
+    if (a !== b) return a < b ? -1 : 1
+  }
+  return 0
 }
 
 // ------------------------------------------------------------------ internals

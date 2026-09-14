@@ -20,7 +20,7 @@ process.env.GITHUB_REPO = 'you/repo'
 delete process.env.REPO_DIR
 
 const { getDb } = await import('../src/db.ts')
-const { pendingAnalysis } = await import('../src/analyze/run.ts')
+const { pendingAnalysis, recordFailure, recordVerdict } = await import('../src/analyze/run.ts')
 
 after(() => rmSync(dir, { recursive: true, force: true }))
 
@@ -94,4 +94,79 @@ test('the unreviewed backfill is bounded, so shipping this is not a one-off bill
   addUpdate({ service: 'ancient', magnitude: 'major', detectedAt: ago(24 * 400) })
   const picked = pendingAnalysis(50).map((p) => p.service)
   assert.ok(!picked.includes('ancient'), 'old releases keep their links, not a model call')
+})
+
+// ---------------------------------------------------------------------------------------
+// Notes that could not all be fetched
+// ---------------------------------------------------------------------------------------
+
+function pairOf(id: number): { image: string; from_tag: string; to_tag: string } {
+  return getDb().prepare(`SELECT image, from_tag, to_tag FROM updates WHERE id = ?`).get(id) as never
+}
+
+const verdict = (incomplete: boolean) => ({
+  summary: 'Could not read the releases.',
+  severity: 'low' as const,
+  breaking_changes: [],
+  migration_steps: [],
+  recommendation: 'caution' as const,
+  confidence: 'low' as const,
+  sources: [],
+  evidence: {
+    repo: 'o/r',
+    tier: 'annotation',
+    confidence: 'high',
+    range: { from: '1.0.0', to: '1.1.0', approximate: false },
+    releases: 0,
+    changelogSections: 0,
+    commits: 0,
+    omitted: 0,
+    fetches: [{ what: 'releases', outcome: incomplete ? ('rate-limited' as const) : ('none' as const) }],
+    incomplete,
+  },
+})
+
+const wantsReading = (service: string) => pendingAnalysis(50).some((p) => p.service === service)
+
+function readAnHourAgo(pair: { image: string }): void {
+  getDb()
+    .prepare(`UPDATE verdicts SET evidence = json_set(evidence, '$.readAt', ?) WHERE image = ?`)
+    .run(ago(2), pair.image)
+}
+
+test('a verdict read from incomplete notes is read again after an hour, three times at most', () => {
+  const pair = pairOf(addUpdate({ service: 'limited', magnitude: 'minor' }))
+  recordVerdict(pair, verdict(true))
+  assert.ok(!wantsReading('limited'), 'not straight away: the rate limit has not cleared')
+
+  for (const attempt of [1, 2, 3]) {
+    readAnHourAgo(pair)
+    assert.ok(wantsReading('limited'), `offered again after incomplete reading ${attempt}`)
+    recordVerdict(pair, verdict(true))
+  }
+  readAnHourAgo(pair)
+  assert.ok(!wantsReading('limited'), 'after three more readings it is left as it is')
+})
+
+test('a verdict read from complete notes is done, however long ago', () => {
+  const pair = pairOf(addUpdate({ service: 'complete', magnitude: 'minor' }))
+  recordVerdict(pair, verdict(false))
+  readAnHourAgo(pair)
+  assert.ok(!wantsReading('complete'))
+})
+
+test('a re-read of incomplete notes that fails waits its hour again, and counts as a try', () => {
+  const pair = pairOf(addUpdate({ service: 'still-down', magnitude: 'minor' }))
+  recordVerdict(pair, verdict(true))
+  readAnHourAgo(pair)
+  assert.ok(wantsReading('still-down'))
+
+  recordFailure(pair, 'GitHub could not be reached')
+  assert.ok(!wantsReading('still-down'), 'otherwise the same failure is retried on every poll')
+  const row = getDb().prepare(`SELECT recommendation, evidence FROM verdicts WHERE image = ?`).get(pair.image) as {
+    recommendation: string
+    evidence: string
+  }
+  assert.equal(row.recommendation, 'caution', 'the verdict it was replacing still stands')
+  assert.equal((JSON.parse(row.evidence) as { attempt: number }).attempt, 2)
 })

@@ -97,6 +97,20 @@ test('the resolution cache learns when to look again', (t) => {
   assert.equal(unmarked, 0)
 })
 
+test('verdicts gain their evidence, and none from before is read again for lack of it', (t) => {
+  if (!have) return t.skip('set SHIPSHAPE_LIVE_DB to an online backup to run this')
+  const d = db.getDb()
+  const cols = (d.prepare(`PRAGMA table_info(verdicts)`).all() as { name: string }[]).map((c) => c.name)
+  assert.ok(cols.includes('evidence'))
+  assert.ok((d.prepare(`SELECT COUNT(*) c FROM verdicts`).get() as { c: number }).c > 0, 'the copy should carry real verdicts')
+  // A verdict with no evidence is not an incomplete one: deploying this must not re-offer
+  // every review ever written for a second, paid reading.
+  const flagged = (
+    d.prepare(`SELECT COUNT(*) c FROM verdicts WHERE json_extract(evidence, '$.incomplete') = 1`).get() as { c: number }
+  ).c
+  assert.equal(flagged, 0)
+})
+
 test('the rollout watermark is set to now, not to the beginning of time', (t) => {
   if (!have) return t.skip('set SHIPSHAPE_LIVE_DB to an online backup to run this')
   const rows = db

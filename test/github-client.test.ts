@@ -22,7 +22,6 @@ const { getDb } = await import('../src/db.ts')
 const { setMinSpacingForTests, readCache } = await import('../src/registry/http.ts')
 const { ghRequest, classifyFailure } = await import('../src/upstream/github.ts')
 const { fetchReleases, fetchCompare } = await import('../src/changelog/github.ts')
-const probe = await import('../src/registry/probe.ts')
 const { mockFetch, assertAllMocked, json, status } = await import('./helpers/http.ts')
 
 setMinSpacingForTests(0)
@@ -199,42 +198,6 @@ test('fetchReleases still drops drafts and prereleases and caps bodies', async (
 test('fetchReleases still returns nothing on any failure', async (t) => {
   const h = mockFetch(t, [{ url: /\/releases\?per_page=60$/, reply: () => status(500) }])
   assert.deepEqual(await fetchReleases('o/r'), [])
-  assertAllMocked(h)
-})
-
-test('the probe still sends the token it was given and drops prereleases', async (t) => {
-  const h = mockFetch(t, [
-    {
-      url: 'https://api.github.com/repos/o/r/releases?per_page=40',
-      reply: () =>
-        json([
-          { tag_name: 'v2', draft: false, prerelease: false, published_at: null },
-          { tag_name: 'v3-rc', draft: false, prerelease: true, published_at: null },
-        ]),
-    },
-  ])
-  const releases = await probe.fetchReleases('o/r', 'probe-token')
-  assert.deepEqual(releases.map((r) => r.tag_name), ['v2'])
-  assert.equal(h.calls[0]!.headers.get('authorization'), 'Bearer probe-token')
-  assertAllMocked(h)
-})
-
-test('the probe still reads a refusal as no releases, and an outage as a failure', async (t) => {
-  // detect.ts reports "release probing failed" only when this throws; returning [] on an
-  // outage would turn it into "probing confirmed no image tags", which would be false.
-  let mode: 'refuse' | 'down' = 'refuse'
-  const h = mockFetch(t, [
-    {
-      url: /\/releases\?per_page=40$/,
-      reply: () => {
-        if (mode === 'down') throw new TypeError('fetch failed')
-        return status(404)
-      },
-    },
-  ])
-  assert.deepEqual(await probe.fetchReleases('o/r', ''), [])
-  mode = 'down'
-  await assert.rejects(() => probe.fetchReleases('o/r', ''), /could not be reached/)
   assertAllMocked(h)
 })
 

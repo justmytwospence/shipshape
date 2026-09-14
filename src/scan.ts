@@ -414,7 +414,7 @@ async function persist(
         stack: svc.stack,
         service: svc.service,
         message: `update available: ${currentTag} -> ${d.tag} (${d.magnitude})`,
-        detail: `tier=${tier}${d.via === 'releases' ? ', via release probing' : ''}`,
+        detail: `tier=${tier}${d.via === 'releases' ? ', via release probing' : ''}${d.stream ? `, ${d.stream}` : ''}`,
       })
       return 'update'
     }

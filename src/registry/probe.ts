@@ -1,5 +1,5 @@
 import { getDb } from '../db.ts'
-import { ghRequest } from '../upstream/github.ts'
+import { inferPattern, parseTag } from '../versions/patterns.ts'
 import { registryFetch } from './http.ts'
 
 /**
@@ -28,43 +28,25 @@ export interface ProbeResult {
  *  turning into its own enumeration problem. */
 const MAX_RELEASES = 40
 
-interface GhRelease {
-  tag_name: string
-  draft: boolean
-  prerelease: boolean
-  published_at: string | null
-}
-
 /**
- * Candidate image tags derived from a release name. Registries and git tags disagree
- * about the `v` prefix often enough that both spellings are worth a probe -- this is
- * cheap, and guessing wrong costs one HEAD.
+ * Candidate image tags derived from a release name. Registries and git tags disagree about
+ * the `v` prefix often enough that both spellings are worth a probe, and a `pkg@1.2.3`
+ * release publishes images without the package name. A variant image keeps its flavour: a
+ * `2.96.17-cpu` pin probes `2.96.22-cpu` for release `v2.96.22`. Each guess costs one HEAD.
  */
-export function candidateTagsFor(releaseTag: string): string[] {
-  const out = new Set<string>()
-  out.add(releaseTag)
-  if (releaseTag.startsWith('v')) out.add(releaseTag.slice(1))
-  else out.add(`v${releaseTag}`)
+export function candidateTagsFor(releaseTag: string, currentTag?: string): string[] {
+  const base = releaseTag.includes('@') ? releaseTag.slice(releaseTag.lastIndexOf('@') + 1) : releaseTag
+  const spellings = base.startsWith('v') ? [base, base.slice(1)] : [base, `v${base}`]
+  const out = new Set<string>(spellings)
+  const variant = currentTag ? variantOf(currentTag) : null
+  if (variant) for (const s of spellings) out.add(`${s}-${variant}`)
   return [...out]
 }
 
-export async function fetchReleases(
-  ownerRepo: string,
-  githubToken: string,
-): Promise<GhRelease[]> {
-  // Through the shared client, which gives this call the timeout it never had -- a hung
-  // connection here used to hold detection open indefinitely.
-  const res = await ghRequest<GhRelease[]>(
-    `/repos/${ownerRepo}/releases?per_page=${MAX_RELEASES}`,
-    { token: githubToken },
-  )
-  if (!res.ok) {
-    // Unreachable is still an exception, as it was when fetch threw: the caller reports
-    // "release probing failed" rather than claiming the releases confirmed no tags.
-    if (res.kind === 'network') throw new Error(res.detail)
-    return []
-  }
-  return res.data.filter((r) => !r.draft && !r.prerelease)
+function variantOf(tag: string): string | null {
+  const kind = inferPattern(tag)
+  if (kind !== 'semver-variant' && kind !== 'semver-minor-variant' && kind !== 'major-variant') return null
+  return parseTag(tag, kind)?.variant || null
 }
 
 /**
@@ -126,17 +108,17 @@ export async function probeByReleases(opts: {
   registry: string
   repository: string
   currentTag: string
-  sourceRepo: string
-  githubToken: string
+  /** The project's releases, newest first, from the release index. Prereleases included:
+   *  whether one is an update is decided afterwards, by the stream the service is on. */
+  releases: { tag: string }[]
 }): Promise<ProbeResult> {
-  const { registry, repository, currentTag, sourceRepo, githubToken } = opts
-  const releases = await fetchReleases(sourceRepo, githubToken)
+  const { registry, repository, currentTag } = opts
   const confirmed: string[] = [currentTag]
   let checked = 0
 
-  for (const rel of releases) {
+  for (const rel of opts.releases.slice(0, MAX_RELEASES)) {
     checked++
-    for (const cand of candidateTagsFor(rel.tag_name)) {
+    for (const cand of candidateTagsFor(rel.tag, currentTag)) {
       if (cand === currentTag) continue
       if (await tagExists(registry, repository, cand)) {
         confirmed.push(cand)

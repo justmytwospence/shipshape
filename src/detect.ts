@@ -1,4 +1,3 @@
-import { env } from './config.ts'
 import type { ScannedService } from './compose/scan.ts'
 import {
   listTags,
@@ -9,7 +8,10 @@ import {
 } from './registry/index.ts'
 import { probeByReleases } from './registry/probe.ts'
 import { sourceFor, guessFromImagePath } from './resolver/index.ts'
-import { fetchPrereleaseTags, normaliseReleaseTag } from './changelog/github.ts'
+import { isPackagingRepo } from './resolver/guards.ts'
+import { releaseIndex, type IndexedRelease } from './upstream/releases.ts'
+import { versionKey } from './versions/key.ts'
+import { prereleaseExclusions, prereleaseStream } from './versions/stream.ts'
 import { selectUpdate, type Comparison } from './versions/compare.ts'
 import { inferPattern, isPatternKind, type PatternKind } from './versions/patterns.ts'
 
@@ -21,7 +23,15 @@ import { inferPattern, isPatternKind, type PatternKind } from './versions/patter
  * this both took the shape of an unrelated failure disguising itself as "current".
  */
 export type Detection =
-  | { status: 'update'; tag: string; magnitude: string; via: Source; observed: TagInfo[] }
+  | {
+      status: 'update'
+      tag: string
+      magnitude: string
+      via: Source
+      observed: TagInfo[]
+      /** Which prerelease stream the service is on, and why, when that could be read. */
+      stream?: string
+    }
   | { status: 'up-to-date'; via: Source; observed: TagInfo[]; constrainedFrom?: string }
   /** Rolling or digest-pinned: compare digests, not tag strings. */
   | { status: 'digest-watch'; currentDigest: string | null }
@@ -75,6 +85,8 @@ export async function detect(svc: ScannedService): Promise<Detection> {
   let tags: string[]
   let observed: TagInfo[] = []
   let via: Source = 'registry'
+  // Filled by release probing, so the prerelease pass does not read the same releases twice.
+  let releases: IndexedRelease[] | null = null
   try {
     observed = await listTags(ref.registry, ref.repository)
     tags = observed.map((t) => t.tag)
@@ -107,12 +119,16 @@ export async function detect(svc: ScannedService): Promise<Detection> {
               `add a shipshape.source label`,
           }
         }
+        // Read once; the prerelease pass below reuses it. A failure to read is reported as
+        // a failure to probe, not as releases that confirmed nothing.
+        const index = await releaseIndex(sourceRepo, { until: versionKey(ref.tag), maxPages: 3 })
+        if (!index.ok) throw new Error(index.detail)
+        releases = index.releases
         const probe = await probeByReleases({
           registry: ref.registry,
           repository: ref.repository,
           currentTag: ref.tag,
-          sourceRepo,
-          githubToken: env.githubToken,
+          releases: index.releases,
         })
         if (probe.tags.length <= 1) {
           return {
@@ -139,33 +155,33 @@ export async function detect(svc: ScannedService): Promise<Detection> {
 
   let cmp: Comparison = select(tags)
 
-  // A prerelease is not an update.
+  // A prerelease is not an update -- for a service on the stable line.
   //
-  // The registry publishes betas and stable builds with identical tag shapes -- n8n
-  // ships 2.39.0 (prerelease) alongside 2.38.5 (stable) -- so nothing about the tag
-  // itself can tell them apart, and 2.39.0 sorts higher. shipshape would target the
-  // beta and then hold it on a changelog review that could not find its notes, because
-  // `fetchReleases` had already filtered prereleases out. Two halves of the same
-  // opinion, applied in one place and not the other.
+  // The registry publishes betas and stable builds with identical tag shapes -- n8n ships
+  // 2.39.0 (prerelease) alongside 2.38.5 (stable) -- so nothing about the tag itself can
+  // tell them apart, and 2.39.0 sorts higher. But a maintainer who marks nearly every
+  // release a prerelease, as minuspod's does, puts a service already running one on that
+  // stream, and excluding prereleases there would stop its updates altogether. So the
+  // exclusion follows the stream the service is on: see versions/stream.ts.
   //
-  // Done here, after a candidate exists, rather than by filtering the tag list up
-  // front: the fetch costs nothing on the services that are up to date, which is most
-  // of them on most scans.
+  // Done here, after a candidate exists, rather than by filtering the tag list up front:
+  // the fetch costs nothing on the services that are up to date, which is most of them on
+  // most scans.
+  let stream: string | undefined
   if (cmp.status === 'update') {
-    const excluded = await prereleaseTagsAmong(svc, ref, ref.tag, tags)
+    const found = await prereleaseExclusionsFor(svc, ref, ref.tag, tags, releases)
+    stream = found.basis
     // Only re-run when the tag actually chosen is one of them. A project can have betas
-    // in its history without the current candidate being one, and re-selecting then
-    // would spend a comparison to reach the same answer.
-    if (excluded.has(cmp.tag)) {
-      // `kept` is a subset, so the worst this can do is report up-to-date. It never
-      // widens the candidate set.
-      cmp = select(tags.filter((t) => !excluded.has(t)))
+    // in its history without the current candidate being one.
+    if (found.excluded.has(cmp.tag)) {
+      // A subset, so the worst this can do is report up-to-date. It never widens.
+      cmp = select(tags.filter((t) => !found.excluded.has(t)))
     }
   }
 
   switch (cmp.status) {
     case 'update':
-      return { status: 'update', tag: cmp.tag, magnitude: cmp.magnitude, via, observed }
+      return { status: 'update', tag: cmp.tag, magnitude: cmp.magnitude, via, observed, stream }
     case 'up-to-date':
       return { status: 'up-to-date', via, observed, constrainedFrom: cmp.constrainedFrom }
     case 'unparseable-current':
@@ -178,36 +194,43 @@ export async function detect(svc: ScannedService): Promise<Detection> {
 }
 
 /**
- * Which of these image tags the upstream project published as prereleases.
+ * Which of these image tags to set aside as prereleases, and the reasoning, for the log.
  *
- * Positive evidence only. A tag is excluded when it matches a GitHub release marked
- * `prerelease`, and never for the absence of one -- most images here have no release to
- * match at all (locally built, mirrored, or simply a project that does not cut GitHub
- * releases), and treating "no release" as "not a real version" would freeze them.
- *
- * Every failure path returns the empty set, so an unresolvable repo, a rate limit or a
- * GitHub outage costs nothing but the filter. Updates keep flowing on the old behaviour;
- * they do not stop.
+ * Positive evidence only: a tag is set aside when its version was published as a GitHub
+ * prerelease, never for the absence of a release -- most images here have no release to
+ * match at all, and treating "no release" as "not a real version" would freeze them. A
+ * packaging repository's flags describe container builds rather than the application, so
+ * they are not consulted. Every failure path sets nothing aside: an unresolvable repo, a
+ * rate limit or a GitHub outage costs the filter and nothing else.
  */
-async function prereleaseTagsAmong(
+async function prereleaseExclusionsFor(
   svc: ScannedService,
   ref: NonNullable<ScannedService['ref']>,
   currentTag: string,
   tags: string[],
-): Promise<Set<string>> {
+  known: IndexedRelease[] | null,
+): Promise<{ excluded: Set<string>; basis?: string }> {
   try {
     const source = await sourceFor(
       { registry: ref.registry, repository: ref.repository },
       { service: { stack: svc.stack, service: svc.service }, ownLabel: svc.sourceLabel, tag: currentTag },
     )
     const sourceRepo = source.repo ?? guessFromImagePath(ref.registry, ref.repository)
-    if (!sourceRepo) return new Set()
+    if (!sourceRepo || isPackagingRepo(sourceRepo)) return { excluded: new Set() }
 
-    const pre = await fetchPrereleaseTags(sourceRepo)
-    if (pre.size === 0) return new Set()
-    return new Set(tags.filter((t) => pre.has(normaliseReleaseTag(t))))
+    let releases = known
+    if (!releases) {
+      const index = await releaseIndex(sourceRepo, { until: versionKey(currentTag), maxPages: 3 })
+      if (!index.ok) return { excluded: new Set() }
+      releases = index.releases
+    }
+    const s = prereleaseStream(currentTag, releases)
+    return {
+      excluded: prereleaseExclusions(tags, releases, s),
+      basis: s.stream === 'unknown' ? undefined : `${s.stream} stream (${s.basis})`,
+    }
   } catch {
-    return new Set()
+    return { excluded: new Set() }
   }
 }
 

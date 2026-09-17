@@ -82,7 +82,7 @@ test('the batch from 2026-09-11 renders as what actually happened', () => {
   assert.doesNotMatch(m.body, /opened/)
   assert.match(
     m.body,
-    /1 went wrong after merging\n  minuspod\/minuspod: #93 merged, but did not deploy: healthcheck\.start_interval requires healthcheck\.start_period to be set/,
+    /1 went wrong after merging\n  #93 minuspod\/minuspod: merged, but did not deploy: healthcheck\.start_interval requires healthcheck\.start_period to be set/,
   )
   assert.match(m.body, /2 deployed/)
   assert.match(m.body, /2 retargeted/)
@@ -119,7 +119,9 @@ test('a recorded deploy that later degraded does not stay "deployed"', () => {
     reconcile(batch, new Map([[87, outcome(true, 'degraded', 'soak failed — scanopy: restarting')]])),
   )!
   assert.doesNotMatch(m.body, /deployed —/)
-  assert.match(m.body, /#87 deployed, then stopped being healthy: soak failed — scanopy: restarting/)
+  // The reason carries an em dash of its own, and the line puts back what it did not
+  // recognise as a verb, so none of it is lost or reordered.
+  assert.match(m.body, /#87 scanopy: deployed, then stopped being healthy: soak failed — scanopy: restarting/)
 })
 
 test('a failure that a retry fixed is history', () => {
@@ -166,8 +168,10 @@ test('the email from 2026-09-14 names versions and what was left stopped', () =>
   const m = render(reconcile(batch, outcomes))!
   assert.equal(
     m.body,
-    '1 deployed\n  servarr/jackett: #102 deployed — v0.24.2572-ls26 -> v0.24.2586-ls28\n\n' +
-      '1 left stopped\n  bitwarden/bitwarden: #101 merged — 1.37.2 -> 1.37.3, left stopped (not running)',
+    // "merged" survives under "1 left stopped" and not under "1 deployed": the drop is
+    // scoped to the verb its own heading says, and this heading does not say it.
+    '1 deployed\n  #102 servarr/jackett: v0.24.2572-ls26 -> v0.24.2586-ls28\n\n' +
+      '1 left stopped\n  #101 bitwarden/bitwarden: merged — 1.37.2 -> 1.37.3, left stopped (not running)',
   )
   assert.doesNotMatch(m.body, /up in \d+s/)
 })

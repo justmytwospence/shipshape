@@ -507,9 +507,138 @@ function group(all: Row[]): Grouped | null {
   }
 }
 
-/** `stack/service: ` prefix, or nothing when the item is not about one service. */
-function where(r: Row): string {
-  return r.stack ? `${r.stack}${r.service ? `/${r.service}` : ''}: ` : ''
+/** `stack/service`, `stack`, or nothing when the item is not about one service. */
+function where(r: Row): string | null {
+  return r.stack ? `${r.stack}${r.service ? `/${r.service}` : ''}` : null
+}
+
+/**
+ * The verb each section's heading has already said, and so does not need repeating under it.
+ *
+ * Scoped per section rather than kept as one list, because the same word is redundant in one
+ * section and load-bearing in another. "N merged" says merged; "N left stopped" does not, and
+ * a left-stopped line that dropped it would stop saying the thing that separates it from a
+ * service nobody merged anything for -- that the merge stands and the compose file already
+ * carries the new version. `held` is listed against a heading that reads "waiting on you",
+ * which is the same claim in the words the interface uses.
+ *
+ * Matched whole, never as a prefix, and that is the load-bearing part. "deployed with
+ * warnings" is not "deployed": a prefix match would drop the qualifier and quietly turn a
+ * degraded deploy into a clean one, which is the one way this could lie about what happened.
+ */
+const SAID: Partial<Record<Category, string>> = {
+  superseded: 'closed',
+  merged: 'merged',
+  deployed: 'deployed',
+  held: 'held',
+}
+
+/**
+ * The verbs a recorded summary is allowed to lead with.
+ *
+ * Closed on purpose, because the em dash that separates a verb from its payload is not the
+ * only one a summary can contain. A went-wrong line quotes the last line of a deploy's
+ * detail, and that is arbitrary text which routinely carries one of its own -- "soak failed
+ * — scanopy: restarting", or whatever an upstream error message happens to say. Splitting at
+ * the first dash and trusting whatever sits in front of it would promote half a sentence to
+ * the line's label. Recognising only these words means an unfamiliar phrase is left whole,
+ * which is always the safe answer.
+ */
+const VERBS = [
+  'closed',
+  'merged',
+  'deployed',
+  'deployed with warnings',
+  'held',
+  'redeployed',
+  'redeployed with warnings',
+]
+
+/**
+ * One line of the digest body: `#115 nextcloud: cron, nextcloud 34 -> 35`.
+ *
+ * The number first, because it is the handle -- what you type into GitHub, what every other
+ * message about the update calls it, and the one field every row can be counted on to have.
+ * Then who it is about, then what happened, which is the order a reader asks in. It used to
+ * be the other way round, `nextcloud: cron, nextcloud 34 -> 35 (#115)`, and a column of
+ * those buries the number at a different offset on every line.
+ *
+ * The recorded summaries are left exactly as they are, because they are also what a one-item
+ * digest puts in its subject and what `immediate` mode pushes on its own -- and a line with
+ * no heading above it has to be a whole sentence. So this is the one place that takes one
+ * apart: the number is lifted out of wherever the recorder put it (`(#115)` at the end,
+ * `#66 ` at the front), and the verb behind it is dropped when the heading above already
+ * says it.
+ *
+ * A row with no stack has nothing to put in the middle, so its own verb goes there instead:
+ * `#19 closed: superseded by v3.2.2`. Pure, and used by both renderers, so the mail and the
+ * push cannot drift apart.
+ */
+export function line(r: Row): string {
+  const pr = prNumber(r) ?? tagged(r.summary)
+  const [verb, payload] = split(pr === null ? r.summary : without(r.summary, pr))
+  const label = where(r)
+
+  // No service to name, so the verb names the line instead and keeps its own payload.
+  if (label === null) return join(pr, verb || null, payload)
+
+  const said = SAID[r.category]
+  const what = !verb || verb === said ? payload : `${verb} — ${payload}`
+  // A payload that is only the word the heading has already said is not a line worth
+  // printing: "1 deployed" above "#66 paperless/litellm: deployed" says it twice and adds
+  // nothing. The name on its own is shorter and no less informative.
+  return join(pr, label, what === said ? '' : what)
+}
+
+function join(pr: number | null, label: string | null, what: string): string {
+  return [
+    pr === null ? null : `#${pr}`,
+    label === null ? null : what ? `${label}:` : label,
+    what,
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+/**
+ * The pull request a summary names itself, for a row that has no url to read it from.
+ *
+ * Only where a recorder puts it -- at the front, or in brackets at the end. A summary can
+ * name a second one in passing ("#19 closed — superseded by v3.2.2 in #24"), and a loose
+ * scan would label that line with the pull request that replaced it.
+ */
+function tagged(summary: string): number | null {
+  const m = /^#(\d+)\s|\(#(\d+)\)\s*$/.exec(summary)
+  return m ? Number(m[1] ?? m[2]) : null
+}
+
+/** The summary with its own mention of the pull request taken out, wherever it sat. */
+function without(summary: string, n: number): string {
+  return summary
+    .replace(new RegExp(`\\s*\\(#${n}\\)\\s*$`), '')
+    .replace(new RegExp(`^#${n}\\s+`), '')
+    .trim()
+}
+
+/**
+ * A summary's leading verb and what follows it.
+ *
+ * The recorders all separate the two with an em dash, and two of them -- the drafted and
+ * revised lines, which are `#110 — 3 config change(s) drafted` -- leave the verb empty and
+ * start with the dash. That is an empty verb rather than no verb: there is nothing to keep,
+ * but the dash is still a separator and not part of what it says.
+ *
+ * A payload can carry an em dash of its own, though -- a degraded deploy's reason is
+ * "deployed, then stopped being healthy: soak failed — scanopy: restarting" -- so a dash is
+ * only a separator when the words in front of it are one of the verbs a recorder writes.
+ * Anything else is left whole, which is what keeps a quoted failure out of the label.
+ */
+function split(rest: string): [string | null, string] {
+  if (rest.startsWith('— ')) return ['', rest.slice(2)]
+  const i = rest.indexOf(' — ')
+  if (i < 0) return [null, rest]
+  const verb = rest.slice(0, i)
+  return VERBS.includes(verb) ? [verb, rest.slice(i + 3)] : [null, rest]
 }
 
 /**
@@ -526,7 +655,7 @@ export function render(rows: Row[]): { title: string; body: string } | null {
   const parts: string[] = []
   for (const section of g.sections) {
     parts.push(section.heading)
-    for (const r of section.items) parts.push(`  ${where(r)}${r.summary}`)
+    for (const r of section.items) parts.push(`  ${line(r)}`)
     if (section.more > 0) parts.push(`  ...and ${section.more} more`)
     parts.push('')
   }
@@ -559,7 +688,7 @@ export function renderHtml(
       // The detail keeps its line breaks (pre-line): it is lines -- a deploy's warnings, then
       // one sentence per service it left or brought back, or a held update's reasons -- and
       // HTML would otherwise collapse them into one run-on sentence.
-      const text = `${esc(where(r))}${esc(r.summary)}`
+      const text = esc(line(r))
       out.push(
         `<li style="margin:.2em 0">${
           r.url ? `<a href="${esc(r.url)}" style="color:#2f6f57">${text}</a>` : text

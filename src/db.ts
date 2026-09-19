@@ -695,6 +695,27 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     ALTER TABLE images ADD COLUMN changelog_label TEXT;
   `,
   },
+  {
+    id: '022-verdict-features',
+    sql: `
+    -- What a release adds that the operator could choose to turn on, as opposed to what
+    -- it requires them to change.
+    --
+    -- The review already reads the notes that say so and had nowhere to put it, so the
+    -- answer was thrown away. Every other field here is about what breaks:
+    -- breaking_changes and migration_steps are the work an update forces, and a digest
+    -- built only from those can say "this needs you" and never "this offers you
+    -- something". The three-way split an operator actually wants -- a bare version bump,
+    -- one carrying required work, one carrying a new capability -- needs this third
+    -- column to exist at all.
+    --
+    -- REPORTING ONLY, and that is load-bearing. Release notes are untrusted input and the
+    -- verdict is a one-directional damper: nothing may read this column to decide whether
+    -- to merge, deploy, or widen a boundary. canAutoMerge never sees it. A changelog that
+    -- invents an exciting feature buys itself one line in an email and nothing else.
+    ALTER TABLE verdicts ADD COLUMN new_features TEXT;   -- JSON array
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

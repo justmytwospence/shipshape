@@ -323,6 +323,10 @@ test('outcomes come from the latest deploy, not the first', () => {
     deploy: { status: 'verified', detail: 'minuspod up in 40s' },
     superseded: false,
     change: null,
+    // A pull request carrying no updates has no review to read and no proposal drafted
+    // against it, so it carries nothing. Stated rather than omitted: "nobody looked" and
+    // "looked and found nothing" render identically, and only one of them is true here.
+    contains: { work: null, features: false },
   })
 })
 
@@ -333,6 +337,7 @@ test('an open pull request with no deploy reads as not merged', () => {
     deploy: null,
     superseded: false,
     change: null,
+    contains: { work: null, features: false },
   })
 })
 

@@ -93,10 +93,61 @@ Confidence is always visible next to it, as text. It is the qualifier that chang
 decision — "Safe to apply" at low confidence is not the same claim — and a `title`
 attribute does not exist on a phone.
 
+The review reports three lists, and only two of them are about something going wrong.
+**Breaking changes** and **Migration steps** are work the update forces on you. **New in
+this release** is the third, and it is an offer: capabilities you could choose to turn on.
+It sits below the other two everywhere it appears, because it is the one that decides
+nothing — and it is empty for most releases, which the interface renders as nothing rather
+than as a gap. Never let it read as work.
+
 **The review can only ever hold an update back, never cause one to happen.** Release
 notes are untrusted text from the internet; the worst a hostile changelog can achieve is
 a stopped update. Never write copy that implies the model approved, decided, or released
 anything.
+
+## What a digest line says an update carries
+
+Orthogonal to the stage, and deliberately not a section of its own: a pull request that
+carried configuration changes and then merged belongs under "merged", and still has to say
+that it carried them. Four possibilities, and the first is rendered as nothing at all.
+
+| What it carries beyond the version | The words |
+|---|---|
+| nothing — the image line and no more | *(nothing; the absence is the class)* |
+| a person pushed to the branch | `carries edits` |
+| shipshape wrote a change you asked for in a comment | `changes you asked for` |
+| shipshape drafted required config changes of its own | `config changes drafted` |
+| a proposal ran, changed no file, and left you steps | `manual steps noted` |
+| nothing is on the branch, but the review named work | `required steps in the review` |
+
+**Exactly one of these**, most consequential first, because they answer the same question
+and only the strongest is acted on. `carries edits` leads: a person pushing is both the
+later fact and the one nothing else accounts for. The three in the middle are the easy ones
+to get wrong — `manual steps noted` writes no commit, so calling it "drafted" would promise
+a diff that does not exist, and `changes you asked for` is your own instruction, which must
+never be read back to you as shipshape's idea.
+
+A plain version bump says none of them. That is the overwhelming majority of what shipshape
+opens, and a badge on every line is how a reader learns to stop seeing badges.
+
+Separately, and joined with a semicolon, `new features` says the release adds something you
+could choose to turn on — `config changes drafted; new features`. It is a different axis
+and never replaces the mark beside it: what a pull request *carries* is a fact about a diff
+that exists, what a release *offers* is an assertion read off upstream prose.
+
+A mark the heading above has already said is dropped, exactly as a verb is.
+
+Read from the `proposals` table and the review, **never from `prs.scope` alone**. Scope is
+decided by reading the branch diff, and a drafted change whose only operation is
+`set_image` produces a patch containing nothing but an image line — correctly classified
+`tag-only`. #32 merged an Arcane v2 image rename exactly that way, and every message
+shipshape sent about it called it a plain version bump.
+
+Read from the `proposals` table and the review, **never from `prs.scope`**. Scope is
+decided by reading the branch diff, and a drafted change whose only operation is
+`set_image` produces a patch containing nothing but an image line — which is correctly
+classified `tag-only`. #32 merged an Arcane v2 image rename exactly that way, and every
+message shipshape sent about it called it a plain version bump.
 
 ## One primary action per state
 

@@ -52,6 +52,7 @@ export interface UpdateView {
     summary: string | null
     breakingChanges: string[]
     migrationSteps: string[]
+    newFeatures: string[]
     sources: string[]
     model: string | null
     createdAt: string | null
@@ -136,7 +137,7 @@ function verdictFor(u: RawUpdate): UpdateView['verdict'] {
   const v = getDb()
     .prepare(
       `SELECT recommendation, confidence, severity, summary, breaking_changes, migration_steps,
-              sources, model, created_at, error, attempts, next_attempt_at, evidence
+              new_features, sources, model, created_at, error, attempts, next_attempt_at, evidence
          FROM verdicts WHERE image = ? AND from_tag = ? AND to_tag = ?`,
     )
     .get(u.image, u.from_tag, u.to_tag) as
@@ -148,6 +149,7 @@ function verdictFor(u: RawUpdate): UpdateView['verdict'] {
         summary: string | null
         breaking_changes: string | null
         migration_steps: string | null
+        new_features: string | null
         sources: string | null
         model: string | null
         created_at: string
@@ -173,6 +175,7 @@ function verdictFor(u: RawUpdate): UpdateView['verdict'] {
     summary: v.summary,
     breakingChanges: list(v.breaking_changes),
     migrationSteps: list(v.migration_steps),
+    newFeatures: list(v.new_features),
     sources: list(v.sources),
     model: v.model,
     createdAt: v.created_at,

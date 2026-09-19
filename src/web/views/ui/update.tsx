@@ -372,6 +372,18 @@ export const VerdictBlock: FC<{ update: UpdateView }> = ({ update }) => {
             </ol>
           </div>
         ) : null}
+        {/* Below the two lists about what breaks, because this is the one that decides
+            nothing -- it is an offer, not work the update forces. */}
+        {v.newFeatures.length > 0 ? (
+          <div>
+            <p class="text-xs font-medium tracking-wide uppercase opacity-70">New in this release</p>
+            <ul class="mt-0.5 list-disc space-y-0.5 pl-4 text-xs">
+              {v.newFeatures.map((f) => (
+                <li>{f}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         {/* The review said what it could without notes; where they are is fixable here. */}
         {v.notesInRange === 0 ? (
           <p class="text-xs">

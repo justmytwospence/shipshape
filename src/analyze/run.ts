@@ -254,13 +254,14 @@ export function recordVerdict(
 
   db.prepare(
     `INSERT INTO verdicts (image, from_tag, to_tag, summary, severity, breaking_changes,
-                           migration_steps, recommendation, confidence, sources, model,
+                           migration_steps, new_features, recommendation, confidence, sources, model,
                            cost_usd, error, created_at, evidence)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
      ON CONFLICT(image, from_tag, to_tag) DO UPDATE SET
        summary = excluded.summary, severity = excluded.severity,
        breaking_changes = excluded.breaking_changes,
        migration_steps = excluded.migration_steps,
+       new_features = excluded.new_features,
        recommendation = excluded.recommendation, confidence = excluded.confidence,
        sources = excluded.sources, model = excluded.model, error = NULL,
        next_attempt_at = NULL, rerun_requested_at = NULL,
@@ -273,6 +274,7 @@ export function recordVerdict(
     v.severity,
     JSON.stringify(v.breaking_changes),
     JSON.stringify(v.migration_steps),
+    JSON.stringify(v.new_features),
     v.recommendation,
     v.confidence,
     JSON.stringify(v.sources),
@@ -373,8 +375,8 @@ export async function applyCachedVerdict(
 ): Promise<boolean> {
   const v = getDb()
     .prepare(
-      `SELECT summary, severity, breaking_changes, migration_steps, recommendation, confidence,
-              sources
+      `SELECT summary, severity, breaking_changes, migration_steps, new_features,
+              recommendation, confidence, sources
          FROM verdicts
         WHERE image = ? AND from_tag = ? AND to_tag = ? AND error IS NULL`,
     )
@@ -384,6 +386,7 @@ export async function applyCachedVerdict(
         severity: string | null
         breaking_changes: string | null
         migration_steps: string | null
+        new_features: string | null
         recommendation: string | null
         confidence: string | null
         sources: string | null
@@ -406,6 +409,7 @@ export async function applyCachedVerdict(
       severity: (v.severity ?? 'none') as Verdict['severity'],
       breaking_changes: list(v.breaking_changes),
       migration_steps: list(v.migration_steps),
+      new_features: list(v.new_features),
       recommendation: v.recommendation as Verdict['recommendation'],
       confidence: (v.confidence ?? 'low') as Verdict['confidence'],
       sources: list(v.sources),
@@ -541,6 +545,12 @@ function render(v: Verdict): string {
   }
   if (v.migration_steps.length > 0) {
     lines.push('', '**Required steps**', ...v.migration_steps.map((s) => `- ${s}`))
+  }
+  // Last of the three lists, and deliberately so: what breaks and what must be done come
+  // first because they decide whether to merge. This is the only one that does not, so it
+  // reads as the footnote it is rather than competing with them.
+  if (v.new_features.length > 0) {
+    lines.push('', '**New in this release, if you want it**', ...v.new_features.map((f) => `- ${f}`))
   }
   if (v.sources.length > 0) {
     lines.push('', '<details><summary>Sources</summary>', '', ...v.sources.map((s) => `- ${s}`), '</details>')

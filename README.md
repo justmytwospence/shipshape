@@ -372,6 +372,19 @@ notify:
   email: routine   # the summary arrives in the inbox
 ```
 
+Each line also says what its update carries beyond the version, when it carries anything —
+one of `carries edits` (you pushed to the branch), `changes you asked for` (shipshape wrote
+what you asked for in a comment), `config changes drafted` (shipshape drafted required
+changes of its own), `manual steps noted` (a proposal ran, changed no file, and left you
+steps) or `required steps in the review` (nothing is on the branch, but the review named
+work). A plain version bump says none of them; that is most of what gets opened, and a
+badge on every line is how a reader learns to stop reading them.
+
+Joined to that with a semicolon, `new features` says the release adds something you could
+choose to turn on: `config changes drafted; new features`. It is a separate axis, because
+what a pull request carries is a fact about a diff that exists and what a release offers is
+an assertion read off upstream prose.
+
 An emailed digest carries a link per item, which a push cannot: ntfy has one click target
 for the whole message. A channel with no credentials is skipped whatever policy says, and
 the Settings page shows where messages actually land plus a button that sends a test

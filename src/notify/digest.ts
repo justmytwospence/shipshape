@@ -126,6 +126,95 @@ export async function routine(item: DigestItem): Promise<void> {
   }
 }
 
+/**
+ * What a pull request carries, as opposed to what stage it has reached.
+ *
+ * The sections answer "where is it"; this answers "what is in it", and the two are
+ * orthogonal -- which is exactly why it cannot be a section of its own. A pull request
+ * that carried config changes and then merged belongs under "merged", and still needs to
+ * say that it carried them.
+ *
+ * Three things an operator wants told apart, in their words: a bare version bump, one
+ * that also needs configuration work, and one that also offers something new. The first
+ * is rendered as *nothing at all*. It is the overwhelming majority -- 119 of the 120 pull
+ * requests this repository has opened were a tag line and nothing else -- and a badge on
+ * every one of them is how a reader learns to stop seeing badges. The absence is the
+ * class.
+ */
+export interface Contains {
+  /**
+   * What this pull request carries beyond the image line, or null when it carries nothing.
+   *
+   * One value rather than a set of flags, because these are answers to the same question
+   * and the reader only acts on the strongest one:
+   *
+   *   edited   -- a person pushed to the branch
+   *   asked    -- shipshape wrote a change the operator asked for in a comment
+   *   drafted  -- shipshape drafted required config changes of its own, as a second commit
+   *   noted    -- a proposal ran, changed no file, and recorded manual steps
+   *   required -- nothing is written on the branch, but the review named work to do
+   *
+   * Ordered most consequential first, and `edited` leads because a person pushing to the
+   * branch is both the most recent fact and the one nothing else accounts for. The three
+   * in the middle are each other's near neighbours and were the easiest thing to get
+   * wrong: `noted` writes no commit, so calling it "drafted" would claim a diff that does
+   * not exist, and `asked` is the operator's own change being read back to them as
+   * shipshape's idea.
+   */
+  work: 'edited' | 'asked' | 'drafted' | 'noted' | 'required' | null
+  /** Capabilities the release adds that the operator could choose to turn on. */
+  features: boolean
+}
+
+/**
+ * The words for each, taken from where the interface already says them.
+ *
+ * `carries edits` and `config changes drafted` echo src/updates/queries.ts and the
+ * auto-merge refusal in policy.ts; `changes you asked for` echoes the digest's own
+ * `N changed because you asked` heading. Nothing new enters the vocabulary here.
+ */
+const WORK_TEXT: Record<NonNullable<Contains['work']>, string> = {
+  edited: 'carries edits',
+  asked: 'changes you asked for',
+  drafted: 'config changes drafted',
+  noted: 'manual steps noted',
+  required: 'required steps in the review',
+}
+
+/**
+ * The work a heading has already named, and so does not need repeating beneath it.
+ *
+ * The same idea as `SAID`, for the same reason: "1 carried drafted config changes" above
+ * "#120 n8n/n8n — config changes drafted" says it twice and adds nothing. Scoped per
+ * category rather than dropped globally, because under any other heading the mark is the
+ * only place that fact appears.
+ */
+const SAID_WORK: Partial<Record<Category, Contains['work']>> = {
+  drafted: 'drafted',
+  revised: 'asked',
+}
+
+/**
+ * The suffix a line carries, or null when the update is only a version bump.
+ *
+ * Pure, and the single place this is worded, so the plain-text digest, the HTML mail and
+ * the ntfy push cannot describe the same pull request three ways.
+ *
+ * The two halves are joined rather than ranked, because they answer different questions.
+ * What a pull request *carries* is a fact about a diff that exists; what a release
+ * *offers* is an assertion read off upstream prose with no artifact behind it. Collapsing
+ * them onto one axis would be a category error, so they are separated by a semicolon and
+ * either may appear alone.
+ */
+export function containsText(c: Contains | undefined, said?: Category): string | null {
+  if (!c) return null
+  const work = said !== undefined && SAID_WORK[said] === c.work ? null : c.work
+  const parts: string[] = []
+  if (work) parts.push(WORK_TEXT[work])
+  if (c.features) parts.push('new features')
+  return parts.length > 0 ? parts.join('; ') : null
+}
+
 interface Row {
   id: number
   at: string
@@ -135,6 +224,13 @@ interface Row {
   summary: string
   detail: string | null
   url: string | null
+  /**
+   * Read at send time by `outcomesFor` and hung on the row by `annotate`, never recorded.
+   * A pull request's contents go on changing after the item that mentions it is written --
+   * a proposal is drafted onto it hours later -- so a value stored when the row was
+   * recorded would describe a pull request that no longer exists.
+   */
+  contains?: Contains
 }
 
 /**
@@ -259,6 +355,8 @@ export interface Outcome {
   superseded?: boolean
   /** The versions its updates move between (see `changeText`), or null when unknown. */
   change?: string | null
+  /** What it carries beyond the version bump. Absent means nobody has looked. */
+  contains?: Contains
 }
 
 /** Deploy statuses that ended badly, and how to say so in one line. */
@@ -413,7 +511,9 @@ export function outcomesFor(rows: Row[]): Map<number, Outcome> {
   if (numbers.length === 0) return out
 
   const db = getDb()
-  const pr = db.prepare(`SELECT id, state FROM prs WHERE number = ? ORDER BY id DESC LIMIT 1`)
+  const pr = db.prepare(
+    `SELECT id, state, scope FROM prs WHERE number = ? ORDER BY id DESC LIMIT 1`,
+  )
   const carried = db.prepare(
     `SELECT COUNT(*) AS total, SUM(u.state = 'superseded') AS overtaken
      FROM pr_updates pu JOIN updates u ON u.id = pu.update_id WHERE pu.pr_id = ?`,
@@ -430,11 +530,59 @@ export function outcomesFor(rows: Row[]): Map<number, Outcome> {
        FROM pr_updates pu JOIN updates u ON u.id = pu.update_id
       WHERE pu.pr_id = ? ORDER BY u.id`,
   )
+  // What shipshape itself wrote onto the branch, and on whose initiative.
+  //
+  // The proposals table, deliberately, and NOT `prs.scope` alone. Scope is decided by
+  // reading the branch diff, and a proposal whose only operation is `set_image` produces
+  // a patch containing nothing but an image line -- which `classifyPatch` correctly calls
+  // `tag-only`. #32 is the proof: an Arcane v2 image rename was drafted, committed and
+  // merged while its scope still read `tag-only`, and every message about it called the
+  // update a plain version bump.
+  //
+  // `instruction_id` is what separates shipshape's own drafting from a change the operator
+  // asked for in a comment: the revise path writes a proposals row too, and sets it. Both
+  // reach `scope = 'proposed'`, so without this the digest would report the operator's own
+  // instruction back to them as something shipshape thought of.
+  //
+  // The counts matter as much as the row: a proposal that recorded only notes pushes no
+  // commit at all, so calling it drafted would claim a diff that does not exist.
+  const proposal = db.prepare(
+    `SELECT COALESCE(json_array_length(ops), 0) AS n_ops,
+            COALESCE(json_array_length(notes), 0) AS n_notes,
+            instruction_id
+       FROM proposals
+      WHERE pr_id = ? AND error IS NULL
+      ORDER BY id DESC LIMIT 1`,
+  )
+  // What the review said about every update the pull request carries. A group is only as
+  // simple as its most demanding member, so any member with work means the line says so.
+  //
+  // COALESCE because `json_array_length(NULL)` is NULL: `new_features` is newer than most
+  // of the rows in this table, and every verdict written before it exists carries NULL
+  // there rather than an empty array.
+  const reviewed = db.prepare(
+    `SELECT MAX(COALESCE(json_array_length(v.migration_steps), 0) > 0
+             OR COALESCE(json_array_length(v.breaking_changes), 0) > 0) AS required,
+            MAX(COALESCE(json_array_length(v.new_features), 0) > 0) AS features
+       FROM pr_updates pu
+       JOIN updates u ON u.id = pu.update_id
+       JOIN verdicts v ON v.image = u.image AND v.from_tag = u.from_tag
+                      AND v.to_tag = u.to_tag AND v.error IS NULL
+      WHERE pu.pr_id = ?`,
+  )
   for (const n of numbers) {
-    const p = pr.get(n) as { id: number; state: string } | undefined
+    const p = pr.get(n) as { id: number; state: string; scope: string | null } | undefined
     const d = deploy.get(n) as { status: string; detail: string | null } | undefined
     if (!p && !d) continue
     const c = p ? (carried.get(p.id) as { total: number; overtaken: number | null }) : null
+    const r = p
+      ? (reviewed.get(p.id) as { required: number | null; features: number | null } | undefined)
+      : undefined
+    const prop = p
+      ? (proposal.get(p.id) as
+          | { n_ops: number; n_notes: number; instruction_id: number | null }
+          | undefined)
+      : undefined
     out.set(n, {
       merged: p?.state === 'merged',
       deploy: d ?? null,
@@ -442,14 +590,61 @@ export function outcomesFor(rows: Row[]): Map<number, Outcome> {
       change: p
         ? changeText(members.all(p.id) as { service: string; from_tag: string; to_tag: string }[])
         : null,
+      contains: { work: workOf(p?.scope ?? null, prop, r), features: r?.features === 1 },
     })
   }
   return out
 }
 
+/**
+ * Which one thing a pull request carries, given everything known about it.
+ *
+ * Pure and exported, so the precedence is testable without building five databases.
+ * First match wins, most consequential first: a person pushing to the branch outranks
+ * anything shipshape wrote there, because it is both the later fact and the one no other
+ * signal accounts for.
+ */
+export function workOf(
+  scope: string | null,
+  proposal: { n_ops: number; n_notes: number; instruction_id: number | null } | undefined,
+  reviewed: { required: number | null } | undefined,
+): Contains['work'] {
+  if (scope === 'modified') return 'edited'
+  if (proposal) {
+    if (proposal.instruction_id !== null) return 'asked'
+    if (proposal.n_ops > 0) return 'drafted'
+    // No operations means nothing was committed: propose ran, found the compose file
+    // needed no change, and left the work to a person. Saying "drafted" here would point
+    // the reader at a second commit that was never pushed.
+    if (proposal.n_notes > 0) return 'noted'
+  }
+  // Nothing on the branch, but the review named work. The weakest of the five and still
+  // worth saying: most updates that need something never get a proposal drafted at all.
+  return reviewed?.required === 1 ? 'required' : null
+}
+
 /** Rows as they will be sent: the batch, corrected by what actually happened. */
 export function withOutcomes(rows: Row[]): Row[] {
-  return reconcile(rows, outcomesFor(rows))
+  const outcomes = outcomesFor(rows)
+  return annotate(reconcile(rows, outcomes), outcomes)
+}
+
+/**
+ * Hang each pull request's contents on every row about it.
+ *
+ * Every row, not just the one that survives -- `collapse` has not run yet and which row
+ * wins depends on what else is in the batch, so annotating a chosen one would mean the
+ * suffix appeared or vanished according to how far the update happened to get overnight.
+ * Applied after `reconcile`, so the rows it synthesises are annotated too.
+ *
+ * Pure, so the whole mapping is testable without a database.
+ */
+export function annotate(rows: Row[], outcomes: Map<number, Outcome>): Row[] {
+  return rows.map((r) => {
+    const n = prNumber(r)
+    const c = n === null ? undefined : outcomes.get(n)?.contains
+    return c ? { ...r, contains: c } : r
+  })
 }
 
 /**
@@ -575,6 +770,16 @@ const VERBS = [
  * push cannot drift apart.
  */
 export function line(r: Row): string {
+  const base = bare(r)
+  const tag = containsText(r.contains, r.category)
+  // Appended rather than woven in, so it survives every shape `bare` can return -- a line
+  // reduced to just its name, a quoted failure reason carrying an em dash of its own, a
+  // row with no service to label. It is the last thing on the line because it is the last
+  // question asked: which of these needs me, and what for.
+  return tag ? `${base} — ${tag}` : base
+}
+
+function bare(r: Row): string {
   const pr = prNumber(r) ?? tagged(r.summary)
   const [verb, payload] = split(pr === null ? r.summary : without(r.summary, pr))
   const label = where(r)

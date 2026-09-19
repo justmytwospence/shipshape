@@ -33,6 +33,14 @@ export interface Verdict {
   severity: Severity
   breaking_changes: string[]
   migration_steps: string[]
+  /**
+   * What this release offers that the operator could choose to adopt.
+   *
+   * The counterpart to `migration_steps`, and the only field here that is not about
+   * something going wrong. Reporting only: nothing in the merge gate reads it, so a
+   * changelog that oversells itself earns a line in an email and no reach at all.
+   */
+  new_features: string[]
   recommendation: Recommendation
   confidence: Confidence
   sources: string[]
@@ -61,6 +69,15 @@ const EMIT_VERDICT = {
         items: { type: 'string' },
         description: 'Actions the operator must take beyond bumping the tag. Empty if none.',
       },
+      new_features: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Capabilities this release adds that the operator could choose to turn on, one short phrase each. ' +
+          'Only things they would have to opt into -- a new setting, integration or mode. ' +
+          'Not bug fixes, not internal changes, and never anything already listed as a breaking change or a ' +
+          'migration step. Empty is the common and correct answer.',
+      },
       recommendation: {
         type: 'string',
         enum: ['approve', 'caution', 'block'],
@@ -81,6 +98,7 @@ const EMIT_VERDICT = {
       'severity',
       'breaking_changes',
       'migration_steps',
+      'new_features',
       'recommendation',
       'confidence',
       'sources',
@@ -302,6 +320,7 @@ export function normalise(v: Partial<Verdict>, ctx: { notesInRange?: number } = 
     severity: sev,
     breaking_changes: breaking,
     migration_steps: asArray(v.migration_steps),
+    new_features: asArray(v.new_features),
     recommendation: rec,
     confidence: conf,
     sources: asArray(v.sources),

@@ -61,6 +61,10 @@ export function update(over: Partial<UpdateView> = {}): UpdateView {
       summary: 'Transcoding defaults changed; hardware acceleration must be re-selected.',
       breakingChanges: ['The `hwaccel` config key was renamed'],
       migrationSteps: ['Re-select the hardware acceleration device after upgrading'],
+      // Populated rather than empty, so the pane's third list is actually rendered in the
+      // screenshot matrix. The two lists about what breaks are exercised above it; this is
+      // the one that is only ever an offer, and it has its own heading to get wrong.
+      newFeatures: ['Trickplay previews can be enabled per library'],
       sources: ['https://github.com/jellyfin/jellyfin/releases/tag/v10.10.3'],
       model: 'claude-haiku-4-5',
       createdAt: ago(20),
@@ -157,6 +161,7 @@ export const UPDATES: Record<string, UpdateView> = {
       summary: null,
       breakingChanges: [],
       migrationSteps: [],
+      newFeatures: [],
       sources: [],
       model: null,
       createdAt: ago(4),

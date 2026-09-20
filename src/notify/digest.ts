@@ -357,6 +357,17 @@ export interface Outcome {
   change?: string | null
   /** What it carries beyond the version bump. Absent means nobody has looked. */
   contains?: Contains
+  /**
+   * Which service the pull request is about, for the rows that recorded none.
+   *
+   * Two recorders write neither stack nor service -- a verdict hold and a superseded
+   * close -- and `collapse` can only backfill them from a sibling row about the same
+   * pull request. That works while the update opens and closes inside one digest window
+   * and silently stops working when it does not: #63 opened on the 7th and was closed on
+   * the 20th, so the line that went out read `#63 closed: superseded by 0.20.0` with
+   * nothing saying it was beszel-agent.
+   */
+  where?: { stack: string; service?: string } | null
 }
 
 /** Deploy statuses that ended badly, and how to say so in one line. */
@@ -526,7 +537,7 @@ export function outcomesFor(rows: Row[]): Map<number, Outcome> {
   // From the pull request, not the deploy: this only feeds the lines reconcile writes
   // when nothing recorded one, and what the pull request carried is what the line is about.
   const members = db.prepare(
-    `SELECT u.service, u.from_tag, u.to_tag
+    `SELECT u.stack, u.service, u.from_tag, u.to_tag
        FROM pr_updates pu JOIN updates u ON u.id = pu.update_id
       WHERE pu.pr_id = ? ORDER BY u.id`,
   )
@@ -583,17 +594,40 @@ export function outcomesFor(rows: Row[]): Map<number, Outcome> {
           | { n_ops: number; n_notes: number; instruction_id: number | null }
           | undefined)
       : undefined
+    // Read once: the versions and the names come from the same rows.
+    const mem = p
+      ? (members.all(p.id) as { stack: string; service: string; from_tag: string; to_tag: string }[])
+      : []
     out.set(n, {
       merged: p?.state === 'merged',
       deploy: d ?? null,
       superseded: !!c && c.total > 0 && c.overtaken === c.total,
-      change: p
-        ? changeText(members.all(p.id) as { service: string; from_tag: string; to_tag: string }[])
-        : null,
+      change: mem.length ? changeText(mem) : null,
       contains: { work: workOf(p?.scope ?? null, prop, r), features: r?.features === 1 },
+      where: nameOf(mem),
     })
   }
   return out
+}
+
+/**
+ * The service a pull request is about, in the form a digest line labels itself with.
+ *
+ * The same convention the `opened` recorder writes by hand: the stack always, and the
+ * service only when the pull request carries exactly one update. A group has no single
+ * service to put in front of it -- `changeText` names its members in the payload instead
+ * -- and picking the first would label the whole line with one of several.
+ *
+ * A group spanning two stacks returns nothing rather than choosing one. Pure, so the
+ * whole convention is testable without a database.
+ */
+export function nameOf(
+  members: readonly { stack: string; service: string }[],
+): { stack: string; service?: string } | null {
+  const m = members[0]
+  if (!m) return null
+  if (!members.every((x) => x.stack === m.stack)) return null
+  return members.length === 1 ? { stack: m.stack, service: m.service } : { stack: m.stack }
 }
 
 /**
@@ -642,8 +676,18 @@ export function withOutcomes(rows: Row[]): Row[] {
 export function annotate(rows: Row[], outcomes: Map<number, Outcome>): Row[] {
   return rows.map((r) => {
     const n = prNumber(r)
-    const c = n === null ? undefined : outcomes.get(n)?.contains
-    return c ? { ...r, contains: c } : r
+    const o = n === null ? undefined : outcomes.get(n)
+    if (!o) return r
+    const next = { ...r }
+    if (o.contains) next.contains = o.contains
+    // Only where the recorder left them empty. A row that named a service names the one
+    // the event was about, which for a grouped pull request is more specific than the
+    // stack the group as a whole would supply.
+    if (!next.stack && o.where) {
+      next.stack = o.where.stack
+      next.service = o.where.service ?? null
+    }
+    return next
   })
 }
 

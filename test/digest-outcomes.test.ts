@@ -7,7 +7,9 @@ import { join } from 'node:path'
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'shipshape-test-'))
 
 const { getDb } = await import('../src/db.ts')
-const { reconcile, render, renderHtml, outcomesFor } = await import('../src/notify/digest.ts')
+const { reconcile, render, renderHtml, outcomesFor, annotate, nameOf, withOutcomes } = await import(
+  '../src/notify/digest.ts'
+)
 type Outcome = import('../src/notify/digest.ts').Outcome
 
 /**
@@ -327,6 +329,8 @@ test('outcomes come from the latest deploy, not the first', () => {
     // against it, so it carries nothing. Stated rather than omitted: "nobody looked" and
     // "looked and found nothing" render identically, and only one of them is true here.
     contains: { work: null, features: false },
+    // ...and no updates means no service to name either.
+    where: null,
   })
 })
 
@@ -338,6 +342,7 @@ test('an open pull request with no deploy reads as not merged', () => {
     superseded: false,
     change: null,
     contains: { work: null, features: false },
+    where: null,
   })
 })
 
@@ -361,4 +366,126 @@ test('only pull requests in the batch are looked up, and unknown ones are skippe
   insertDeploy(id, 50, 'failed', 'x')
   const o = outcomesFor([row({ url: pr(51) }), row({ summary: 'no pr' })])
   assert.equal(o.size, 0)
+})
+
+// ---------------------------------------------------------------------------------------
+// Naming the service on a line whose recorder named none
+// ---------------------------------------------------------------------------------------
+
+/**
+ * Two recorders write neither stack nor service: a verdict hold, and a superseded close.
+ * `collapse` backfills those from a sibling row about the same pull request, which works
+ * only while both rows land in one digest window.
+ *
+ * #63 is where that ran out. It opened on the 7th -- the row that knew it was
+ * beszel-agent went out in that morning's digest -- and was closed as superseded on the
+ * 20th, alone in its batch with nothing to copy from. The line read
+ * `#63 closed: superseded by 0.20.0` and never said which container it meant.
+ */
+
+test('nameOf labels a lone update with its service and a group with its stack', () => {
+  // The same convention the `opened` recorder writes by hand.
+  assert.deepEqual(nameOf([{ stack: 'beszel', service: 'beszel-agent' }]), {
+    stack: 'beszel',
+    service: 'beszel-agent',
+  })
+  // A group has no single service to put in front of the line; changeText names its
+  // members in the payload instead.
+  assert.deepEqual(
+    nameOf([
+      { stack: 'immich', service: 'immich-server' },
+      { stack: 'immich', service: 'immich-machine-learning' },
+    ]),
+    { stack: 'immich' },
+  )
+})
+
+test('nameOf refuses to choose when there is nothing to choose from', () => {
+  assert.equal(nameOf([]), null)
+  // Two stacks in one pull request: labelling the line with either one would be wrong.
+  assert.equal(
+    nameOf([
+      { stack: 'a', service: 'x' },
+      { stack: 'b', service: 'y' },
+    ]),
+    null,
+  )
+})
+
+test('a superseded line that recorded no service is given one', () => {
+  // The #63 line, as it actually went out, and as it should have.
+  const batch = [
+    row({ category: 'superseded', summary: '#63 closed — superseded by 0.20.0', url: pr(63) }),
+  ]
+  const outcomes = new Map<number, Outcome>([
+    [63, { merged: false, deploy: null, where: { stack: 'beszel', service: 'beszel-agent' } }],
+  ])
+  const body = render(annotate(batch, outcomes))!.body
+  assert.match(body, /^1 superseded and closed$/m)
+  assert.match(body, /^ {2}#63 beszel\/beszel-agent: superseded by 0\.20\.0$/m)
+})
+
+test('a hold alone in its batch names its service too', () => {
+  // The same gap, reached by the other recorder that writes no names.
+  const batch = [
+    row({ category: 'held', summary: '#63 held — breaking changes in 0.19.0', url: pr(63) }),
+  ]
+  const outcomes = new Map<number, Outcome>([
+    [63, { merged: false, deploy: null, where: { stack: 'beszel', service: 'beszel-agent' } }],
+  ])
+  assert.match(render(annotate(batch, outcomes))!.body, /^ {2}#63 beszel\/beszel-agent: /m)
+})
+
+test('a name the recorder did write is never overwritten', () => {
+  // A grouped pull request's outcome supplies only the stack, while the row recorded the
+  // one service the event was actually about. The row is the more specific of the two.
+  const batch = [
+    row({ category: 'deployed', stack: 'immich', service: 'immich-server', summary: '#70 deployed', url: pr(70) }),
+  ]
+  const outcomes = new Map<number, Outcome>([
+    [70, { merged: true, deploy: null, where: { stack: 'immich' } }],
+  ])
+  assert.match(render(annotate(batch, outcomes))!.body, /^ {2}#70 immich\/immich-server$/m)
+})
+
+test('outcomesFor reads the service straight from the pull request', () => {
+  const id = insertPr(63, 'closed')
+  const now = new Date().toISOString()
+  const u = getDb()
+    .prepare(
+      `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state,
+                            detected_at, updated_at)
+       VALUES ('beszel', 'beszel-agent', 'henrygd/beszel-agent', '0.18.8', '0.19.0', 'minor',
+               'manual', 'superseded', ?, ?)`,
+    )
+    .run(now, now)
+  getDb().prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(id, Number(u.lastInsertRowid))
+
+  assert.deepEqual(outcomesFor([row({ url: pr(63) })]).get(63)!.where, {
+    stack: 'beszel',
+    service: 'beszel-agent',
+  })
+})
+
+test('end to end: the batch that went out wrong renders right', () => {
+  // withOutcomes is what `flush` actually calls, so this is the whole path -- read the
+  // outcome from the database, correct the story, then hang the names on it.
+  const id = insertPr(63, 'closed')
+  const now = new Date().toISOString()
+  const u = getDb()
+    .prepare(
+      `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state,
+                            detected_at, updated_at)
+       VALUES ('beszel', 'beszel-agent', 'henrygd/beszel-agent', '0.18.8', '0.19.0', 'minor',
+               'manual', 'superseded', ?, ?)`,
+    )
+    .run(now, now)
+  getDb().prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(id, Number(u.lastInsertRowid))
+
+  const body = render(
+    withOutcomes([
+      row({ category: 'superseded', summary: '#63 closed — superseded by 0.20.0', url: pr(63) }),
+    ]),
+  )!.body
+  assert.match(body, /^ {2}#63 beszel\/beszel-agent: superseded by 0\.20\.0$/m)
 })

@@ -27,17 +27,47 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 const ago = (h: number) => new Date(Date.now() - h * 3600_000).toISOString()
 
 let seq = 0
-function addUpdate(o: { service: string; magnitude: string; detectedAt?: string }): number {
+function addUpdate(o: {
+  service: string
+  magnitude: string
+  detectedAt?: string
+  state?: string
+  detail?: string
+}): number {
   seq++
   const at = o.detectedAt ?? ago(1)
   const info = getDb()
     .prepare(
       `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state,
                             detail, detected_at, updated_at, acked_at)
-       VALUES ('media', ?, ?, ?, ?, ?, 'auto', 'verified', NULL, ?, ?, NULL)`,
+       VALUES ('media', ?, ?, ?, ?, ?, 'auto', ?, ?, ?, ?, NULL)`,
     )
-    .run(o.service, `img/${o.service}`, `1.0.${seq}`, `1.1.${seq}`, o.magnitude, at, at)
+    .run(
+      o.service,
+      `img/${o.service}`,
+      `1.0.${seq}`,
+      `1.1.${seq}`,
+      o.magnitude,
+      o.state ?? 'verified',
+      o.detail ?? null,
+      at,
+      at,
+    )
   return Number(info.lastInsertRowid)
+}
+
+function mergedPrFor(updateId: number, number: number): void {
+  const db = getDb()
+  const pr = db
+    .prepare(
+      `INSERT INTO prs (number, branch, head_sha_pushed, state, scope, created_at, merged_at)
+       VALUES (?, 'b', 'sha', 'merged', 'tag-only', ?, ?)`,
+    )
+    .run(number, ago(2), ago(1))
+  db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(
+    Number(pr.lastInsertRowid),
+    updateId,
+  )
 }
 
 function openPrFor(updateId: number, number: number): void {
@@ -94,6 +124,106 @@ test('the unreviewed backfill is bounded, so shipping this is not a one-off bill
   addUpdate({ service: 'ancient', magnitude: 'major', detectedAt: ago(24 * 400) })
   const picked = pendingAnalysis(50).map((p) => p.service)
   assert.ok(!picked.includes('ancient'), 'old releases keep their links, not a model call')
+})
+
+// ---------------------------------------------------------------------------------------
+// Targets that were replaced before they ever ran
+// ---------------------------------------------------------------------------------------
+
+/**
+ * `superseded` is one word for several situations, and they do not deserve the same answer.
+ *
+ * A target replaced while it waited -- `newer target` -- never reached the compose file,
+ * and its successor is written from the same from_tag, so the successor's review covers
+ * this range whole. That is the waste: 162 such rows, and 89 of the 204 verdicts ever
+ * written, about $8.17 of $25.05.
+ *
+ * Two others did reach the host and must keep their review, because nothing else will ever
+ * carry it and the interface offers a superseded row no button to ask again.
+ */
+
+test('a target replaced before it ran is not read after the fact', () => {
+  // The night the budget was raised, the first thing the headroom bought was six dead
+  // opencode versions, 2.0.2 through 2.0.9, each read in full beside the 2.0.11 that could
+  // actually be deployed.
+  addUpdate({
+    service: 'replaced',
+    magnitude: 'minor',
+    state: 'superseded',
+    detail: 'newer target 2.0.11',
+  })
+  const picked = pendingAnalysis(50).map((p) => p.service)
+  assert.ok(!picked.includes('replaced'), 'the successor is read over a range containing it')
+})
+
+test('a major replaced before it ran is skipped too, magnitude notwithstanding', () => {
+  addUpdate({
+    service: 'replaced-major',
+    magnitude: 'major',
+    state: 'superseded',
+    detail: 'newer target 4.0.0',
+  })
+  assert.ok(!pendingAnalysis(50).map((p) => p.service).includes('replaced-major'))
+})
+
+test('an update that applied out of band is still read', () => {
+  // `caught-up`: the scan found the compose file already past it, so it ran here without
+  // shipshape deciding anything. There is no successor row at all, which makes this the
+  // backfill's own reason for existing -- and not hypothetical, since paperless
+  // 2.20.15 -> 3.1.3 reached this host exactly that way.
+  addUpdate({
+    service: 'applied-elsewhere',
+    magnitude: 'major',
+    state: 'superseded',
+    detail: 'caught-up',
+  })
+  const picked = pendingAnalysis(50).map((p) => p.service)
+  assert.ok(picked.includes('applied-elsewhere'), 'it ran here; nothing else will ever read it')
+})
+
+test('an update whose pull request merged is still read once a later merge passes it', () => {
+  // Its tag landed in the compose file, and the successor is written from THIS row's
+  // to_tag -- so the successor's range begins where this one ended and covers none of it.
+  // Asked as a fact about a merged pull request rather than by matching a detail string.
+  const id = addUpdate({
+    service: 'merged-then-passed',
+    magnitude: 'minor',
+    state: 'superseded',
+    detail: 'overtaken by #66',
+  })
+  mergedPrFor(id, 66)
+  const picked = pendingAnalysis(50).map((p) => p.service)
+  assert.ok(picked.includes('merged-then-passed'), 'no other verdict covers this range')
+})
+
+test('a replaced target with an open pull request is still reviewed', () => {
+  // Only the backfill branch learned about supersession. An open pull request is still a
+  // decision waiting on an answer whatever the state behind it, and it keeps its place at
+  // the front of the queue -- going unread here is how a person gets asked to merge
+  // something nothing has read.
+  const id = addUpdate({
+    service: 'replaced-with-pr',
+    magnitude: 'minor',
+    state: 'superseded',
+    detail: 'newer target 9.9.9',
+  })
+  openPrFor(id, 103)
+  const row = pendingAnalysis(50).find((p) => p.service === 'replaced-with-pr')
+  assert.ok(row, 'an open pull request always wants a verdict')
+  assert.equal(row.has_pr, 1)
+})
+
+test('every other state is still read after the fact', () => {
+  // The exclusion is one value, not a whitelist: an update that deployed, is deploying, or
+  // is merely detected still gets its review. Naming them keeps a future state from
+  // silently inheriting the skip.
+  for (const state of ['verified', 'merged', 'deployed', 'detected', 'failed']) {
+    addUpdate({ service: `state-${state}`, magnitude: 'minor', state })
+  }
+  const picked = pendingAnalysis(50).map((p) => p.service)
+  for (const state of ['verified', 'merged', 'deployed', 'detected', 'failed']) {
+    assert.ok(picked.includes(`state-${state}`), `${state} is still worth reading`)
+  }
 })
 
 // ---------------------------------------------------------------------------------------

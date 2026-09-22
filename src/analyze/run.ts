@@ -97,7 +97,50 @@ export function pendingAnalysis(limit: number): PendingAnalysis[] {
            SELECT 1 FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
            WHERE pu.update_id = u.id AND p.state = 'open'
          )
-         OR (u.magnitude IN ('minor', 'major') AND u.detected_at >= ?)
+         -- The backfill: what applied without anyone deciding. It used to take every
+         -- minor and major in the window, and most of them had never run anywhere.
+         --
+         -- superseded is one word for several situations, and only some of them mean the
+         -- version was never on the host. The one that is pure waste is newer target:
+         -- the update was still waiting when a newer tag appeared, so its successor was
+         -- written from the SAME from_tag and is read over a range that contains this one
+         -- whole. Reading 1.18.30 -> 2.0.11 passes through the notes for 2.0.4 on the way,
+         -- so a separate verdict buys the same prose attributed to a row nobody can act
+         -- on. 162 rows are that, against 66 minor and major in any 30-day window, and it
+         -- is most of the bill: 89 of the 204 verdicts ever written, about $8.17 of
+         -- $25.05. When the budget was raised on 2026-09-21 the first thing the headroom
+         -- bought was six dead opencode versions, 2.0.2 through 2.0.9, each read in full
+         -- beside the 2.0.11 that could actually be deployed.
+         --
+         -- Two of the others did reach the compose file, and they are kept:
+         --
+         --   caught-up -- it applied out of band, so the scan found the file already
+         --   past it. There is no successor row at all, so nothing else will ever carry
+         --   this range. This is the backfill's own reason for existing, and the class is
+         --   not hypothetical: paperless 2.20.15 -> 3.1.3 is a major that ran here.
+         --
+         --   a merged pull request -- the tag landed, and a later merge passed it. Its
+         --   successor starts from THIS row's to_tag, so the successor's range begins
+         --   where this one ended and covers none of it. Asked as a fact about a merged
+         --   pull request rather than by matching the detail string, because that is what
+         --   the retirement path requires by construction.
+         --
+         -- IS NOT rather than != so that a null state would still be offered rather than
+         -- silently dropped: NULL != 'superseded' evaluates to NULL, which is not true, and
+         -- the row would vanish from the backfill for a reason nobody would go looking for.
+         -- The column is NOT NULL today; an operator that does not lean on that is free.
+         --
+         -- Worth keeping right, because a superseded row offers no verb in the interface:
+         -- there is no button that asks for the review later, so a skip here is permanent.
+         OR (u.magnitude IN ('minor', 'major') AND u.detected_at >= ?
+             AND (
+               u.state IS NOT 'superseded'
+               OR u.detail = 'caught-up'
+               OR EXISTS (
+                 SELECT 1 FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
+                 WHERE pu.update_id = u.id AND p.state = 'merged'
+               )
+             ))
        )
        -- A verdict that arrived is done, unless someone asked for it to be read again --
        -- or its notes could not all be fetched (a rate limit, an outage), in which case it

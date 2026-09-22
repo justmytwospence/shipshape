@@ -49,6 +49,7 @@ import {
 } from './views/ui/settings.tsx'
 import type { StatusData } from './views/ui/status.tsx'
 import { authHealth } from '../health/github-auth.ts'
+import { budgetHealth } from '../health/analysis-budget.ts'
 import { LinkPreviewPane, ServiceDetail, ServicesList } from './views/ui/services.tsx'
 import { ActivityList, KINDS as ACTIVITY_KINDS, type ActivityRow } from './views/ui/activity.tsx'
 import {
@@ -1096,7 +1097,13 @@ export function createApp(): Hono {
           name: 'GITHUB_TOKEN',
           state: !env.githubToken ? 'missing' : authHealth().ok ? 'set' : 'refused',
         },
-        { name: 'ANTHROPIC_API_KEY', state: env.anthropicApiKey ? 'set' : 'missing' },
+        // Same reasoning as the row above: the key is present and valid all month, and
+        // buys nothing once the budget is spent. Reading `set` through that is how a
+        // fortnight of unreviewed merges looked normal on this page.
+        {
+          name: 'ANTHROPIC_API_KEY',
+          state: !env.anthropicApiKey ? 'missing' : budgetHealth().ok ? 'set' : 'budget spent',
+        },
         { name: 'NTFY_URL + NTFY_TOKEN', state: ntfyState() },
         { name: 'SMTP_URL + MAIL_TO', state: emailConfigured() ? 'set' : 'not in use' },
         { name: 'DOCKER_HUB_LOGIN', state: process.env.DOCKER_HUB_LOGIN ? 'set' : 'not in use' },

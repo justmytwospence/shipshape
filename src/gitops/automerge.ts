@@ -167,7 +167,15 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
   // false here, which made the label parse, store, and render while changing nothing --
   // the most expensive kind of inert, because the operator believes they opted in.
   // One required member is enough: a group is only as merge-able as its strictest.
-  const claudeRequired = rows.some((r) => svcFor(r)?.claudeLabel === 'required')
+  //
+  // Compared after trimming and lowercasing, because this is the one label whose failure
+  // direction is *open*. Everywhere else an unrecognised value narrows to `manual` and a
+  // typo costs the operator nothing; here `Required`, or a trailing space, silently
+  // reverts the service to falling back on static policy -- the same inert-label failure
+  // this line was already fixed for once, in the same direction.
+  const claudeRequired = rows.some(
+    (r) => svcFor(r)?.claudeLabel?.trim().toLowerCase() === 'required',
+  )
 
   // The group is only as mergeable as its most conservative member.
   const worstVerdict = rows.reduce<{ rec: string; conf: string }>(

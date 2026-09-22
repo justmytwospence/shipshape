@@ -11,6 +11,7 @@ import { runScan } from './scan.ts'
 import { flush as flushDigest, lastItemId, prune as pruneDigest } from './notify/digest.ts'
 import { claimDigestSlot, digestOwed, MAX_WAIT_MS, requestDigest } from './notify/barrier.ts'
 import { checkGitHubAuth } from './health/github-auth.ts'
+import { checkAnalysisBudget } from './health/analysis-budget.ts'
 import { ingestInstructions } from './revise/ingest.ts'
 import { runInstructionPass } from './revise/run.ts'
 import { createTicker, type Ticker } from './loop/ticker.ts'
@@ -170,6 +171,12 @@ function startPrLoop(): void {
       // only check that runs when `prs.enabled` is false, and the state it reports is
       // exactly what the operator would otherwise have to infer from a silent backlog.
       await checkGitHubAuth()
+      // Outside the gate for the same reason, and asked here rather than where the budget
+      // is spent. The old warning lived in `recordCost`, which only runs when a call is
+      // made -- so it went quiet the moment `budgetExhausted()` started refusing to make
+      // them, which is precisely when it mattered. Asked on the tick, the question has an
+      // answer whether or not anything is being analysed.
+      await checkAnalysisBudget()
       // Outside the gate, for the same reason the auth probe is: this is a GitHub read
       // that touches no git and no host, and the blackout exists to keep shipshape away
       // from another updater's file writes. Inside it, a comment left at 01:00 would go

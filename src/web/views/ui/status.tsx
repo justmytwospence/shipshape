@@ -33,7 +33,10 @@ export interface StatusData {
   }
   digest: { cron: string; nextAt: string | null; owed: boolean }
   /** `refused` is present-but-rejected: a token can be all three of set, wrong and silent. */
-  credentials: { name: string; state: 'set' | 'missing' | 'not in use' | 'refused' }[]
+  credentials: {
+    name: string
+    state: 'set' | 'missing' | 'not in use' | 'refused' | 'budget spent'
+  }[]
   spend: { model: string; purpose: string; calls: number; cost: number }[]
   budgetUsd: number
   spentUsd: number
@@ -50,6 +53,10 @@ const CRED_CLS: Record<string, string> = {
   missing: 'badge-error',
   'not in use': 'badge-ghost',
   refused: 'badge-error',
+  // Present and valid, and buying nothing. The same distinction `refused` draws for the
+  // GitHub token: presence is not health, and a key that cannot be spent reads `set` all
+  // month otherwise.
+  'budget spent': 'badge-warning',
 }
 
 const DEPLOY_CLS: Record<string, string> = {

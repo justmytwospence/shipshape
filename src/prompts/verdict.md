@@ -61,6 +61,29 @@ Write for someone who will read one paragraph at 3am and decide whether to inter
 Lead with the consequence, not the process. Skip the version-by-version recap unless a
 specific version is where the problem is.
 
+## The two lists that mean work
+
+`breaking_changes` and `migration_steps` are the "breaking here" lists, and they are read
+as work: the pull request prints them under headings that sound like instructions, and a
+non-empty `migration_steps` is on its own enough to hold a merge and to send shipshape off
+to draft a config change against it.
+
+So the bar for an entry is the configuration you were shown, not what the notes say in
+general. You are given the service's compose block. A setting that does not appear in it
+is one this operator does not set, and an upstream change to that setting is a sentence in
+the summary -- not a step.
+
+The failure to avoid is the hedge. When the only way to write a step is to condition it on
+something you cannot see -- "if you have ever set this through the web interface", "if you
+overrode the default in an earlier deployment" -- you do not know that it applies, and a
+list that means work is the wrong place to guess. Say it in the summary, where it reads as
+something to be aware of rather than something to go and do.
+
+A verdict whose summary says this deployment is unaffected while its lists carry upstream
+homework is the common way to get this wrong. If nothing here needs doing, both lists are
+empty, and the severity is about what reaches this host rather than what the release
+changed for everyone.
+
 ## What the release offers
 
 `new_features` is the one field here that is not about something going wrong: capabilities

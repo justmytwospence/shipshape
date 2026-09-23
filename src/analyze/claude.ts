@@ -67,7 +67,12 @@ const EMIT_VERDICT = {
       migration_steps: {
         type: 'array',
         items: { type: 'string' },
-        description: 'Actions the operator must take beyond bumping the tag. Empty if none.',
+        description:
+          'Actions THIS operator must take beyond bumping the tag, judged against the configuration ' +
+          'you were shown. An upstream change that does not reach this deployment is a sentence in the ' +
+          'summary, never a step here. A step you can only state by hedging on what you cannot see -- ' +
+          '"if you have ever set X through the web UI" -- is one you cannot support: say it in the ' +
+          'summary instead. Empty is the common and correct answer.',
       },
       new_features: {
         type: 'array',

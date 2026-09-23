@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk'
+import { baseModel } from './client.ts'
 
 /**
  * Per-million-token pricing by model family, for the spend ledger only.
@@ -34,7 +35,11 @@ export function reportUnknownModels(fn: (model: string) => void): void {
 }
 
 function priceFor(model: string): { in: number; out: number } {
-  const hit = PRICING.find((p) => model.startsWith(p.prefix))
+  // Match on the family, with any routing prefix stripped: `anthropic/claude-haiku-4.5`
+  // prices as a Haiku. Left on, nothing in the table matches and every call bills at the
+  // top rate -- silently, and in the direction that stops analysis early.
+  const family = baseModel(model)
+  const hit = PRICING.find((p) => family.startsWith(p.prefix))
   if (hit) return hit
   if (warnedUnknownModel !== model) {
     warnedUnknownModel = model
@@ -61,6 +66,12 @@ export interface CallCost {
  */
 export function costOf(usage: Anthropic.Usage, model: string): CallCost {
   const price = priceFor(model)
+  // A gateway that reports what it actually charged is a better number than anything
+  // this table can compute. OpenRouter returns `usage.cost` in dollars, already covering
+  // whichever upstream served the call -- the same model can route via Bedrock at rates
+  // that are not Anthropic's list price. The table stays as the fallback, and as the
+  // only source when talking to Anthropic directly.
+  const reported = (usage as { cost?: number }).cost
   const searches =
     (usage as { server_tool_use?: { web_search_requests?: number } }).server_tool_use
       ?.web_search_requests ?? 0
@@ -73,7 +84,7 @@ export function costOf(usage: Anthropic.Usage, model: string): CallCost {
     (usage.output_tokens / 1e6) * price.out +
     searches * PRICE_SEARCH
   return {
-    cost,
+    cost: typeof reported === 'number' && reported >= 0 ? reported : cost,
     input: usage.input_tokens,
     output: usage.output_tokens,
     cacheWrite,

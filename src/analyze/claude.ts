@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { llmClient, llmConfigured, missingKeyMessage } from './client.ts'
 import { env, loadPolicy, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { prompt } from '../prompts/index.ts'
@@ -131,7 +132,7 @@ export type ReviewedVerdict = Verdict & { evidence?: NotesEvidence }
 export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | { error: string }> {
   const { policy } = loadPolicy()
   if (policy.claude.mode === 'off') return { error: 'analysis disabled' }
-  if (!env.anthropicApiKey) return { error: 'ANTHROPIC_API_KEY is not set' }
+  if (!llmConfigured()) return { error: missingKeyMessage() }
 
   const ref = parseImageRef(target.image)
   // With the service, so a `shipshape.source` label counts here too. It did not: the review
@@ -153,7 +154,7 @@ export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | 
   })
 
   const allowed = ['github.com', 'docs.linuxserver.io', 'api.linuxserver.io']
-  const client = new Anthropic({ apiKey: env.anthropicApiKey, maxRetries: 2 })
+  const client = llmClient(2)
 
   try {
     const res = await client.messages.create(

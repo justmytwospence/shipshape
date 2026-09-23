@@ -174,7 +174,9 @@ start.
 | `REPO_DIR` | **yes** | — | The checkout of your compose repository. Must be bind-mounted at the *identical* path inside the container (see below). |
 | `GITHUB_REPO` | **yes** | — | `owner/repo` of that repository, for pull requests. |
 | `GITHUB_TOKEN` | for PRs | — | Fine-grained PAT scoped to that repo: **Contents** read+write, **Pull requests** read+write. |
-| `ANTHROPIC_API_KEY` | for analysis | — | Without it PRs still open, labelled `needs-analysis`. |
+| `ANTHROPIC_API_KEY` | for analysis | — | One of this or `OPENROUTER_API_KEY`. Without either, PRs still open, labelled `needs-analysis`. |
+| `OPENROUTER_API_KEY` | for analysis | — | Routes every model call through OpenRouter's Anthropic-compatible endpoint instead. Wins when both are set; the two are never sent together. Model ids then carry a vendor prefix — `anthropic/claude-opus-5`. |
+| `LLM_BASE_URL` | no | OpenRouter's base | Only for a self-hosted Anthropic-compatible gateway. |
 | `POLICY_FILE` | no | `$REPO_DIR/shipshape/config/policy.yaml` | Where the tracked policy file lives. |
 | `SELF_STACK` | no | `shipshape` | Stack directory holding shipshape, excluded so it never updates itself. |
 | `BOT_EMAIL` | no | `shipshape@localhost` | Git author for shipshape's commits. |
@@ -203,7 +205,7 @@ services:
       REPO_DIR: /srv/compose
       GITHUB_REPO: you/your-compose-repo
       GITHUB_TOKEN: ${GITHUB_TOKEN}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}   # or OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
     volumes:
       - /srv/compose:/srv/compose                  # identical path, read-write
       - ./data:/data                               # create it first: mkdir -p data

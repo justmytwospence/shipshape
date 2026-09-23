@@ -34,6 +34,13 @@ export const env = {
   botEmail: process.env.BOT_EMAIL ?? 'shipshape@localhost',
 
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? '',
+  /** An OpenRouter key routes every model call through OpenRouter's Anthropic-compatible
+   *  endpoint instead of Anthropic directly. It wins when both are set, and the two are
+   *  never sent together -- see `src/analyze/client.ts`. */
+  openrouterApiKey: process.env.OPENROUTER_API_KEY ?? '',
+  /** Overrides the gateway base URL. Only needed for a self-hosted Anthropic-compatible
+   *  proxy; OpenRouter's own base is the default and needs no setting. */
+  llmBaseUrl: process.env.LLM_BASE_URL ?? '',
   ntfyUrl: process.env.NTFY_URL ?? '',
   ntfyTopic: process.env.NTFY_TOPIC ?? 'shipshape',
   ntfyToken: process.env.NTFY_TOKEN ?? '',

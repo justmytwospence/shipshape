@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { llmClient, llmConfigured, missingKeyMessage } from '../analyze/client.ts'
 import { env, loadPolicy, type Policy } from '../config.ts'
 import { recordCost } from '../analyze/claude.ts'
 import { webTools } from '../analyze/tools.ts'
@@ -96,9 +97,9 @@ export interface ReviseInput {
 
 export async function revise(input: ReviseInput): Promise<Revision | { error: string }> {
   const { policy } = loadPolicy()
-  if (!env.anthropicApiKey) return { error: 'ANTHROPIC_API_KEY is not set' }
+  if (!llmConfigured()) return { error: missingKeyMessage() }
 
-  const client = new Anthropic({ apiKey: env.anthropicApiKey, maxRetries: 0 })
+  const client = llmClient(0)
   const allowed = ['github.com', 'docs.linuxserver.io', 'api.linuxserver.io']
 
   try {

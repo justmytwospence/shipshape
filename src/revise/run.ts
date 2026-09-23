@@ -18,6 +18,7 @@ import {
 } from '../propose/paths.ts'
 import { runVerb } from '../updates/verbs.ts'
 import { revise, type Revision } from './revise.ts'
+import { llmConfigured } from '../analyze/client.ts'
 
 /**
  * Doing the thing that was asked.
@@ -89,7 +90,7 @@ export async function runInstructionPass(only?: number): Promise<RunResult> {
   const out: RunResult = { handled: 0, skipped: 0, failed: 0 }
   const { policy } = loadPolicy()
   if (policy.revise.mode === 'off') return out
-  if (!env.anthropicApiKey || !env.githubToken) return out
+  if (!llmConfigured() || !env.githubToken) return out
 
   const row = pick(only)
   if (!row) return out

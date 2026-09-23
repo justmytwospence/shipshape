@@ -58,6 +58,7 @@ import {
   serviceRows,
 } from '../updates/services.ts'
 import { setServiceLabels, type LabelChange, type LabelKey } from '../gitops/labels.ts'
+import { llmConfigured } from '../analyze/client.ts'
 import { previewLink } from '../resolver/preview.ts'
 import { InboxList, type InboxData } from './views/ui/inbox.tsx'
 import { ListCount, MergePreview, ScanStatus } from './views/ui/parts.tsx'
@@ -1117,7 +1118,7 @@ export function createApp(): Hono {
         // fortnight of unreviewed merges looked normal on this page.
         {
           name: 'ANTHROPIC_API_KEY',
-          state: !env.anthropicApiKey ? 'missing' : budgetHealth().ok ? 'set' : 'budget spent',
+          state: !llmConfigured() ? 'missing' : budgetHealth().ok ? 'set' : 'budget spent',
         },
         { name: 'NTFY_URL + NTFY_TOKEN', state: ntfyState() },
         { name: 'SMTP_URL + MAIL_TO', state: emailConfigured() ? 'set' : 'not in use' },

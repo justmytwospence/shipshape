@@ -16,6 +16,7 @@ import { scopeFor, boundaryFor, describeBoundary, allowedServices } from './path
 import { proposalHunks } from './hunks.ts'
 import { propose, type Proposal } from './propose.ts'
 import { gatherContext } from './context.ts'
+import { llmConfigured } from '../analyze/client.ts'
 
 /**
  * Turning a proposal into a second commit on the pull request branch.
@@ -66,7 +67,7 @@ export async function runProposePass(only?: number): Promise<ProposeRunResult> {
     out.reason = 'mode'
     return out
   }
-  if (!env.anthropicApiKey || !env.githubToken) {
+  if (!llmConfigured() || !env.githubToken) {
     out.reason = 'unconfigured'
     return out
   }

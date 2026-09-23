@@ -1,4 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk'
+import { baseModel } from './client.ts'
 
 /**
  * The web tools each model is actually allowed to use, and how much they may read.
@@ -29,7 +30,11 @@ const MODERN = [
 ]
 
 export function supportsDynamicFiltering(model: string): boolean {
-  return MODERN.some((m) => model.startsWith(m))
+  // Family only: a routing prefix such as `anthropic/` would match nothing here and
+  // quietly downgrade every call to the older tool revision -- the one without the
+  // filtering that keeps fetched pages out of the context window.
+  const family = baseModel(model)
+  return MODERN.some((m) => family.startsWith(m))
 }
 
 export interface WebToolBudget {

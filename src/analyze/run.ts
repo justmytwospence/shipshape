@@ -7,6 +7,7 @@ import { routine } from '../notify/digest.ts'
 import { analyze, budgetExhausted, type ReviewedVerdict, type Verdict } from './claude.ts'
 import { verdictHolds, type Confidence } from '../policy.ts'
 import { backoffUntil } from '../backoff.ts'
+import { llmConfigured } from './client.ts'
 
 /**
  * Analysing open pull requests and folding the result back into them.
@@ -186,7 +187,7 @@ const INCOMPLETE_REREADS = 3
 export async function runAnalysisPass(limit = 3): Promise<AnalysisRun> {
   const out: AnalysisRun = { analysed: 0, skipped: 0, failed: 0 }
   const { policy } = loadPolicy()
-  if (policy.claude.mode === 'off' || !env.anthropicApiKey) return out
+  if (policy.claude.mode === 'off' || !llmConfigured()) return out
   if (budgetExhausted()) {
     out.skipped++
     return out

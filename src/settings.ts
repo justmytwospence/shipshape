@@ -803,7 +803,8 @@ function validate(def: SettingDef, value: string): string | null {
       return bad.length ? `not a valid window: ${bad[0]}` : null
     }
     case 'model':
-      return /^[A-Za-z0-9._-]+$/.test(value) ? null : 'not a valid model id'
+      // A slash is legal: gateways namespace models by vendor (`anthropic/claude-opus-5`).
+      return /^[A-Za-z0-9._\/-]+$/.test(value) ? null : 'not a valid model id'
     default:
       return null
   }

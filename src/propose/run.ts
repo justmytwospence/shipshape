@@ -36,6 +36,12 @@ export interface ProposeRunResult {
   drafted: number
   skipped: number
   failed: number
+  /**
+   * Why nothing was drafted, when nothing was. Every one of these used to be the same
+   * empty result, which is how "the budget for this window is spent" and "this pull
+   * request needs no config change" reached the operator as one sentence.
+   */
+  reason?: 'budget' | 'mode' | 'unconfigured' | 'nothing'
 }
 
 interface Candidate {
@@ -56,15 +62,42 @@ interface Candidate {
 export async function runProposePass(only?: number): Promise<ProposeRunResult> {
   const out: ProposeRunResult = { drafted: 0, skipped: 0, failed: 0 }
   const { policy } = loadPolicy()
-  if (policy.propose.mode === 'off' && only === undefined) return out
-  if (!env.anthropicApiKey || !env.githubToken) return out
+  if (policy.propose.mode === 'off' && only === undefined) {
+    out.reason = 'mode'
+    return out
+  }
+  if (!env.anthropicApiKey || !env.githubToken) {
+    out.reason = 'unconfigured'
+    return out
+  }
   if (budgetExhausted()) {
     out.skipped++
+    out.reason = 'budget'
     return out
   }
 
-  const candidate = pickCandidate(policy.propose.mode, only)
-  if (!candidate) return out
+  const { candidate, declined } = pickCandidate(policy.propose.mode, only)
+  if (!candidate) {
+    // A pass that declines on mode used to return the same empty result as a pass with
+    // nothing to do, and returned it just as quietly: every logEvent in this file sits
+    // downstream of a candidate being picked, so there was no event, no comment and no
+    // digest line. That made a configured opt-out indistinguishable from the feature not
+    // existing -- which is exactly how it was read. Say it once a day, per pull request.
+    if (declined) {
+      out.reason = 'mode'
+      logEvent({
+        level: 'info',
+        kind: 'analysis',
+        stack: declined.stack,
+        service: declined.service,
+        message: `config changes could be drafted for #${declined.number}`,
+        detail: `propose.mode is ${policy.propose.mode}: press Draft config changes, or set it to auto`,
+      })
+    } else {
+      out.reason = 'nothing'
+    }
+    return out
+  }
 
   try {
     const drafted = await draftFor(candidate)
@@ -88,8 +121,15 @@ export async function runProposePass(only?: number): Promise<ProposeRunResult> {
  * A pull request is eligible when it is still exactly what shipshape wrote, a verdict
  * exists reporting that more than a tag change is needed, and the service has not opted
  * out. `only` is the per-PR button, which bypasses the mode check but nothing else.
+ *
+ * `declined` is the first pull request that cleared every one of those bars and was left
+ * alone only because the mode is not `auto` -- the difference between "nothing to draft"
+ * and "something to draft, and you have asked me not to".
  */
-function pickCandidate(mode: string, only?: number): Candidate | null {
+export function pickCandidate(
+  mode: string,
+  only?: number,
+): { candidate: Candidate | null; declined: Candidate | null } {
   const rows = getDb()
     .prepare(
       `SELECT p.id AS prId, p.number, p.branch, p.head_sha_pushed AS headSha,
@@ -117,20 +157,23 @@ function pickCandidate(mode: string, only?: number): Candidate | null {
   })[]
 
   const services = scanRepo(env.repoDir, loadPolicy().policy.exclude_stacks)
+  let declined: Candidate | null = null
   for (const r of rows) {
     const svc = services.find((s) => s.stack === r.stack && s.service === r.service)
     if (scopeFor(svc?.proposeLabel) === 'none') continue
 
-    if (only !== undefined) return r
+    if (only !== undefined) return { candidate: r, declined: null }
 
     // Automatic drafting only where the review said something actually breaks.
     const needsWork =
       r.recommendation === 'block' ||
       r.recommendation === 'caution' ||
       (r.migration_steps ? (JSON.parse(r.migration_steps) as string[]).length > 0 : false)
-    if (mode === 'auto' && needsWork) return r
+    if (!needsWork) continue
+    if (mode === 'auto') return { candidate: r, declined: null }
+    declined ??= r
   }
-  return null
+  return { candidate: null, declined }
 }
 
 async function draftFor(c: Candidate): Promise<boolean> {

@@ -835,6 +835,21 @@ export function createApp(): Hono {
     if (r.failed > 0) {
       return verbReply(c, id, { ok: false, message: 'Could not draft; see the activity log.' })
     }
+    // Drafting costs a model call, so a spent budget refuses before it looks at the pull
+    // request at all. Saying "nothing to draft" there told the operator the opposite of
+    // what had happened -- that the pull request needed no change.
+    if (r.reason === 'budget') {
+      return verbReply(c, id, {
+        ok: false,
+        message: 'The analysis budget for this window is spent, so nothing was drafted.',
+      })
+    }
+    if (r.reason === 'unconfigured') {
+      return verbReply(c, id, {
+        ok: false,
+        message: 'Drafting needs an Anthropic key and a GitHub token; one of them is missing.',
+      })
+    }
     return verbReply(c, id, { ok: false, message: 'Nothing to draft for this pull request.' })
   })
 

@@ -128,10 +128,9 @@ export async function askJev(
       continue
     }
     if (!res.ok) {
-      const text = (await res.text().catch(() => '')).slice(0, 200)
       return {
         ok: false,
-        error: `the screen answered ${res.status}${text ? `: ${text}` : ''}`,
+        error: `the screen answered ${res.status}: ${refusalOf(await res.text().catch(() => ''))}`,
         retryable: res.status === 429 || res.status === 529 || res.status >= 500,
       }
     }
@@ -175,4 +174,25 @@ export async function askJev(
     }
     return { ok: true, model: parsed.model, answers: parsed.answers, cost }
   }
+}
+
+/**
+ * The gateway's refusal in a sentence. OpenRouter answers with a JSON envelope whose first
+ * line is the whole story -- "provider not allowed by guardrail" -- and whose metadata
+ * names the page that fixes it; printed raw, the Status page showed a wall of braces.
+ */
+export function refusalOf(body: string): string {
+  try {
+    const e = (JSON.parse(body) as {
+      error?: { message?: string; metadata?: { ineligibility_reasons?: { reason?: string; configure_url?: string }[] } }
+    }).error
+    const reason = e?.metadata?.ineligibility_reasons?.[0]
+    if (reason?.reason) {
+      return `${reason.reason.replace(/-/g, ' ')}${reason.configure_url ? ` -- change it at ${reason.configure_url}` : ''}`
+    }
+    if (e?.message) return e.message.split('\n')[0]!.slice(0, 200)
+  } catch {
+    // not JSON: fall through to the text itself
+  }
+  return body.slice(0, 200) || 'no reason given'
 }

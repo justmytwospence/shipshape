@@ -18,7 +18,7 @@ delete process.env.REPO_DIR
 const { getDb } = await import('../src/db.ts')
 const { readerWanted, isAudit, recordFailure } = await import('../src/analyze/run.ts')
 const { applyScreen } = await import('../src/analyze/screen/run.ts')
-const { askJev, jevFamilyOk } = await import('../src/analyze/jev.ts')
+const { askJev, jevFamilyOk, refusalOf } = await import('../src/analyze/jev.ts')
 
 beforeEach(() => getDb().exec(`DELETE FROM verdicts; DELETE FROM llm_calls; DELETE FROM budgets;`))
 
@@ -181,4 +181,23 @@ test('an answer missing a question is not a whole answer', async () => {
     fetchImpl: (async () => ok(decisions())) as typeof fetch,
   })
   assert.equal(r.ok, false)
+})
+
+test('a gateway refusal reads as a sentence that says where to fix it', () => {
+  const body = JSON.stringify({
+    error: {
+      message: '0 endpoints out of 1 requested are available matching your guardrail restrictions',
+      code: 404,
+      metadata: {
+        ineligibility_reasons: [
+          { reason: 'provider-not-allowed-by-guardrail', configure_url: 'https://openrouter.ai/workspaces/default/guardrails' },
+        ],
+      },
+    },
+  })
+  assert.equal(
+    refusalOf(body),
+    'provider not allowed by guardrail -- change it at https://openrouter.ai/workspaces/default/guardrails',
+  )
+  assert.equal(refusalOf('plain text'), 'plain text')
 })

@@ -54,7 +54,7 @@ export const InboxPage: FC<{
   >
     <Split
       list={<InboxList data={data} selectedId={selectedId} />}
-      pane={detail?.pane ?? <InboxAside data={data} />}
+      pane={detail?.pane ?? <InboxAside data={data} paused={chrome.paused} />}
       mode={detail ? 'detail' : 'list'}
     />
   </Layout>

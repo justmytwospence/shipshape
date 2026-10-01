@@ -32,7 +32,7 @@ const VERB: Record<
   redeploy: { label: 'Redeploy', icon: 'refresh', style: 'btn-primary' },
   retry: { label: 'Try again', short: 'Retry', icon: 'refresh', style: 'btn-primary' },
   rollback: { label: 'Roll back', icon: 'undo', style: 'btn-error btn-outline', confirm: true },
-  'rerun-review': { label: 'Re-run review', icon: 'eye', style: 'btn-primary' },
+  'rerun-review': { label: 'Read the changelog', short: 'Read', icon: 'eye', style: 'btn-primary' },
   propose: { label: 'Draft config changes', icon: 'plus', style: 'btn-ghost' },
   skip: { label: 'Skip', icon: 'skip', style: 'btn-ghost' },
   // "Release hold", never "Unhold": the noun is already in the sentence the pane shows

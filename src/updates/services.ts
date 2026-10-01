@@ -3,7 +3,7 @@ import { loadPolicy } from '../config.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'
 import { env } from '../config.ts'
 import { patternFor } from '../detect.ts'
-import { tierFor } from '../policy.ts'
+import { tierFor, deployNeedsYou } from '../policy.ts'
 import { updatesForService } from './queries.ts'
 import { sourceForSync, type SourceInfo } from '../resolver/index.ts'
 import type { ConfigLine, ServiceDetailData, ServiceRowData } from '../web/views/ui/services.tsx'
@@ -148,14 +148,24 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
     key: 'policy',
     value: policyLabel ?? '(none)',
     source: policyLabel ? 'label' : 'none',
-    note: prLabel ? `shipshape.pr: ${prLabel} also set` : undefined,
+    note: prLabel ? `also shipshape.pr: ${prLabel}, the old spelling of on-request` : undefined,
   })
   for (const m of ['patch', 'minor', 'major', 'digest'] as const) {
+    const t = rung(m)
     config.push({
       key: m,
-      value: rung(m),
+      // The rung as it is written, not as the engine names it internally.
+      value: t === 'held' ? 'on-request' : t,
       // A major is not a default anyone chose: it is a floor nothing overrides.
-      source: m === 'major' ? 'locked' : policyLabel ? 'label' : 'default',
+      source: m === 'major' ? 'locked' : policyLabel || prLabel ? 'label' : 'default',
+      note:
+        t === 'skip'
+          ? undefined
+          : t === 'auto'
+            ? 'merges itself and deploys, unless the review holds it'
+            : deployNeedsYou(t)
+              ? 'you merge it, and you press Deploy'
+              : 'you merge it; the deploy follows',
     })
   }
   config.push({ key: 'watch', value: svc.watched ? 'on' : 'off', source: 'label' })

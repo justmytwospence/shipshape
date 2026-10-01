@@ -69,6 +69,8 @@ export interface ActionContext {
   deployStatus?: DeployStatus | null
   verdictError?: boolean
   hasVerdict?: boolean
+  /** A reader has read it -- not only the screen. */
+  hasReaderVerdict?: boolean
   /** The verdict that arrived is what is keeping this from merging. */
   verdictHolds?: boolean
   hasProposal?: boolean
@@ -129,6 +131,9 @@ export function actionsFor(c: ActionContext): Verb[] {
     case 'verified':
       if (c.mergeCommitSha) out.push('rollback')
       if (deploy === 'degraded' && !c.ackedAt) out.push('ack')
+      // A version that is running and that nothing has read: the reading is still worth
+      // having, and it is the only way to get one for a patch that applied on its own.
+      if (!c.hasReaderVerdict && !ROLLING(c)) out.push('rerun-review')
       break
 
     case 'left-stopped':

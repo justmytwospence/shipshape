@@ -790,6 +790,16 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     ALTER TABLE verdicts ADD COLUMN provisional INTEGER NOT NULL DEFAULT 0;
   `,
   },
+  {
+    id: '026-review-request',
+    sql: `
+    -- "Read the changelog", pressed on an update that has no reader verdict to flag for a
+    -- re-read: a patch that applied on its own, or one only the screen has looked at. It
+    -- used to be a flag on the verdict row, so with no row there was nothing to set and the
+    -- button did nothing. Cleared when the reading lands, or fails.
+    ALTER TABLE updates ADD COLUMN review_requested_at TEXT;
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

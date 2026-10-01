@@ -48,7 +48,13 @@ export const ReleaseRow: FC<{
   selected?: boolean
 }> = ({ release, ctx, selected }) => {
   const href = `/updates/${release.id}`
-  const summary = release.verdict?.summary ?? null
+  // The reader's summary when there is one; otherwise the lines the screen picked out of
+  // the notes, quoted -- which is what most releases now have, since a screen costs a
+  // twentieth of a cent and a reading does not.
+  const picked = [...(release.screen?.actionable ?? []), ...(release.screen?.notable ?? [])].slice(0, 2)
+  const summary =
+    (release.verdict?.source === 'reader' ? release.verdict.summary : null) ??
+    (picked.length > 0 ? picked.map((l) => l.text).join(' · ') : (release.verdict?.summary ?? null))
   const l = release.links
   return (
     <div id={`rel-${release.id}`} class="border-base-300 border-b px-3 py-2">
@@ -124,6 +130,19 @@ export const ReleaseRow: FC<{
             <a href={`/services/${release.stack}/${release.service}`} class={LINK}>
               Link the upstream
             </a>
+          ) : null}
+          {/* A reading on demand, for the release nothing has read. The answer arrives on
+              the update's own page; the toast says it has started. */}
+          {release.actions.includes('rerun-review') ? (
+            <button
+              type="button"
+              class={`${LINK} cursor-pointer`}
+              hx-post={`/updates/${release.id}/rerun-review?view=row&${ctx}`}
+              hx-swap="none"
+              hx-disabled-elt="this"
+            >
+              Read the changelog
+            </button>
           ) : null}
         </div>
       ) : null}

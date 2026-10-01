@@ -107,14 +107,16 @@ export function pendingAnalysis(limit: number): PendingAnalysis[] {
                 SELECT 1 FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
                 WHERE pu.update_id = u.id AND p.state = 'open'
               ) THEN 1 ELSE 0 END AS has_pr,
-              CASE WHEN EXISTS (
+              CASE WHEN u.review_requested_at IS NOT NULL OR EXISTS (
                 SELECT 1 FROM verdicts v
                 WHERE v.image = u.image AND v.from_tag = u.from_tag AND v.to_tag = u.to_tag
                   AND v.rerun_requested_at IS NOT NULL
               ) THEN 1 ELSE 0 END AS rerun
        FROM updates u
        WHERE (
-         EXISTS (
+         -- Somebody pressed Read the changelog: whatever the update is, it is read.
+         u.review_requested_at IS NOT NULL
+         OR EXISTS (
            SELECT 1 FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
            WHERE pu.update_id = u.id AND p.state = 'open'
          )
@@ -173,6 +175,7 @@ export function pendingAnalysis(limit: number): PendingAnalysis[] {
          SELECT 1 FROM verdicts v
          WHERE v.image = u.image AND v.from_tag = u.from_tag AND v.to_tag = u.to_tag
            AND v.error IS NULL AND v.rerun_requested_at IS NULL
+           AND u.review_requested_at IS NULL
            AND COALESCE(v.source, 'reader') = 'reader'
            AND NOT (
              json_extract(v.evidence, '$.incomplete') = 1
@@ -409,6 +412,7 @@ export function recordVerdict(
   const { policy } = loadPolicy()
   const db = getDb()
   const now = new Date().toISOString()
+  clearRequest(row)
 
   // Which incomplete reading this is: the first, or a re-read of one that was also incomplete.
   const prior = db
@@ -458,6 +462,13 @@ export function recordVerdict(
   )
 }
 
+/** A Read the changelog press has been answered, one way or the other. */
+function clearRequest(row: { image: string; from_tag: string; to_tag: string }): void {
+  getDb()
+    .prepare(`UPDATE updates SET review_requested_at = NULL WHERE image = ? AND from_tag = ? AND to_tag = ?`)
+    .run(row.image, row.from_tag, row.to_tag)
+}
+
 /**
  * When to try a failed analysis again: 15 minutes, then four times that each attempt,
  * capped at a day. Most failures are a rate limit or a flaky fetch and clear on the
@@ -473,6 +484,7 @@ export function recordFailure(
   error: string,
 ): void {
   const db = getDb()
+  clearRequest(row)
   const prior = db
     .prepare(
       `SELECT attempts, error, recommendation, source FROM verdicts

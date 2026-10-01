@@ -78,11 +78,11 @@ export function contextFor(id: number): { row: UpdateRow; ctx: ActionContext } |
 
   const verdict = db
     .prepare(
-      `SELECT error, recommendation, confidence FROM verdicts
+      `SELECT error, recommendation, confidence, source FROM verdicts
        WHERE image = ? AND from_tag = ? AND to_tag = ?`,
     )
     .get(row.image, row.from_tag, row.to_tag) as
-    | { error: string | null; recommendation: string | null; confidence: string | null }
+    | { error: string | null; recommendation: string | null; confidence: string | null; source: string | null }
     | undefined
 
   const proposal = pr
@@ -108,6 +108,7 @@ export function contextFor(id: number): { row: UpdateRow; ctx: ActionContext } |
       deployStatus: (deploy?.status as ActionContext['deployStatus']) ?? null,
       verdictError: !!verdict?.error,
       hasVerdict: !!verdict && !verdict.error,
+      hasReaderVerdict: !!verdict && !verdict.error && (verdict.source ?? 'reader') === 'reader',
       verdictHolds:
         !!verdict &&
         !verdict.error &&
@@ -286,8 +287,13 @@ function rerunReview(row: UpdateRow): VerbResult {
        WHERE image = ? AND from_tag = ? AND to_tag = ?`,
     )
     .run(new Date().toISOString(), row.image, row.from_tag, row.to_tag)
+  // And on the update itself, for the bump that has no reader verdict to flag -- a patch
+  // that applied on its own, or one only the screen has looked at.
+  getDb()
+    .prepare(`UPDATE updates SET review_requested_at = ? WHERE image = ? AND from_tag = ? AND to_tag = ?`)
+    .run(new Date().toISOString(), row.image, row.from_tag, row.to_tag)
   void detach(runAnalysisPass(1), 'rerun-review')
-  return { ok: true, message: 'Reading the changelog again…' }
+  return { ok: true, message: 'Reading the changelog…' }
 }
 
 /** Bring up a merge that has been waiting -- the button `paused` exists to require. */

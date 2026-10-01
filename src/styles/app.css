@@ -7,6 +7,7 @@
  */
 @source '../**/*.tsx';
 @source '../../public/app.js';
+@source '../updates/vocabulary.ts';
 
 @plugin 'daisyui' {
   themes: false;

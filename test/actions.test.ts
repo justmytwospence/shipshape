@@ -67,10 +67,17 @@ test('a deploy in flight offers nothing at all', () => {
 
 test('rolling back needs a commit to revert', () => {
   assert.deepEqual(
-    actionsFor(ctx({ state: 'verified', deployStatus: 'verified', mergeCommitSha: 'abc123' })),
+    actionsFor(ctx({ state: 'verified', deployStatus: 'verified', mergeCommitSha: 'abc123', hasReaderVerdict: true })),
     ['rollback'],
   )
-  assert.deepEqual(actionsFor(ctx({ state: 'verified', deployStatus: 'verified' })), [])
+  assert.deepEqual(actionsFor(ctx({ state: 'verified', deployStatus: 'verified', hasReaderVerdict: true })), [])
+})
+
+test('a running version nothing has read offers a reading', () => {
+  // The only way to get one for a patch that applied on its own, or one only the screen saw.
+  assert.deepEqual(actionsFor(ctx({ state: 'verified', deployStatus: 'verified' })), ['rerun-review'])
+  assert.ok(!actionsFor(ctx({ state: 'verified', hasReaderVerdict: true })).includes('rerun-review'))
+  assert.ok(!actionsFor(ctx({ state: 'verified', detail: 'rolling' })).includes('rerun-review'))
 })
 
 test('a left-stopped update offers Roll back and nothing else', () => {
@@ -93,10 +100,10 @@ test('a rolling tag left stopped still offers Redeploy', () => {
 })
 
 test('a service that went degraded after the soak can be acknowledged', () => {
-  const a = actionsFor(ctx({ state: 'deployed', deployStatus: 'degraded', mergeCommitSha: 'x' }))
+  const a = actionsFor(ctx({ state: 'deployed', deployStatus: 'degraded', mergeCommitSha: 'x', hasReaderVerdict: true }))
   assert.deepEqual(a, ['rollback', 'ack'])
   const seen = actionsFor(
-    ctx({ state: 'deployed', deployStatus: 'degraded', mergeCommitSha: 'x', ackedAt: 'now' }),
+    ctx({ state: 'deployed', deployStatus: 'degraded', mergeCommitSha: 'x', ackedAt: 'now', hasReaderVerdict: true }),
   )
   assert.deepEqual(seen, ['rollback'])
 })

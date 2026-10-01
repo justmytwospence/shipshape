@@ -246,14 +246,27 @@ const SOURCE_CLS: Record<Provenance, string> = {
   none: 'badge-ghost',
 }
 
+/**
+ * Following the defaults first, then the exceptions, narrowest last.
+ *
+ * `auto` is not offered: a `shipshape.policy: auto` label has no branch of its own in the
+ * engine -- it falls through to the magnitude defaults -- so offering it beside "follow
+ * the defaults" was two buttons for one behaviour, and the one called auto read as if it
+ * could put a major on the auto rung. A service already carrying it shows as following.
+ */
 const RUNGS = [
-  { value: 'auto', what: 'shipshape merges it, unless the review objects, then deploys' },
-  { value: 'manual', what: 'a pull request opens; you merge it, and the deploy follows' },
-  { value: 'attended', what: 'you merge it, and you deploy it — nothing touches this without you' },
-  { value: 'on-request', what: 'nothing opens until you ask; you deploy it' },
-  { value: 'skip', what: 'not tracked at all' },
-  { value: '', what: 'remove the label and follow the default' },
+  { value: '', label: 'Follow the defaults', what: 'by version jump, as Settings says; majors always wait for you' },
+  { value: 'manual', label: 'manual', what: 'a pull request opens; you merge it, and the deploy follows' },
+  { value: 'attended', label: 'attended', what: 'you merge it, and you deploy it — nothing touches this without you' },
+  { value: 'on-request', label: 'on-request', what: 'nothing opens until you ask; you deploy it' },
+  { value: 'skip', label: 'skip', what: 'not tracked at all' },
 ]
+
+/** What the radio should show as chosen: an `auto` label is following the defaults. */
+function currentRung(policy: string | null | undefined): string {
+  const p = (policy ?? '').trim().toLowerCase()
+  return p === 'auto' ? '' : p
+}
 
 /**
  * The pane, and the phone page's body. `ctx` is the list it was opened from; the history
@@ -455,10 +468,10 @@ const RungDialog: FC<{ svc: ServiceRowData; ctx?: string }> = ({ svc, ctx }) => 
               name="value"
               value={r.value}
               class="radio radio-sm mt-0.5"
-              checked={(svc.policy ?? '') === r.value}
+              checked={currentRung(svc.policy) === r.value}
             />
             <span>
-              <span class="font-mono text-sm">{r.value || '(default)'}</span>
+              <span class={r.value ? 'font-mono text-sm' : 'text-sm font-medium'}>{r.label}</span>
               <span class="block text-xs opacity-70">{r.what}</span>
             </span>
           </label>

@@ -63,34 +63,6 @@ const CRED_CLS: Record<string, string> = {
   on: 'badge-success',
 }
 
-const DEPLOY_CLS: Record<string, string> = {
-  verified: 'badge-success',
-  'left-stopped': 'badge-ghost',
-  deployed: 'badge-info',
-  degraded: 'badge-warning',
-  failed: 'badge-error',
-  'rolled-back': 'badge-error',
-  error: 'badge-error',
-  ready: 'badge-info',
-  pending: 'badge-ghost',
-  running: 'badge-info',
-  superseded: 'badge-ghost',
-}
-
-/**
- * Counters restated elsewhere on this page, in words.
- *
- * They stay in the database and still drive the sections above; what is dropped is the
- * second, worse rendering of them -- an epoch beside a date, and a JSON object printed as
- * itself. Anything the table gains later appears in Counters on its own.
- */
-const RESTATED = new Set([
-  'scan.last_at',
-  'scan.last_duration_s',
-  'scan.last_counts',
-  'claude.spend_usd',
-  'dockerhub.pulls',
-])
 
 /**
  * The scan's outcome keys, in the words the rest of the interface already uses.
@@ -211,7 +183,6 @@ const UpstreamCounts: FC<{ u: NonNullable<StatusData['upstream']> }> = ({ u }) =
 }
 
 export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
-  const counters = data.budgets.filter((b) => !RESTATED.has(b.key))
   const hub = hubPulls(data.budgets)
   return (
     <div>
@@ -335,34 +306,6 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
           </Block>
 
           <Block>
-            <H>Recent deploys</H>
-            {data.deploys.length === 0 ? (
-              <p class="text-xs opacity-60">
-                Nothing has been deployed by shipshape yet. A merge queues one; while it is
-                paused, the button starts it.
-              </p>
-            ) : (
-              <div class="divide-base-300 border-base-300 divide-y border-y text-xs">
-                {data.deploys.map((d) => (
-                  <div class="flex min-h-7 items-center gap-3">
-                    <span class="min-w-0 flex-1 truncate">
-                      <span class="font-medium">{d.stack}</span>
-                      <span class="ml-2 font-mono opacity-60">{d.services}</span>
-                    </span>
-                    {d.trigger !== 'queue' ? (
-                      <span class="badge badge-xs badge-ghost">{d.trigger}</span>
-                    ) : null}
-                    <span class={`badge badge-xs badge-soft ${DEPLOY_CLS[d.status] ?? 'badge-neutral'}`}>
-                      {d.status}
-                    </span>
-                    <Relative at={d.at} />
-                  </div>
-                ))}
-              </div>
-            )}
-          </Block>
-
-          <Block>
             <H>This deployment</H>
             <KV
               rows={[
@@ -375,35 +318,8 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
             />
           </Block>
 
-          {counters.length > 0 ? (
-            <Block>
-              <H>Counters</H>
-              <KV
-                rows={counters.map((b) => [
-                  b.key,
-                  <>
-                    {b.value}
-                    {b.window ? <span class="ml-2 opacity-50">{b.window}</span> : null}
-                  </>,
-                ])}
-              />
-            </Block>
-          ) : null}
         </div>
 
-        {/* Full width and last: it is the only thing here that is about what happens next
-            rather than what already has, and it is the one block that loads on its own. */}
-        <section class="border-base-300 border-t pt-4">
-          <H>What would merge on its own</H>
-          <div
-            class="border-base-300 border-y"
-            hx-get="/merge/preview"
-            hx-trigger="load"
-            hx-swap="innerHTML"
-          >
-            <div class="py-2 text-xs opacity-60">checking…</div>
-          </div>
-        </section>
       </div>
     </div>
   )

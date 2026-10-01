@@ -1,3 +1,4 @@
+import { OUTCOMES } from '../../../updates/vocabulary.ts'
 import type { FC } from 'hono/jsx'
 import { Icon, type IconName } from './icon.tsx'
 import { Change, EmptyState, Relative, ServiceName } from './parts.tsx'
@@ -55,18 +56,10 @@ const GROUPS: Record<AttentionKind, { title: string; hint: string; icon: IconNam
   },
 }
 
-const RECENT: Record<RecentItem['kind'], { cls: string; verb: string }> = {
-  opened: { cls: 'bg-info', verb: 'opened' },
-  merged: { cls: 'bg-info', verb: 'merged' },
-  deployed: { cls: 'bg-info', verb: 'deployed' },
-  verified: { cls: 'bg-success', verb: 'verified' },
-  'left-stopped': { cls: 'bg-base-300', verb: 'left stopped' },
-  degraded: { cls: 'bg-warning', verb: 'went degraded' },
-  failed: { cls: 'bg-error', verb: 'failed to deploy' },
-  'rolled-back': { cls: 'bg-error', verb: 'was rolled back' },
-  skipped: { cls: 'bg-base-300', verb: 'skipped' },
-  superseded: { cls: 'bg-base-300', verb: 'superseded' },
-}
+/** Read from the one vocabulary, so a line here says what the row's badge says. */
+const RECENT = Object.fromEntries(
+  Object.entries(OUTCOMES).map(([k, w]) => [k, { cls: w.dotCls, verb: w.verb }]),
+) as Record<RecentItem['kind'], { cls: string; verb: string }>
 
 export interface InboxData {
   needsYou: AttentionItem[]
@@ -204,8 +197,18 @@ const RecentList: FC<{ recent: RecentItem[]; hint?: string }> = ({ recent, hint 
 )
 
 /** What the pane shows when nothing is selected: the night's history and the clocks. */
-export const InboxAside: FC<{ data: InboxData }> = ({ data }) => (
+export const InboxAside: FC<{ data: InboxData; paused?: boolean }> = ({ data, paused }) => (
   <div class="lg:max-w-4xl">
+    {/* While paused, the question worth answering is what unpausing would set moving.
+        Asked of the merge engine itself, so it is the same answer the next tick would
+        give; loaded on its own because it reads GitHub's checks. */}
+    {paused ? (
+      <section class="border-base-300 border-b px-4 py-3">
+        <div hx-get="/merge/preview" hx-trigger="load" hx-swap="innerHTML">
+          <p class="text-xs opacity-60">Checking what would merge on its own…</p>
+        </div>
+      </section>
+    ) : null}
     <RecentList recent={data.recent} hint="what happened without you, last 24 hours" />
   </div>
 )

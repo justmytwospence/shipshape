@@ -1,3 +1,4 @@
+import { OUTCOMES, type Outcome } from '../../../updates/vocabulary.ts'
 import type { FC, PropsWithChildren } from 'hono/jsx'
 import { Icon, type IconName } from './icon.tsx'
 import type { UpdateView } from '../../../updates/queries.ts'
@@ -31,6 +32,8 @@ export const MagnitudeBadge: FC<{ value: string }> = ({ value }) => (
 /** What an update is doing, in the words used everywhere else. */
 export function stageOf(u: UpdateView): { label: string; cls: string; live?: boolean } {
   const d = u.deploy?.status
+  // Outcomes are named by the shared vocabulary, so the badge says what the Inbox line does.
+  const o = (k: Outcome) => ({ label: OUTCOMES[k].badge, cls: OUTCOMES[k].badgeCls })
   switch (u.state) {
     case 'detected':
       return u.rolling
@@ -39,29 +42,27 @@ export function stageOf(u: UpdateView): { label: string; cls: string; live?: boo
     case 'held':
       return { label: 'Held on request', cls: 'badge-ghost' }
     case 'pr_open':
-      return { label: 'Waiting on you', cls: 'badge-warning' }
+      return o('opened')
     case 'merged':
       if (d === 'ready' || d === 'pending') return { label: 'Ready to deploy', cls: 'badge-info' }
-      if (d === 'failed' || d === 'error') return { label: 'Deploy failed', cls: 'badge-error' }
-      return { label: 'Merged', cls: 'badge-info' }
+      if (d === 'failed' || d === 'error') return o('failed')
+      return o('merged')
     case 'deploying':
       return { label: 'Deploying', cls: 'badge-info', live: true }
     case 'deployed':
-      return d === 'degraded'
-        ? { label: 'Degraded', cls: 'badge-warning' }
-        : { label: 'Soaking', cls: 'badge-info', live: true }
+      return d === 'degraded' ? o('degraded') : { ...o('deployed'), live: true }
     case 'verified':
-      return { label: 'Verified', cls: 'badge-success' }
+      return o('verified')
     case 'left-stopped':
-      return { label: 'Left stopped', cls: 'badge-ghost' }
+      return o('left-stopped')
     case 'failed':
       return u.detail?.includes('rolled back') || d === 'rolled-back'
-        ? { label: 'Rolled back', cls: 'badge-error' }
+        ? o('rolled-back')
         : { label: 'Failed', cls: 'badge-error' }
     case 'skipped':
-      return { label: 'Skipped', cls: 'badge-ghost' }
+      return o('skipped')
     case 'superseded':
-      return { label: 'Superseded', cls: 'badge-ghost' }
+      return o('superseded')
   }
 }
 
@@ -109,13 +110,19 @@ export function verdictLabel(u: UpdateView): {
 export const VerdictChip: FC<{ update: UpdateView; long?: boolean }> = ({ update, long }) => {
   const v = verdictLabel(update)
   if (!v) {
+    // "Reading changelog…" used to show here whenever a pull request had no review --
+    // including when nothing was going to read it: the budget spent, or no key set. It
+    // promised activity that was not happening. Pending says what is true either way.
     return update.state === 'pr_open' ? (
       <span class="inline-flex items-center gap-1 text-xs opacity-60">
-        <span class="loading loading-ring loading-xs" />
-        Reading changelog…
+        <Icon name="eye" class="size-3.5" />
+        Review pending
       </span>
     ) : null
   }
+  // Only the screen has judged it. Said, because a screened approval rests on narrow
+  // answers about the notes rather than a reading of them.
+  const screened = update.verdict?.source === 'screen'
   return (
     <span class={`inline-flex items-center gap-1 text-xs ${v.cls}`}>
       <Icon name={v.icon} class="size-3.5" />
@@ -126,6 +133,7 @@ export const VerdictChip: FC<{ update: UpdateView; long?: boolean }> = ({ update
           {long ? ' confidence' : ''}
         </span>
       ) : null}
+      {screened ? <span class="opacity-70">· {update.verdict?.provisional ? 'screened, reading queued' : 'screened'}</span> : null}
     </span>
   )
 }
@@ -205,32 +213,45 @@ export const ScanStatus: FC<{ running: boolean; lastAt: string | null }> = ({
     <span class="text-xs opacity-60">{lastAt ? `scanned ${relative(lastAt)}` : 'idle'}</span>
   )
 
-/** What the merge engine would decide right now, asked of the code that does the merging. */
+/**
+ * What unpausing would set moving, asked of the code that does the merging.
+ *
+ * On the Inbox while paused. It used to sit at the bottom of Status, where the one
+ * question it answers was never being asked, and it called a refusal "held" -- the word
+ * the interface reserves for the on-request rung.
+ */
 export const MergePreview: FC<{
   decisions: { number: number; merge: boolean; reason?: string }[]
   paused: boolean
-}> = ({ decisions, paused }) => (
-  <div class="flex flex-col gap-1 py-2 text-xs">
-    {paused ? (
-      <p class="text-xs opacity-60">
-        Paused, so none of this happens on its own — this is what would, if it were not.
+}> = ({ decisions, paused }) => {
+  const would = decisions.filter((d) => d.merge)
+  return (
+    <div class="flex flex-col gap-1 text-xs">
+      <p class="text-sm">
+        <span class="font-medium">
+          {would.length} {would.length === 1 ? 'pull request' : 'pull requests'}
+        </span>{' '}
+        would merge on {would.length === 1 ? 'its' : 'their'} own{paused ? ' when unpaused' : ''}.
       </p>
-    ) : null}
-    {decisions.length === 0 ? (
-      <p class="opacity-60">No open pull requests.</p>
-    ) : (
-      decisions.map((d) => (
-        <div class="flex items-baseline gap-2">
-          <span class="font-mono text-xs">#{d.number}</span>
-          <span class={`badge badge-xs badge-soft ${d.merge ? 'badge-success' : 'badge-neutral'}`}>
-            {d.merge ? 'would merge' : 'held'}
-          </span>
-          {d.reason ? <span class="text-xs opacity-60">{d.reason}</span> : null}
-        </div>
-      ))
-    )}
-  </div>
-)
+      {decisions.length > 0 ? (
+        <details>
+          <summary class="tap inline-flex cursor-pointer items-center text-xs opacity-70">Why, for each</summary>
+          <div class="mt-1 flex flex-col gap-1">
+            {decisions.map((d) => (
+              <div class="flex items-baseline gap-2">
+                <span class="font-mono text-xs">#{d.number}</span>
+                <span class={`badge badge-xs badge-soft ${d.merge ? 'badge-success' : 'badge-neutral'}`}>
+                  {d.merge ? 'would merge' : 'waits'}
+                </span>
+                {d.reason ? <span class="text-xs opacity-60">{d.reason}</span> : null}
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </div>
+  )
+}
 
 export const EmptyState: FC<{ icon: IconName; title: string; hint?: string }> = ({
   icon,

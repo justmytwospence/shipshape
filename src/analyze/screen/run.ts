@@ -26,8 +26,6 @@ export const SCREEN_MONTHLY_CEILING_USD = 1
 /** Incomplete notes are screened again after this long, this many times, as with the reader. */
 const INCOMPLETE_WAIT_MS = 60 * 60_000
 const INCOMPLETE_RESCREENS = 3
-/** A screen that failed is tried again on a backoff, and given up on after this many. */
-const MAX_ERROR_ATTEMPTS = 6
 /** The same window the reader's backfill uses. */
 const BACKFILL_DAYS = 30
 
@@ -126,9 +124,10 @@ export function pendingScreens(limit: number, repoDir = env.repoDir, now = Date.
 
 function wantsScreen(s: ScreenRow | undefined, p: PendingScreen, repoDir: string, now: number): boolean {
   if (!s) return true
-  if (s.error) {
-    return s.attempts < MAX_ERROR_ATTEMPTS && !!s.next_attempt_at && Date.parse(s.next_attempt_at) <= now
-  }
+  // A failed screen is tried again on its backoff, which caps at a day, and never given
+  // up on: the usual cause is the gateway refusing the provider, which costs nothing to
+  // ask about and is fixed outside shipshape whenever someone gets to it.
+  if (s.error) return !!s.next_attempt_at && Date.parse(s.next_attempt_at) <= now
   let ev: { incomplete?: boolean; attempt?: number } = {}
   try {
     ev = s.evidence ? JSON.parse(s.evidence) : {}
@@ -174,10 +173,20 @@ export async function runScreenPass(limit = PER_TICK): Promise<ScreenRun> {
       if (r.ok) out.screened++
       else out.failed++
       if (r.applied) out.applied.push({ image: p.image, from_tag: p.from_tag, to_tag: p.to_tag })
+      // A refusal that is about the request or the account, not this update -- a
+      // guardrail, a bad key -- will refuse the rest too. Stop before fetching their notes.
+      if (r.stop) break
     } catch (err) {
       recordScreenError(p, (err as Error).message)
       out.failed++
     }
+  }
+  // The provider is answering again: everything that failed while it was not is due now,
+  // rather than whenever its backoff happens to run out.
+  if (out.screened > 0) {
+    getDb()
+      .prepare(`UPDATE screens SET next_attempt_at = ? WHERE error IS NOT NULL AND next_attempt_at > ?`)
+      .run(new Date().toISOString(), new Date().toISOString())
   }
   return out
 }
@@ -291,11 +300,11 @@ export interface ScreenStoredEvidence {
   sources: string[]
 }
 
-async function screenOne(p: PendingScreen): Promise<{ ok: boolean; applied?: boolean }> {
+async function screenOne(p: PendingScreen): Promise<{ ok: boolean; applied?: boolean; stop?: boolean }> {
   const r = await screenBump(p, { purpose: 'screen' })
   if (!r.ok) {
     recordScreenError(p, r.error)
-    return { ok: false }
+    return { ok: false, stop: !r.retryable }
   }
   const db = getDb()
   const prior = db
@@ -341,8 +350,8 @@ async function screenOne(p: PendingScreen): Promise<{ ok: boolean; applied?: boo
   if (policy.review.screen === 'on') {
     return { ok: true, applied: applyScreen(p, r.result, r.lines, r.model, evidence.sources) }
   }
-  if (r.result.decision !== 'routine') {
-    // Shadow: worth a line in the log only when it would have held something.
+  if (r.result.decision === 'finding' || r.result.decision === 'escalate') {
+    // Shadow: worth a line in the log only when it would have sent it to a reader.
     logEvent({
       level: 'info',
       kind: 'analysis',

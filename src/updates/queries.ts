@@ -3,6 +3,7 @@ import { loadPolicy } from '../config.ts'
 import { MIN_CONFIDENCE, normaliseTier, shouldOpenPr, verdictHolds, type EffectiveTier } from '../policy.ts'
 import { present, type Presentation } from './present.ts'
 import { screenFor } from '../analyze/screen/run.ts'
+import type { Outcome } from './vocabulary.ts'
 import type { Magnitude } from '../versions/patterns.ts'
 import { actionsFor, isTransient, primaryVerb, type ActionContext, type Verb } from './actions.ts'
 import { LIVE_STATES, sqlIn, type UpdateState } from './state.ts'
@@ -63,6 +64,9 @@ export interface UpdateView {
     nextAttemptAt: string | null
     /** How many notes the review had for its range; null for a review from before that was kept. */
     notesInRange: number | null
+    /** `screen` when only the screen has judged it; its finding is provisional until read. */
+    source: 'reader' | 'screen'
+    provisional: boolean
   } | null
   deploy: {
     id: number
@@ -198,7 +202,8 @@ function verdictFor(u: RawUpdate): UpdateView['verdict'] {
   const v = getDb()
     .prepare(
       `SELECT recommendation, confidence, severity, summary, breaking_changes, migration_steps,
-              new_features, sources, model, created_at, error, attempts, next_attempt_at, evidence
+              new_features, sources, model, created_at, error, attempts, next_attempt_at, evidence,
+              source, provisional
          FROM verdicts WHERE image = ? AND from_tag = ? AND to_tag = ?`,
     )
     .get(u.image, u.from_tag, u.to_tag) as
@@ -217,6 +222,8 @@ function verdictFor(u: RawUpdate): UpdateView['verdict'] {
         error: string | null
         attempts: number
         next_attempt_at: string | null
+        source: string | null
+        provisional: number | null
       }
     | undefined
   if (!v) return null
@@ -244,6 +251,8 @@ function verdictFor(u: RawUpdate): UpdateView['verdict'] {
     attempts: v.attempts ?? 0,
     nextAttemptAt: v.next_attempt_at,
     notesInRange: notesOf(v.evidence),
+    source: v.source === 'screen' ? 'screen' : 'reader',
+    provisional: v.provisional === 1,
   }
 }
 
@@ -304,6 +313,7 @@ function toView(u: RawUpdate, repo: string): UpdateView {
     : false
 
   const ctx: ActionContext = {
+    hasReaderVerdict: !!verdict && !verdict.error && verdict.source === 'reader',
     state: u.state as UpdateState,
     detail: u.detail,
     prNumber: pr?.number ?? null,
@@ -486,17 +496,7 @@ export function inboxParked(): UpdateView[] {
 
 export interface RecentItem {
   at: string
-  kind:
-    | 'opened'
-    | 'merged'
-    | 'deployed'
-    | 'verified'
-    | 'left-stopped'
-    | 'degraded'
-    | 'failed'
-    | 'rolled-back'
-    | 'skipped'
-    | 'superseded'
+  kind: Outcome
   stack: string
   service: string
   fromTag: string

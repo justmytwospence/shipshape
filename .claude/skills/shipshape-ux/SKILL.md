@@ -69,25 +69,40 @@ deploy fails loudly and touches nothing.
 
 ## The review
 
-Claude reads the upstream changelog and returns a recommendation with a confidence. The
-UI never shows the raw enum:
+Two stages. The **screen** (Jev) answers narrow questions about the release notes and picks
+out the notes' own lines -- it never writes prose, and the interface never paraphrases it:
+its lines are quoted and linked. The **reader** (Claude) reads the changelog and returns a
+recommendation with a confidence. The UI never shows the raw enum:
 
 | Verdict | Say | Colour |
 |---|---|---|
 | `approve` | **Safe to apply** | success |
 | `caution` | **Read first** | warning |
 | `block` | **Breaking changes** | error |
-| none yet | **Reading changelog…** | skeleton |
+| none yet, pull request open | **Review pending** | neutral -- never "Reading…" unless a reading is running |
 | failed | **Review failed** | error, with the attempt count |
 | off / unavailable | **No review** | neutral |
 
-Most releases carry **No review**, and the interface says so rather than leaving a gap.
-Reviews are written against pull requests, so an update that applies on its own has none
-to be written against. Minor and major updates that applied unattended are reviewed after
-the fact so the Releases tab has something to say about them; patches are not, because
-they are most of the volume and least of the interest, and every review costs a model
-call. A release with no review still links to its changelog -- those links come from the
-image reference, not from any analysis.
+A verdict only the screen has written says so after the confidence: `· screened`, or
+`· screened, reading queued` for a finding waiting on the reader. The screen's own words:
+
+| Screen | Say |
+|---|---|
+| routine | **Routine** |
+| finding | **Worth a reading** |
+| escalate | **Not sure — needs a reading** |
+| no notes | **No notes found** |
+| failed | **Could not look** |
+
+Its lines sit under **Needs action** (the notes ask for something) and **Notable** (you
+would notice it), quoted verbatim with the version they came from. In shadow mode the whole
+block is folded under **Screen (shadow)** and says *shown, not acted on*.
+
+Most applied releases now carry the screen's lines rather than a reading: a screen costs a
+twentieth of a cent, a reading does not. **Read the changelog** is the verb that asks for a
+reading -- on a pull request, a running version nothing has read, or a release in the feed.
+A release with no review still links to its changelog -- those links come from the image
+reference, not from any analysis.
 
 Confidence is always visible next to it, as text. It is the qualifier that changes the
 decision — "Safe to apply" at low confidence is not the same claim — and a `title`
@@ -153,18 +168,26 @@ message shipshape sent about it called it a plain version bump.
 
 | State | Primary | Also available |
 |---|---|---|
-| Waiting on you | **Merge & deploy** (confirm step) | Skip · Draft config changes · Re-run review · Release hold · Open on GitHub |
+| Waiting on you | **Merge & deploy**, or **Merge** where the deploy waits for you (confirm step) | Skip · Draft config changes · Read the changelog · Release hold · Open on GitHub |
 | Held on request | **Open PR** | Skip |
 | Ready to deploy | **Deploy** | Copy compose command |
 | Rolling tag moved | **Redeploy** | Dismiss |
 | Failed / Rolled back | **Try again** | Skip · Acknowledge |
-| Verified / Degraded | **Roll back** | Acknowledge |
+| Verified / Degraded | **Roll back** | Acknowledge · Read the changelog (nothing has read it) |
 | Left stopped | **Roll back** (a rolling tag: **Redeploy**) | — |
-| Review failed | **Re-run review** | Skip |
+| Review failed | **Read the changelog** | Skip |
 
 A verb keeps its name through the whole flow: the button that says "Deploy" produces
 "Deploying" and then "Deployed". Destructive-ish verbs (Merge & deploy, Roll back) are
-only offered where the analysis is on screen, never as a bare row button.
+only offered where the analysis is on screen, never as a bare row button, and ask first
+wherever they appear -- the overflow menu included. **The confirmation is written from
+policy.yaml and the pull request**, never from constants: merge method, how long it is
+watched and soaked, whether it is put back on failure, which other services it carries. A
+pull request carrying more than an image tag is never promised a rollback.
+
+Outcomes are named once, in `src/updates/vocabulary.ts`: a row's badge, the Inbox's recent
+list and the merge preview read the same word. A merge the engine would not make
+**waits** -- never "held", which is the on-request rung's word.
 
 ## Your comments
 
@@ -209,10 +232,15 @@ rung.
   "Link the upstream" is the words wherever that gap shows — a review read without notes, a
   release with no project, the change pane.
 - **Activity** — the log, coalesced.
-- **Settings** — the defaults, Pause, review, your comments, notifications, schedule;
-  Advanced holds everything else; `/docs` explains the model.
-- **Status** — the machine's own state: its clocks, what it is wired to, what it has
-  spent, and what would merge if nothing were holding it. Nothing on it is a decision,
+- **Settings** — one page, sections in the order an update moves through them. Each shows
+  the decisions that change what shipshape may do; tuning, and the section's longer
+  explanation, fold under **More**. Enum options say what they do, a cron says when. The
+  next digest, **Send the digest now** and **Send a test email** live under Notifications.
+  Prompt overrides are files in the repository, not a textarea.
+- **Status** — the machine's own state: its clocks, what it is wired to (including the
+  screen, and why the gateway refused it), and what it has spent, by model and stage.
+  While paused, the Inbox -- not Status -- says how many pull requests would merge on their
+  own when unpaused. Nothing on Status is a decision,
   which is the line between it and Settings: Settings is where you change what shipshape
   may do, Status is where you find out what it did.
 

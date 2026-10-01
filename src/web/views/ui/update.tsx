@@ -455,7 +455,11 @@ export const ScreenBlock: FC<{ update: UpdateView }> = ({ update }) => {
         <details>
           <summary class="tap inline-flex cursor-pointer items-center gap-2 text-xs font-medium tracking-wide uppercase opacity-60">
             Screen (shadow)
-            {decision ? <span class={`badge badge-xs badge-soft normal-case ${decision.cls}`}>{decision.text}</span> : null}
+            {s.error ? (
+              <span class="badge badge-xs badge-soft badge-ghost normal-case">Could not look</span>
+            ) : decision ? (
+              <span class={`badge badge-xs badge-soft normal-case ${decision.cls}`}>{decision.text}</span>
+            ) : null}
           </summary>
           {body}
         </details>

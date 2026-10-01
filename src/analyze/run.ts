@@ -628,6 +628,7 @@ export async function applyCachedVerdict(
       // verdict, when it lands, is what the digest reports.
       quiet: opts.quiet || v.provisional === 1,
       by: v.source === 'screen' ? `screened by ${v.model ?? 'Jev'}` : `written by ${v.model ?? 'the reader'}`,
+      screen: v.source === 'screen' ? (screenFor(row.image, row.from_tag, row.to_tag) ?? undefined) : undefined,
     },
   )
   return true
@@ -638,7 +639,7 @@ async function applyToPrs(
   row: { image: string; from_tag: string; to_tag: string },
   v: Verdict,
   only?: number,
-  opts: { quiet?: boolean; by?: string } = {},
+  opts: { quiet?: boolean; by?: string; screen?: ReturnType<typeof screenFor> } = {},
 ): Promise<void> {
   const prs = (
     getDb()
@@ -671,7 +672,7 @@ async function applyToPrs(
   for (const pr of prs) {
     try {
       const current = (await gh().rest.pulls.get({ owner, repo, pull_number: pr.number })).data.body ?? ''
-      const rendered = render(v, opts.by ?? `written by ${loadPolicy().policy.review.model}`)
+      const rendered = render(v, opts.by ?? `written by ${loadPolicy().policy.review.model}`, opts.screen ?? null)
       const body =
         current.includes(START) && current.includes(END)
           ? current.slice(0, current.indexOf(START) + START.length) +
@@ -749,7 +750,7 @@ function rank(c: string): number {
 
 const ICON: Record<string, string> = { approve: '✅', caution: '⚠️', block: '⛔' }
 
-function render(v: Verdict, by: string): string {
+function render(v: Verdict, by: string, screen: ReturnType<typeof screenFor> = null): string {
   const lines = [
     `### Changelog analysis`,
     ``,
@@ -768,6 +769,18 @@ function render(v: Verdict, by: string): string {
   // reads as the footnote it is rather than competing with them.
   if (v.new_features.length > 0) {
     lines.push('', '**New in this release, if you want it**', ...v.new_features.map((f) => `- ${f}`))
+  }
+  // A screened verdict has no prose of its own: it quotes the notes instead. Selected,
+  // never paraphrased, each line linked to where it came from.
+  if (screen) {
+    const quote = (i: number) => {
+      const l = screen.lines[i]
+      return l ? `- ${l.text}${l.url ? ` ([${l.version}](${l.url}))` : ` (${l.version})`}` : null
+    }
+    const action = screen.actionable.map(quote).filter((x): x is string => !!x)
+    const notable = screen.notable.slice(0, 5).map(quote).filter((x): x is string => !!x)
+    if (action.length > 0) lines.push('', '**Needs action, in the notes\' own words**', ...action)
+    if (notable.length > 0) lines.push('', '**Notable**', ...notable)
   }
   if (v.sources.length > 0) {
     lines.push('', '<details><summary>Sources</summary>', '', ...v.sources.map((s) => `- ${s}`), '</details>')

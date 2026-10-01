@@ -265,7 +265,7 @@ export const SETTINGS: SettingDef[] = [
   {
     section: 'Config proposals',
     path: 'propose.mode',
-    advanced: true,
+    advanced: false,
     kind: 'enum',
     options: ['auto', 'off'],
     optionHelp: {
@@ -302,7 +302,7 @@ export const SETTINGS: SettingDef[] = [
   {
     section: 'Your comments',
     path: 'revise.scope',
-    advanced: false,
+    advanced: true,
     kind: 'enum',
     options: ['none', 'service', 'compose-file', 'compose-dir', 'repo'],
     optionHelp: {
@@ -418,7 +418,7 @@ export const SETTINGS: SettingDef[] = [
   {
     section: 'Deploys',
     path: 'deploy.rollback',
-    advanced: true,
+    advanced: false,
     kind: 'enum',
     options: ['auto', 'suggest', 'off'],
     optionHelp: {
@@ -513,7 +513,7 @@ export const SETTINGS: SettingDef[] = [
   {
     section: 'Git sync',
     path: 'sync.push_main',
-    advanced: true,
+    advanced: false,
     kind: 'bool',
     defaultValue: 'true',
     label: 'Publish main',

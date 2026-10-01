@@ -12,7 +12,14 @@ import type { Magnitude } from './versions/patterns.ts'
  * untrusted input: the worst a hostile changelog can achieve is to stop an update.
  */
 
-export type Verdict = 'approve' | 'caution' | 'block' | 'unavailable'
+/**
+ * `pending` is not a verdict anyone wrote: it is "the review has not run yet, and it is
+ * expected to". It holds, for a bounded time (see REVIEW_WAIT_MS in automerge.ts), so a
+ * pull request opened in the same tick as five others does not merge unread just because
+ * the analysis pass only reaches three of them per tick. Once the wait is over, or when
+ * no review can run at all, the update reads `unavailable` and the static policy applies.
+ */
+export type Verdict = 'approve' | 'caution' | 'block' | 'unavailable' | 'pending'
 export type Confidence = 'low' | 'medium' | 'high'
 
 /**
@@ -223,6 +230,8 @@ export function canAutoMerge(i: AutoMergeInput): AutoMergeDecision {
       return { merge: false, reason: 'Claude flagged breaking changes', label: 'claude-block' }
     case 'caution':
       return { merge: false, reason: 'Claude recommends a human read this', label: 'claude-hold' }
+    case 'pending':
+      return { merge: false, reason: 'the changelog review has not run yet', label: 'needs-analysis' }
     case 'unavailable':
       return i.claudeRequired
         ? {

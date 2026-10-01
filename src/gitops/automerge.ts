@@ -1,7 +1,9 @@
 import { Octokit } from 'octokit'
 import { env, loadPolicy, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
-import { canAutoMerge, foldGroupMagnitude, foldGroupTier, tierFor } from '../policy.ts'
+import { canAutoMerge, foldGroupTier, tierFor } from '../policy.ts'
+import { budgetExhausted } from '../analyze/claude.ts'
+import { llmConfigured } from '../analyze/client.ts'
 import { scanRepo } from '../compose/scan.ts'
 import type { Magnitude } from '../versions/patterns.ts'
 import { assess, type ResolutionTier } from '../policy/model-tier.ts'
@@ -118,10 +120,13 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
   const rows = getDb()
     .prepare(
       `SELECT u.stack, u.service, u.magnitude, u.detail, u.image, u.from_tag, u.to_tag,
+              u.detected_at, p.created_at AS pr_created_at,
+              v.image AS verdict_row,
               v.recommendation, v.confidence, v.error AS verdict_error,
               v.sources, v.breaking_changes, v.migration_steps
        FROM updates u
        JOIN pr_updates pu ON pu.update_id = u.id
+       JOIN prs p ON p.id = pu.pr_id
        LEFT JOIN verdicts v ON v.image = u.image AND v.from_tag = u.from_tag AND v.to_tag = u.to_tag
        -- A superseded row describes an update that has been overtaken. It must not be
        -- allowed to supply the magnitude, tier or verdict that justifies a merge: the
@@ -138,6 +143,9 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
     image: string
     from_tag: string
     to_tag: string
+    detected_at: string
+    pr_created_at: string
+    verdict_row: string | null
     recommendation: string | null
     confidence: string | null
     verdict_error: string | null
@@ -177,20 +185,33 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
     (r) => svcFor(r)?.claudeLabel?.trim().toLowerCase() === 'required',
   )
 
-  // The group is only as mergeable as its most conservative member.
-  const worstVerdict = rows.reduce<{ rec: string; conf: string }>(
-    (acc, r) => {
-      const rec = r.verdict_error ? 'unavailable' : (r.recommendation ?? 'unavailable')
-      const rank = { block: 3, caution: 2, unavailable: 1, approve: 0 } as Record<string, number>
-      return (rank[rec] ?? 1) > (rank[acc.rec] ?? 1)
-        ? { rec, conf: r.confidence ?? 'low' }
-        : acc
-    },
-    { rec: 'approve', conf: 'high' },
-  )
+  // The group merges only if every member would merge on its own. This replaced a fold
+  // that reduced the group to its "worst" verdict and carried that verdict's confidence
+  // -- except that it started from approve/high and only replaced it on a strictly worse
+  // recommendation, so an approve at low confidence kept `high` and `min_confidence` was
+  // never enforced at all, on groups or on single pull requests. Asking each member is
+  // the same question the gate asks of one update, which is the only form that cannot
+  // drift from it.
+  const tier = foldGroupTier(tiers) === 'model' ? resolveModel(rows) : foldGroupTier(tiers)
+  const reviewCanRun = reviewExpected(policy)
+  for (const r of rows) {
+    const d = canAutoMerge({
+      tier,
+      magnitude: r.magnitude,
+      verdict: memberVerdict(r, reviewCanRun) as never,
+      confidence: (r.confidence ?? 'low') as never,
+      claudeRequired,
+      claudeMode: policy.claude.mode,
+      minConfidence: policy.claude.min_confidence,
+      prScope: 'tag-only',
+    })
+    if (!d.merge) {
+      return { number, merge: false, reason: rows.length > 1 ? `${r.service}: ${d.reason}` : d.reason }
+    }
+  }
+  return { number, merge: true, reason: 'policy allows it' }
 
-  let tier = foldGroupTier(tiers)
-  if (tier === 'model') {
+  function resolveModel(rs: typeof rows): EffectiveTierResolved {
     // The one place the model's judgement can raise rather than lower a tier. Every
     // guard must pass; anything else falls back to what static policy alone would say,
     // which for a major is a human.
@@ -198,8 +219,8 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
     // The `linked` guard asks how the upstream repository was identified. The accessor
     // answers with the live compose label applied, so a service known only from a
     // `shipshape.source` label is linked here exactly as it is everywhere else.
-    tier = resolveModelTier(
-      rows.map((r) => {
+    return resolveModelTier(
+      rs.map((r) => {
         const ref = parseImageRef(r.image)
         const source = sourceForSync(
           { registry: ref.registry, repository: ref.repository },
@@ -211,18 +232,53 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
       number,
     )
   }
+}
 
-  const d = canAutoMerge({
-    tier,
-    magnitude: foldGroupMagnitude(rows.map((r) => r.magnitude)),
-    verdict: worstVerdict.rec as never,
-    confidence: worstVerdict.conf as never,
-    claudeRequired,
-    claudeMode: policy.claude.mode,
-    minConfidence: policy.claude.min_confidence,
-    prScope: 'tag-only',
-  })
-  return { number, merge: d.merge, reason: d.merge ? 'policy allows it' : d.reason }
+/**
+ * How long an update on an open pull request waits for its first review before the
+ * static policy is allowed to merge it without one.
+ *
+ * The analysis pass reads three updates a tick, and the merge pass runs at the end of
+ * the same tick -- so before this, the fourth pull request opened in a scan was judged
+ * "unavailable" and merged unread while its review was still queued. Six hours is long
+ * enough to cover a backlog draining at three a minute and a provider having a bad hour,
+ * and short enough that an outage still degrades to today's behaviour rather than
+ * freezing every update.
+ */
+export const REVIEW_WAIT_MS = 6 * 60 * 60_000
+
+/** Whether a review can be expected to arrive at all: it is on, a provider is set, money is left. */
+function reviewExpected(policy: Policy): boolean {
+  return policy.claude.mode !== 'off' && llmConfigured() && !budgetExhausted()
+}
+
+/**
+ * What the gate should treat one member's review as.
+ *
+ * A row with an error is a review that was tried and failed: `unavailable`, which follows
+ * the static policy (or holds, for a fail-closed service) exactly as before. No row at all
+ * is a review that has not been tried -- `pending` while one can still be expected and the
+ * wait has not run out, and `unavailable` after that. Exported for the tests.
+ */
+export function memberVerdict(
+  r: {
+    verdict_row: string | null
+    verdict_error: string | null
+    recommendation: string | null
+    detected_at: string
+    pr_created_at: string
+  },
+  reviewCanRun: boolean,
+  now = Date.now(),
+): string {
+  if (r.verdict_row !== null) {
+    return r.verdict_error ? 'unavailable' : (r.recommendation ?? 'unavailable')
+  }
+  if (!reviewCanRun) return 'unavailable'
+  // When this update joined the pull request: a retargeted one joins long after the pull
+  // request was opened, so the later of the two is the clock that matters.
+  const joined = Math.max(Date.parse(r.pr_created_at) || 0, Date.parse(r.detected_at) || 0)
+  return now - joined < REVIEW_WAIT_MS ? 'pending' : 'unavailable'
 }
 
 /**

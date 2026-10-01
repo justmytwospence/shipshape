@@ -178,6 +178,12 @@ async function classifyScope(
     // against it. Without this the next poll relabels every proposal as `modified` and
     // the distinction disappears within one cycle.
     if (shipshapeOwns && scope === 'modified' && hasProposal(prId)) scope = 'proposed'
+    // And the other direction. A drafted change whose only operation rewrote an `image:`
+    // line -- an image rename -- produces a patch the line test calls tag-only, and
+    // tag-only is what auto-merge accepts. #32 was exactly that: drafted, committed and
+    // merged as a "plain version bump". Whatever shipshape committed beyond the bump was
+    // never reviewed by anything, so it stays `proposed` whatever the diff looks like.
+    if (scope === 'tag-only' && hasCommittedProposal(prId)) scope = 'proposed'
   } catch {
     // Unknown is not the same as clean; leave whatever was there rather than guessing,
     // and do not record the sha, so the next poll retries.
@@ -197,6 +203,18 @@ async function classifyScope(
           : `#${number} is back to an image-tag change only`,
     detail: scope === 'tag-only' ? undefined : 'it will always need a human to merge',
   })
+}
+
+/** Did shipshape commit anything of its own -- a draft or a comment-driven edit -- onto this branch? */
+function hasCommittedProposal(prId: number): boolean {
+  return !!getDb()
+    .prepare(
+      `SELECT 1 FROM proposals
+        WHERE pr_id = ? AND error IS NULL AND retryable = 0
+          AND COALESCE(json_array_length(changed), 0) > 0
+        LIMIT 1`,
+    )
+    .get(prId)
 }
 
 /** Did shipshape successfully draft config changes onto this pull request? */

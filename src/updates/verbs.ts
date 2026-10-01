@@ -86,7 +86,7 @@ export function contextFor(id: number): { row: UpdateRow; ctx: ActionContext } |
     | undefined
 
   const proposal = pr
-    ? (db.prepare(`SELECT id FROM proposals WHERE pr_id = ? LIMIT 1`).get(pr.id) as
+    ? (db.prepare(`SELECT id FROM proposals WHERE pr_id = ? AND retryable = 0 LIMIT 1`).get(pr.id) as
         | { id: number }
         | undefined)
     : undefined

@@ -100,12 +100,12 @@ function writeStack(stack: string, proposeLabel?: string) {
 
 // ------------------------------------------------------- work exists, mode says no
 
-test('under manual, a pull request the review named work for is declined, not ignored', () => {
+test('under off, a pull request the review named work for is declined, not ignored', () => {
   writeStack('pihole')
   seed({ number: 132, stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
 
-  const r = pickCandidate('manual')
-  assert.equal(r.candidate, null, 'manual must not draft on its own')
+  const r = pickCandidate('off')
+  assert.equal(r.candidate, null, 'off must not draft on its own')
   assert.ok(r.declined, 'but it must say there was something to draft')
   assert.equal(r.declined?.number, 132)
 })
@@ -127,7 +127,7 @@ test('an approved update with no steps is neither drafted nor declined', () => {
   writeStack('ddclient')
   seed({ number: 82, stack: 'ddclient', recommendation: 'approve', migrationSteps: [] })
 
-  const r = pickCandidate('manual')
+  const r = pickCandidate('off')
   assert.equal(r.candidate, null)
   assert.equal(r.declined, null)
 })
@@ -138,7 +138,7 @@ test('a service that opted out is not reported as declined by mode', () => {
   writeStack('pihole', 'none')
   seed({ number: 132, stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
 
-  const r = pickCandidate('manual')
+  const r = pickCandidate('off')
   assert.equal(r.candidate, null)
   assert.equal(r.declined, null)
 })
@@ -149,7 +149,7 @@ test('the per-PR button bypasses the mode check and nothing else', () => {
   writeStack('pihole')
   seed({ number: 132, stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
 
-  const r = pickCandidate('manual', 132)
+  const r = pickCandidate('off', 132)
   assert.equal(r.candidate?.number, 132, 'pressing the button drafts whatever the mode says')
   assert.equal(r.declined, null)
 })
@@ -158,7 +158,7 @@ test('the button still refuses a service that opted out', () => {
   writeStack('pihole', 'none')
   seed({ number: 132, stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
 
-  assert.equal(pickCandidate('manual', 132).candidate, null)
+  assert.equal(pickCandidate('off', 132).candidate, null)
 })
 
 // --------------------------------------------------------- only the first is reported
@@ -168,9 +168,65 @@ test('declined names one pull request, not the backlog', () => {
   // would have to be kept accurate as the backlog moves, and nothing reads it.
   writeStack('homepage')
   writeStack('n8n')
-  seed({ number: 62, stack: 'homepage', recommendation: 'caution', migrationSteps: [] })
+  seed({ number: 62, stack: 'homepage', recommendation: 'block', migrationSteps: ['a'] })
   seed({ number: 91, stack: 'n8n', recommendation: 'block', migrationSteps: ['a', 'b'] })
 
-  const r = pickCandidate('manual')
+  const r = pickCandidate('off')
   assert.equal(r.declined?.number, 62, 'the one it would have drafted: lowest number first')
+})
+
+// ------------------------------------------------------- what counts as work
+
+test('a caution that names no steps is not drafting work', () => {
+  // "Read this first" -- or "the notes could not be found" -- is a reason to hold, not a
+  // configuration change. Each of these used to cost a code-model call that came back
+  // with nothing to do.
+  writeStack('homepage')
+  seed({ number: 62, stack: 'homepage', recommendation: 'caution', migrationSteps: [] })
+  assert.equal(pickCandidate('auto').candidate, null)
+})
+
+// ------------------------------------------------------------- failed drafts
+
+function failedDraft(number: number, attempts: number, nextAttemptAt: string | null) {
+  const db = getDb()
+  const pr = db.prepare(`SELECT id FROM prs WHERE number = ?`).get(number) as { id: number }
+  const u = db.prepare(`SELECT update_id FROM pr_updates WHERE pr_id = ?`).get(pr.id) as { update_id: number }
+  db.prepare(
+    `INSERT INTO proposals (pr_id, update_id, ops, notes, changed, error, created_at, retryable, attempts, next_attempt_at)
+     VALUES (?, ?, '[]', '[]', '[]', 'rate limited', ?, 1, ?, ?)`,
+  ).run(pr.id, u.update_id, new Date().toISOString(), attempts, nextAttemptAt)
+}
+
+test('a draft that failed waits out its backoff before it is tried again', () => {
+  writeStack('pihole')
+  seed({ number: 132, stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
+  failedDraft(132, 1, new Date(Date.now() + 60_000).toISOString())
+  assert.equal(pickCandidate('auto').candidate, null, 'not every tick')
+
+  getDb().exec(`DELETE FROM proposals`)
+  failedDraft(132, 1, new Date(Date.now() - 60_000).toISOString())
+  assert.equal(pickCandidate('auto').candidate?.number, 132, 'tried again once the wait is over')
+})
+
+test('a draft that gave up is not retried on its own, but the button still works', () => {
+  writeStack('pihole')
+  seed({ number: 132, stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
+  failedDraft(132, 3, null)
+  assert.equal(pickCandidate('auto').candidate, null)
+  assert.equal(pickCandidate('auto', 132).candidate?.number, 132)
+})
+
+test('a refused draft is final, for the button too', () => {
+  writeStack('pihole')
+  seed({ number: 132, stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
+  const db = getDb()
+  const pr = db.prepare(`SELECT id FROM prs WHERE number = 132`).get() as { id: number }
+  const u = db.prepare(`SELECT update_id FROM pr_updates WHERE pr_id = ?`).get(pr.id) as { update_id: number }
+  db.prepare(
+    `INSERT INTO proposals (pr_id, update_id, ops, notes, changed, error, created_at)
+     VALUES (?, ?, '[]', '[]', '[]', 'touches a forbidden path', ?)`,
+  ).run(pr.id, u.update_id, new Date().toISOString())
+  assert.equal(pickCandidate('auto').candidate, null)
+  assert.equal(pickCandidate('auto', 132).candidate, null)
 })

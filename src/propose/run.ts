@@ -17,6 +17,7 @@ import { proposalHunks } from './hunks.ts'
 import { propose, type Proposal } from './propose.ts'
 import { gatherContext } from './context.ts'
 import { llmConfigured } from '../analyze/client.ts'
+import { backoffUntil } from '../backoff.ts'
 
 /**
  * Turning a proposal into a second commit on the pull request branch.
@@ -63,10 +64,6 @@ interface Candidate {
 export async function runProposePass(only?: number): Promise<ProposeRunResult> {
   const out: ProposeRunResult = { drafted: 0, skipped: 0, failed: 0 }
   const { policy } = loadPolicy()
-  if (policy.propose.mode === 'off' && only === undefined) {
-    out.reason = 'mode'
-    return out
-  }
   if (!llmConfigured() || !env.githubToken) {
     out.reason = 'unconfigured'
     return out
@@ -106,16 +103,74 @@ export async function runProposePass(only?: number): Promise<ProposeRunResult> {
     else out.skipped++
   } catch (err) {
     out.failed++
-    logEvent({
-      level: 'error',
-      kind: 'analysis',
-      stack: candidate.stack,
-      service: candidate.service,
-      message: `could not draft config changes for #${candidate.number}`,
-      detail: (err as Error).message.slice(0, 200),
-    })
+    await recordRetryable(candidate, (err as Error).message)
   }
   return out
+}
+
+/** How many times a draft that failed for a passing reason is tried before giving up. */
+export const DRAFT_ATTEMPTS = 3
+
+/** 15 minutes, then four times that each attempt, capped at a day. */
+export function nextDraftAt(attempts: number, now = Date.now()): string {
+  return backoffUntil(attempts, { baseMs: 15 * 60_000, capMs: 24 * 60 * 60_000 }, now)
+}
+
+/** The attempts already spent on this pull request by drafts that may be tried again. */
+function priorAttempts(prId: number): number {
+  const row = getDb()
+    .prepare(`SELECT MAX(attempts) AS n FROM proposals WHERE pr_id = ? AND retryable = 1`)
+    .get(prId) as { n: number | null }
+  return row.n ?? 0
+}
+
+/**
+ * A draft that failed for a reason that may pass: the model call errored, returned
+ * nothing, or the push did not land.
+ *
+ * Written as a row so the next pass can see it and wait. Before this, nothing was
+ * written, so every tick picked the same pull request again -- another code-model call
+ * and another "could not draft" comment, once a minute, for as long as the failure
+ * lasted. The pull request is told once, when shipshape gives up; until then the
+ * activity log carries each attempt.
+ */
+async function recordRetryable(c: Candidate, error: string): Promise<void> {
+  const db = getDb()
+  const attempts = priorAttempts(c.prId) + 1
+  const giveUp = attempts >= DRAFT_ATTEMPTS
+  db.transaction(() => {
+    db.prepare(`DELETE FROM proposals WHERE pr_id = ? AND retryable = 1`).run(c.prId)
+    db.prepare(
+      `INSERT INTO proposals (pr_id, update_id, ops, notes, summary, sources, changed, model,
+                              error, hunks, created_at, retryable, attempts, next_attempt_at)
+       VALUES (?, ?, '[]', '[]', NULL, '[]', '[]', ?, ?, '[]', ?, 1, ?, ?)`,
+    ).run(
+      c.prId,
+      c.updateId,
+      loadPolicy().policy.claude.code_model,
+      error.slice(0, 400),
+      new Date().toISOString(),
+      attempts,
+      giveUp ? null : nextDraftAt(attempts),
+    )
+  })()
+  logEvent({
+    level: giveUp ? 'warn' : 'info',
+    kind: 'analysis',
+    stack: c.stack,
+    service: c.service,
+    message: giveUp
+      ? `gave up drafting config changes for #${c.number} after ${attempts} attempts`
+      : `could not draft config changes for #${c.number}; trying again later (attempt ${attempts} of ${DRAFT_ATTEMPTS})`,
+    detail: error.slice(0, 200),
+  })
+  if (giveUp) {
+    await comment(
+      c.number,
+      `shipshape could not draft config changes after ${attempts} attempts: ${error.slice(0, 300)}\n\n` +
+        'Press **Draft config changes** to try again.',
+    )
+  }
 }
 
 /**
@@ -148,11 +203,19 @@ export function pickCandidate(
          -- Never draft config changes onto a pull request whose target was overtaken:
          -- the work would be for a version that is not going to be merged.
          AND u.state != 'superseded'
-         AND NOT EXISTS (SELECT 1 FROM proposals pr2 WHERE pr2.pr_id = p.id)
+         -- A proposal settles it, except a failure that may pass: that waits out its
+         -- backoff and is tried again, three times at most. The button skips the wait.
+         AND NOT EXISTS (
+           SELECT 1 FROM proposals pr2 WHERE pr2.pr_id = p.id
+             AND NOT (
+               pr2.retryable = 1
+               AND (${only === undefined ? `pr2.next_attempt_at IS NOT NULL AND pr2.next_attempt_at <= ?` : '1'})
+             )
+         )
          ${only === undefined ? '' : 'AND p.number = ?'}
        ORDER BY p.number`,
     )
-    .all(...(only === undefined ? [] : [only])) as (Candidate & {
+    .all(...(only === undefined ? [new Date().toISOString()] : [only])) as (Candidate & {
     recommendation: string | null
     migration_steps: string | null
   })[]
@@ -165,11 +228,11 @@ export function pickCandidate(
 
     if (only !== undefined) return { candidate: r, declined: null }
 
-    // Automatic drafting only where the review said something actually breaks.
-    const needsWork =
-      r.recommendation === 'block' ||
-      r.recommendation === 'caution' ||
-      (r.migration_steps ? (JSON.parse(r.migration_steps) as string[]).length > 0 : false)
+    // Automatic drafting only where the review named work this operator has to do. It
+    // used to fire on any caution too -- including one that only meant "read the notes",
+    // or that the notes could not be found -- and each of those was a code-model call
+    // that came back with nothing to change.
+    const needsWork = r.migration_steps ? (JSON.parse(r.migration_steps) as string[]).length > 0 : false
     if (!needsWork) continue
     if (mode === 'auto') return { candidate: r, declined: null }
     declined ??= r
@@ -242,7 +305,7 @@ async function draftFor(c: Candidate): Promise<boolean> {
       },
     })
     if ('error' in result) {
-      await comment(c.number, `shipshape could not draft config changes: ${result.error}`)
+      await recordRetryable(c, result.error)
       return false
     }
 
@@ -314,6 +377,7 @@ async function draftFor(c: Candidate): Promise<boolean> {
       allowFail: true,
     })
     if (pushed.exitCode !== 0) {
+      await recordRetryable(c, `could not push the drafted commit: ${pushed.stderr.slice(0, 200) || 'push failed'}`)
       return false
     }
 
@@ -367,6 +431,8 @@ function record(
   hunks: unknown[] = [],
 ): void {
   const { policy } = loadPolicy()
+  // A retry that got this far supersedes the failures that led to it.
+  getDb().prepare(`DELETE FROM proposals WHERE pr_id = ? AND retryable = 1`).run(c.prId)
   getDb()
     .prepare(
       `INSERT INTO proposals (pr_id, update_id, ops, notes, summary, sources, changed,

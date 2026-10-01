@@ -85,6 +85,9 @@ export interface BuiltState {
 export function clean(text: string): string {
   return (
     text
+      // GitHub returns many release bodies with CRLF line endings, and a `$` after `.+`
+      // does not match before a `\r` -- so Jackett's notes yielded no bullet lines at all.
+      .replace(/\r\n?/g, '\n')
       .replace(/<!--[\s\S]*?-->/g, '')
       .replace(/<details[\s\S]*?<\/details>/gi, '')
       // A "New Contributors" or "Contributors" section, to the next heading or the end.
@@ -170,7 +173,7 @@ export function extractLines(notes: ScreenNote[]): ScreenLine[] {
   const seen = new Set<string>()
   const lines: ScreenLine[] = []
   for (const n of notes) {
-    for (const raw of n.text.split('\n')) {
+    for (const raw of n.text.split(/\r?\n/)) {
       const m = raw.match(/^\s*[-*+]\s+(.+)$/)
       if (!m) continue
       const text = m[1]!.replace(/\s+/g, ' ').trim()

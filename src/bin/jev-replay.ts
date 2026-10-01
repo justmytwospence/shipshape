@@ -2,7 +2,8 @@
  * How the screen would have judged updates a reader has already judged: the calibration
  * the screen's thresholds are set from.
  *
- *   npm run jev-replay -- [--since 2026-07-01] [--limit 60]
+ *   npm run jev-replay -- [--since 2026-07-01] [--limit 60] [--dump answers.json]
+ *   npm run jev-replay -- --from-dump answers.json      # re-sweep without calling Jev again
  *
  * In the container: `node dist/bin/jev-replay.js ...`.
  *
@@ -18,6 +19,7 @@
  * It writes nothing but ledger rows (purpose `replay`), so the spend is visible and
  * counted. It never touches verdicts or screens.
  */
+import { readFileSync, writeFileSync } from 'node:fs'
 import { getDb } from '../db.ts'
 import { screenBump } from '../analyze/screen/run.ts'
 import { decideScreen, flagsOf, THRESHOLDS, type Thresholds } from '../analyze/screen/decide.ts'
@@ -30,6 +32,8 @@ const valueOf = (flag: string) => {
 }
 const since = valueOf('--since') ?? new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10)
 const limit = Number(valueOf('--limit') ?? 60)
+const dumpTo = valueOf('--dump')
+const fromDump = valueOf('--from-dump')
 
 interface Row {
   image: string
@@ -45,7 +49,7 @@ interface Row {
   compose_file: string | null
 }
 
-const rows = getDb()
+const rows: Row[] = fromDump ? [] : (getDb()
   .prepare(
     `SELECT v.image, v.from_tag, v.to_tag, v.recommendation, v.breaking_changes, v.migration_steps,
             u.stack, u.service, u.magnitude, u.detected_at, i.compose_file
@@ -59,7 +63,7 @@ const rows = getDb()
       ORDER BY v.created_at DESC
       LIMIT ?`,
   )
-  .all(since, limit) as Row[]
+  .all(since, limit) as Row[])
 
 const list = (s: string): string[] => {
   try {
@@ -83,7 +87,14 @@ interface Judged {
   reason: string
 }
 
-const judged: Judged[] = []
+// A dump keeps Jev's answers; the decision is made again with the thresholds as they are
+// now, which is the point of re-sweeping one.
+const judged: Judged[] = fromDump
+  ? (JSON.parse(readFileSync(fromDump, 'utf8')) as Judged[]).map((j) => {
+      const d = decideScreen(j.evidence, j.answers, j.lineCount)
+      return { ...j, decision: d.decision, reason: d.reason }
+    })
+  : []
 let failures = 0
 let cost = 0
 
@@ -128,6 +139,7 @@ for (const r of rows) {
   process.stdout.write('.')
 }
 console.log('\n')
+if (dumpTo) writeFileSync(dumpTo, JSON.stringify(judged))
 
 // ---------------------------------------------------------------- confusion matrix
 const decisions = ['routine', 'finding', 'escalate', 'no-notes']
@@ -138,19 +150,51 @@ for (const rec of recs) {
   console.log(rec.padEnd(18) + cells.map((c) => String(c).padStart(10)).join(''))
 }
 
+// ---------------------------------------------------------------- why not routine
+const reasons = new Map<string, number>()
+for (const j of judged) if (j.decision !== 'routine') reasons.set(j.reason, (reasons.get(j.reason) ?? 0) + 1)
+console.log('\nwhy not routine:')
+for (const [r, n] of [...reasons].sort((a, b) => b[1] - a[1])) console.log(`  ${String(n).padStart(3)}  ${r}`)
+
+// What each question answered on updates the reader approved, as a median: the questions
+// that sit high on approvals are the ones holding routine updates back.
+const approved = judged.filter((j) => j.row.recommendation === 'approve' && j.answers)
+const median = (xs: number[]) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]! : 0)
+if (approved.length > 0) {
+  const fl = approved.map((j) => flagsOf(j.answers!))
+  console.log(`\nmedian answer on ${approved.length} reader-approved updates:`)
+  for (const k of Object.keys(fl[0]!.risk)) console.log(`  ${k.padEnd(28)} ${median(fl.map((f) => f.risk[k as keyof typeof f.risk])).toFixed(2)}`)
+  console.log(`  ${'affects_this_deployment'.padEnd(28)} ${median(fl.map((f) => f.affects)).toFixed(2)}`)
+  console.log(`  ${'risk score (0..2)'.padEnd(28)} ${median(fl.map((f) => f.score)).toFixed(2)}`)
+  console.log(`  ${'risk score confidence'.padEnd(28)} ${median(fl.map((f) => f.scoreConfidence)).toFixed(2)}`)
+}
+
 // --------------------------------------------------------------------- sweep
-console.log('\nthreshold sweep (routine needs every risk question below R and affects below A):')
-console.log('   R     A   routine   misses   routine share of PR-eligible')
-for (const R of [0.1, 0.2, 0.3, 0.4]) {
-  for (const A of [0.3, 0.5]) {
-    const t: Thresholds = { ...THRESHOLDS, routineRisk: R, routineAffects: A }
-    const decided = judged.map((j) => ({ j, d: decideScreen(j.evidence, j.answers, j.lineCount, t).decision }))
-    const routine = decided.filter((x) => x.d === 'routine')
-    const misses = routine.filter((x) => readerFoundWork(x.j.row))
-    const eligible = decided.filter((x) => x.j.row.magnitude === 'patch' || x.j.row.magnitude === 'minor').length
-    console.log(
-      `${R.toFixed(1).padStart(4)}  ${A.toFixed(1).padStart(4)}  ${String(routine.length).padStart(8)}  ${String(misses.length).padStart(7)}   ${eligible ? Math.round((100 * routine.length) / eligible) : 0}%`,
-    )
+// Re-decided from the stored answers: no further calls. Misses must stay at zero; the
+// loosest row with none is as far as the routine thresholds may move.
+console.log('\nthreshold sweep -- R: every risk answer below; S: score below; C: score confidence at least; N: at most N notes')
+console.log('   R     S     C    N   routine   misses   share of patch/minor')
+const eligible = judged.filter((j) => j.row.magnitude === 'patch' || j.row.magnitude === 'minor').length
+for (const R of [0.2, 0.3]) {
+  for (const S of [1.0, 1.5, 2.01]) {
+    for (const C of [0.75, 0.5, 0.4, 0]) {
+      for (const N of [5, 8, 99]) {
+        const t: Thresholds = {
+          ...THRESHOLDS,
+          routineRisk: R,
+          routineScore: S,
+          routineScoreConfidence: C,
+          routineMaxNotes: N,
+          findingScore: Math.max(THRESHOLDS.findingScore, S),
+        }
+        const decided = judged.map((j) => ({ j, d: decideScreen(j.evidence, j.answers, j.lineCount, t).decision }))
+        const routine = decided.filter((x) => x.d === 'routine')
+        const misses = routine.filter((x) => readerFoundWork(x.j.row))
+        console.log(
+          `${R.toFixed(1).padStart(4)}  ${S.toFixed(1).padStart(4)}  ${C.toFixed(2).padStart(4)}  ${String(N).padStart(3)}  ${String(routine.length).padStart(8)}  ${String(misses.length).padStart(7)}   ${eligible ? Math.round((100 * routine.length) / eligible) : 0}%`,
+        )
+      }
+    }
   }
 }
 

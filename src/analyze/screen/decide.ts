@@ -22,28 +22,42 @@ const noul = (instructions: string, yes: string, no: string): Question => ({
   criteria: { true: yes, false: no },
 })
 
-/** The questions that hold an update back. Each is a separate, literal property. */
+/**
+ * The questions that hold an update back. Each is a separate, literal property, and each
+ * is about something the operator would have to *do*.
+ *
+ * `default_changed` was one of these and is not any more. Jev answers it literally, and
+ * almost every release changes some behaviour -- a cookie lifetime, how history is grouped
+ * -- so it fired at 0.5-0.9 on bug-fix patches the reader approved without a second
+ * thought (the 2026-10-01 replay: 38 of 50 approvals held, every one on this question).
+ * A changed default is worth knowing and never, by itself, work. It is still asked and
+ * still shown; it no longer decides.
+ */
 export const RISK_KEYS = [
   'config_removed_or_renamed',
   'manual_step_required',
   'irreversible_migration',
   'dropped_support',
-  'default_changed',
   'config_change_needed',
 ] as const
 
 export type RiskKey = (typeof RISK_KEYS)[number]
 
 const UPDATE_QUESTIONS: Record<string, Question> = {
+  // Both of these were broader, and Jev read them literally: "removed ... or now behaves
+  // differently" matched any removed feature and any bug fix, and "tell the person
+  // upgrading to do something" matched a description of a change. The 2026-10-01 replay
+  // had them at 0.77 and 0.29 on the median update the reader approved. They now ask
+  // only about what the operator sets, and only about instructions the notes give.
   config_removed_or_renamed: noul(
-    'Do the release notes in `notes` say that an existing configuration option, environment variable, command-line flag, or file path was removed, renamed, or now behaves differently?',
-    'An existing option, variable, flag, or path is removed, renamed, or changes meaning',
-    'No existing option, variable, flag, or path changes. Newly added optional settings do not count',
+    'Do the release notes in `notes` say that a setting the operator configures -- an environment variable, a configuration file key, or a command-line flag -- was removed or renamed?',
+    'An operator-configured environment variable, configuration key, or command-line flag is named as removed or renamed',
+    'No operator-configured setting is removed or renamed. Removed features, removed code, fixed bugs, changed behaviour, and newly added settings do not count',
   ),
   manual_step_required: noul(
-    'Do the release notes in `notes` tell the person upgrading to do something besides pulling the new image and restarting it?',
-    'The notes name an action: edit configuration, run a command or migration, change a dependency, or back up data first',
-    'Pulling the new image and restarting is all the notes ask for',
+    'Do the release notes in `notes` explicitly instruct people who are upgrading to do something themselves, besides pulling the new image and restarting it?',
+    'The notes give an explicit instruction to people upgrading: edit configuration, run a command or migration, change a dependency, or back up data first',
+    'The notes give no instruction to people upgrading. Describing what changed is not an instruction',
   ),
   irreversible_migration: noul(
     'Do the release notes in `notes` describe a data or database migration that cannot be undone, or say that going back to the previous version afterwards is not supported?',
@@ -51,9 +65,9 @@ const UPDATE_QUESTIONS: Record<string, Question> = {
     'No one-way migration and nothing said against downgrading',
   ),
   dropped_support: noul(
-    'Do the release notes in `notes` say that support was dropped for a platform, CPU architecture, runtime version, database version, or integration?',
-    'Something that used to be supported no longer is',
-    'Nothing that was supported is dropped',
+    'Do the release notes in `notes` say that support was dropped for an operating system, CPU architecture, runtime version, or database version the software runs on?',
+    'An operating system, CPU architecture, runtime version, or database version is no longer supported',
+    'No operating system, architecture, runtime, or database version is dropped. Removed features, plugins, or site definitions do not count',
   ),
   default_changed: noul(
     'Do the release notes in `notes` say that a default value or default behaviour changed, in a way that applies without anyone changing their configuration?',
@@ -80,8 +94,8 @@ const UPDATE_QUESTIONS: Record<string, Question> = {
     instructions:
       'How risky is it to apply this update to a deployment like `deployment` without reading `notes` first?',
     criteria: [
-      'Routine: nothing in the notes needs attention before upgrading',
-      'Worth reading first: a default, a behaviour, or an optional setting changed',
+      'Routine: bug fixes, new features, and internal changes; nothing needs checking before upgrading',
+      'Worth reading first: the notes warn about something specific to check when upgrading',
       'Breaks without action: something this deployment relies on is removed, renamed, or must be migrated',
     ],
   },
@@ -110,12 +124,12 @@ export function questionsFor(lineCount: number): Record<string, Question> {
 export interface Thresholds {
   /** Every risk question must be below this for `routine`. */
   routineRisk: number
-  /** `affects_this_deployment` must be below this for `routine`. */
-  routineAffects: number
   /** `risk.score` (0..2) must be below this for `routine`. */
   routineScore: number
   /** ...and the Score's own confidence at least this. */
   routineScoreConfidence: number
+  /** More release notes than this in the range and it is always read. */
+  routineMaxNotes: number
   /** Any risk question at or above this is a finding. */
   findingRisk: number
   /** `risk.score` at or above this is a finding. */
@@ -127,17 +141,29 @@ export interface Thresholds {
 }
 
 /**
- * Starting points, set conservatively before any calibration. Phase 3 of the rollout may
- * loosen the routine ones -- only where `npm run jev-replay` shows no miss -- and never
- * tighten a finding into something quieter.
+ * Calibrated on 2026-10-01 against 80 reader verdicts (`npm run jev-replay`), at the
+ * conservative end of the region with no miss rather than its loosest edge:
+ *
+ * - The Score's *position* was wrong for gating. Its middle level fit almost every
+ *   release (median 0.96 on what the reader approved), so it holds only at "breaks
+ *   without action" (1.5). Its *confidence* earns its place: the one update the reader
+ *   flagged with every risk answer low (n8n 2.38.0, "back up first") was stopped by a
+ *   confidence of 0.30.
+ * - `affects_this_deployment` sat near 0.5 whether or not anything mattered, and decides
+ *   nothing on its own; it is still shown.
+ * - A wide range is always read. The closest call in the replay (n8n 2.38.5 -> 2.40.5,
+ *   a block with its strongest risk answer at 0.30) had 22 releases' notes in it, and Jev
+ *   is documented to lose accuracy as its input grows.
+ *
+ * Move these only with a replay that still shows no miss, and never quiet a finding.
  */
 export const THRESHOLDS: Thresholds = {
   routineRisk: 0.2,
-  routineAffects: 0.3,
-  routineScore: 0.5,
-  routineScoreConfidence: 0.75,
+  routineScore: 1.5,
+  routineScoreConfidence: 0.5,
+  routineMaxNotes: 8,
   findingRisk: 0.5,
-  findingScore: 1.0,
+  findingScore: 1.5,
   lineActionable: 0.6,
   lineNotable: 0.6,
 }
@@ -198,7 +224,6 @@ const LABEL: Record<RiskKey, string> = {
   manual_step_required: 'a manual step',
   irreversible_migration: 'a one-way migration',
   dropped_support: 'dropped support',
-  default_changed: 'a changed default',
   config_change_needed: 'a configuration edit',
 }
 
@@ -244,6 +269,8 @@ export function decideScreen(
           ? 'the version range is approximate'
           : e.missing > 0
             ? `${e.missing} version(s) in the range have no notes`
+            : e.notesInRange > t.routineMaxNotes
+              ? `${e.notesInRange} releases' notes in range: a wide range always gets a full reading`
             : e.omitted > 0
               ? 'some notes were left out for length'
               : !e.sourceCertain
@@ -253,7 +280,6 @@ export function decideScreen(
 
   const clear =
     RISK_KEYS.every((k) => flags.risk[k] < t.routineRisk) &&
-    flags.affects < t.routineAffects &&
     flags.score < t.routineScore &&
     flags.scoreConfidence >= t.routineScoreConfidence
   if (!clear) {

@@ -182,10 +182,10 @@ test('clean answers on complete evidence are routine', () => {
 })
 
 test('any risk question past the line is a finding, whatever else is true', () => {
-  for (const k of ['config_removed_or_renamed', 'manual_step_required', 'irreversible_migration', 'dropped_support', 'default_changed', 'config_change_needed']) {
+  for (const k of ['config_removed_or_renamed', 'manual_step_required', 'irreversible_migration', 'dropped_support', 'config_change_needed']) {
     assert.equal(decideScreen(ev(), answers({ [k]: THRESHOLDS.findingRisk }), 0).decision, 'finding', k)
   }
-  assert.equal(decideScreen(ev(), answers({}, 1.2), 0).decision, 'finding', 'the Score alone')
+  assert.equal(decideScreen(ev(), answers({}, 1.6), 0).decision, 'finding', 'the Score alone')
   // Even on evidence that could never be routine: a finding is a finding.
   assert.equal(decideScreen(ev({ incomplete: true }), answers({ dropped_support: 0.9 }), 0).decision, 'finding')
 })
@@ -206,13 +206,35 @@ test('evidence that is not whole can never be routine', () => {
 
 test('the gap between no and yes goes to the reader', () => {
   // Below the finding line, above the routine line: not sure enough either way.
-  assert.equal(decideScreen(ev(), answers({ default_changed: 0.3 }), 0).decision, 'escalate')
-  assert.equal(decideScreen(ev(), answers({ affects_this_deployment: 0.4 }), 0).decision, 'escalate')
-  assert.equal(decideScreen(ev(), answers({}, 0.1, 0.5), 0).decision, 'escalate', 'a Score it was unsure of')
+  assert.equal(decideScreen(ev(), answers({ config_change_needed: 0.3 }), 0).decision, 'escalate')
+  assert.equal(decideScreen(ev(), answers({}, 0.1, 0.45), 0).decision, 'escalate', 'a Score it was unsure of')
+  // The Score's position holds only at "breaks without action"; its middle level fit
+  // almost every release in the calibration.
+  assert.equal(decideScreen(ev(), answers({}, 1.0, 0.8), 0).decision, 'routine')
+  assert.equal(decideScreen(ev(), answers({}, 1.6, 0.8), 0).decision, 'finding')
   // A missing Score reads as the riskiest answer, never the safest.
   const noScore = answers()
   delete noScore.risk
   assert.notEqual(decideScreen(ev(), noScore, 0).decision, 'routine')
+})
+
+test('a wide range is always read', () => {
+  assert.equal(decideScreen(ev({ notesInRange: THRESHOLDS.routineMaxNotes + 1 }), answers(), 0).decision, 'escalate')
+  assert.equal(decideScreen(ev({ notesInRange: THRESHOLDS.routineMaxNotes }), answers(), 0).decision, 'routine')
+})
+
+test('touching this deployment is shown, not decisive on its own', () => {
+  assert.equal(decideScreen(ev(), answers({ affects_this_deployment: 0.7 }), 0).decision, 'routine')
+})
+
+test('a changed default is reported, never a reason to hold', () => {
+  // Jev reads it literally and almost every release changes some behaviour.
+  assert.equal(decideScreen(ev(), answers({ default_changed: 0.95 }), 0).decision, 'routine')
+})
+
+test('notes with CRLF line endings still yield their lines', () => {
+  const lines = extractLines([note('v1', '## Changes:\r\n\r\n* add hdvideo-api resolves #14294\r\n* concen: removed. resolves #5097\r\n')])
+  assert.equal(lines.length, 2)
 })
 
 test('no notes is its own answer, and costs nothing', () => {

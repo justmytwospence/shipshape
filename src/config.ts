@@ -122,6 +122,9 @@ const Tier = z
   .transform((v) => (v === 'gated' ? ('manual' as const) : v))
 export type Tier = z.infer<typeof Tier>
 
+/** The model every stage defaults to, spelled for whoever serves it. */
+export const DEFAULT_MODEL = process.env.OPENROUTER_API_KEY ? 'anthropic/claude-opus-5.5' : 'claude-opus-5-5'
+
 /** "HH:MM-HH:MM", may wrap past midnight. */
 const Window = z.string().regex(/^\d{2}:\d{2}-\d{2}:\d{2}$/)
 
@@ -184,10 +187,12 @@ export const PolicySchema = z.object({
       mode: z.enum(['advisory', 'off']).default('advisory'),
       block_on: z.array(z.enum(['block', 'caution'])).default(['block', 'caution']),
       min_confidence: z.enum(['low', 'medium', 'high']).default('medium'),
-      model: z.string().default('claude-haiku-4-5-20251001'),
-      // Drafting config changes is rare, high-stakes work where being right matters far
-      // more than cost -- unlike the verdicts, which run on every pull request.
-      code_model: z.string().default('claude-opus-5'),
+      // Both stages run on Opus 5.5. The review used to run on Haiku to keep a call on
+      // every update cheap; the cheap judgement now belongs to the screen, and the reader
+      // runs only where a person will read what it writes. The spelling depends on who
+      // serves the call: OpenRouter namespaces by vendor, Anthropic does not.
+      model: z.string().default(DEFAULT_MODEL),
+      code_model: z.string().default(DEFAULT_MODEL),
       // Web reading is what a call actually costs: the ceiling is fetches x
       // content_tokens, dwarfing the prompt itself. Tunable because the right depth
       // depends on how verbose your images' changelogs are.
@@ -234,10 +239,15 @@ export const PolicySchema = z.object({
     .prefault({}),
   propose: z
     .object({
-      // auto   -- draft changes whenever a verdict reports breakage or manual steps
-      // manual -- only when asked, per pull request
-      // off    -- never
-      mode: z.enum(['auto', 'manual', 'off']).default('auto'),
+      // auto -- draft changes whenever the review names steps this deployment must take
+      // off  -- only when asked, per pull request
+      //
+      // `manual` was a third value that meant exactly what `off` now means -- the button
+      // works under both -- so it is accepted and folded rather than kept as a synonym.
+      mode: z
+        .enum(['auto', 'manual', 'off'])
+        .default('auto')
+        .transform((v) => (v === 'manual' ? ('off' as const) : v)),
       // Repo-relative paths no proposal may write, whatever its scope, on top of the
       // ones the code refuses unconditionally (its own stack, .github, bin, scripts,
       // credentials, .env).

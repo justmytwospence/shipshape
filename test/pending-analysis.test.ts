@@ -126,6 +126,27 @@ test('the unreviewed backfill is bounded, so shipping this is not a one-off bill
   assert.ok(!picked.includes('ancient'), 'old releases keep their links, not a model call')
 })
 
+test('the same bump in several stacks is read once, against all of them', () => {
+  // One verdict per (image, from, to) is shared by every service carrying it. Offering it
+  // once per service paid for the same reading several times in one pass.
+  const db = getDb()
+  const ins = db.prepare(
+    `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state,
+                          detail, detected_at, updated_at, acked_at)
+     VALUES (?, ?, 'img/shared', '9.0.0', '9.1.0', 'minor', 'auto', 'pr_open', NULL, ?, ?, NULL)`,
+  )
+  const a = Number(ins.run('one', 'db', ago(2), ago(2)).lastInsertRowid)
+  const b = Number(ins.run('two', 'db', ago(1), ago(1)).lastInsertRowid)
+  openPrFor(a, 201)
+  openPrFor(b, 202)
+  const shared = pendingAnalysis(50).filter((p) => p.image === 'img/shared')
+  assert.equal(shared.length, 1)
+  assert.deepEqual(
+    shared[0]!.carriers.map((c) => c.stack).sort(),
+    ['one', 'two'],
+  )
+})
+
 // ---------------------------------------------------------------------------------------
 // Targets that were replaced before they ever ran
 // ---------------------------------------------------------------------------------------

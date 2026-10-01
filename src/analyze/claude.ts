@@ -1,10 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { llmClient, llmConfigured, missingKeyMessage } from './client.ts'
+import { llmClient, llmConfigured, llmProvider, missingKeyMessage } from './client.ts'
 import { env, loadPolicy, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { prompt } from '../prompts/index.ts'
-import { costOf, reportUnknownModels } from './pricing.ts'
-import { webTools } from './tools.ts'
+import { costOf, estimateInputCost, reportUnknownModels } from './pricing.ts'
+import { toolChoiceFor, webTools } from './tools.ts'
 import { assembleNotes, evidenceOf, notesInRange, type NotesBundle, type NotesEvidence } from '../notes/assemble.ts'
 import { sourceFor } from '../resolver/index.ts'
 import { parseImageRef } from '../images/ref.ts'
@@ -155,6 +155,10 @@ export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | 
 
   const allowed = ['github.com', 'docs.linuxserver.io', 'api.linuxserver.io']
   const client = llmClient(2)
+  const system = prompt('verdict')
+  const user = renderPrompt(target, notes)
+  const meta = { image: target.image, fromTag: target.fromTag, toTag: target.toTag }
+  const started = Date.now()
 
   try {
     const res = await client.messages.create(
@@ -163,15 +167,15 @@ export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | 
         max_tokens: 4096,
         // tools + system are identical across every verdict in a scan pass, so the
         // first call writes this prefix and the rest read it at a tenth of the price.
-        system: [{ type: 'text', text: prompt('verdict'), cache_control: { type: 'ephemeral' } }],
+        system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
         tools: [
           // Revision picked per model: the 2026 pair filters search results before they
           // reach the context window, but only exists on the larger models.
           ...webTools(policy.claude.model, policy.claude.web, allowed),
           EMIT_VERDICT,
         ],
-        tool_choice: { type: 'any' },
-        messages: [{ role: 'user', content: renderPrompt(target, notes) }],
+        tool_choice: toolChoiceFor(policy.claude.model),
+        messages: [{ role: 'user', content: user }],
       },
       { timeout: 180_000 },
     )
@@ -180,13 +184,26 @@ export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | 
       (b): b is Extract<typeof b, { type: 'tool_use' }> =>
         b.type === 'tool_use' && b.name === 'emit_verdict',
     )
+    // Recorded before the answer is judged: a call that came back without a verdict was
+    // still billed, and used to leave no trace in the ledger or the budget.
+    recordCost(res.usage, policy, policy.claude.model, 'verdict', {
+      ...meta,
+      outcome: call ? 'ok' : 'no-answer',
+      latencyMs: Date.now() - started,
+      requestId: res.id,
+    })
     if (!call) {
       return { error: 'the model did not return a verdict' }
     }
     const verdict = normalise(call.input as Partial<Verdict>, { notesInRange: notesInRange(notes) })
-    recordCost(res.usage, policy, policy.claude.model, 'verdict')
     return { ...verdict, evidence: evidenceOf(notes) }
   } catch (err) {
+    if (isTimeout(err)) {
+      recordUnanswered(policy, policy.claude.model, 'verdict', system.length + user.length, {
+        ...meta,
+        latencyMs: Date.now() - started,
+      })
+    }
     return { error: (err as Error).message.slice(0, 300) }
   }
 }
@@ -304,15 +321,26 @@ export function renderPrompt(t: AnalyzeTarget, b: NotesBundle): string {
  * The second rule: an approval at `high` confidence when shipshape found no notes in the
  * range is read as `medium`. The prompt asks for `high` only on notes actually read, and a
  * confident approval is the one that merges unattended; lowering confidence can only hold.
+ *
+ * The third: an approval that lists breaking changes or migration steps contradicts
+ * itself, and is read as `caution`. The lists are what the operator acts on; a verdict
+ * that names work and still says "safe to apply without review" would merge that work
+ * away unread. Like the first rule, this only ever moves toward holding.
  * Exported for the tests.
  */
 export function normalise(v: Partial<Verdict>, ctx: { notesInRange?: number } = {}): Verdict {
   const asArray = (x: unknown): string[] =>
     Array.isArray(x) ? x.filter((s): s is string => typeof s === 'string') : []
   const breaking = asArray(v.breaking_changes)
+  const steps = asArray(v.migration_steps)
   const claimed: Recommendation =
     v.recommendation === 'approve' || v.recommendation === 'block' ? v.recommendation : 'caution'
-  const rec: Recommendation = claimed === 'block' && breaking.length === 0 ? 'caution' : claimed
+  const rec: Recommendation =
+    claimed === 'block' && breaking.length === 0
+      ? 'caution'
+      : claimed === 'approve' && (breaking.length > 0 || steps.length > 0)
+        ? 'caution'
+        : claimed
   const claimedConf: Confidence =
     v.confidence === 'high' || v.confidence === 'medium' ? v.confidence : 'low'
   const conf: Confidence =
@@ -325,7 +353,7 @@ export function normalise(v: Partial<Verdict>, ctx: { notesInRange?: number } = 
     summary: typeof v.summary === 'string' ? v.summary : '',
     severity: sev,
     breaking_changes: breaking,
-    migration_steps: asArray(v.migration_steps),
+    migration_steps: steps,
     new_features: asArray(v.new_features),
     recommendation: rec,
     confidence: conf,
@@ -343,13 +371,106 @@ reportUnknownModels((model) =>
   }),
 )
 
+export type CallPurpose = 'verdict' | 'proposal' | 'revision' | 'screen' | 'replay'
+
+/** What the ledger knows about a call beyond its usage. */
+export interface CallMeta {
+  /** Who served it. Defaults to whoever serves the Messages API right now. */
+  provider?: string
+  image?: string
+  fromTag?: string
+  toTag?: string
+  /** ok, or how it failed after the provider may already have charged for it. */
+  outcome?: 'ok' | 'no-answer' | 'error' | 'timeout'
+  latencyMs?: number
+  requestId?: string | null
+}
+
 export function recordCost(
   usage: Anthropic.Usage,
   policy: Policy,
   model: string,
-  purpose: 'verdict' | 'proposal' | 'revision' = 'verdict',
+  purpose: CallPurpose = 'verdict',
+  meta: CallMeta = {},
 ): void {
   const c = costOf(usage, model)
+  writeLedger(policy, model, purpose, meta, {
+    cost: c.cost,
+    input: c.input,
+    output: c.output,
+    cacheWrite: c.cacheWrite,
+    cacheRead: c.cacheRead,
+    searches: c.searches,
+    estimated: false,
+  })
+}
+
+/**
+ * A call that never came back, recorded at what its prompt alone would cost.
+ *
+ * Only for the case where the provider may have billed and said nothing -- a timeout. An
+ * error the provider answered with (a 4xx, an overload) was not billed and is not
+ * written.
+ */
+export function recordUnanswered(
+  policy: Policy,
+  model: string,
+  purpose: CallPurpose,
+  promptChars: number,
+  meta: CallMeta = {},
+): void {
+  writeLedger(policy, model, purpose, { outcome: 'timeout', ...meta }, {
+    cost: estimateInputCost(model, promptChars),
+    input: Math.round(promptChars / 4),
+    output: 0,
+    cacheWrite: 0,
+    cacheRead: 0,
+    searches: 0,
+    estimated: true,
+  })
+}
+
+/** Whether a thrown error is the client giving up waiting, rather than the server refusing. */
+export function isTimeout(err: unknown): boolean {
+  const e = err as { name?: string; message?: string }
+  return e?.name === 'APIConnectionTimeoutError' || /timed? ?out/i.test(e?.message ?? '')
+}
+
+/** Spend recorded directly, for providers whose usage is not the Messages API shape (Jev). */
+export function recordSpend(
+  policy: Policy,
+  model: string,
+  purpose: CallPurpose,
+  cost: number,
+  tokens: { input: number; output: number },
+  meta: CallMeta & { estimated?: boolean } = {},
+): void {
+  writeLedger(policy, model, purpose, meta, {
+    cost,
+    input: tokens.input,
+    output: tokens.output,
+    cacheWrite: 0,
+    cacheRead: 0,
+    searches: 0,
+    estimated: meta.estimated ?? false,
+  })
+}
+
+function writeLedger(
+  policy: Policy,
+  model: string,
+  purpose: CallPurpose,
+  meta: CallMeta,
+  c: {
+    cost: number
+    input: number
+    output: number
+    cacheWrite: number
+    cacheRead: number
+    searches: number
+    estimated: boolean
+  },
+): void {
   const now = new Date().toISOString()
   const month = now.slice(0, 7)
   const db = getDb()
@@ -358,9 +479,29 @@ export function recordCost(
   // this expensive", and that question is the whole reason to track spend at all.
   db.prepare(
     `INSERT INTO llm_calls (model, purpose, input_tokens, output_tokens,
-                            cache_write_tokens, cache_read_tokens, searches, cost_usd, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(model, purpose, c.input, c.output, c.cacheWrite, c.cacheRead, c.searches, c.cost, now)
+                            cache_write_tokens, cache_read_tokens, searches, cost_usd, created_at,
+                            provider, image, from_tag, to_tag, outcome, cost_estimated,
+                            latency_ms, request_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    model,
+    purpose,
+    c.input,
+    c.output,
+    c.cacheWrite,
+    c.cacheRead,
+    c.searches,
+    c.cost,
+    now,
+    meta.provider ?? llmProvider(),
+    meta.image ?? null,
+    meta.fromTag ?? null,
+    meta.toTag ?? null,
+    meta.outcome ?? 'ok',
+    c.estimated ? 1 : 0,
+    meta.latencyMs ?? null,
+    meta.requestId ?? null,
+  )
 
   db.prepare(
     `INSERT INTO budgets (key, value, window, updated_at) VALUES (?, ?, ?, ?)

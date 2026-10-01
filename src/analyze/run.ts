@@ -57,6 +57,12 @@ export interface PendingAnalysis {
   /** 1 when someone asked for the existing verdict to be read again. */
   rerun: number
   detected_at: string
+  /**
+   * Every service carrying this exact bump. A verdict is keyed by (image, from, to) and
+   * shared, so it has to be judged against all of them -- a rename that reaches one
+   * stack's configuration is the review's business even when another stack asked first.
+   */
+  carriers: { stack: string; service: string }[]
 }
 
 /**
@@ -80,7 +86,7 @@ export interface PendingAnalysis {
  * without a model or a network anywhere near it.
  */
 export function pendingAnalysis(limit: number): PendingAnalysis[] {
-  return getDb()
+  const rows = getDb()
     .prepare(
       `SELECT DISTINCT u.image, u.from_tag, u.to_tag, u.stack, u.service, u.detected_at,
               CASE WHEN EXISTS (
@@ -167,15 +173,31 @@ export function pendingAnalysis(limit: number): PendingAnalysis[] {
            AND v.next_attempt_at IS NOT NULL AND v.next_attempt_at > ?
        )
        -- A requested re-read first: somebody pressed a button and is waiting to see it.
-       ORDER BY rerun DESC, has_pr DESC, u.detected_at DESC
-       LIMIT ?`,
+       ORDER BY rerun DESC, has_pr DESC, u.detected_at DESC`,
     )
     .all(
       sinceForUnreviewed(),
       new Date(Date.now() - INCOMPLETE_WAIT_MS).toISOString(),
       new Date().toISOString(),
-      limit,
-    ) as PendingAnalysis[]
+    ) as Omit<PendingAnalysis, 'carriers'>[]
+
+  // One entry per bump. The query returns one row per service carrying it, so the same
+  // range used to be read once per stack in a single pass -- and each copy took one of the
+  // pass's three slots. The first row of a group is its most deserving, because of the
+  // ordering above, so it supplies the priority and the service whose labels apply.
+  const byKey = new Map<string, PendingAnalysis>()
+  for (const r of rows) {
+    const key = `${r.image}\u0000${r.from_tag}\u0000${r.to_tag}`
+    const seen = byKey.get(key)
+    if (seen) {
+      if (!seen.carriers.some((c) => c.stack === r.stack && c.service === r.service)) {
+        seen.carriers.push({ stack: r.stack, service: r.service })
+      }
+      continue
+    }
+    byKey.set(key, { ...r, carriers: [{ stack: r.stack, service: r.service }] })
+  }
+  return [...byKey.values()].slice(0, limit)
 }
 
 /** A reading whose notes could not all be fetched is tried again after this long... */

@@ -1,8 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { llmClient, llmConfigured, missingKeyMessage } from '../analyze/client.ts'
 import { env, loadPolicy, type Policy } from '../config.ts'
-import { recordCost } from '../analyze/claude.ts'
-import { webTools } from '../analyze/tools.ts'
+import { isTimeout, recordCost, recordUnanswered } from '../analyze/claude.ts'
+import { toolChoiceFor, webTools } from '../analyze/tools.ts'
 import { prompt } from '../prompts/index.ts'
 import type { Op } from '../propose/apply.ts'
 import { NOTES_SCHEMA, OPS_SCHEMA, normaliseOps, strings } from '../propose/propose.ts'
@@ -101,13 +101,17 @@ export async function revise(input: ReviseInput): Promise<Revision | { error: st
 
   const client = llmClient(0)
   const allowed = ['github.com', 'docs.linuxserver.io', 'api.linuxserver.io']
+  const system = prompt('revision')
+  const user = renderPrompt(input)
+  const meta = { image: input.image }
+  const started = Date.now()
 
   try {
     const res = await client.messages.create(
       {
         model: policy.claude.code_model,
         max_tokens: 8192,
-        system: [{ type: 'text', text: prompt('revision'), cache_control: { type: 'ephemeral' } }],
+        system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
         // Web tools are off unless asked for. The operator's comment IS the
         // specification, so searching for it is usually wrong, and fetching is what a
         // call actually costs -- the worst case drops by an order of magnitude without.
@@ -115,8 +119,8 @@ export async function revise(input: ReviseInput): Promise<Revision | { error: st
           ...(policy.revise.web ? webTools(policy.claude.code_model, policy.claude.web, allowed) : []),
           RESPOND,
         ],
-        tool_choice: { type: 'any' },
-        messages: [{ role: 'user', content: renderPrompt(input) }],
+        tool_choice: toolChoiceFor(policy.claude.code_model),
+        messages: [{ role: 'user', content: user }],
       },
       // Shorter than the proposal path, and no retries. A reply that takes five minutes
       // is a failed reply, and each retry is separately billed against a ledger that
@@ -128,11 +132,22 @@ export async function revise(input: ReviseInput): Promise<Revision | { error: st
       (b): b is Extract<typeof b, { type: 'tool_use' }> =>
         b.type === 'tool_use' && b.name === 'respond_to_comment',
     )
-    recordCost(res.usage, policy, policy.claude.code_model, 'revision')
+    recordCost(res.usage, policy, policy.claude.code_model, 'revision', {
+      ...meta,
+      outcome: call ? 'ok' : 'no-answer',
+      latencyMs: Date.now() - started,
+      requestId: res.id,
+    })
     if (!call) return { error: 'the model did not answer' }
 
     return normaliseRevision(call.input as Record<string, unknown>, policy, input)
   } catch (err) {
+    if (isTimeout(err)) {
+      recordUnanswered(policy, policy.claude.code_model, 'revision', system.length + user.length, {
+        ...meta,
+        latencyMs: Date.now() - started,
+      })
+    }
     return { error: (err as Error).message.slice(0, 300) }
   }
 }

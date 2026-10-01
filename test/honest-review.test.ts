@@ -71,6 +71,15 @@ test('caution holds a merge exactly as block does, so the backstop changes the l
   }
 })
 
+test('an approval that lists work it requires is read as caution', () => {
+  // "Safe to apply without review" and "you must rename this variable" cannot both be
+  // true, and the one that merges unattended is the one to distrust.
+  assert.equal(normalise({ recommendation: 'approve', migration_steps: ['rename X to Y'] }).recommendation, 'caution')
+  assert.equal(normalise({ recommendation: 'approve', breaking_changes: ['X removed'] }).recommendation, 'caution')
+  assert.equal(normalise({ recommendation: 'approve', new_features: ['dark mode'] }).recommendation, 'approve')
+  assert.equal(normalise({ recommendation: 'approve' }).recommendation, 'approve')
+})
+
 // ---------------------------------------------------------------------------------------
 // The tags are facts
 // ---------------------------------------------------------------------------------------

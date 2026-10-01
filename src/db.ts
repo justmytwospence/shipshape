@@ -716,6 +716,44 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     ALTER TABLE verdicts ADD COLUMN new_features TEXT;   -- JSON array
   `,
   },
+  {
+    id: '023-llm-ledger',
+    sql: `
+    -- The ledger learns what each call was for and how it ended.
+    --
+    -- It only ever recorded calls that came back with the answer they were asked for: a
+    -- billed review that returned no verdict, or a call that timed out after the provider
+    -- had already started charging, left no row and no spend. A budget that cannot see
+    -- every call it paid for under-counts in the one direction that costs money.
+    --
+    -- purpose keeps its name and gains values: screen (Jev) and replay (calibration)
+    -- alongside verdict, proposal and revision. cost_estimated marks a row whose cost was
+    -- computed here because the provider never reported one.
+    ALTER TABLE llm_calls ADD COLUMN provider TEXT;
+    ALTER TABLE llm_calls ADD COLUMN image TEXT;
+    ALTER TABLE llm_calls ADD COLUMN from_tag TEXT;
+    ALTER TABLE llm_calls ADD COLUMN to_tag TEXT;
+    ALTER TABLE llm_calls ADD COLUMN outcome TEXT NOT NULL DEFAULT 'ok';
+    ALTER TABLE llm_calls ADD COLUMN cost_estimated INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE llm_calls ADD COLUMN latency_ms INTEGER;
+    ALTER TABLE llm_calls ADD COLUMN request_id TEXT;
+  `,
+  },
+  {
+    id: '024-proposal-retry',
+    sql: `
+    -- A draft that failed for a reason that may pass -- a rate limit, a timeout, a model
+    -- that returned nothing -- is tried again on a backoff, and gives up after three tries.
+    --
+    -- It used to write nothing on failure, so the next tick picked the same pull request
+    -- again: an Opus call and a fresh "could not draft" comment every minute for as long
+    -- as the failure lasted. A refusal (the drafted change broke a rule) is final as
+    -- before and carries retryable = 0.
+    ALTER TABLE proposals ADD COLUMN retryable INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE proposals ADD COLUMN attempts INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE proposals ADD COLUMN next_attempt_at TEXT;
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

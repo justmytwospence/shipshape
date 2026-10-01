@@ -101,3 +101,22 @@ export function webTools(
 export function worstCaseFetchTokens(budget: WebToolBudget): number {
   return budget.fetches * budget.content_tokens
 }
+
+/**
+ * Models that refuse a forced tool choice. The 5.5 generation answers `tool_choice: any`
+ * with a 400 -- "type tool and any are not supported for this model" -- so every review,
+ * draft and reply would fail outright the day the model id changed.
+ */
+const NO_FORCED_TOOL = ['claude-opus-5.5', 'claude-opus-5-5', 'claude-sonnet-5.5', 'claude-sonnet-5-5']
+
+/**
+ * Make the model end by calling one of our tools, as far as this model allows.
+ *
+ * Where it can be forced, it is. Where it cannot, `auto` plus the prompt's closing
+ * instruction does the work, and the caller's existing "the model did not return ..."
+ * branch handles a reply that ignored it -- recorded in the ledger as `no-answer`.
+ */
+export function toolChoiceFor(model: string): { type: 'any' } | { type: 'auto' } {
+  const family = baseModel(model)
+  return NO_FORCED_TOOL.some((m) => family.startsWith(m)) ? { type: 'auto' } : { type: 'any' }
+}

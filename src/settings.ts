@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { relative } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { Cron } from 'croner'
-import { botIdentity, env, paths, validatePolicyText, type Policy } from './config.ts'
+import { DEFAULT_MODEL, botIdentity, env, paths, validatePolicyText, type Policy } from './config.ts'
 import { logEvent } from './db.ts'
 
 /**
@@ -294,11 +294,11 @@ export const SETTINGS: SettingDef[] = [
     path: 'claude.model',
     advanced: true,
     kind: 'model',
-    defaultValue: 'claude-haiku-4-5-20251001',
+    defaultValue: DEFAULT_MODEL,
     label: 'Model',
-    help: 'runs on every update',
+    help: 'reads the changelog where a person will read the result',
     about:
-      'The one worth keeping cheap. Pick from the list, or type an id that is not on it.',
+      'Pick from the list, or type an id that is not on it.',
   },
   {
     section: 'Changelog review',
@@ -377,11 +377,10 @@ export const SETTINGS: SettingDef[] = [
     path: 'propose.mode',
     advanced: true,
     kind: 'enum',
-    options: ['auto', 'manual', 'off'],
+    options: ['auto', 'off'],
     optionHelp: {
-      auto: 'draft whenever a verdict reports breakage or manual steps',
-      manual: 'only when you press the button on a pull request',
-      off: 'never draft anything',
+      auto: 'draft whenever the review names steps this deployment has to take',
+      off: 'only when you press Draft config changes on a pull request',
     },
     defaultValue: 'auto',
     label: 'Draft config changes',
@@ -450,11 +449,11 @@ export const SETTINGS: SettingDef[] = [
     path: 'claude.code_model',
     advanced: true,
     kind: 'model',
-    defaultValue: 'claude-opus-5',
+    defaultValue: DEFAULT_MODEL,
     label: 'Model',
-    help: 'rare, high-stakes',
+    help: 'drafts config changes and answers your comments',
     about:
-      'Worth a stronger model than the changelog verdicts use.',
+      'Rare, high-stakes work: a draft is a change nothing else has checked.',
   },
 
   // ------------------------------------------------------------------ Merging

@@ -16,7 +16,14 @@ import { baseModel } from './client.ts'
 const PRICING: { prefix: string; in: number; out: number }[] = [
   { prefix: 'claude-fable-', in: 10, out: 50 },
   { prefix: 'claude-mythos-', in: 10, out: 50 },
+  // Before the bare `claude-opus-` prefix, which matches it too: 5.5 is not priced like
+  // 5. Both spellings, because Anthropic writes `claude-opus-5-5` and OpenRouter
+  // `claude-opus-5.5`.
+  { prefix: 'claude-opus-5.5', in: 4, out: 20 },
+  { prefix: 'claude-opus-5-5', in: 4, out: 20 },
   { prefix: 'claude-opus-', in: 5, out: 25 },
+  { prefix: 'claude-sonnet-5.5', in: 2, out: 10 },
+  { prefix: 'claude-sonnet-5-5', in: 2, out: 10 },
   { prefix: 'claude-sonnet-', in: 3, out: 15 },
   { prefix: 'claude-haiku-', in: 1, out: 5 },
 ]
@@ -48,6 +55,18 @@ function priceFor(model: string): { in: number; out: number } {
   return PRICING[0]!
 }
 
+/**
+ * What a call that never answered probably cost: its prompt, at the input rate.
+ *
+ * A request that timed out on our side may still have been read and billed on theirs,
+ * and recording it as free is the under-count this ledger exists to prevent. Characters
+ * over four is the usual rough token count; output is not guessed, since a call that
+ * never returned may never have produced any.
+ */
+export function estimateInputCost(model: string, promptChars: number): number {
+  return (promptChars / 4 / 1e6) * priceFor(model).in
+}
+
 export interface CallCost {
   cost: number
   input: number
@@ -71,7 +90,25 @@ export function costOf(usage: Anthropic.Usage, model: string): CallCost {
   // whichever upstream served the call -- the same model can route via Bedrock at rates
   // that are not Anthropic's list price. The table stays as the fallback, and as the
   // only source when talking to Anthropic directly.
-  const reported = (usage as { cost?: number }).cost
+  //
+  // Except with a bring-your-own-key route, where `cost` is only OpenRouter's own fee --
+  // zero, at the time of writing -- and what the provider charged the operator's key is
+  // `cost_details.upstream_inference_cost`. Reading `cost` alone recorded every Opus
+  // draft from 2026-09-29 on at $0, and the budget never saw them.
+  const u = usage as {
+    cost?: number
+    is_byok?: boolean
+    cost_details?: { upstream_inference_cost?: number | null }
+  }
+  const upstream = u.cost_details?.upstream_inference_cost
+  const reported =
+    typeof u.cost === 'number' && u.cost >= 0
+      ? u.is_byok
+        ? typeof upstream === 'number' && upstream >= 0
+          ? u.cost + upstream
+          : undefined
+        : u.cost
+      : undefined
   const searches =
     (usage as { server_tool_use?: { web_search_requests?: number } }).server_tool_use
       ?.web_search_requests ?? 0

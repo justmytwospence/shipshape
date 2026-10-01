@@ -1,8 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { llmClient, llmConfigured, missingKeyMessage } from '../analyze/client.ts'
 import { env, loadPolicy } from '../config.ts'
-import { recordCost } from '../analyze/claude.ts'
-import { webTools } from '../analyze/tools.ts'
+import { isTimeout, recordCost, recordUnanswered } from '../analyze/claude.ts'
+import { toolChoiceFor, webTools } from '../analyze/tools.ts'
 import { prompt } from '../prompts/index.ts'
 import type { Op } from './apply.ts'
 import { renderContext, type DeployContext } from './context.ts'
@@ -147,19 +147,23 @@ export async function propose(input: ProposeInput): Promise<Proposal | { error: 
 
   const client = llmClient(2)
   const allowed = ['github.com', 'docs.linuxserver.io', 'api.linuxserver.io']
+  const system = prompt('proposal')
+  const user = renderPrompt(input)
+  const meta = { image: input.image, fromTag: input.fromTag, toTag: input.toTag }
+  const started = Date.now()
 
   try {
     const res = await client.messages.create(
       {
         model: policy.claude.code_model,
         max_tokens: 8192,
-        system: [{ type: 'text', text: prompt('proposal'), cache_control: { type: 'ephemeral' } }],
+        system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
         tools: [
           ...webTools(policy.claude.code_model, policy.claude.web, allowed),
           PROPOSE_CHANGES,
         ],
-        tool_choice: { type: 'any' },
-        messages: [{ role: 'user', content: renderPrompt(input) }],
+        tool_choice: toolChoiceFor(policy.claude.code_model),
+        messages: [{ role: 'user', content: user }],
       },
       { timeout: 300_000 },
     )
@@ -168,11 +172,22 @@ export async function propose(input: ProposeInput): Promise<Proposal | { error: 
       (b): b is Extract<typeof b, { type: 'tool_use' }> =>
         b.type === 'tool_use' && b.name === 'propose_changes',
     )
-    recordCost(res.usage, policy, policy.claude.code_model, 'proposal')
+    recordCost(res.usage, policy, policy.claude.code_model, 'proposal', {
+      ...meta,
+      outcome: call ? 'ok' : 'no-answer',
+      latencyMs: Date.now() - started,
+      requestId: res.id,
+    })
     if (!call) return { error: 'the model did not return a proposal' }
 
     return normalise(call.input as Record<string, unknown>)
   } catch (err) {
+    if (isTimeout(err)) {
+      recordUnanswered(policy, policy.claude.code_model, 'proposal', system.length + user.length, {
+        ...meta,
+        latencyMs: Date.now() - started,
+      })
+    }
     return { error: (err as Error).message.slice(0, 300) }
   }
 }

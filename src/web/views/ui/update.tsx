@@ -70,6 +70,7 @@ const ActionButton: FC<{
   size?: 'xs' | 'sm'
 }> = ({ update, verb, target, reply, primary, size = 'sm' }) => {
   const v = VERB[verb]
+  const label = update.presented?.[verb]?.label ?? v.label
   const attrs = v.confirm
     ? { 'data-open': `#confirm-${verb}-${update.id}` }
     : {
@@ -95,7 +96,7 @@ const ActionButton: FC<{
       {...attrs}
     >
       {v.icon ? <Icon name={v.icon} class="size-3.5" /> : null}
-      {size === 'xs' ? (v.short ?? v.label) : v.label}
+      {size === 'xs' ? (v.short ?? label) : label}
     </button>
   )
 }
@@ -116,26 +117,15 @@ const Confirm: FC<{
   warnings?: string[]
 }> = ({ update, verb, target, reply, warnings }) => {
   const v = VERB[verb]
-  const steps =
-    verb === 'merge-deploy'
-      ? [
-          `squash #${update.pr?.number} into main`,
-          'sync the checkout on this host',
-          `bring ${update.stack} up with docker compose, or leave it stopped if it is not running`,
-          'watch it for five minutes',
-          'soak for thirty more before calling it verified',
-          'put the old version back automatically if it fails',
-        ]
-      : [
-          `revert the commit that landed ${update.toTag}`,
-          `put ${update.stack} back on ${update.fromTag}, running only if it is running now`,
-          'publish the revert so the next scan does not re-offer it',
-        ]
+  const label = update.presented?.[verb]?.label ?? v.label
+  // Written from policy.yaml and the pull request's own members (updates/present.ts),
+  // never from constants: this is the one sentence read right before acting.
+  const steps = update.presented?.[verb]?.steps ?? []
   return (
     <dialog id={`confirm-${verb}-${update.id}`} class="modal modal-bottom sm:modal-middle">
       <div class="modal-box pb-safe">
         <h3 class="text-base font-semibold">
-          {v.label} — {update.service}
+          {label} — {update.service}
         </h3>
         <p class="mt-1 font-mono text-xs opacity-70">
           {update.fromTag} → {update.toTag}
@@ -165,7 +155,7 @@ const Confirm: FC<{
             hx-indicator="#busy"
             onclick="this.closest('dialog').close()"
           >
-            {v.label}
+            {label}
           </button>
         </form>
       </div>
@@ -479,18 +469,25 @@ export const ActionBar: FC<{
             <ul class="dropdown-content menu menu-md lg:menu-sm bg-base-100 rounded-box border-base-300 z-20 w-60 border p-1.5 shadow">
               {secondary.map((verb) => (
                 <li>
+                  {/* A verb that asks first asks here too. The menu used to post straight
+                      to the endpoint, so a merge or a rollback chosen from it skipped the
+                      confirmation the same verb gets as the primary button. */}
                   <button
                     type="button"
                     class="tap"
                     data-verb={verb}
-                    hx-post={endpoint(update, verb, reply)}
-                    hx-target={target}
-                    hx-swap="outerHTML"
-                    hx-disabled-elt="this"
-                    hx-indicator="#busy"
+                    {...(VERB[verb].confirm
+                      ? { 'data-open': `#confirm-${verb}-${update.id}` }
+                      : {
+                          'hx-post': endpoint(update, verb, reply),
+                          'hx-target': target,
+                          'hx-swap': 'outerHTML',
+                          'hx-disabled-elt': 'this',
+                          'hx-indicator': '#busy',
+                        })}
                   >
                     {VERB[verb].icon ? <Icon name={VERB[verb].icon!} /> : null}
-                    {VERB[verb].label}
+                    {update.presented?.[verb]?.label ?? VERB[verb].label}
                   </button>
                 </li>
               ))}

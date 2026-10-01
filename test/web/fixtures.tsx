@@ -16,6 +16,8 @@ import {
   UpdatesPage,
 } from '../../src/web/views/pages.tsx'
 import type { UpdateView, Milestone } from '../../src/updates/queries.ts'
+import { present } from '../../src/updates/present.ts'
+import { PolicySchema } from '../../src/config.ts'
 
 /**
  * Every view, rendered without a database, a token or a network.
@@ -30,6 +32,29 @@ const now = new Date().toISOString()
 const ago = (h: number) => new Date(Date.now() - h * 3600_000).toISOString()
 
 export function update(over: Partial<UpdateView> = {}): UpdateView {
+  const u = base(over)
+  // What the buttons say is derived from the same facts the real view builder uses, with
+  // the default policy, so a fixture can never claim a label the server would not render.
+  return over.presented
+    ? u
+    : {
+        ...u,
+        presented: present(
+          u.actions,
+          {
+            stack: u.stack,
+            service: u.service,
+            fromTag: u.fromTag,
+            toTag: u.toTag,
+            pr: u.pr ? { number: u.pr.number, scope: u.pr.scope } : null,
+            members: [{ stack: u.stack, service: u.service, tier: u.tier }],
+          },
+          PolicySchema.parse({}),
+        ),
+      }
+}
+
+function base(over: Partial<UpdateView>): UpdateView {
   return {
     id: 7,
     stack: 'media',
@@ -76,6 +101,7 @@ export function update(over: Partial<UpdateView> = {}): UpdateView {
     actions: ['merge-deploy', 'propose', 'skip'],
     primary: 'merge-deploy',
     transient: false,
+    presented: {},
     ...over,
   }
 }
@@ -562,6 +588,17 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
       UpdateRow({ update: UPDATES.ready!, ctx: 'list=updates&stage=open', showStage: true }),
     ),
     'update-verified': String(detail(UPDATES.verified!, 'list=updates&stage=done', '/updates')),
+    'update-attended': String(
+      detail(update({ id: 21, tier: 'attended' }), 'list=updates&stage=open', '/updates'),
+    ),
+    // Merge in the overflow menu rather than as the primary button.
+    'update-secondary-merge': String(
+      detail(
+        update({ id: 22, actions: ['rerun-review', 'merge-deploy', 'skip'], primary: 'rerun-review' }),
+        'list=updates&stage=open',
+        '/updates',
+      ),
+    ),
     'update-left-stopped': String(detail(UPDATES.leftStopped!, 'list=updates&stage=done', '/updates')),
     'update-review-failed': String(
       detail(UPDATES.reviewFailed!, 'list=updates&stage=open', '/updates'),

@@ -1,6 +1,7 @@
 import { getDb } from '../db.ts'
 import { loadPolicy } from '../config.ts'
-import { shouldOpenPr, verdictHolds, type EffectiveTier } from '../policy.ts'
+import { normaliseTier, shouldOpenPr, verdictHolds, type EffectiveTier } from '../policy.ts'
+import { present, type Presentation } from './present.ts'
 import type { Magnitude } from '../versions/patterns.ts'
 import { actionsFor, isTransient, primaryVerb, type ActionContext, type Verb } from './actions.ts'
 import { LIVE_STATES, sqlIn, type UpdateState } from './state.ts'
@@ -74,6 +75,11 @@ export interface UpdateView {
   actions: Verb[]
   primary: Verb | null
   transient: boolean
+  /**
+   * What the buttons that depend on configuration actually say, and what their
+   * confirmations promise -- see updates/present.ts. Absent for a verb whose label is fixed.
+   */
+  presented: Partial<Record<Verb, Presentation>>
 }
 
 const SELECT_UPDATE = `
@@ -237,7 +243,7 @@ function toView(u: RawUpdate, repo: string): UpdateView {
   const hasProposal = pr
     ? !!getDb()
         .prepare(
-          `SELECT 1 FROM proposals p JOIN prs r ON r.id = p.pr_id WHERE r.number = ? LIMIT 1`,
+          `SELECT 1 FROM proposals p JOIN prs r ON r.id = p.pr_id WHERE r.number = ? AND p.retryable = 0 LIMIT 1`,
         )
         .get(pr.number)
     : false
@@ -266,6 +272,18 @@ function toView(u: RawUpdate, repo: string): UpdateView {
     atFromTag: image ? image.current_tag === u.from_tag.split('@')[0] : undefined,
   }
   const actions = actionsFor(ctx)
+  const presented = present(
+    actions,
+    {
+      stack: u.stack,
+      service: u.service,
+      fromTag: u.from_tag,
+      toTag: u.to_tag,
+      pr: pr ? { number: pr.number, scope: pr.scope } : null,
+      members: pr ? membersOf(pr.number) : [{ stack: u.stack, service: u.service, tier: u.tier as EffectiveTier }],
+    },
+    loadPolicy().policy,
+  )
 
   return {
     id: u.id,
@@ -288,7 +306,23 @@ function toView(u: RawUpdate, repo: string): UpdateView {
     actions,
     primary: primaryVerb(actions),
     transient: isTransient(ctx),
+    presented,
   }
+}
+
+/** The live updates a pull request carries, with the rung each is on. */
+function membersOf(prNumber: number): { stack: string; service: string; tier: EffectiveTier }[] {
+  return (
+    getDb()
+      .prepare(
+        `SELECT u.stack, u.service, u.tier FROM updates u
+           JOIN pr_updates pu ON pu.update_id = u.id
+           JOIN prs p ON p.id = pu.pr_id
+          WHERE p.number = ? AND u.state != 'superseded'
+          ORDER BY u.id`,
+      )
+      .all(prNumber) as { stack: string; service: string; tier: string }[]
+  ).map((m) => ({ ...m, tier: normaliseTier(m.tier) }))
 }
 
 export function updateView(id: number): UpdateView | null {

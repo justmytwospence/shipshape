@@ -884,6 +884,9 @@ export function createApp(): Hono {
     const refuse = (message: string) => verbReply(c, id, { ok: false, message })
 
     const facts = mergeFacts(number)
+    // Asked before the merge, while the update still reads as waiting on one: whether the
+    // deploy starts itself is the same answer the button's label gave.
+    const deploys = updateView(id)?.presented?.['merge-deploy']?.label !== 'Merge'
     let gate = mergeGate(facts, { force })
     if (!gate.allowed) return refuse(gate.blocked ?? 'the merge gate refused')
 
@@ -930,7 +933,9 @@ export function createApp(): Hono {
       // The deploy follows the merge unless the service says otherwise, so the reply can
       // no longer be decided by `paused` -- it is decided by the rung, and the poll pass
       // that runs a moment from now is what knows it.
-      message: 'Merged. The deploy follows unless this service is one you deploy yourself.',
+      message: deploys
+        ? 'Merged. The deploy follows, and is watched.'
+        : 'Merged. This one is deployed by hand: press Deploy when you are ready.',
     })
   })
 

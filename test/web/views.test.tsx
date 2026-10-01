@@ -290,9 +290,28 @@ test('merging and rolling back ask twice', () => {
   assert.match(html, /data-open="#confirm-merge-deploy-7"/)
   assert.match(html, /id="confirm-merge-deploy-7"/)
   assert.match(html, /squash #41 into main/)
-  assert.match(html, /soak for thirty more/)
+  // Written from policy (here the defaults), not from constants.
+  assert.match(html, /watch it for up to 5 minutes/)
+  assert.match(html, /look again 30 minutes later/)
   const verified = VIEWS['update-verified']!
   assert.match(verified, /data-open="#confirm-rollback-13"/)
+})
+
+test('a service deployed by hand offers Merge, not Merge & deploy', () => {
+  const html = VIEWS['update-attended']!
+  assert.match(html, />Merge<\/button>/)
+  assert.doesNotMatch(html, /Merge &amp; deploy/)
+  assert.match(html, /press Deploy when you are ready/)
+})
+
+test('a verb that asks first asks from the overflow menu too', () => {
+  // The menu used to post straight to the endpoint, so a merge chosen from it skipped
+  // the confirmation the same verb gets as the primary button.
+  const html = VIEWS['update-secondary-merge']!
+  const start = html.indexOf('dropdown-content')
+  const menu = html.slice(start, html.indexOf('</ul>', start))
+  assert.match(menu, /data-verb="merge-deploy" data-open="#confirm-merge-deploy-/)
+  assert.doesNotMatch(menu, /hx-post="\/prs\/41\/merge/)
 })
 
 test('a left-stopped update says so', () => {

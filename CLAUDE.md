@@ -147,7 +147,7 @@ before touching views. The load-bearing ones:
 ## Upstream links and release notes
 
 Which repository an image comes from, and what its release notes say, feed detection (the
-prerelease stream), the review, the model tier's `linked` guard, pull request bodies and
+prerelease stream), the review and the screen, pull request bodies and
 three pages. It went wrong in every one of those places separately before it was pulled
 into one place, so keep it there:
 

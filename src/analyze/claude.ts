@@ -4,7 +4,9 @@ import { env, loadPolicy, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { prompt } from '../prompts/index.ts'
 import { costOf, estimateInputCost, reportUnknownModels } from './pricing.ts'
-import { toolChoiceFor, webTools } from './tools.ts'
+import { WEB_BUDGET, toolChoiceFor, webTools } from './tools.ts'
+import { readerOn } from '../policy.ts'
+import type { DeploymentEntry } from './screen/state.ts'
 import { assembleNotes, evidenceOf, notesInRange, type NotesBundle, type NotesEvidence } from '../notes/assemble.ts'
 import { sourceFor } from '../resolver/index.ts'
 import { parseImageRef } from '../images/ref.ts'
@@ -122,8 +124,15 @@ export interface AnalyzeTarget {
   service?: string
   /** When shipshape first saw the proposed tag in the registry. */
   observedAt?: string
-  /** The service's compose block, so config-relevant changes can be flagged concretely. */
-  composeSnippet?: string
+  /**
+   * How every service carrying this bump is configured -- environment variable names,
+   * volume paths, dependencies -- so config-relevant changes can be flagged concretely.
+   *
+   * Names only. It used to be the service's raw compose block, sixty lines of it, values
+   * and all, sent to a third party on every review; the review needs to know that
+   * `DB_HOST` is set, never what it is set to.
+   */
+  deployment?: DeploymentEntry[]
 }
 
 /** A verdict, with what it was based on. */
@@ -131,7 +140,7 @@ export type ReviewedVerdict = Verdict & { evidence?: NotesEvidence }
 
 export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | { error: string }> {
   const { policy } = loadPolicy()
-  if (policy.claude.mode === 'off') return { error: 'analysis disabled' }
+  if (!readerOn(policy)) return { error: 'the changelog reader is off' }
   if (!llmConfigured()) return { error: missingKeyMessage() }
 
   const ref = parseImageRef(target.image)
@@ -163,7 +172,7 @@ export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | 
   try {
     const res = await client.messages.create(
       {
-        model: policy.claude.model,
+        model: policy.review.model,
         max_tokens: 4096,
         // tools + system are identical across every verdict in a scan pass, so the
         // first call writes this prefix and the rest read it at a tenth of the price.
@@ -171,10 +180,10 @@ export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | 
         tools: [
           // Revision picked per model: the 2026 pair filters search results before they
           // reach the context window, but only exists on the larger models.
-          ...webTools(policy.claude.model, policy.claude.web, allowed),
+          ...webTools(policy.review.model, WEB_BUDGET, allowed),
           EMIT_VERDICT,
         ],
-        tool_choice: toolChoiceFor(policy.claude.model),
+        tool_choice: toolChoiceFor(policy.review.model),
         messages: [{ role: 'user', content: user }],
       },
       { timeout: 180_000 },
@@ -186,7 +195,7 @@ export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | 
     )
     // Recorded before the answer is judged: a call that came back without a verdict was
     // still billed, and used to leave no trace in the ledger or the budget.
-    recordCost(res.usage, policy, policy.claude.model, 'verdict', {
+    recordCost(res.usage, policy, policy.review.model, 'verdict', {
       ...meta,
       outcome: call ? 'ok' : 'no-answer',
       latencyMs: Date.now() - started,
@@ -199,7 +208,7 @@ export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | 
     return { ...verdict, evidence: evidenceOf(notes) }
   } catch (err) {
     if (isTimeout(err)) {
-      recordUnanswered(policy, policy.claude.model, 'verdict', system.length + user.length, {
+      recordUnanswered(policy, policy.review.model, 'verdict', system.length + user.length, {
         ...meta,
         latencyMs: Date.now() - started,
       })
@@ -249,9 +258,9 @@ export function renderPrompt(t: AnalyzeTarget, b: NotesBundle): string {
     parts.push(`Recent releases whose names could not be placed against these versions: ${b.unplaced.join(', ')}`)
   }
 
-  if (t.composeSnippet) {
+  if (t.deployment && t.deployment.length > 0) {
     parts.push(
-      `\nHow this service is configured here (flag anything the update affects):\n\`\`\`yaml\n${t.composeSnippet}\n\`\`\``,
+      `\nHow ${t.deployment.length === 1 ? 'this service is' : 'the services carrying this update are'} configured here -- names only, values withheld (flag anything the update affects):\n\`\`\`json\n${JSON.stringify(t.deployment, null, 2)}\n\`\`\``,
     )
   }
 
@@ -512,12 +521,12 @@ function writeLedger(
   ).run('claude.spend_usd', c.cost, month, now)
 
   const spent = monthlySpend()
-  if (spent >= policy.claude.monthly_budget_usd) {
+  if (spent >= policy.review.monthly_budget_usd) {
     logEvent({
       level: 'warn',
       kind: 'analysis',
       message: 'monthly analysis budget reached',
-      detail: `$${spent.toFixed(2)} of $${policy.claude.monthly_budget_usd} — analysis pauses, pull requests continue`,
+      detail: `$${spent.toFixed(2)} of $${policy.review.monthly_budget_usd} — analysis pauses, pull requests continue`,
     })
   }
 }
@@ -532,5 +541,5 @@ export function monthlySpend(): number {
 
 export function budgetExhausted(): boolean {
   const { policy } = loadPolicy()
-  return monthlySpend() >= policy.claude.monthly_budget_usd
+  return monthlySpend() >= policy.review.monthly_budget_usd
 }

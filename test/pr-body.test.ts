@@ -13,7 +13,7 @@ import type { Policy } from '../src/config.ts'
  * is usually still empty when the pull request opens.
  */
 
-const POLICY = { claude: { mode: 'advisory' } } as Policy
+const POLICY = { review: { screen: 'off', model: 'anthropic/claude-opus-5.5' } } as Policy
 
 function group(members: Partial<UpdateGroup['members'][number]>[]): UpdateGroup {
   return {
@@ -207,6 +207,6 @@ test('the verdict markers and the metadata comment survive the new section', () 
 test('the analysis placeholder says which of the two reasons it is empty', () => {
   const on = bodyOf(group([{}]))
   assert.match(on, /Changelog analysis has not run yet/)
-  const off = prBody(group([{}]), { claude: { mode: 'off' } } as Policy, new Map())
+  const off = prBody(group([{}]), { review: { screen: 'off', model: 'off' } } as Policy, new Map())
   assert.match(off, /Changelog analysis is disabled/)
 })

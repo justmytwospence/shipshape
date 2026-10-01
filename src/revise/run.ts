@@ -353,7 +353,7 @@ async function applyToBranch(
       ...botIdentity(),
       'commit',
       '-am',
-      `${title}\n\nAsked for by ${row.author} in ${row.url ?? `#${row.number}`}.\nWritten by ${policy.claude.code_model}. Review before merging.`,
+      `${title}\n\nAsked for by ${row.author} in ${row.url ?? `#${row.number}`}.\nWritten by ${policy.review.code_model}. Review before merging.`,
     ])
     const newSha = (await git(repoDir, ['rev-parse', 'HEAD'])).stdout
     const pushed = await git(repoDir, ['push', httpsUrl(), `HEAD:${row.branch}`], {
@@ -387,7 +387,7 @@ async function applyToBranch(
         result.reply.slice(0, 2000),
         JSON.stringify(result.sources),
         JSON.stringify(applied.changed),
-        policy.claude.code_model,
+        policy.review.code_model,
         JSON.stringify(
           [...applied.results].flatMap(([file, text]) =>
             proposalHunks(applied.originals.get(file) ?? '', text, file),

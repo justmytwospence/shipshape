@@ -1,7 +1,8 @@
 import { getDb } from '../db.ts'
 import { loadPolicy } from '../config.ts'
-import { normaliseTier, shouldOpenPr, verdictHolds, type EffectiveTier } from '../policy.ts'
+import { MIN_CONFIDENCE, normaliseTier, shouldOpenPr, verdictHolds, type EffectiveTier } from '../policy.ts'
 import { present, type Presentation } from './present.ts'
+import { screenFor } from '../analyze/screen/run.ts'
 import type { Magnitude } from '../versions/patterns.ts'
 import { actionsFor, isTransient, primaryVerb, type ActionContext, type Verb } from './actions.ts'
 import { LIVE_STATES, sqlIn, type UpdateState } from './state.ts'
@@ -80,6 +81,60 @@ export interface UpdateView {
    * confirmations promise -- see updates/present.ts. Absent for a verb whose label is fixed.
    */
   presented: Partial<Record<Verb, Presentation>>
+  /** What the screen (Jev) found, when it has looked. Absent while `review.screen` is off. */
+  screen: ScreenView | null
+}
+
+export interface ScreenView {
+  /** `shadow` means shown and not acted on. */
+  mode: 'shadow' | 'on'
+  decision: 'routine' | 'finding' | 'escalate' | 'no-notes' | null
+  reason: string | null
+  error: string | null
+  model: string | null
+  createdAt: string
+  /** The questions answered yes, most certain first, with how certain. */
+  flags: { label: string; p: number }[]
+  /** The notes' own lines, verbatim: what asks for work, then what you would notice. */
+  actionable: { text: string; version: string; url: string | null }[]
+  notable: { text: string; version: string; url: string | null }[]
+}
+
+const FLAG_LABEL: Record<string, string> = {
+  config_removed_or_renamed: 'Setting removed or renamed',
+  manual_step_required: 'Manual step',
+  irreversible_migration: 'One-way migration',
+  dropped_support: 'Dropped support',
+  default_changed: 'Default changed',
+  config_change_needed: 'Config edit needed',
+  affects_this_deployment: 'Touches this deployment',
+  security_fix: 'Security fix',
+}
+
+/** The screen's answers, shaped for the page. Null when there is nothing to show. */
+export function screenView(image: string, fromTag: string, toTag: string): ScreenView | null {
+  const mode = loadPolicy().policy.review.screen
+  if (mode === 'off') return null
+  const s = screenFor(image, fromTag, toTag)
+  if (!s) return null
+  const flags = Object.entries(FLAG_LABEL)
+    .map(([k, label]) => {
+      const a = s.answers?.[k] as { type?: string; noul?: number } | undefined
+      return { label, p: a?.type === 'noul' && typeof a.noul === 'number' ? a.noul : 0 }
+    })
+    .filter((f) => f.p >= 0.5)
+    .sort((a, b) => b.p - a.p)
+  return {
+    mode,
+    decision: s.decision,
+    reason: s.reason,
+    error: s.error,
+    model: s.model,
+    createdAt: s.createdAt,
+    flags,
+    actionable: s.actionable.map((i) => s.lines[i]).filter((l) => !!l),
+    notable: s.notable.map((i) => s.lines[i]).filter((l) => !!l).slice(0, 5),
+  }
 }
 
 const SELECT_UPDATE = `
@@ -265,7 +320,7 @@ function toView(u: RawUpdate, repo: string): UpdateView {
       !!verdict &&
       !verdict.error &&
       !!verdict.recommendation &&
-      verdictHolds(verdict.recommendation, verdict.confidence, loadPolicy().policy.claude.min_confidence),
+      verdictHolds(verdict.recommendation, verdict.confidence, MIN_CONFIDENCE),
     hasProposal,
     ackedAt: u.acked_at,
     held: pr?.held ?? null,
@@ -307,6 +362,7 @@ function toView(u: RawUpdate, repo: string): UpdateView {
     primary: primaryVerb(actions),
     transient: isTransient(ctx),
     presented,
+    screen: screenView(u.image, u.from_tag, u.to_tag),
   }
 }
 
@@ -420,7 +476,6 @@ export function inboxParked(): UpdateView[] {
       (r) =>
         r.detail !== 'rolling' &&
         !shouldOpenPr({
-          scope: policy.prs.scope,
           tier: r.tier as EffectiveTier,
           magnitude: r.magnitude as Magnitude,
           rolling: false,

@@ -12,7 +12,6 @@ const target = (over: Partial<DeployTarget> = {}): DeployTarget => ({
 const opts = (over: Partial<Parameters<typeof refuseReason>[1]> = {}) => ({
   selfStack: 'shipshape',
   excluded: [] as string[],
-  blackout: false,
   ...over,
 })
 
@@ -23,9 +22,8 @@ test('shipshape never deploys itself', () => {
   assert.match(r ?? '', /does not deploy itself/)
 })
 
-test('excluded stacks and blackout windows hold a deploy', () => {
+test('excluded stacks hold a deploy', () => {
   assert.match(refuseReason(target(), opts({ excluded: ['jellyfin'] })) ?? '', /excluded/)
-  assert.match(refuseReason(target(), opts({ blackout: true })) ?? '', /blackout/)
   assert.match(refuseReason(target({ services: [] }), opts()) ?? '', /no services/)
 })
 

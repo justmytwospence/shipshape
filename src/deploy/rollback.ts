@@ -130,7 +130,7 @@ export async function performRollback(
 
   // Deploy the reverted tree straight away. The image it wants is the one that was
   // running minutes ago, so its layers are local and this is a recreate, not a pull.
-  const back = await deploy(target, { skipBlackout: true, carried: opts.carried, record: opts.record, io: opts.io })
+  const back = await deploy(target, { carried: opts.carried, record: opts.record, io: opts.io })
   if (!back.ok) {
     return { ok: false, detail: `reverted ${gitPart.revertSha}, but the redeploy failed: ${back.reason}` }
   }

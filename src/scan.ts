@@ -46,6 +46,7 @@ export async function runScan(trigger: 'cron' | 'manual'): Promise<ScanResult> {
     const { policy } = loadPolicy()
     const services = scanRepo(env.repoDir, policy.exclude_stacks)
     syncInventory(services)
+    reportUnknownLabels(services)
 
     // Where each watched image comes from, for the ones never looked up or due another look.
     // Most images used to be looked up only when an update needed release notes, so the
@@ -624,4 +625,26 @@ function recordTelemetry(counts: Record<string, number>, durationS: number): voi
   put.run('scan.last_duration_s', durationS, null, now)
   put.run('scan.last_counts', Object.values(counts).reduce((a, b) => a + b, 0), JSON.stringify(counts), now)
   put.run('scan.last_at', Date.parse(now), now, now)
+}
+
+/**
+ * Say so, once per scan, when a service carries a `shipshape.*` key nothing reads.
+ *
+ * A typo in a label used to be indistinguishable from a label that worked: `shipshape.polcy:
+ * manual` parsed, stored and changed nothing, and the service carried on merging on the
+ * defaults. One line per service in the activity log is the whole fix, and the log folds
+ * repeats into a count, so a label left in place is one row rather than one a night.
+ */
+function reportUnknownLabels(services: { stack: string; service: string; unknownLabels: string[] }[]): void {
+  for (const s of services) {
+    if (s.unknownLabels.length === 0) continue
+    logEvent({
+      level: 'warn',
+      kind: 'scan',
+      stack: s.stack,
+      service: s.service,
+      message: `${s.stack}/${s.service} carries ${s.unknownLabels.length === 1 ? 'a label' : 'labels'} shipshape does not read`,
+      detail: s.unknownLabels.map((k) => `shipshape.${k}`).join(', '),
+    })
+  }
 }

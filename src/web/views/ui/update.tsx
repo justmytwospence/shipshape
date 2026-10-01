@@ -402,6 +402,98 @@ export const VerdictBlock: FC<{ update: UpdateView }> = ({ update }) => {
   )
 }
 
+const SCREEN_DECISION: Record<string, { text: string; cls: string }> = {
+  routine: { text: 'Routine', cls: 'badge-success' },
+  finding: { text: 'Worth a reading', cls: 'badge-warning' },
+  escalate: { text: 'Not sure — needs a reading', cls: 'badge-neutral' },
+  'no-notes': { text: 'No notes found', cls: 'badge-ghost' },
+}
+
+/**
+ * What the screen found: which narrow questions it answered yes to, and the release
+ * notes' own lines it picked out -- quoted, never paraphrased, each linking to where it
+ * came from.
+ *
+ * Under `review.screen: shadow` it is folded away and says so, because nothing acted on
+ * it: it is there so its answers can be compared with the reader's before they count.
+ */
+export const ScreenBlock: FC<{ update: UpdateView }> = ({ update }) => {
+  const s = update.screen
+  if (!s) return null
+  const decision = s.decision ? SCREEN_DECISION[s.decision] : null
+  const body = (
+    <div class="flex max-w-[80ch] flex-col gap-2 pt-1">
+      {s.error ? (
+        <p class="text-xs">
+          <span class="font-medium">The screen could not look.</span>{' '}
+          <span class="opacity-70">{s.error}</span>
+        </p>
+      ) : (
+        <>
+          <div class="flex flex-wrap items-center gap-1">
+            {decision ? <span class={`badge badge-xs badge-soft ${decision.cls}`}>{decision.text}</span> : null}
+            {s.flags.map((f) => (
+              <span class="badge badge-xs badge-outline">
+                {f.label} {Math.round(f.p * 100)}%
+              </span>
+            ))}
+          </div>
+          {s.reason ? <p class="text-xs opacity-70">{s.reason[0]!.toUpperCase() + s.reason.slice(1)}.</p> : null}
+          <ScreenLines title="Needs action" lines={s.actionable} cls="text-warning" />
+          <ScreenLines title="Notable" lines={s.notable} cls="opacity-70" />
+        </>
+      )}
+      <p class="text-xs opacity-50">
+        Screened by {s.model ?? 'Jev'} <Relative at={s.createdAt} />.{' '}
+        {s.mode === 'shadow' ? 'Shadow mode: shown, not acted on.' : 'It can hold an update back, never cause one.'}
+      </p>
+    </div>
+  )
+  return (
+    <section class="border-base-300 border-t px-4 py-3">
+      {s.mode === 'shadow' ? (
+        <details>
+          <summary class="tap inline-flex cursor-pointer items-center gap-2 text-xs font-medium tracking-wide uppercase opacity-60">
+            Screen (shadow)
+            {decision ? <span class={`badge badge-xs badge-soft normal-case ${decision.cls}`}>{decision.text}</span> : null}
+          </summary>
+          {body}
+        </details>
+      ) : (
+        <>
+          <h3 class="text-xs font-medium tracking-wide uppercase opacity-60">Screen</h3>
+          {body}
+        </>
+      )}
+    </section>
+  )
+}
+
+const ScreenLines: FC<{ title: string; lines: { text: string; version: string; url: string | null }[]; cls: string }> = ({
+  title,
+  lines,
+  cls,
+}) =>
+  lines.length === 0 ? null : (
+    <div>
+      <p class={`text-xs font-medium tracking-wide uppercase ${cls}`}>{title}</p>
+      <ul class="mt-0.5 list-disc space-y-0.5 pl-4 text-xs">
+        {lines.map((l) => (
+          <li>
+            {l.text}{' '}
+            {l.url ? (
+              <a href={l.url} target="_blank" rel="noreferrer" class="link link-hover opacity-60">
+                {l.version}
+              </a>
+            ) : (
+              <span class="opacity-60">{l.version}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+
 function hostOf(url: string): string {
   try {
     return new URL(url).host.replace(/^www\./, '')
@@ -593,6 +685,7 @@ export const UpdateDetail: FC<{
         }
       />
       <VerdictBlock update={update} />
+      <ScreenBlock update={update} />
 
       <section class="border-base-300 border-t px-4 py-3">
         <h3 class="mb-2 text-xs font-medium tracking-wide uppercase opacity-60">History</h3>

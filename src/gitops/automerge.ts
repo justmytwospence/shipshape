@@ -1,14 +1,11 @@
 import { Octokit } from 'octokit'
 import { env, loadPolicy, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
-import { canAutoMerge, foldGroupTier, tierFor } from '../policy.ts'
+import { MIN_CONFIDENCE, canAutoMerge, foldGroupTier, reviewMode, tierFor } from '../policy.ts'
 import { budgetExhausted } from '../analyze/claude.ts'
 import { llmConfigured } from '../analyze/client.ts'
 import { scanRepo } from '../compose/scan.ts'
 import type { Magnitude } from '../versions/patterns.ts'
-import { assess, type ResolutionTier } from '../policy/model-tier.ts'
-import { sourceForSync } from '../resolver/index.ts'
-import { parseImageRef } from '../images/ref.ts'
 
 /**
  * Merging what policy already allows, without a human.
@@ -18,18 +15,18 @@ import { parseImageRef } from '../images/ref.ts'
  *
  * Five conditions, all required:
  *
- * 1. `merge.auto` is on. Off by default and off in this deployment: turning it on is
- *    an operator decision, not a consequence of upgrading.
+ * 1. Not paused. `paused` is the one switch for anything happening without a person.
  * 2. The pull request is still exactly what shipshape wrote — `scope = 'tag-only'` and
  *    not user-owned. A drafted proposal (`proposed`) or a human edit (`modified`)
  *    permanently disqualifies it, because nothing has reviewed those changes.
- * 3. `canAutoMerge()` passes for every update in the group: the auto tier, a patch or
- *    minor, and no verdict withholding it. This is the same predicate the dashboard
- *    shows, so what merges is what the dashboard said would merge.
+ * 3. `canAutoMerge()` passes for every update in it, asked member by member: the auto
+ *    rung, a patch or minor, a review that is neither holding it nor still on its way.
+ *    This is the same predicate the dashboard shows, so what merges is what the
+ *    dashboard said would merge.
  * 4. GitHub's own checks are not failing. A red check is a reason to stop even when
  *    policy is satisfied.
- * 5. Not in a blackout window, and under the hourly ceiling — so a misconfiguration
- *    merges a few things and then stops, rather than the entire backlog at 3am.
+ * 5. Under the per-run ceiling — so a misconfiguration merges a few things and then
+ *    stops, rather than the entire backlog at 3am.
  *
  * The asymmetry from the analysis model holds here: Claude can withhold a merge and
  * never cause one. Nothing in a changelog can make this function return true.
@@ -46,9 +43,6 @@ export interface MergeDecision {
   merge: boolean
   reason: string
 }
-
-/** Last shadow-mode conclusion logged per pull request, so a steady state stays quiet. */
-const shadowLogged = new Map<number, string>()
 
 interface Candidate {
   id: number
@@ -192,7 +186,7 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
   // never enforced at all, on groups or on single pull requests. Asking each member is
   // the same question the gate asks of one update, which is the only form that cannot
   // drift from it.
-  const tier = foldGroupTier(tiers) === 'model' ? resolveModel(rows) : foldGroupTier(tiers)
+  const tier = foldGroupTier(tiers)
   const reviewCanRun = reviewExpected(policy)
   for (const r of rows) {
     const d = canAutoMerge({
@@ -201,8 +195,8 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
       verdict: memberVerdict(r, reviewCanRun) as never,
       confidence: (r.confidence ?? 'low') as never,
       claudeRequired,
-      claudeMode: policy.claude.mode,
-      minConfidence: policy.claude.min_confidence,
+      claudeMode: reviewMode(policy),
+      minConfidence: MIN_CONFIDENCE,
       prScope: 'tag-only',
     })
     if (!d.merge) {
@@ -211,27 +205,6 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
   }
   return { number, merge: true, reason: 'policy allows it' }
 
-  function resolveModel(rs: typeof rows): EffectiveTierResolved {
-    // The one place the model's judgement can raise rather than lower a tier. Every
-    // guard must pass; anything else falls back to what static policy alone would say,
-    // which for a major is a human.
-    //
-    // The `linked` guard asks how the upstream repository was identified. The accessor
-    // answers with the live compose label applied, so a service known only from a
-    // `shipshape.source` label is linked here exactly as it is everywhere else.
-    return resolveModelTier(
-      rs.map((r) => {
-        const ref = parseImageRef(r.image)
-        const source = sourceForSync(
-          { registry: ref.registry, repository: ref.repository },
-          { service: { stack: r.stack, service: r.service }, ownLabel: svcFor(r)?.sourceLabel },
-        )
-        return { ...r, resolution_tier: source.tier, source_url: source.repo, source_confidence: source.confidence }
-      }),
-      policy,
-      number,
-    )
-  }
 }
 
 /**
@@ -249,7 +222,7 @@ export const REVIEW_WAIT_MS = 6 * 60 * 60_000
 
 /** Whether a review can be expected to arrive at all: it is on, a provider is set, money is left. */
 function reviewExpected(policy: Policy): boolean {
-  return policy.claude.mode !== 'off' && llmConfigured() && !budgetExhausted()
+  return reviewMode(policy) !== 'off' && llmConfigured() && !budgetExhausted()
 }
 
 /**
@@ -279,145 +252,6 @@ export function memberVerdict(
   // request was opened, so the later of the two is the clock that matters.
   const joined = Math.max(Date.parse(r.pr_created_at) || 0, Date.parse(r.detected_at) || 0)
   return now - joined < REVIEW_WAIT_MS ? 'pending' : 'unavailable'
-}
-
-/**
- * Resolve a deferred `model` tier into a real one, recording the decision either way.
- *
- * Returns `auto` only when every guard passes AND the mode is `enforce`. Under
- * `shadow` the assessment is recorded and the static fallback is returned, so the
- * track record accumulates without anything acting on it.
- */
-function resolveModelTier(
-  rows: {
-    stack: string
-    service: string
-    image?: string
-    from_tag?: string
-    to_tag?: string
-    magnitude: Magnitude
-    recommendation: string | null
-    confidence: string | null
-    verdict_error: string | null
-    sources: string | null
-    breaking_changes: string | null
-    migration_steps: string | null
-    resolution_tier: string | null
-    source_url: string | null
-    source_confidence: string | null
-  }[],
-  policy: Policy,
-  number: number,
-): EffectiveTierResolved {
-  const { mode } = policy.model_tier
-  if (mode === 'off') return fallbackTier()
-
-  const db = getDb()
-  const now = new Date().toISOString()
-  let allPromote = true
-  let firstRefusal = 'every guard passed'
-
-  for (const r of rows) {
-    const a = assess({
-      resolutionTier: (r.resolution_tier ?? 'none') as ResolutionTier,
-      sourceRepo: r.source_url,
-      resolutionConfidence: (r.source_confidence ?? null) as never,
-      sources: parseArray(r.sources),
-      recommendation: (r.verdict_error ? 'unavailable' : (r.recommendation ?? 'unavailable')) as never,
-      confidence: (r.confidence ?? 'low') as never,
-      breakingChanges: parseArray(r.breaking_changes),
-      migrationSteps: parseArray(r.migration_steps),
-    })
-    if (!a.promote && allPromote) firstRefusal = `${r.service}: ${a.reason}`
-    allPromote &&= a.promote
-
-    // The decision is re-derived on every poll cycle, but only a *change* is worth a
-    // row: without this the table grows one entry per minute per open model-tier pull
-    // request, and the System page's track record becomes the same verdict restated a
-    // thousand times rather than a history of judgements.
-    const last = db
-      .prepare(
-        `SELECT promote, reason, enforced FROM model_tier_decisions
-         WHERE image = ? AND stack = ? AND service = ? AND from_tag IS ? AND to_tag IS ?
-         ORDER BY id DESC LIMIT 1`,
-      )
-      .get(r.image ?? '', r.stack, r.service, r.from_tag ?? null, r.to_tag ?? null) as
-      | { promote: number; reason: string; enforced: number }
-      | undefined
-    const unchanged =
-      last !== undefined &&
-      last.promote === (a.promote ? 1 : 0) &&
-      last.reason === a.reason &&
-      last.enforced === (mode === 'enforce' ? 1 : 0)
-    if (unchanged) continue
-
-    db.prepare(
-      `INSERT INTO model_tier_decisions
-         (image, stack, service, from_tag, to_tag, magnitude, static_tier,
-          promote, reason, guards, enforced, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      r.image ?? '',
-      r.stack,
-      r.service,
-      r.from_tag ?? null,
-      r.to_tag ?? null,
-      r.magnitude,
-      fallbackTier(),
-      a.promote ? 1 : 0,
-      a.reason,
-      JSON.stringify(a.guards),
-      mode === 'enforce' ? 1 : 0,
-      now,
-    )
-  }
-
-  if (mode === 'shadow') {
-    // Once per distinct conclusion, for the same reason the row above is: this runs
-    // every poll cycle and the answer rarely changes.
-    const key = `${number}:${allPromote}:${firstRefusal}`
-    if (shadowLogged.get(number) !== key) {
-      shadowLogged.set(number, key)
-      logEvent({
-        level: 'info',
-        kind: 'pr',
-        message: `#${number}: model would ${allPromote ? 'treat this as routine' : 'defer to a human'}`,
-        detail: `${firstRefusal} — shadow mode, nothing acted on it`,
-      })
-    }
-    return fallbackTier()
-  }
-
-  return allPromote ? 'auto' : fallbackTier()
-}
-
-type EffectiveTierResolved = 'auto' | 'manual' | 'held' | 'skip'
-
-/**
- * Where a refused update lands.
- *
- * Always `manual` — a human — and deliberately not the magnitude default. `model`
- * replaces whatever static label the service had, and shipshape cannot know what that
- * was, so deriving the fallback from magnitude silently rewrites the operator's intent:
- * a service pinned to `manual` that switches to `model` would land on `auto` for a
- * patch the moment a guard refused. That is the opposite of what asking for review
- * means, and it would be most wrong exactly where `manual` was chosen most carefully.
- *
- * So the contract is one sentence: routine if the model vouches for it, a human
- * otherwise.
- */
-function fallbackTier(): EffectiveTierResolved {
-  return 'manual'
-}
-
-function parseArray(v: string | null): string[] {
-  if (!v) return []
-  try {
-    const p = JSON.parse(v)
-    return Array.isArray(p) ? p.filter((x): x is string => typeof x === 'string') : []
-  } catch {
-    return []
-  }
 }
 
 export interface AutoMergeResult {

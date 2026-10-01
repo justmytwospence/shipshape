@@ -22,7 +22,6 @@ export interface StatusData {
   repo: string
   mergeMethod: string
   pushMain: boolean
-  blackout: string[]
   scan: {
     cron: string
     lastAt: string | null
@@ -35,7 +34,9 @@ export interface StatusData {
   /** `refused` is present-but-rejected: a token can be all three of set, wrong and silent. */
   credentials: {
     name: string
-    state: 'set' | 'missing' | 'not in use' | 'refused' | 'budget spent'
+    state: 'set' | 'missing' | 'not in use' | 'refused' | 'budget spent' | 'off' | 'shadow' | 'on'
+    /** Why it reads the way it does, when that is not obvious from the word. */
+    note?: string
   }[]
   spend: { model: string; purpose: string; calls: number; cost: number }[]
   budgetUsd: number
@@ -57,6 +58,9 @@ const CRED_CLS: Record<string, string> = {
   // GitHub token: presence is not health, and a key that cannot be spent reads `set` all
   // month otherwise.
   'budget spent': 'badge-warning',
+  off: 'badge-ghost',
+  shadow: 'badge-info',
+  on: 'badge-success',
 }
 
 const DEPLOY_CLS: Record<string, string> = {
@@ -271,7 +275,6 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
                     'off'
                   ),
                 ],
-                ['quiet hours', data.blackout.length ? data.blackout.join(', ') : 'none'],
                 // Hourly, so it belongs with the clocks rather than under a heading of
                 // its own -- and stated in the direction it actually counts.
                 ...(hub ? ([['hub pulls', hub]] as [string, unknown][]) : []),
@@ -283,9 +286,10 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
             <H>Credentials</H>
             <div class="divide-base-300 border-base-300 divide-y border-y text-xs">
               {data.credentials.map((cred) => (
-                <div class="flex min-h-7 items-center gap-3">
+                <div class="flex min-h-7 flex-wrap items-center gap-x-3 py-1">
                   <span class="min-w-0 flex-1 font-mono">{cred.name}</span>
                   <span class={`badge badge-xs badge-soft ${CRED_CLS[cred.state]}`}>{cred.state}</span>
+                  {cred.note ? <span class="w-full text-xs opacity-60">{cred.note}</span> : null}
                 </div>
               ))}
             </div>
@@ -318,15 +322,15 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
                   <div class="flex min-h-7 items-center justify-between gap-3">
                     <span class="min-w-0 truncate font-mono">{sp.model}</span>
                     <span class="shrink-0 opacity-70">
-                      {sp.purpose} · {sp.calls} calls · ${sp.cost.toFixed(2)}
+                      {sp.purpose} · {sp.calls} calls · ${sp.cost < 0.1 ? sp.cost.toFixed(4) : sp.cost.toFixed(2)}
                     </span>
                   </div>
                 ))}
               </div>
             )}
             <p class="mt-1 text-xs opacity-50">
-              Reaching the budget pauses reviews and drafting. It never stops a pull request
-              opening.
+              Reaching the budget pauses the reader and drafting; the screen keeps going under
+              its own $1 ceiling. It never stops a pull request opening.
             </p>
           </Block>
 

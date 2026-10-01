@@ -102,6 +102,7 @@ function base(over: Partial<UpdateView>): UpdateView {
     primary: 'merge-deploy',
     transient: false,
     presented: {},
+    screen: null,
     ...over,
   }
 }
@@ -588,6 +589,26 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
       UpdateRow({ update: UPDATES.ready!, ctx: 'list=updates&stage=open', showStage: true }),
     ),
     'update-verified': String(detail(UPDATES.verified!, 'list=updates&stage=done', '/updates')),
+    'update-screened': String(
+      detail(
+        update({
+          id: 23,
+          screen: {
+            mode: 'shadow',
+            decision: 'finding',
+            reason: 'the notes mention a setting removed or renamed',
+            error: null,
+            model: 'typesafe/jev-1.13-20260917',
+            createdAt: ago(1),
+            flags: [{ label: 'Setting removed or renamed', p: 0.93 }],
+            actionable: [{ text: 'The `hwaccel` key is now `hardware_acceleration`', version: 'v10.10.3', url: 'https://github.com/jellyfin/jellyfin/releases/tag/v10.10.3' }],
+            notable: [{ text: 'Trickplay previews', version: 'v10.10.3', url: null }],
+          },
+        }),
+        'list=updates&stage=open',
+        '/updates',
+      ),
+    ),
     'update-attended': String(
       detail(update({ id: 21, tier: 'attended' }), 'list=updates&stage=open', '/updates'),
     ),

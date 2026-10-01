@@ -297,6 +297,16 @@ test('merging and rolling back ask twice', () => {
   assert.match(verified, /data-open="#confirm-rollback-13"/)
 })
 
+test('the screen quotes the notes, links them, and says when nothing acted on it', () => {
+  const html = VIEWS['update-screened']!
+  assert.match(html, /<details>[\s\S]*Screen \(shadow\)/, 'folded away in shadow mode')
+  assert.match(html, /Shadow mode: shown, not acted on/)
+  assert.match(html, /Setting removed or renamed 93%/)
+  assert.match(html, /Needs action/)
+  assert.match(html, /href="https:\/\/github.com\/jellyfin\/jellyfin\/releases\/tag\/v10.10.3"/)
+  assert.doesNotMatch(VIEWS['update-detail']!, /Screen \(shadow\)/, 'and is absent where there is no screen')
+})
+
 test('a service deployed by hand offers Merge, not Merge & deploy', () => {
   const html = VIEWS['update-attended']!
   assert.match(html, />Merge<\/button>/)

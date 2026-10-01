@@ -118,14 +118,14 @@ export function configured(): { ok: true } | { ok: false; missing: MissingSettin
  * on the day the duplicate went away.
  */
 const Tier = z
-  .enum(['auto', 'manual', 'on-request', 'skip', 'gated'])
+  .enum(['auto', 'manual', 'attended', 'on-request', 'skip', 'gated'])
   .transform((v) => (v === 'gated' ? ('manual' as const) : v))
 export type Tier = z.infer<typeof Tier>
 
 /** The model every stage defaults to, spelled for whoever serves it. */
 export const DEFAULT_MODEL = process.env.OPENROUTER_API_KEY ? 'anthropic/claude-opus-5.5' : 'claude-opus-5-5'
 
-/** "HH:MM-HH:MM", may wrap past midnight. */
+/** "HH:MM-HH:MM", may wrap past midnight. Only still parsed so a retired key can be named. */
 const Window = z.string().regex(/^\d{2}:\d{2}-\d{2}:\d{2}$/)
 
 /** Exported so the defaults themselves can be asserted on; parse through
@@ -153,7 +153,16 @@ export const PolicySchema = z.object({
       // open a PR (a branch based on a stale origin/main would silently revert local
       // commits when merged). Degrades to alert-only.
       push_main: z.boolean().default(true),
-      blackout: z.array(Window).default([]),
+      // Retired. The window existed so shipshape and WUD never wrote one compose file at
+      // once; WUD is gone. An empty list still loads. A non-empty one is an error rather
+      // than ignored, because dropping it silently would let work happen in hours the
+      // file still says are quiet.
+      blackout: z
+        .array(Window)
+        .refine((w) => w.length === 0, {
+          message: 'sync.blackout is retired: remove the windows (or the key) from policy.yaml',
+        })
+        .optional(),
       poll_active_s: z.number().int().positive().default(60),
       poll_idle_s: z.number().int().positive().default(600),
     })
@@ -179,43 +188,59 @@ export const PolicySchema = z.object({
     // still loads. It was removed rather than implemented: a setting that silently does
     // nothing is worse than an absent one, because it looks like control.
     .prefault({}),
-  claude: z
+  /**
+   * The changelog review: a cheap screen on every update, and a reader where a person
+   * will read what it writes.
+   *
+   * Replaces `claude:`, which carried nine keys for one stage. What was tuning is now a
+   * constant in code (web limits, the confidence floor); what only changed labels is gone
+   * (`block_on`). The old block is still read and folded in below, never written back.
+   */
+  review: z
     .object({
-      // advisory: a verdict can demote an auto-merge to hold, never promote. Absence of
-      // a verdict degrades to the static policy (fail-open) -- that is today's trusted
-      // WUD behaviour, so an API outage must not freeze every update.
-      mode: z.enum(['advisory', 'off']).default('advisory'),
-      block_on: z.array(z.enum(['block', 'caution'])).default(['block', 'caution']),
-      min_confidence: z.enum(['low', 'medium', 'high']).default('medium'),
-      // Both stages run on Opus 5.5. The review used to run on Haiku to keep a call on
-      // every update cheap; the cheap judgement now belongs to the screen, and the reader
-      // runs only where a person will read what it writes. The spelling depends on who
-      // serves the call: OpenRouter namespaces by vendor, Anthropic does not.
-      model: z.string().default(DEFAULT_MODEL),
-      code_model: z.string().default(DEFAULT_MODEL),
-      // Web reading is what a call actually costs: the ceiling is fetches x
-      // content_tokens, dwarfing the prompt itself. Tunable because the right depth
-      // depends on how verbose your images' changelogs are.
-      web: z
-        .object({
-          searches: z.number().int().min(1).max(20).default(4),
-          fetches: z.number().int().min(1).max(20).default(5),
-          content_tokens: z.number().int().min(1000).max(100_000).default(12_000),
-        })
-        .prefault({}),
-      monthly_budget_usd: z.number().positive().default(10),
+      // off    -- no screen
+      // shadow -- screen every update, record what it found, act on none of it
+      // on     -- the screen decides which updates the reader is paid to read
+      screen: z.enum(['off', 'shadow', 'on']).optional(),
+      // The reader, or `off` for none. Runs where a person will read the result.
+      model: z.string().optional(),
+      // Drafts config changes and answers comments: rare, high-stakes work.
+      code_model: z.string().optional(),
+      monthly_budget_usd: z.number().positive().optional(),
     })
     .prefault({}),
+  /** The old spelling of `review`. Accepted, folded, never written back. */
+  claude: z
+    .object({
+      mode: z.enum(['advisory', 'off']).optional(),
+      // Only ever changed which GitHub label a hold carried; the hold itself did not move.
+      block_on: z.array(z.enum(['block', 'caution'])).optional(),
+      // Now a constant, `medium`. `high` would have held more than that does, so it is
+      // refused rather than quietly loosened.
+      min_confidence: z
+        .enum(['low', 'medium', 'high'])
+        .refine((v) => v !== 'high', {
+          message: 'claude.min_confidence: high is no longer supported (the floor is fixed at medium); remove it',
+        })
+        .optional(),
+      model: z.string().optional(),
+      code_model: z.string().optional(),
+      // Constants now (4 searches, 5 pages, 12,000 tokens a page): cost, not reach.
+      web: z.unknown().optional(),
+      monthly_budget_usd: z.number().positive().optional(),
+    })
+    .optional(),
   prs: z
     .object({
-      // coexist: only handle what another updater would never touch on its own
-      // (majors, digest pins, anything not on the auto tier), so two tools cannot
-      // contend for the same file. `full` takes over everything.
-      // `wud-coexist` is accepted as the original spelling of `coexist`.
+      // Retired: `coexist` handled only what WUD never touched, and WUD is gone. `full`
+      // still loads; `coexist` is refused rather than ignored, because ignoring it would
+      // start opening pull requests a file says it should not.
       scope: z
         .enum(['coexist', 'wud-coexist', 'full'])
-        .default('coexist')
-        .transform((v) => (v === 'wud-coexist' ? ('coexist' as const) : v)),
+        .refine((v) => v === 'full', {
+          message: 'prs.scope is retired and only `full` is accepted: remove the key from policy.yaml',
+        })
+        .optional(),
       // Ceiling on simultaneously open pull requests. `null` -- the default -- means no
       // ceiling: everything eligible opens at once.
       //
@@ -226,15 +251,14 @@ export const PolicySchema = z.object({
       // `holding 15 update(s)` line. A wall is at least visible. The setting stays for
       // anyone who wants the ceiling back.
       max_open: z.number().int().positive().nullable().default(null),
-      // false parks the engine entirely: updates are still detected and shown, but
-      // nothing is pushed and no pull request is created.
-      enabled: z.boolean().default(true),
-      // A pull request whose target is overtaken is moved onto the newer one in place --
-      // same number, rebuilt branch, new title and body -- and only retired when it
-      // cannot be: nothing live to move onto, or somebody has pushed to the branch. That
-      // is not configurable. It used to be (`prs.close_superseded`), because the only
-      // alternative to closing was leaving a pull request open that could never merge;
-      // retargeting removed the loss that switch was there to avoid.
+      // Retired: `sync.push_main: false` is the one kill switch for git work. `true`
+      // still loads; `false` is refused rather than ignored.
+      enabled: z
+        .boolean()
+        .refine((v) => v === true, {
+          message: 'prs.enabled is retired: use sync.push_main: false to stop shipshape opening pull requests',
+        })
+        .optional(),
     })
     .prefault({}),
   propose: z
@@ -302,14 +326,9 @@ export const PolicySchema = z.object({
       web: z.boolean().default(false),
     })
     .prefault({}),
-  // Whether a service labelled `shipshape.policy: model` actually gets model-decided
-  // treatment. `shadow` records what would have happened and changes nothing, which is
-  // how you find out whether it works before it matters.
-  model_tier: z
-    .object({
-      mode: z.enum(['off', 'shadow', 'enforce']).default('shadow'),
-    })
-    .prefault({}),
+  // Retired with `shipshape.policy: model`, which now means `manual` -- what shadow mode,
+  // the only mode it ever ran in here, returned. Accepted so an old file still loads.
+  model_tier: z.unknown().optional(),
   merge: z
     .object({
       // Superseded by the top-level `paused`. Still read, so an existing file keeps its
@@ -400,9 +419,24 @@ export const PolicySchema = z.object({
    * from the output rather than leaving them makes every stale read a type error instead
    * of a behaviour that quietly disagrees with the switch.
    */
-  .transform(({ merge, deploy, ...rest }) => ({
+  .transform(({ merge, deploy, claude, review, prs, sync, model_tier: _modelTier, ...rest }) => ({
     ...rest,
     paused: rest.paused ?? !(merge.auto === true && deploy.mode === 'auto'),
+    // `review` wins key by key; `claude` fills what it leaves out. `claude.mode: off`
+    // meant no reading at all, so it turns both stages off.
+    review: {
+      // Off unless asked for: a new paid call is something you opt into.
+      screen: review.screen ?? ('off' as const),
+      model: review.model ?? (claude?.mode === 'off' ? 'off' : (claude?.model ?? DEFAULT_MODEL)),
+      code_model: review.code_model ?? claude?.code_model ?? DEFAULT_MODEL,
+      monthly_budget_usd: review.monthly_budget_usd ?? claude?.monthly_budget_usd ?? 40,
+    },
+    prs: { max_open: prs.max_open },
+    sync: {
+      push_main: sync.push_main,
+      poll_active_s: sync.poll_active_s,
+      poll_idle_s: sync.poll_idle_s,
+    },
     merge: { max_per_run: merge.max_per_run },
     deploy: {
       verify_window_s: deploy.verify_window_s,
@@ -453,17 +487,4 @@ export function validatePolicyText(raw: string): { ok: true } | { ok: false; err
   }
 }
 
-/** True when `now` falls inside any configured blackout window (local time). Windows
- *  may wrap past midnight. */
-export function inBlackout(policy: Policy, now = new Date()): boolean {
-  const mins = now.getHours() * 60 + now.getMinutes()
-  return policy.sync.blackout.some((w) => {
-    const [from, to] = w.split('-') as [string, string]
-    const [fh, fm] = from.split(':').map(Number) as [number, number]
-    const [th, tm] = to.split(':').map(Number) as [number, number]
-    const start = fh * 60 + fm
-    const end = th * 60 + tm
-    return start <= end ? mins >= start && mins < end : mins >= start || mins < end
-  })
-}
 

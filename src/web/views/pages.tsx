@@ -4,13 +4,7 @@ import { InboxAside, InboxList, ScanControls, type InboxData } from './ui/inbox.
 import { UpdateRow } from './ui/update.tsx'
 import { ReleaseList } from './ui/releases.tsx'
 import { EmptyState, ListCount, Search, Tabs } from './ui/parts.tsx'
-import {
-  RawPolicy,
-  SettingsForm,
-  SettingsNav,
-  SettingsTabs,
-  type SettingValue,
-} from './ui/settings.tsx'
+import { SettingsForm, SettingsNav, type SettingGroup } from './ui/settings.tsx'
 import { StatusBody, type StatusData } from './ui/status.tsx'
 import { ActivityList, ActivityToolbar, type ActivityRow } from './ui/activity.tsx'
 import {
@@ -277,35 +271,27 @@ export const ActivityPage: FC<{
 // ---------------------------------------------------------------- settings
 
 export const SettingsPage: FC<{
-  tab: string
-  groups: { title: string; prose?: string[]; items: SettingValue[] }[]
+  groups: SettingGroup[]
   models?: string[]
   banner?: { level: 'info' | 'error'; text: string } | null
   readyCount?: number
-  /** Rendered after the fields: the prompt editors, on Advanced. */
-  extra?: unknown
-  extraNav?: { href: string; label: string }[]
+  /** Rendered inside the section of the same title. */
+  extras?: Record<string, unknown>
   chrome: PageChrome
-}> = ({ tab, groups, models, banner, readyCount, extra, extraNav, chrome }) => (
-  <Layout
-    title="Settings"
-    nav="settings"
-    chrome={chrome}
-    toolbar={<SettingsTabs active={tab} />}
-  >
+}> = ({ groups, models, banner, readyCount, extras, chrome }) => (
+  <Layout title="Settings" nav="settings" chrome={chrome}>
     <Split
       variant="nav"
-      list={<SettingsNav sections={groups.map((g) => g.title)} extra={extraNav} />}
+      list={<SettingsNav sections={groups.map((g) => g.title)} />}
       pane={
-        <div class="flex flex-col lg:max-w-5xl">
+        <div class="flex flex-col lg:max-w-4xl">
           <SettingsForm
             groups={groups}
             models={models}
             banner={banner}
-            advanced={tab === 'advanced'}
             readyCount={readyCount}
+            extras={extras}
           />
-          {extra ? <div class="flex flex-col">{extra}</div> : null}
         </div>
       }
     />
@@ -318,14 +304,3 @@ export const StatusPage: FC<{ data: StatusData; chrome: PageChrome }> = ({ data,
   </Layout>
 )
 
-export const RawPolicyPage: FC<{ text: string; chrome: PageChrome }> = ({ text, chrome }) => (
-  <Layout
-    title="policy.yaml"
-    section="Settings · policy.yaml"
-    nav="settings"
-    back={{ href: '/settings', label: 'Settings' }}
-    chrome={chrome}
-  >
-    <Split variant="wide" list={<RawPolicy text={text} />} />
-  </Layout>
-)

@@ -754,6 +754,42 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     ALTER TABLE proposals ADD COLUMN next_attempt_at TEXT;
   `,
   },
+  {
+    id: '025-screens',
+    sql: `
+    -- The screen: Jev's typed answers about one bump's release notes, kept whole so a
+    -- change of threshold is a change of code rather than another paid call.
+    --
+    -- Keyed like verdicts, by (image, from, to), with context_hash naming the deployment
+    -- context it was judged against: a configuration change re-screens it.
+    CREATE TABLE screens (
+      image           TEXT NOT NULL,
+      from_tag        TEXT NOT NULL,
+      to_tag          TEXT NOT NULL,
+      context_hash    TEXT,
+      model           TEXT,
+      decision        TEXT,       -- routine | finding | escalate | no-notes; NULL with an error
+      reason          TEXT,
+      answers         TEXT,       -- JSON: every answer, as Jev gave it
+      lines           TEXT,       -- JSON: the bullet lines it was asked about, with links
+      actionable      TEXT,       -- JSON: indices into lines
+      notable         TEXT,       -- JSON: indices into lines
+      evidence        TEXT,       -- JSON: what code knew about the notes
+      cost_usd        REAL,
+      error           TEXT,
+      attempts        INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TEXT,
+      created_at      TEXT NOT NULL,
+      PRIMARY KEY (image, from_tag, to_tag)
+    );
+
+    -- Which stage wrote a verdict. A reader's always replaces a screen's, and a screen's
+    -- finding is provisional: it holds the merge until a reader has looked, and stands if
+    -- the reader cannot run, so an outage never turns a finding into an unread merge.
+    ALTER TABLE verdicts ADD COLUMN source TEXT;
+    ALTER TABLE verdicts ADD COLUMN provisional INTEGER NOT NULL DEFAULT 0;
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

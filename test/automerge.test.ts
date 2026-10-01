@@ -69,28 +69,15 @@ test('a changelog can withhold a merge and can never cause one', () => {
   }
 })
 
-test('under coexist, nothing that opens a pull request can auto-merge', () => {
-  // Why auto-merge stays inert until the legacy updater is retired: coexist opens only
-  // what the auto tier excludes, and auto-merge accepts only the auto tier.
-  let opened = 0
-  let mergeable = 0
-  for (const tier of ['auto', 'manual', 'held', 'skip'] as const) {
-    for (const magnitude of ['patch', 'minor', 'major', 'digest'] as const) {
-      if (!shouldOpenPr({ scope: 'coexist', tier, magnitude, rolling: false })) continue
-      opened++
-      if (canAutoMerge({ ...base, tier, magnitude }).merge) mergeable++
-    }
-  }
-  assert.ok(opened > 0, 'coexist must still open pull requests')
-  assert.equal(mergeable, 0, 'coexist and auto-merge must not overlap')
+test('the auto tier opens a pull request and can merge it', () => {
+  assert.equal(shouldOpenPr({ tier: 'auto', magnitude: 'patch', rolling: false }), true)
+  assert.equal(canAutoMerge({ ...base, tier: 'auto', magnitude: 'patch' }).merge, true)
 })
 
-test('at full scope the auto tier becomes mergeable, which is the point of M6', () => {
-  assert.equal(
-    shouldOpenPr({ scope: 'full', tier: 'auto', magnitude: 'patch', rolling: false }),
-    true,
-  )
-  assert.equal(canAutoMerge({ ...base, tier: 'auto', magnitude: 'patch' }).merge, true)
+test('a review still on its way holds a merge', () => {
+  const d = canAutoMerge({ ...base, verdict: 'pending' })
+  assert.equal(d.merge, false)
+  assert.equal(d.merge === false ? d.label : '', 'needs-review')
 })
 
 test('an absent verdict fails open, unless the service demanded one', () => {

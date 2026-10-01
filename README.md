@@ -125,29 +125,32 @@ and a key it omits is one nobody reading it knows exists.
 
 ## The policy model
 
-One axis — **how much happens without you** — with four rungs. Set the default per
+One axis — **how much happens without you** — with five rungs. Set the default per
 version magnitude in `policy.yaml`; override it for one service with a
 `shipshape.policy` label, which always wins.
 
 | Rung | What happens |
 |---|---|
 | `auto` | A pull request opens and shipshape merges it, unless the changelog review objects. |
-| `manual` | A pull request opens. You merge it. |
+| `manual` | A pull request opens. You merge it, and the deploy follows. |
+| `attended` | A pull request opens. You merge it, and you press Deploy. |
 | `on-request` | Nothing opens. The update is listed until you ask for a pull request. |
 | `skip` | Not tracked at all. |
 
-The static rung and Claude's verdict combine by taking **the more conservative of the
-two**. Claude is a one-directional damper:
+The static rung and the changelog review combine by taking **the more conservative of
+the two**, asked of every update a pull request carries. The review is a one-directional
+damper:
 
-| Static rung | Verdict | Result |
+| Static rung | Review | Result |
 |---|---|---|
-| auto | approve, confident | auto-merge, then deploy |
-| auto | caution / block / unsure | PR stays open for a human |
-| auto | *analysis unavailable* | merge per static policy (fail-open) |
+| auto | approve, medium or high confidence | auto-merge, then deploy |
+| auto | caution / block / low confidence | PR stays open for a human |
+| auto | *still on its way* | waits, up to six hours |
+| auto | *unavailable* | merge per static policy (fail-open) |
 | manual | anything | PR always; never auto-merged |
 
-Claude can **block** an update that policy would have merged. It can never **promote**
-one. Majors, digest moves, and any pull request carrying more than an image line are
+The review can **block** an update that policy would have merged. It can never
+**promote** one. Majors, digest moves, and any pull request carrying more than an image line are
 never auto-merged, and that is not configurable.
 
 This is also the prompt-injection boundary: release notes are untrusted input, and the
@@ -157,9 +160,33 @@ worst a hostile changelog can achieve is to stop an update.
 behaved identically to `manual` in every decision — same merge answer, same PR answer —
 so it was a choice with no consequence rather than a control.
 
-The whole model is also rendered in the running app: turn on the **Explain** switch on
-the Settings page and each section carries the prose for that stage, so reading the nav
-top to bottom is the path an update takes.
+### The review, in two stages
+
+- **The screen** — Jev, a System One model from TypeSafe, through OpenRouter's Decisions
+  API. It does not write; it answers. For each update it is given the release notes
+  shipshape already fetched (cleaned and capped in code), the deployment's environment
+  variable *names*, volume paths and dependencies, and the notes' own bullet lines, and
+  asked a set of narrow yes/no questions — a setting removed or renamed, a manual step, a
+  one-way migration, dropped support, a changed default, a configuration edit, whether any
+  of it touches this deployment — plus a risk score and, per line, whether it asks for
+  action or would be noticed. Code turns the probabilities into **routine**, **finding**,
+  **escalate** or **no notes**: routine needs every risk answer to be a clear no *and* the
+  evidence to be whole (a patch or minor, notes for every version in range, nothing
+  truncated, an upstream identified with certainty). About $0.0005 a look.
+- **The reader** — Claude, reading the changelog properly, with web search confined to
+  the upstream's own documentation. It writes the summary, breaking changes, migration
+  steps and new features.
+
+`review.screen: shadow` runs the screen on every update and shows its answers on the
+update page without acting on them. `on` lets a routine update through on the screen's
+approval, sends everything else to the reader, and still reads one routine update in ten
+as an audit — an alert fires if the reader finds work the screen called routine. A
+finding holds the merge *provisionally* until the reader has looked, and keeps holding it
+if the reader cannot run. `npm run jev-replay` calibrates the screen against verdicts the
+reader already wrote.
+
+The whole model is also rendered in the running app: each section of the Settings page
+says what that stage does, in the order an update moves through them.
 
 ## Running it yourself
 
@@ -174,8 +201,8 @@ start.
 | `REPO_DIR` | **yes** | — | The checkout of your compose repository. Must be bind-mounted at the *identical* path inside the container (see below). |
 | `GITHUB_REPO` | **yes** | — | `owner/repo` of that repository, for pull requests. |
 | `GITHUB_TOKEN` | for PRs | — | Fine-grained PAT scoped to that repo: **Contents** read+write, **Pull requests** read+write. |
-| `ANTHROPIC_API_KEY` | for analysis | — | One of this or `OPENROUTER_API_KEY`. Without either, PRs still open, labelled `needs-analysis`. |
-| `OPENROUTER_API_KEY` | for analysis | — | Routes every model call through OpenRouter's Anthropic-compatible endpoint instead. Wins when both are set; the two are never sent together. Model ids then carry a vendor prefix — `anthropic/claude-opus-5`. |
+| `ANTHROPIC_API_KEY` | for analysis | — | One of this or `OPENROUTER_API_KEY`. Without either, PRs still open, labelled `needs-review`. |
+| `OPENROUTER_API_KEY` | for analysis | — | Routes every model call through OpenRouter's Anthropic-compatible endpoint instead, and is the only way to run the screen (Jev, via the Decisions API). Wins when both are set; the two are never sent together. Model ids then carry a vendor prefix — `anthropic/claude-opus-5.5`. The workspace guardrail must allow the TypeSafe provider for the screen. |
 | `LLM_BASE_URL` | no | OpenRouter's base | Only for a self-hosted Anthropic-compatible gateway. |
 | `POLICY_FILE` | no | `$REPO_DIR/shipshape/config/policy.yaml` | Where the tracked policy file lives. |
 | `SELF_STACK` | no | `shipshape` | Stack directory holding shipshape, excluded so it never updates itself. |
@@ -233,13 +260,12 @@ takes effect on the next scan without recreating anything.
                                    #  | digest | latest | regex
       # Optional:
       shipshape.tag.include: '^\d{1,3}\.\d+\.\d+$$'  # narrow the candidates ($$ escapes $)
-      shipshape.policy: manual      # auto | manual | on-request | skip | model
-                                   #   this service's rung. `gated` is accepted and
-                                   #   means `manual`. Anything unrecognised narrows
-                                   #   to `manual` rather than widening.
-      shipshape.pr: on-request      # the original spelling of the on-request rung,
-                                   #   still honoured; shipshape.policy now expresses
-                                   #   the whole ladder in one label
+      shipshape.policy: manual      # auto | manual | attended | on-request | skip
+                                   #   this service's rung. `gated` and `model` are
+                                   #   accepted and mean `manual`. Anything unrecognised
+                                   #   narrows to `manual` rather than widening.
+                                   #   (`shipshape.pr: on-request` is the old spelling
+                                   #   of on-request: still honoured, never needed.)
       shipshape.source: owner/repo  # the upstream repository, when shipshape cannot find it;
                                    #   a github.com link works too, and is written as owner/repo
       shipshape.changelog: https://example.com/release-notes
@@ -250,10 +276,14 @@ takes effect on the next scan without recreating anything.
                                    #   how far a drafted change may reach, derived from
                                    #   where the compose file sits. Any text file inside
                                    #   the boundary is editable. Default `service`.
-      shipshape.claude: required    # refuse to auto-merge without a verdict
+      shipshape.review: required    # refuse to auto-merge without a reader's verdict
+                                   #   (`shipshape.claude` is the old spelling)
       shipshape.group: mygroup      # force services into one PR
       shipshape.deploy: rm-first    # recreate rather than update (re-reads image env)
 ```
+
+A `shipshape.*` key the scanner does not read is logged as a warning on every scan, so a
+typo is not silently a label that does nothing.
 
 ### Where the release notes come from
 
@@ -272,84 +302,52 @@ Prereleases follow the stream a service is on. A service running a stable releas
 offered a prerelease; one already on a prerelease line — minuspod's maintainer marks most
 releases as prereleases — keeps moving along it.
 
-### Letting the model decide (opt-in, off by default)
-
-`shipshape.policy: model` defers the auto-versus-review question to the changelog
-review, instead of deciding it by version magnitude. It is the one place a model can
-*raise* a rung rather than only lower it, so promotion requires all of:
-
-- the image resolves to a real upstream with certainty — its own OCI annotation, a curated
-  override, LinuxServer, your `shipshape.source` label, or two independent signals agreeing.
-  A likely match is enough to read release notes from, and not enough for this;
-- **every URL the verdict cited lives under that upstream repository** — this is the
-  actual guard. Web search is domain-restricted but page fetches are not, and GitHub
-  hosts content anyone can create, so "it turned up in a search" proves nothing;
-- the verdict is `approve` at `high` confidence, with no breaking changes and no
-  migration steps.
-
-Any failure falls back to what static policy alone would say, which for a major is a
-human. Nothing here reads the prose of a changelog: every guard is a structural fact
-about provenance or about fields the model filled in, so a release note claiming to be
-routine has no path to the outcome.
-
-`model_tier.mode` is `shadow` by default — decisions are recorded on the System page
-and nothing acts on them, so you can see the track record before deciding whether to
-`enforce`. Per-service labels remain the default and the recommendation; this is for
-when you would rather not maintain them.
-
-If you already label services for another updater, `npm run migrate-labels` derives
-`shipshape.*` labels from `wud.*` ones and writes them in place, validating each
-refinement against the tag actually pinned.
-
 ### Policy
 
 A starter `policy.yaml`, which the Settings page also edits for you:
 
 ```yaml
 merge_method: squash          # must match what your repo allows
-prs:
-  enabled: true
-  scope: coexist              # coexist | full -- see below
-  max_open: 5
-defaults:                     # auto | manual | on-request | skip
+paused: true                  # nothing merges on its own. A merge you press still deploys.
+defaults:                     # auto | manual | attended | on-request | skip
   patch: auto
   minor: auto
   major: manual               # forced; majors always need a human
   digest: manual
-claude:
-  mode: advisory              # advisory | off
-  model: claude-haiku-4-5-20251001
-  code_model: claude-opus-5   # for drafted config changes: rare, high-stakes
-  min_confidence: medium
-  monthly_budget_usd: 10
-  web:                        # what a call costs is what it reads
-    searches: 4
-    fetches: 5
-    content_tokens: 12000
+review:
+  screen: shadow              # off | shadow | on -- Jev, needs OPENROUTER_API_KEY
+  model: anthropic/claude-opus-5.5        # the reader; `off` for none
+  code_model: anthropic/claude-opus-5.5   # drafts config changes, answers comments
+  monthly_budget_usd: 40      # every model call together
+propose:
+  mode: auto                  # auto | off (the button works either way)
+prs:
+  max_open: null              # null: no ceiling
+merge:
+  max_per_run: 3
+deploy:
+  verify_window_s: 300        # how long a deploy has to prove itself
+  soak_s: 1800                # a second look before it reads verified
+  rollback: auto              # auto | suggest | off
 notify:
   routine: digest             # digest | immediate | off
   cron: "0 0 8 * * *"         # when the digest goes out; empty ones are never sent
   ntfy: all                   # all | alerts | routine | off
   email: all                  # ...per channel, so push and mail can differ
-paused: true                  # nothing merges on its own. A merge you press still deploys.
-merge:
-  max_per_run: 3
-model_tier:
-  mode: shadow                # off | shadow | enforce
-propose:
-  mode: auto                  # auto | manual | off
-deploy:
-  verify_window_s: 300        # how long a deploy has to prove itself
-  soak_s: 1800                # a second look before it reads verified
-  rollback: auto              # auto | suggest | off
+sync:
+  push_main: true             # false: alert-only, no pull requests
 scan:
   cron: "0 0 3 * * *"         # seconds first
 ```
 
-`scope: coexist` is for running alongside an updater that already applies routine
-patches itself — shipshape then takes only what such a tool leaves alone (majors, digest
-pins, anything not on the auto tier), so the two can never write to the same file for
-the same reason. Use `full` when shipshape is your only updater.
+An older file still loads: `claude:` folds into `review:`, and the keys retired with the
+updater shipshape used to run beside (`prs.enabled`, `prs.scope`, `sync.blackout`,
+`model_tier`) parse at the values that changed nothing and are refused at any value that
+would have restricted shipshape — dropping a restriction silently is the one thing a
+schema change must never do.
+
+Prompt overrides are files beside `policy.yaml`: `prompts/verdict.md`,
+`prompts/proposal.md`, `prompts/revision.md`. Absent means the shipped default.
 
 ### Notifications
 

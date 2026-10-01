@@ -68,6 +68,17 @@ export function baseModel(model: string): string {
   return slash === -1 ? model : model.slice(slash + 1)
 }
 
+/**
+ * The credential for OpenRouter's Decisions API (Jev), or null.
+ *
+ * The same key as the Messages calls, and deliberately so: every model call shipshape
+ * makes sits behind its one spending limit. There is no Anthropic fallback here -- the
+ * Decisions API is OpenRouter's, and an Anthropic key must never be sent to it.
+ */
+export function decisionsKey(): string | null {
+  return env.openrouterApiKey || null
+}
+
 /** Where to list the models this credential may actually use. */
 export function modelsEndpoint(): { url: string; headers: Record<string, string> } | null {
   if (env.openrouterApiKey) {

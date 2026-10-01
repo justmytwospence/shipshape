@@ -2,7 +2,7 @@ import type { Policy } from '../config.ts'
 import type { UpdateGroup } from '../groups.ts'
 import { parseImageRef, displayName } from '../images/ref.ts'
 import { refLinks } from '../links.ts'
-import { foldGroupMagnitude, foldGroupTier, type EffectiveTier } from '../policy.ts'
+import { foldGroupMagnitude, foldGroupTier, reviewMode, type EffectiveTier } from '../policy.ts'
 import type { Magnitude } from '../versions/patterns.ts'
 
 /**
@@ -133,7 +133,7 @@ export function prBody(
       : ''
 
   const analysis =
-    policy.claude.mode === 'off'
+    reviewMode(policy) === 'off'
       ? '_Changelog analysis is disabled._'
       : '_Changelog analysis has not run yet._'
 

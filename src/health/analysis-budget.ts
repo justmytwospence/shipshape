@@ -1,3 +1,4 @@
+import { reviewMode } from '../policy.ts'
 import { loadPolicy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { monthlySpend } from '../analyze/claude.ts'
@@ -177,8 +178,8 @@ export async function noteBudgetAvailable(): Promise<void> {
  */
 export async function checkAnalysisBudget(): Promise<BudgetReading | null> {
   const { policy } = loadPolicy()
-  if (policy.claude.mode === 'off') return null
-  const reading = classifyBudget(monthlySpend(), policy.claude.monthly_budget_usd)
+  if (reviewMode(policy) === 'off' && policy.review.screen === 'off') return null
+  const reading = classifyBudget(monthlySpend(), policy.review.monthly_budget_usd)
   if (reading.exhausted) await noteBudgetSpent(reading)
   else await noteBudgetAvailable()
   return reading

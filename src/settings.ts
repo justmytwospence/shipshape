@@ -112,10 +112,9 @@ export const SECTIONS = [
     'Update policy',
     'How much happens without you, by how large the version jump is. A per-service `shipshape.policy` label overrides it. Majors are never on the auto rung.',
   ],
-  ['Pull requests', 'Every change goes through one. It is the review surface.'],
   [
     'Changelog review',
-    'A model finds and reads the release notes, then judges the update. Its verdict can only ever withhold a merge — never cause one.',
+    'A screen looks at every update; a reader reads the ones a person will. Either can hold a merge back — never cause one.',
   ],
   [
     'Config proposals',
@@ -125,7 +124,10 @@ export const SECTIONS = [
     'Your comments',
     'Comment on an open pull request and shipshape does what you asked — answer, hold it, re-read the changelog, or write the change. It can never merge and never deploy from a comment.',
   ],
-  ['Merging', 'The only place shipshape changes the repository with nobody watching.'],
+  [
+    'Merging',
+    'Every change goes through a pull request. Merging one without you is the only place shipshape changes the repository with nobody watching.',
+  ],
   ['Deploys', 'A change is done when it is running, not when it is merged.'],
   [
     'Notifications',
@@ -152,6 +154,7 @@ const CHANNEL_HELP: Record<string, string> = {
 const TIER_HELP: Record<string, string> = {
   auto: 'shipshape opens a pull request and merges it, unless the changelog review says otherwise',
   manual: 'shipshape opens a pull request; you merge it',
+  attended: 'shipshape opens a pull request; you merge it, and you press Deploy',
   'on-request': 'nothing is opened — the update is listed on the dashboard until you ask for a pull request',
   skip: 'not tracked at all',
 }
@@ -174,7 +177,7 @@ export const SETTINGS: SettingDef[] = [
     section: 'Update policy',
     path: 'defaults.patch',
     kind: 'enum',
-    options: ['auto', 'manual', 'on-request', 'skip'],
+    options: ['auto', 'manual', 'attended', 'on-request', 'skip'],
     optionHelp: TIER_HELP,
     defaultValue: 'auto',
     label: 'Patch',
@@ -186,7 +189,7 @@ export const SETTINGS: SettingDef[] = [
     section: 'Update policy',
     path: 'defaults.minor',
     kind: 'enum',
-    options: ['auto', 'manual', 'on-request', 'skip'],
+    options: ['auto', 'manual', 'attended', 'on-request', 'skip'],
     optionHelp: TIER_HELP,
     defaultValue: 'auto',
     label: 'Minor',
@@ -209,7 +212,7 @@ export const SETTINGS: SettingDef[] = [
     section: 'Update policy',
     path: 'defaults.digest',
     kind: 'enum',
-    options: ['auto', 'manual', 'on-request', 'skip'],
+    options: ['auto', 'manual', 'attended', 'on-request', 'skip'],
     optionHelp: TIER_HELP,
     defaultValue: 'manual',
     label: 'Digest',
@@ -218,157 +221,44 @@ export const SETTINGS: SettingDef[] = [
       'A pinned sha256 moved. There is no changelog to read for one.',
   },
 
-  // ------------------------------------------------------------- Pull requests
-  {
-    section: 'Pull requests',
-    path: 'prs.enabled',
-    advanced: true,
-    kind: 'bool',
-    defaultValue: 'true',
-    label: 'Open pull requests',
-    help: '',
-    about:
-      'Off keeps detection running but stops all pushing and PR creation.',
-  },
-  {
-    section: 'Pull requests',
-    path: 'prs.scope',
-    advanced: true,
-    kind: 'enum',
-    options: ['coexist', 'full'],
-    optionHelp: {
-      coexist: 'take only what another updater leaves alone — majors, digest pins, and anything off the auto rung',
-      full: 'shipshape is the only updater; it handles everything',
-    },
-    defaultValue: 'coexist',
-    label: 'Coverage',
-    help: '',
-    about:
-      'Coexist exists so two updaters can never write to the same file for the same reason.',
-  },
-  {
-    section: 'Pull requests',
-    path: 'prs.max_open',
-    advanced: true,
-    kind: 'int',
-    min: 1,
-    optional: true,
-    defaultValue: '',
-    defaultLabel: 'unlimited',
-    label: 'Max open at once',
-    help: 'blank for no limit',
-    about:
-      'Blank opens everything eligible at once. A number holds the rest back until an open one merges or closes -- which keeps the list short, at the cost of a full queue being silent: five stale pull requests once held fifteen updates shut for six days.',
-  },
-  {
-    section: 'Pull requests',
-    path: 'merge_method',
-    kind: 'enum',
-    options: ['squash', 'merge', 'rebase'],
-    defaultValue: 'squash',
-    label: 'Merge method',
-    help: '',
-    about:
-      'Must be one the GitHub repository actually allows, or merging fails with a 405.',
-    advanced: true,
-  },
-
   // -------------------------------------------------------- Reading the changelog
   {
     section: 'Changelog review',
-    path: 'claude.mode',
+    path: 'review.screen',
     kind: 'enum',
-    options: ['advisory', 'off'],
+    options: ['off', 'shadow', 'on'],
     optionHelp: {
-      advisory: 'read every update and let the verdict hold back an automatic merge',
-      off: 'do not read anything; the ladder above decides on its own',
+      off: 'no screen; the reader reads every update with a pull request',
+      shadow: 'screen every update and show what it found, without acting on it',
+      on: 'the screen decides which updates the reader is paid to read',
     },
-    defaultValue: 'advisory',
-    label: 'Mode',
-    help: '',
+    defaultValue: 'off',
+    label: 'Screen',
+    help: 'Jev, a fraction of a cent a look',
     about:
-      'Advisory lets a verdict hold back an automatic merge. It can never cause one.',
+      'A fast model answers narrow questions about the release notes -- does a setting change, is there a manual step -- and picks the lines worth reading. It can hold an update back and never cause one.',
   },
   {
     section: 'Changelog review',
-    path: 'claude.model',
+    path: 'review.model',
     advanced: true,
     kind: 'model',
     defaultValue: DEFAULT_MODEL,
-    label: 'Model',
-    help: 'reads the changelog where a person will read the result',
+    label: 'Reader',
+    help: 'reads the changelog where a person will read the result; off for none',
     about:
       'Pick from the list, or type an id that is not on it.',
   },
   {
     section: 'Changelog review',
-    path: 'claude.min_confidence',
-    advanced: true,
-    kind: 'enum',
-    options: ['low', 'medium', 'high'],
-    defaultValue: 'medium',
-    label: 'Minimum confidence',
-    help: '',
-    about:
-      'An approval below this is treated as a caution and waits for you.',
-  },
-  {
-    section: 'Changelog review',
-    path: 'claude.block_on',
-    kind: 'string',
-    defaultValue: 'block, caution',
-    label: 'Hold on',
-    help: '',
-    about:
-      'Which verdicts hold back an automatic merge.',
-    locked: 'the damper is load-bearing; edit policy.yaml directly to change it',
-  },
-  {
-    section: 'Changelog review',
-    path: 'claude.monthly_budget_usd',
+    path: 'review.monthly_budget_usd',
     kind: 'number',
     min: 0,
-    defaultValue: '10',
+    defaultValue: '40',
     label: 'Monthly budget',
-    help: 'USD',
+    help: 'USD, every model call together',
     about:
-      'Reaching it pauses analysis. Pull requests keep opening regardless.',
-  },
-  {
-    section: 'Changelog review',
-    path: 'claude.web.searches',
-    kind: 'int',
-    min: 1,
-    defaultValue: '4',
-    label: 'Searches per call',
-    help: '',
-    about:
-      'How many web searches a single review or draft may run.',
-    advanced: true,
-  },
-  {
-    section: 'Changelog review',
-    path: 'claude.web.fetches',
-    kind: 'int',
-    min: 1,
-    defaultValue: '5',
-    label: 'Pages per call',
-    help: '',
-    about:
-      'With the size cap below, this sets the ceiling on what a call costs.',
-    advanced: true,
-  },
-  {
-    section: 'Changelog review',
-    path: 'claude.web.content_tokens',
-    kind: 'int',
-    min: 1000,
-    defaultValue: '12000',
-    label: 'Tokens per page',
-    help: '',
-    about:
-      'Reading is the dominant cost: worst case per call is pages × this.',
-    advanced: true,
+      'Reaching it pauses the reader, drafting and comment replies. Pull requests keep opening regardless.',
   },
 
   // ------------------------------------------------------- Drafting config changes
@@ -446,7 +336,7 @@ export const SETTINGS: SettingDef[] = [
   },
   {
     section: 'Config proposals',
-    path: 'claude.code_model',
+    path: 'review.code_model',
     advanced: true,
     kind: 'model',
     defaultValue: DEFAULT_MODEL,
@@ -480,22 +370,32 @@ export const SETTINGS: SettingDef[] = [
     about:
       'A ceiling so a misconfiguration merges a couple of things rather than the backlog.',
   },
+
   {
     section: 'Merging',
-    path: 'model_tier.mode',
+    path: 'prs.max_open',
     advanced: true,
-    kind: 'enum',
-    options: ['off', 'shadow', 'enforce'],
-    optionHelp: {
-      off: 'ignore the label; those services fall back to a human',
-      shadow: 'record what it would have decided, act on none of it',
-      enforce: 'let a passing assessment move the update onto the auto rung',
-    },
-    defaultValue: 'shadow',
-    label: 'Model-decided updates',
-    help: 'shipshape.policy: model',
+    kind: 'int',
+    min: 1,
+    optional: true,
+    defaultValue: '',
+    defaultLabel: 'unlimited',
+    label: 'Max open at once',
+    help: 'blank for no limit',
     about:
-      'The one place a model can raise a rung rather than only lower it. The track record is on the System page.',
+      'Blank opens everything eligible at once. A number holds the rest back until an open one merges or closes -- which keeps the list short, at the cost of a full queue being silent: five stale pull requests once held fifteen updates shut for six days.',
+  },
+  {
+    section: 'Merging',
+    path: 'merge_method',
+    kind: 'enum',
+    options: ['squash', 'merge', 'rebase'],
+    defaultValue: 'squash',
+    label: 'Merge method',
+    help: '',
+    about:
+      'Must be one the GitHub repository actually allows, or merging fails with a 405.',
+    advanced: true,
   },
 
   // ---------------------------------------------------------------- Deploying
@@ -620,16 +520,6 @@ export const SETTINGS: SettingDef[] = [
     help: '',
     about:
       'Required for pull requests: a branch cut from a stale origin reverts unpushed work when merged. Off degrades shipshape to alert-only.',
-  },
-  {
-    section: 'Git sync',
-    path: 'sync.blackout',
-    kind: 'windows',
-    defaultValue: '(none)',
-    label: 'Blackout windows',
-    help: 'HH:MM-HH:MM, comma-separated',
-    about:
-      'No git or deploy work happens inside them.',
   },
   {
     section: 'Git sync',

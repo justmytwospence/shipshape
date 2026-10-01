@@ -13,7 +13,7 @@ function main(): void {
     level: 'info',
     kind: 'system',
     message: 'shipshape started',
-    detail: `merge=${policy.merge_method} push_main=${policy.sync.push_main} claude=${policy.claude.mode}`,
+    detail: `merge=${policy.merge_method} push_main=${policy.sync.push_main} screen=${policy.review.screen} reader=${policy.review.model}`,
   })
 
   startServer()

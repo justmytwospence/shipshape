@@ -46,7 +46,7 @@ test('blank is accepted on this field and written to the file as null', () => {
 })
 
 test('blank is still an error on an int field that is not optional', () => {
-  const searches = SETTINGS.find((s) => s.path === 'claude.web.searches')!
+  const searches = SETTINGS.find((s) => s.path === 'merge.max_per_run')!
   assert.equal(searches.optional, undefined)
   assert.ok(validateSetting(searches, ''))
 })

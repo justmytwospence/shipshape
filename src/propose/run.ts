@@ -147,7 +147,7 @@ async function recordRetryable(c: Candidate, error: string): Promise<void> {
     ).run(
       c.prId,
       c.updateId,
-      loadPolicy().policy.claude.code_model,
+      loadPolicy().policy.review.code_model,
       error.slice(0, 400),
       new Date().toISOString(),
       attempts,
@@ -369,7 +369,7 @@ async function draftFor(c: Candidate): Promise<boolean> {
       ...botIdentity(),
       'commit',
       '-am',
-      `${title}\n\nDrafted by ${policy.claude.code_model}. Review before merging.`,
+      `${title}\n\nDrafted by ${policy.review.code_model}. Review before merging.`,
     ])
     const newSha = (await git(repoDir, ['rev-parse', 'HEAD'])).stdout
     const pushed = await git(repoDir, ['push', httpsUrl(), `HEAD:${c.branch}`], {
@@ -401,7 +401,7 @@ async function draftFor(c: Candidate): Promise<boolean> {
     await gh()
       .rest.issues.addLabels({ owner, repo, issue_number: c.number, labels: ['proposed-changes'] })
       .catch(() => {})
-    await comment(c.number, renderComment(result, applied.changed, policy.claude.code_model))
+    await comment(c.number, renderComment(result, applied.changed, policy.review.code_model))
 
     logEvent({
       level: 'info',
@@ -447,7 +447,7 @@ function record(
       p.summary,
       JSON.stringify(p.sources),
       JSON.stringify(changed),
-      policy.claude.code_model,
+      policy.review.code_model,
       error,
       JSON.stringify(hunks),
       new Date().toISOString(),

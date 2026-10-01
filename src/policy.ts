@@ -30,8 +30,9 @@ export type Confidence = 'low' | 'medium' | 'high'
  *   manual  -- open a PR; you merge it
  *   held    -- do not even open a PR until you ask
  *
- * `model` is not a rung. It is a deferral: the merge path resolves it through
- * policy/model-tier.ts into `auto` or `manual` once a verdict exists.
+ * `model` used to be a deferral -- "let a model decide the rung" -- that only ever ran
+ * in shadow mode here, where it always answered `manual`. It is now an accepted spelling
+ * of `manual`, which is what it did.
  *
  * `gated` USED to be a fifth value and was byte-for-byte identical to `manual` in every
  * decision -- same merge answer, same PR answer, differing only in which word a group
@@ -40,22 +41,23 @@ export type Confidence = 'low' | 'medium' | 'high'
  * (see `asTier`) rather than a value this module ever produces.
  *
  * `held` is not a policy the operator writes directly either -- it is what
- * `shipshape.pr: on-request` (or the newer `shipshape.policy: on-request`) produces. Held
+ * `shipshape.policy: on-request` produces (and the older `shipshape.pr: on-request`,
+ * still read, so a label that restricts a service is never silently dropped). Held
  * updates are detected, persisted and rendered, but the PR engine never touches them;
  * only an explicit per-service action in the UI promotes one. Datastores live here: a
  * postgres major cannot be applied by bumping the tag at all (the new container refuses
  * the old datadir), so a standing merge-able PR would be a loaded gun.
  */
-export type EffectiveTier = 'auto' | 'manual' | 'attended' | 'held' | 'skip' | 'model'
+export type EffectiveTier = 'auto' | 'manual' | 'attended' | 'held' | 'skip'
 
 /** What an operator may write in `shipshape.policy` or in `defaults.*`. */
-export const TIER_LABELS = ['auto', 'manual', 'attended', 'on-request', 'skip', 'model'] as const
+export const TIER_LABELS = ['auto', 'manual', 'attended', 'on-request', 'skip'] as const
 
 export interface TierInput {
   magnitude: Magnitude
-  /** `shipshape.policy`: auto | manual | on-request | skip | model (| gated, deprecated) */
+  /** `shipshape.policy`: auto | manual | attended | on-request | skip (| gated, model: read as manual) */
   policyLabel: string | null
-  /** `shipshape.pr`: on-request */
+  /** `shipshape.pr`: on-request. Deprecated, still read -- see EffectiveTier. */
   prLabel: string | null
   defaults: Policy['defaults']
 }
@@ -85,10 +87,8 @@ export function tierFor(i: TierInput): EffectiveTier {
   // carries the way back in, anything whose restart takes other services down with it,
   // anything a rollback could not put back.
   if (label === 'attended') return 'attended'
-  // Deferred, not decided: `model` needs a verdict, which tierFor has not got. The
-  // merge path resolves it through policy/model-tier.ts and falls back to the static
-  // tier -- `manual` for a major -- whenever the guards refuse.
-  if (label === 'model') return 'model'
+  // Retired: what shadow mode, the only mode it ever ran in, always returned.
+  if (label === 'model') return 'manual'
   // A label nobody recognises narrows to a human, and never falls through to the
   // defaults. Falling through is what it used to do, and it is the wrong direction: a
   // service the operator meant to pin -- `shipshape.policy: manaul` -- would land on
@@ -114,9 +114,6 @@ export function asTier(v: string): EffectiveTier {
 const TIER_RANK: Record<EffectiveTier, number> = {
   skip: 0,
   auto: 1,
-  // Unresolved sits above auto: a group containing one is never merged on the strength
-  // of its other members.
-  model: 2,
   manual: 3,
   attended: 4,
   held: 5,
@@ -138,7 +135,8 @@ export function foldGroupTier(tiers: string[]): EffectiveTier {
 
 /** A tier read back from the database or a label, mapped onto the current ladder. */
 export function normaliseTier(v: string): EffectiveTier {
-  if (v === 'held' || v === 'model') return v
+  if (v === 'held') return v
+  if (v === 'model') return 'manual'
   return asTier(v)
 }
 
@@ -170,6 +168,32 @@ export function foldGroupMagnitude(ms: Magnitude[]): Magnitude {
 
 const CONFIDENCE_RANK: Record<Confidence, number> = { low: 0, medium: 1, high: 2 }
 
+/**
+ * The least confidence an approval needs to merge without a person.
+ *
+ * It was a setting (`claude.min_confidence`) that nothing ever enforced -- the group
+ * fold in automerge dropped the confidence before it reached the gate -- and the one
+ * value that differed from this, `low`, would only have merged more. A constant says
+ * the same thing with nothing to get wrong.
+ */
+export const MIN_CONFIDENCE: Confidence = 'medium'
+
+/** Whether a reader is configured at all. `review.model: off` turns it off. */
+export function readerOn(policy: Policy): boolean {
+  return policy.review.model.trim().toLowerCase() !== 'off'
+}
+
+/**
+ * Whether any stage can write a verdict the gate should read.
+ *
+ * `off` only when neither can: the reader is off and the screen is not deciding. With
+ * either running, a verdict is advice the gate follows -- one that can hold a merge back
+ * and never cause one.
+ */
+export function reviewMode(policy: Policy): 'advisory' | 'off' {
+  return !readerOn(policy) && policy.review.screen !== 'on' ? 'off' : 'advisory'
+}
+
 export interface AutoMergeInput {
   tier: EffectiveTier
   magnitude: Magnitude
@@ -178,9 +202,9 @@ export interface AutoMergeInput {
   prScope?: 'tag-only' | 'proposed' | 'modified'
   verdict: Verdict
   confidence: Confidence | null
-  /** `shipshape.claude: required` -- flips this service to fail-closed. */
+  /** `shipshape.review: required` (or the older `shipshape.claude`) -- flips this service to fail-closed. */
   claudeRequired: boolean
-  claudeMode: Policy['claude']['mode']
+  claudeMode: 'advisory' | 'off'
   minConfidence: Confidence
   /**
    * Why this pull request is being held, if it is: an instruction nobody has answered
@@ -196,7 +220,7 @@ export interface AutoMergeInput {
 
 export type AutoMergeDecision =
   | { merge: true }
-  | { merge: false; reason: string; label?: 'claude-hold' | 'claude-block' | 'needs-analysis' }
+  | { merge: false; reason: string; label?: 'review-hold' | 'review-block' | 'needs-review' }
 
 /**
  * Whether an update may be merged without a human.
@@ -227,17 +251,17 @@ export function canAutoMerge(i: AutoMergeInput): AutoMergeDecision {
 
   switch (i.verdict) {
     case 'block':
-      return { merge: false, reason: 'Claude flagged breaking changes', label: 'claude-block' }
+      return { merge: false, reason: 'the changelog review found breaking changes', label: 'review-block' }
     case 'caution':
-      return { merge: false, reason: 'Claude recommends a human read this', label: 'claude-hold' }
+      return { merge: false, reason: 'the changelog review says to read this first', label: 'review-hold' }
     case 'pending':
-      return { merge: false, reason: 'the changelog review has not run yet', label: 'needs-analysis' }
+      return { merge: false, reason: 'the changelog review has not run yet', label: 'needs-review' }
     case 'unavailable':
       return i.claudeRequired
         ? {
             merge: false,
             reason: 'analysis unavailable and this service is fail-closed',
-            label: 'needs-analysis',
+            label: 'needs-review',
           }
         : { merge: true }
     case 'approve': {
@@ -245,8 +269,8 @@ export function canAutoMerge(i: AutoMergeInput): AutoMergeDecision {
       if (CONFIDENCE_RANK[conf] < CONFIDENCE_RANK[i.minConfidence]) {
         return {
           merge: false,
-          reason: `Claude approved but only at ${conf} confidence`,
-          label: 'claude-hold',
+          reason: `the changelog review approved, but only at ${conf} confidence`,
+          label: 'review-hold',
         }
       }
       return { merge: true }
@@ -283,21 +307,17 @@ export function verdictHolds(
 /**
  * Whether the PR engine should open a PR for this update at all.
  *
- * `coexist` is for running alongside another updater that already applies routine
- * patches and minors itself: shipshape takes only what such a tool leaves alone --
- * majors, digest pins, and anything not on the auto tier -- so the two can never write
- * to the same file for the same reason. Not by timing, by construction. `full` takes
- * over everything and is the right setting once shipshape is the only updater.
+ * There used to be a `coexist` scope, for running beside WUD: shipshape took only what
+ * WUD left alone. WUD is retired and shipshape owns every update, so the only refusals
+ * left are the rungs that say "not without me" and a rolling tag, which has nothing to
+ * change in git.
  */
 export function shouldOpenPr(opts: {
-  scope: 'coexist' | 'full'
   tier: EffectiveTier
   magnitude: Magnitude
   /** Rolling `latest` movement has nothing to change in git. */
   rolling: boolean
 }): boolean {
   if (opts.rolling) return false
-  if (opts.tier === 'skip' || opts.tier === 'held') return false
-  if (opts.scope === 'full') return true
-  return opts.magnitude === 'major' || opts.magnitude === 'digest' || opts.tier !== 'auto'
+  return opts.tier !== 'skip' && opts.tier !== 'held'
 }

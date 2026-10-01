@@ -65,7 +65,8 @@ export { normaliseSourceUrl, parseChangelogLabel, parseSourceLabel, type Changel
  * sweep during a scan skips it: such an image is looked at again, walk included, when
  * something needs its notes.
  *
- * Only a certain answer counts as linked where trust is extended (`policy/model-tier.ts`).
+ * Only a certain answer counts as linked where trust is extended (the screen's `routine`
+ * requires it: see analyze/screen/decide.ts).
  * A likely one is still good enough to read release notes from.
  */
 

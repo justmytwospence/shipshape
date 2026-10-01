@@ -5,7 +5,17 @@ import { env, loadPolicy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { routine } from '../notify/digest.ts'
 import { analyze, budgetExhausted, type ReviewedVerdict, type Verdict } from './claude.ts'
-import { verdictHolds, type Confidence } from '../policy.ts'
+import { MIN_CONFIDENCE, readerOn, verdictHolds, type Confidence } from '../policy.ts'
+import { notify } from '../notify/index.ts'
+import { jevConfigured } from './jev.ts'
+import { deploymentOf, type DeploymentEntry } from './screen/state.ts'
+import {
+  SCREEN_MONTHLY_CEILING_USD,
+  runScreenPass,
+  screenFor,
+  screenSpendThisMonth,
+  type ScreenRun,
+} from './screen/run.ts'
 import { backoffUntil } from '../backoff.ts'
 import { llmConfigured } from './client.ts'
 
@@ -57,6 +67,9 @@ export interface PendingAnalysis {
   /** 1 when someone asked for the existing verdict to be read again. */
   rerun: number
   detected_at: string
+  /** The first update carrying this bump, most deserving first. */
+  update_id: number
+  magnitude: string
   /**
    * Every service carrying this exact bump. A verdict is keyed by (image, from, to) and
    * shared, so it has to be judged against all of them -- a rename that reaches one
@@ -88,7 +101,8 @@ export interface PendingAnalysis {
 export function pendingAnalysis(limit: number): PendingAnalysis[] {
   const rows = getDb()
     .prepare(
-      `SELECT DISTINCT u.image, u.from_tag, u.to_tag, u.stack, u.service, u.detected_at,
+      `SELECT DISTINCT u.id AS update_id, u.image, u.from_tag, u.to_tag, u.stack, u.service,
+              u.detected_at, u.magnitude,
               CASE WHEN EXISTS (
                 SELECT 1 FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
                 WHERE pu.update_id = u.id AND p.state = 'open'
@@ -153,10 +167,13 @@ export function pendingAnalysis(limit: number): PendingAnalysis[] {
        -- or its notes could not all be fetched (a rate limit, an outage), in which case it
        -- is read again after an hour, three times at most. The old verdict stays in force
        -- meanwhile, exactly as with a requested re-read.
+       -- Only a reader's verdict counts: one the screen wrote is a placeholder the reader
+       -- may still be due to replace.
        AND NOT EXISTS (
          SELECT 1 FROM verdicts v
          WHERE v.image = u.image AND v.from_tag = u.from_tag AND v.to_tag = u.to_tag
            AND v.error IS NULL AND v.rerun_requested_at IS NULL
+           AND COALESCE(v.source, 'reader') = 'reader'
            AND NOT (
              json_extract(v.evidence, '$.incomplete') = 1
              AND COALESCE(json_extract(v.evidence, '$.attempt'), 1) <= ${INCOMPLETE_REREADS}
@@ -166,10 +183,11 @@ export function pendingAnalysis(limit: number): PendingAnalysis[] {
        -- A failure that will fail again is not work. Without this, one unreachable
        -- changelog is retried on every poll cycle for as long as the pull request is
        -- open, which is where 852 identical log lines came from.
+       -- (Not only an error row: a reader that failed over a screen's verdict keeps the
+       -- screen's verdict in place and waits out the same backoff.)
        AND NOT EXISTS (
          SELECT 1 FROM verdicts v
          WHERE v.image = u.image AND v.from_tag = u.from_tag AND v.to_tag = u.to_tag
-           AND v.error IS NOT NULL
            AND v.next_attempt_at IS NOT NULL AND v.next_attempt_at > ?
        )
        -- A requested re-read first: somebody pressed a button and is waiting to see it.
@@ -205,18 +223,81 @@ const INCOMPLETE_WAIT_MS = 60 * 60_000
 /** ...this many times, and then left as it is. */
 const INCOMPLETE_REREADS = 3
 
+/**
+ * The review, both stages: the screen first, then the reader on what it leaves.
+ *
+ * The screen runs whatever the budget says, under its own small ceiling, because it is
+ * what decides whether the budget is worth spending at all. A screen verdict written
+ * under `review.screen: on` is spliced into its pull requests here, the same way a cached
+ * reader verdict is.
+ */
+export async function runReviewPass(): Promise<{ screen: ScreenRun; reader: AnalysisRun }> {
+  const screen = await runScreenPass()
+  for (const a of screen.applied) await applyCachedVerdict(a, undefined, { quiet: true })
+  const reader = await runAnalysisPass()
+  return { screen, reader }
+}
+
+/**
+ * Whether the reader should be paid to read this bump.
+ *
+ * Everything, as before, unless `review.screen` is `on`. Then: whatever somebody asked to
+ * have read; otherwise only bumps with an open pull request -- a person will read what
+ * the reader writes -- that are not digests (no notes to read), and that the screen did
+ * not call routine. A routine bump is still read if it is a major, if the service is
+ * fail-closed, or as one of the sampled audits that keep the screen honest (one update
+ * in ten). A bump the screen has not reached yet waits for it, unless the screen cannot
+ * run; one the screen failed on goes to the reader, which is what happened before there
+ * was a screen.
+ *
+ * Exported because which updates get paid for is worth testing without a model in reach.
+ */
+export function readerWanted(
+  row: Pick<PendingAnalysis, 'rerun' | 'has_pr' | 'magnitude' | 'update_id' | 'carriers'>,
+  o: {
+    screenMode: 'off' | 'shadow' | 'on'
+    screen: { decision: string | null; error: string | null } | null
+    screenCanRun: boolean
+    required: boolean
+  },
+): boolean {
+  if (row.rerun) return true
+  if (o.screenMode !== 'on') return true
+  if (!row.has_pr) return false
+  if (row.magnitude === 'digest') return false
+  if (!o.screen) return !o.screenCanRun
+  if (o.screen.error || !o.screen.decision) return true
+  if (o.screen.decision !== 'routine') return true
+  return row.magnitude === 'major' || o.required || isAudit(row.update_id)
+}
+
+/** One routine update in ten is read anyway, so a screen that drifts is caught. */
+export function isAudit(updateId: number): boolean {
+  return updateId % 10 === 0
+}
+
 /** Analyse up to `limit` updates that want a verdict: open pull requests first. */
 export async function runAnalysisPass(limit = 3): Promise<AnalysisRun> {
   const out: AnalysisRun = { analysed: 0, skipped: 0, failed: 0 }
   const { policy } = loadPolicy()
-  if (policy.claude.mode === 'off' || !llmConfigured()) return out
+  if (!readerOn(policy) || !llmConfigured()) return out
   if (budgetExhausted()) {
     out.skipped++
     return out
   }
 
   const db = getDb()
-  const pending = pendingAnalysis(limit)
+  const screenCanRun = jevConfigured() && screenSpendThisMonth() < SCREEN_MONTHLY_CEILING_USD
+  const pending = pendingAnalysis(Number.MAX_SAFE_INTEGER)
+    .filter((row) =>
+      readerWanted(row, {
+        screenMode: policy.review.screen,
+        screen: screenFor(row.image, row.from_tag, row.to_tag),
+        screenCanRun,
+        required: row.carriers.some((c) => requiredReview(c.stack, c.service)),
+      }),
+    )
+    .slice(0, limit)
 
   for (const row of pending) {
     if (budgetExhausted()) {
@@ -231,15 +312,17 @@ export async function runAnalysisPass(limit = 3): Promise<AnalysisRun> {
         stack: row.stack,
         service: row.service,
         observedAt: row.detected_at,
-        composeSnippet: composeSnippet(row.stack, row.service),
+        deployment: deploymentFor(row.carriers),
       })
       if ('error' in result) {
         recordFailure(row, result.error)
         out.failed++
         continue
       }
+      const screened = screenFor(row.image, row.from_tag, row.to_tag)
       recordVerdict(row, result)
       await applyToPrs(row, result)
+      await auditScreen(row, screened, result)
       // applyToPrs writes the log line per pull request it edits. An update that applied
       // without one edits nothing, so say it here instead -- otherwise the only evidence
       // a review ran is a row quietly gaining a summary in the feed.
@@ -262,37 +345,61 @@ export async function runAnalysisPass(limit = 3): Promise<AnalysisRun> {
   return out
 }
 
-/** The service's own compose block, so the model can flag config-relevant changes. */
-function composeSnippet(stack: string, service: string): string | undefined {
-  const row = getDb()
-    .prepare(`SELECT compose_file FROM images WHERE stack = ? AND service = ?`)
-    .get(stack, service) as { compose_file: string } | undefined
-  if (!row) return undefined
-  let text: string
-  try {
-    text = readFileSync(join(env.repoDir, row.compose_file), 'utf8')
-  } catch {
-    return undefined
-  }
-  const lines = text.split('\n')
-  const start = lines.findIndex((l) => new RegExp(`^\\s{1,4}${escape(service)}:\\s*$`).test(l))
-  if (start === -1) return undefined
-  const indent = lines[start]!.match(/^\s*/)![0].length
-  let end = lines.length
-  for (let i = start + 1; i < lines.length; i++) {
-    const l = lines[i]!
-    if (!l.trim()) continue
-    if (l.match(/^\s*/)![0].length <= indent) {
-      end = i
-      break
-    }
-  }
-  return lines.slice(start, Math.min(end, start + 60)).join('\n')
+/** How every service carrying the bump is configured, names only. */
+function deploymentFor(carriers: { stack: string; service: string }[]): DeploymentEntry[] {
+  const file = getDb().prepare(`SELECT compose_file FROM images WHERE stack = ? AND service = ?`)
+  return carriers
+    .map((c) => {
+      const row = file.get(c.stack, c.service) as { compose_file: string } | undefined
+      return row ? deploymentOf(env.repoDir, row.compose_file, c.service) : null
+    })
+    .filter((d): d is DeploymentEntry => d !== null)
 }
 
-function escape(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** `shipshape.review: required` (or the older `shipshape.claude`), as the last scan recorded it. */
+function requiredReview(stack: string, service: string): boolean {
+  const row = getDb()
+    .prepare(`SELECT claude_label FROM images WHERE stack = ? AND service = ?`)
+    .get(stack, service) as { claude_label: string | null } | undefined
+  return row?.claude_label?.trim().toLowerCase() === 'required'
 }
+
+/**
+ * A reader that disagrees with a routine screen is the one thing the audit exists to
+ * catch, and it is said out loud at once rather than folded into a digest.
+ *
+ * Disagreeing means the reader found work: a block, or steps to take. A reader that
+ * merely says "read first" where the screen said routine is the screen being terse,
+ * not wrong.
+ */
+async function auditScreen(
+  row: { image: string; from_tag: string; to_tag: string; stack: string; service: string },
+  screened: { decision: string | null } | null,
+  v: Verdict,
+): Promise<void> {
+  if (screened?.decision !== 'routine') return
+  if (v.recommendation !== 'block' && v.migration_steps.length === 0) return
+  logEvent({
+    level: 'error',
+    kind: 'analysis',
+    stack: row.stack,
+    service: row.service,
+    message: `the screen called ${row.stack}/${row.service} ${row.to_tag} routine; the reader found work`,
+    detail: (v.migration_steps[0] ?? v.breaking_changes[0] ?? v.summary).slice(0, 200),
+  })
+  await notify({
+    title: `shipshape: screen missed ${row.service} ${row.to_tag}`,
+    body:
+      `The screen called ${row.image} ${row.from_tag} -> ${row.to_tag} routine; a full reading found ` +
+      `${v.recommendation === 'block' ? 'breaking changes' : 'steps to take'}.\n\n${v.summary}\n\n` +
+      'If this is not a one-off, set review.screen back to shadow in policy.yaml.',
+    priority: 4,
+    tags: ['warning'],
+    kind: 'alert',
+  })
+}
+
+
 
 /** Exported for the tests, like the rest of the bookkeeping here. */
 export function recordVerdict(
@@ -321,9 +428,10 @@ export function recordVerdict(
   db.prepare(
     `INSERT INTO verdicts (image, from_tag, to_tag, summary, severity, breaking_changes,
                            migration_steps, new_features, recommendation, confidence, sources, model,
-                           cost_usd, error, created_at, evidence)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+                           cost_usd, error, created_at, evidence, source, provisional)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, 'reader', 0)
      ON CONFLICT(image, from_tag, to_tag) DO UPDATE SET
+       source = 'reader', provisional = 0,
        summary = excluded.summary, severity = excluded.severity,
        breaking_changes = excluded.breaking_changes,
        migration_steps = excluded.migration_steps,
@@ -344,7 +452,7 @@ export function recordVerdict(
     v.recommendation,
     v.confidence,
     JSON.stringify(v.sources),
-    policy.claude.model,
+    policy.review.model,
     now,
     evidence,
   )
@@ -367,12 +475,30 @@ export function recordFailure(
   const db = getDb()
   const prior = db
     .prepare(
-      `SELECT attempts, error, recommendation FROM verdicts
+      `SELECT attempts, error, recommendation, source FROM verdicts
        WHERE image = ? AND from_tag = ? AND to_tag = ?`,
     )
     .get(row.image, row.from_tag, row.to_tag) as
-    | { attempts: number; error: string | null; recommendation: string | null }
+    | { attempts: number; error: string | null; recommendation: string | null; source: string | null }
     | undefined
+
+  // The reader failed over a verdict the screen wrote. That verdict stays -- a finding
+  // keeps holding the merge, a routine approval keeps allowing it -- and the reader waits
+  // out a backoff rather than being retried every tick at code-model prices.
+  if (prior && prior.error === null && prior.recommendation !== null && prior.source === 'screen') {
+    const attempts = prior.attempts + 1
+    db.prepare(
+      `UPDATE verdicts SET attempts = ?, next_attempt_at = ?, rerun_requested_at = NULL
+        WHERE image = ? AND from_tag = ? AND to_tag = ?`,
+    ).run(attempts, nextAttemptAt(attempts), row.image, row.from_tag, row.to_tag)
+    logEvent({
+      level: 'warn',
+      kind: 'analysis',
+      message: 'the reader could not read the changelog; the screen\'s verdict stands',
+      detail: `${row.image} ${row.from_tag} -> ${row.to_tag} (attempt ${attempts}): ${error.slice(0, 140)}`,
+    })
+    return
+  }
 
   // A re-read that failed. The verdict it was meant to replace is still the best reading
   // there is, so it stays -- writing the error over it would make the gate see "no
@@ -438,11 +564,12 @@ export function recordFailure(
 export async function applyCachedVerdict(
   row: { image: string; from_tag: string; to_tag: string },
   only?: number,
+  opts: { quiet?: boolean } = {},
 ): Promise<boolean> {
   const v = getDb()
     .prepare(
       `SELECT summary, severity, breaking_changes, migration_steps, new_features,
-              recommendation, confidence, sources
+              recommendation, confidence, sources, model, source, provisional
          FROM verdicts
         WHERE image = ? AND from_tag = ? AND to_tag = ? AND error IS NULL`,
     )
@@ -456,6 +583,9 @@ export async function applyCachedVerdict(
         recommendation: string | null
         confidence: string | null
         sources: string | null
+        model: string | null
+        source: string | null
+        provisional: number | null
       }
     | undefined
   if (!v?.recommendation) return false
@@ -481,6 +611,12 @@ export async function applyCachedVerdict(
       sources: list(v.sources),
     },
     only,
+    {
+      // A provisional hold is the screen asking for a reading, not news: the reader's
+      // verdict, when it lands, is what the digest reports.
+      quiet: opts.quiet || v.provisional === 1,
+      by: v.source === 'screen' ? `screened by ${v.model ?? 'Jev'}` : `written by ${v.model ?? 'the reader'}`,
+    },
   )
   return true
 }
@@ -490,6 +626,7 @@ async function applyToPrs(
   row: { image: string; from_tag: string; to_tag: string },
   v: Verdict,
   only?: number,
+  opts: { quiet?: boolean; by?: string } = {},
 ): Promise<void> {
   const prs = (
     getDb()
@@ -507,20 +644,22 @@ async function applyToPrs(
 
   const [owner, repo] = env.githubRepo.split('/') as [string, string]
   const { policy } = loadPolicy()
-  const demoted =
-    policy.claude.block_on.includes(v.recommendation as 'block' | 'caution') ||
-    (v.recommendation === 'approve' && rank(v.confidence) < rank(policy.claude.min_confidence))
+  // The same question the merge gate asks, so the label on GitHub cannot disagree with it.
+  const demoted = verdictHolds(v.recommendation, v.confidence, MIN_CONFIDENCE)
   // Labels this verdict does not earn. A re-read that changed its mind used to leave the
-  // old `claude-block` on the pull request forever, contradicting the body right below it.
+  // old block label on the pull request forever, contradicting the body right below it.
+  // The labels were renamed from claude-* to review-*; the old names are always swept.
   const stale = [
-    ...(v.recommendation === 'block' ? [] : ['claude-block']),
-    ...(demoted && v.recommendation !== 'block' ? [] : ['claude-hold']),
+    'claude-block',
+    'claude-hold',
+    ...(v.recommendation === 'block' ? [] : ['review-block']),
+    ...(demoted && v.recommendation !== 'block' ? [] : ['review-hold']),
   ]
 
   for (const pr of prs) {
     try {
       const current = (await gh().rest.pulls.get({ owner, repo, pull_number: pr.number })).data.body ?? ''
-      const rendered = render(v)
+      const rendered = render(v, opts.by ?? `written by ${loadPolicy().policy.review.model}`)
       const body =
         current.includes(START) && current.includes(END)
           ? current.slice(0, current.indexOf(START) + START.length) +
@@ -529,13 +668,13 @@ async function applyToPrs(
           : `${current}\n\n${START}\n${rendered}\n${END}`
 
       await gh().rest.pulls.update({ owner, repo, pull_number: pr.number, body })
-      for (const name of ['needs-analysis', ...stale]) {
+      for (const name of ['needs-analysis', 'needs-review', ...stale]) {
         await gh().rest.issues.removeLabel({ owner, repo, issue_number: pr.number, name }).catch(() => {})
       }
       if (v.recommendation === 'block') {
-        await gh().rest.issues.addLabels({ owner, repo, issue_number: pr.number, labels: ['claude-block'] })
+        await gh().rest.issues.addLabels({ owner, repo, issue_number: pr.number, labels: ['review-block'] })
       } else if (demoted) {
-        await gh().rest.issues.addLabels({ owner, repo, issue_number: pr.number, labels: ['claude-hold'] })
+        await gh().rest.issues.addLabels({ owner, repo, issue_number: pr.number, labels: ['review-hold'] })
       }
 
       logEvent({
@@ -557,7 +696,7 @@ async function applyToPrs(
   // Routine, not an alert: a hold means an update is *not* being applied, so nothing is
   // broken and nothing is waiting on a fast reaction. It belongs in the summary of what
   // shipshape decided, alongside what it opened and merged.
-  const held = prs.length > 0 ? heldSummary(prs[0]!.number, row.to_tag, v, policy.claude.min_confidence) : null
+  const held = prs.length > 0 && !opts.quiet ? heldSummary(prs[0]!.number, row.to_tag, v, MIN_CONFIDENCE) : null
   if (held) {
     await routine({
       category: 'held',
@@ -598,7 +737,7 @@ function rank(c: string): number {
 
 const ICON: Record<string, string> = { approve: '✅', caution: '⚠️', block: '⛔' }
 
-function render(v: Verdict): string {
+function render(v: Verdict, by: string): string {
   const lines = [
     `### Changelog analysis`,
     ``,
@@ -621,6 +760,6 @@ function render(v: Verdict): string {
   if (v.sources.length > 0) {
     lines.push('', '<details><summary>Sources</summary>', '', ...v.sources.map((s) => `- ${s}`), '</details>')
   }
-  lines.push('', `<sub>Written by \`${loadPolicy().policy.claude.model}\`. Release notes are untrusted input; this verdict can withhold a merge but never cause one.</sub>`)
+  lines.push('', `<sub>${by.charAt(0).toUpperCase()}${by.slice(1)}. Release notes are untrusted input; this verdict can withhold a merge but never cause one.</sub>`)
   return lines.join('\n')
 }

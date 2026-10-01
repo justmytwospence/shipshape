@@ -83,6 +83,11 @@ export interface ScannedService {
   sourceLabel: string | null
   /** `shipshape.changelog`: where the release notes are when GitHub releases do not have them. */
   changelogLabel: string | null
+  /**
+   * `shipshape.review: required` -- fail closed without a review. Read from the older
+   * `shipshape.claude` too, because the label restricts what may merge and dropping it on
+   * a rename would quietly loosen a service.
+   */
   claudeLabel: string | null
   deployLabel: string | null
   /** Port this service serves HTTP on, per its own traefik loadbalancer label. */
@@ -91,15 +96,35 @@ export interface ScannedService {
   archivePre: string | null
   /** `service:<name>` when this service shares another container's network namespace. */
   networkMode: string | null
-  /** `shipshape.pr: on-request` -- detected but never auto-PR'd; the operator opens it. */
+  /**
+   * `shipshape.pr: on-request`, the older spelling of `shipshape.policy: on-request`.
+   * Still read -- see `claudeLabel` for why a restricting label is never dropped.
+   */
   prLabel: string | null
   /** `shipshape.propose` -- how far a drafted config change may reach. See propose/paths. */
   proposeLabel: string | null
   /** `shipshape.group: <name>` -- forces services into one PR when the heuristic misses. */
   groupLabel: string | null
-  /** wud.* equivalents, used by the migration script and the parity report. */
-  wud: { watch: string | null; tagInclude: string | null; gated: boolean; link: string | null }
+  /** `shipshape.*` keys nothing reads: a typo, or a label left over from a retired one. */
+  unknownLabels: string[]
 }
+
+/** Every `shipshape.*` key the scanner understands. Anything else is reported, never guessed at. */
+export const KNOWN_LABELS = new Set([
+  'watch',
+  'pattern',
+  'tag.include',
+  'policy',
+  'source',
+  'changelog',
+  'review',
+  'claude',
+  'deploy',
+  'probe',
+  'pr',
+  'propose',
+  'group',
+])
 
 const SKIP_DIRS = new Set(['.git', '.claude', '.agents', 'bin', 'node_modules'])
 
@@ -185,20 +210,20 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
     const profiles = toStringArray(svc.profiles)
     const hasBuild = svc.build !== undefined
 
-    // Both prefixes, new first. The rename from `dockhand.*` swept 140 services, and a
-    // scan that ran between the parser changing and the labels changing would have seen
-    // every one of them as unwatched -- no error, updates just silently stop being
-    // found. Reading both makes the two changes independent. The fallback can go once
-    // no compose file in the wild carries the old prefix.
-    const label = (k: string): string | null =>
-      labels[`shipshape.${k}`] ?? labels[`dockhand.${k}`] ?? null
+    // `dockhand.*` was read as a fallback while the rename swept 140 services. None
+    // carries it any more, so only the one prefix is read.
+    const label = (k: string): string | null => labels[`shipshape.${k}`] ?? null
+    const unknownLabels = Object.keys(labels)
+      .filter((k) => k.startsWith('shipshape.'))
+      .map((k) => k.slice('shipshape.'.length))
+      .filter((k) => !KNOWN_LABELS.has(k))
 
     const pattern = label('pattern')
     const tagInclude = label('tag.include')
     const policyLabel = label('policy')
     const sourceLabel = label('source')
     const changelogLabel = label('changelog')
-    const claudeLabel = label('claude')
+    const claudeLabel = label('review') ?? label('claude')
     const deployLabel = label('deploy')
     // Traefik already knows which port each service answers on -- 76 of them declare it.
     // Reusing that beats inventing a shipshape-specific one nobody would fill in, and it
@@ -255,12 +280,7 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
       prLabel,
       proposeLabel,
       groupLabel,
-      wud: {
-        watch: labels['wud.watch'] ?? null,
-        tagInclude: labels['wud.tag.include'] ?? null,
-        gated: (labels['wud.trigger.exclude'] ?? '').includes('dockercompose.auto'),
-        link: labels['wud.link.template'] ?? null,
-      },
+      unknownLabels,
     })
   }
   return out

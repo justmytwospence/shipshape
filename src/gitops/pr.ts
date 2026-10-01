@@ -46,9 +46,9 @@ const LABELS: Record<string, string> = {
   minor: 'fbca04',
   patch: 'c2e0c6',
   digest: 'c5def5',
-  'needs-analysis': 'd4c5f9',
-  'claude-hold': 'fbca04',
-  'claude-block': 'b60205',
+  'needs-review': 'd4c5f9',
+  'review-hold': 'fbca04',
+  'review-block': 'b60205',
 }
 
 let labelsEnsured = false
@@ -600,7 +600,7 @@ async function relabel(number: number, group: UpdateGroup): Promise<void> {
   const { owner, repo } = repoParts()
   const magnitude = foldGroupMagnitude(group.members.map((m) => m.magnitude as Magnitude))
   const stale = ['major', 'minor', 'patch', 'digest'].filter((l) => l !== magnitude)
-  for (const name of [...stale, 'claude-block', 'claude-hold', 'proposed-changes']) {
+  for (const name of [...stale, 'review-block', 'review-hold', 'claude-block', 'claude-hold', 'proposed-changes']) {
     await gh()
       .rest.issues.removeLabel({ owner, repo, issue_number: number, name })
       .catch(() => {})
@@ -610,7 +610,7 @@ async function relabel(number: number, group: UpdateGroup): Promise<void> {
       owner,
       repo,
       issue_number: number,
-      labels: ['image-update', magnitude, 'needs-analysis'],
+      labels: ['image-update', magnitude, 'needs-review'],
     })
     .catch(() => {})
 }
@@ -714,7 +714,6 @@ function eligibleGroups(policy: Policy): UpdateGroup[] {
 
   const candidates = rows.filter((r) =>
     shouldOpenPr({
-      scope: policy.prs.scope,
       tier: r.tier as EffectiveTier,
       magnitude: r.magnitude as Magnitude,
       rolling: r.detail === 'rolling',
@@ -861,7 +860,7 @@ async function openPr(repoDir: string, group: UpdateGroup, policy: Policy): Prom
     owner,
     repo,
     issue_number: number,
-    labels: ['image-update', foldGroupMagnitude(members.map((m) => m.magnitude as Magnitude)), 'needs-analysis'],
+    labels: ['image-update', foldGroupMagnitude(members.map((m) => m.magnitude as Magnitude)), 'needs-review'],
   })
 
   recordPr({ number, branch, sha, groupKey: group.key, memberIds: members.map((m) => m.id) })

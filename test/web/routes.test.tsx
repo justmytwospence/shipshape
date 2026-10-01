@@ -42,30 +42,34 @@ const PAGES = [
   '/activity',
   '/activity?kind=deploy&level=problems&q=x',
   '/settings',
-  '/settings/advanced',
   '/status',
-  '/settings/raw',
 ]
-const FRAGMENTS = [
-  '/fragments/inbox',
-  '/fragments/updates',
-  '/fragments/services',
-  '/fragments/activity',
-  '/scan/status',
-  '/settings/digest',
-]
+const FRAGMENTS = ['/fragments/inbox', '/fragments/activity', '/scan/status']
 
-test('a section that lives only on Advanced still explains itself there', async () => {
-  // Prose used to be dropped on Advanced wholesale, so Deploys -- which has nothing on
-  // General -- rendered its essay nowhere, including the only explanation of Left stopped.
-  const { SECTION_PROSE } = await import('../../src/settings/prose.ts')
-  const advanced = await (await app.request('/settings/advanced')).text()
-  assert.match(advanced, /A deploy never changes whether a service is running\./)
-  // A section with decisions on General keeps its essay there and does not repeat it.
-  const general = await (await app.request('/settings')).text()
-  const essay = SECTION_PROSE['Changelog review'][0]!.slice(0, 30)
-  assert.ok(general.includes(essay), 'the General essay renders where its decisions are')
-  assert.ok(!advanced.includes(essay), 'and is not repeated beside the tuning knobs')
+test('settings is one page, and every section explains itself on it', async () => {
+  // It was General and Advanced, and Deploys -- with nothing on General -- once rendered
+  // its explanation nowhere at all, including the only account of Left stopped.
+  const { SECTIONS } = await import('../../src/settings.ts')
+  const html = await (await app.request('/settings')).text()
+  for (const [title, tagline] of SECTIONS) {
+    assert.ok(html.includes(`id="${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}"`), title)
+    assert.ok(html.includes(tagline.slice(0, 25)), `${title}: tagline`)
+  }
+  assert.match(html, /A deploy never changes whether a service is running\./, 'the long prose is folded in, not dropped')
+  assert.match(html, /<summary[^>]*>[\s\S]{0,400}More/, 'behind a More disclosure')
+  // The digest preview and its two buttons used to live at a URL no page linked to.
+  assert.match(html, /hx-post="\/settings\/digest\/send"/)
+  assert.match(html, /hx-post="\/settings\/email\/test"/)
+  // No tabs, and no prompt editors: prompts are files in the repository now.
+  assert.doesNotMatch(html, /href="\/settings\/advanced"/)
+  assert.doesNotMatch(html, /\/settings\/prompt\//)
+})
+
+test('the retired fragment routes are gone', async () => {
+  // Nothing asked for them: the toolbars ask the page's own URL.
+  for (const path of ['/fragments/updates', '/fragments/services']) {
+    assert.equal((await app.request(path)).status, 404, path)
+  }
 })
 
 test('/about is gone, not moved', async () => {
@@ -146,6 +150,10 @@ test('the old addresses still land somewhere', async () => {
     // Status left Settings when it became a destination of its own. Its old address
     // outlived it in bookmarks and in every digest link written before the move.
     ['/settings/status', '/status'],
+    // Settings was two tabs, a raw view and a digest preview; it is one page now.
+    ['/settings/advanced', '/settings'],
+    ['/settings/raw', '/settings'],
+    ['/settings/digest', '/settings#notifications'],
   ]) {
     const res = await app.request(from)
     assert.equal(res.status, 301, from)

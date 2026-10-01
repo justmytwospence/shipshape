@@ -1,7 +1,7 @@
 import { Cron } from 'croner'
-import { configured, env, inBlackout, loadPolicy } from './config.ts'
+import { configured, env, loadPolicy } from './config.ts'
 import { logEvent } from './db.ts'
-import { runAnalysisPass } from './analyze/run.ts'
+import { runReviewPass } from './analyze/run.ts'
 import { runProposePass } from './propose/run.ts'
 import { runAutoMerge } from './gitops/automerge.ts'
 import { pollIntervalMs, pollPrs } from './gitops/poll.ts'
@@ -27,13 +27,10 @@ import { logRetired, retireOvertaken } from './updates/overtaken.ts'
 
 let job: Cron | null = null
 let currentExpression = ''
-let deferTimer: NodeJS.Timeout | null = null
 
 let digestJob: Cron | null = null
 let digestExpression = ''
 
-/** When the deferred scan is due, for the UI to show. */
-let deferredScanAt: string | null = null
 
 /**
  * The pull-request loop's heartbeat. Null until the loop is running.
@@ -164,11 +161,8 @@ function startPrLoop(): void {
     let before = 0
     try {
       before = lastItemId()
-      const { policy } = loadPolicy()
-      // Outside the gate below on purpose. A dead credential is worth saying whether or
-      // not the engine is parked or the hour is quiet -- those stop shipshape acting,
-      // which is a choice, where this stops it working, which is a fault. It is also the
-      // only check that runs when `prs.enabled` is false, and the state it reports is
+      // First, and whatever else this tick does. A dead credential stops shipshape
+      // working, which is a fault rather than a choice, and the state it reports is
       // exactly what the operator would otherwise have to infer from a silent backlog.
       await checkGitHubAuth()
       // Outside the gate for the same reason, and asked here rather than where the budget
@@ -177,22 +171,19 @@ function startPrLoop(): void {
       // them, which is precisely when it mattered. Asked on the tick, the question has an
       // answer whether or not anything is being analysed.
       await checkAnalysisBudget()
-      // Outside the gate, for the same reason the auth probe is: this is a GitHub read
-      // that touches no git and no host, and the blackout exists to keep shipshape away
-      // from another updater's file writes. Inside it, a comment left at 01:00 would go
-      // unrecorded for 105 minutes -- and an unrecorded comment is one that does not
+      // Before anything that might merge: an unrecorded comment is one that does not
       // hold the merge, which is the one thing this must never fail to do.
       await ingestInstructions()
-      if (policy.prs.enabled && !inBlackout(policy)) {
+      {
         await pollPrs()
         // After polling, so every merge this tick noticed is queued before any of them
         // is acted on, and one slow verify window cannot hide the others.
         const drained = await drainDeployQueue()
         await runRechecks()
         const result = await runPrPass()
-        // Analysis runs after PR creation, not before: a pull request must appear
-        // whether or not the model is reachable.
-        await runAnalysisPass()
+        // Review runs after PR creation, not before: a pull request must appear whether
+        // or not a model is reachable. The screen first, then the reader on what it leaves.
+        await runReviewPass()
         // After analysis, because a proposal is only drafted once a verdict says the
         // update needs more than its tag.
         await runProposePass()
@@ -267,24 +258,6 @@ async function fire(): Promise<void> {
     return
   }
 
-  // Scans only read registries, so a blackout does not strictly bind them -- but the
-  // window exists to keep shipshape away from WUD's nightly rewrite, and an operator who
-  // moves the cron into it should get the protection anyway.
-  if (inBlackout(policy)) {
-    const delayMs = msUntilBlackoutEnds(policy.sync.blackout) + 60_000 + Math.random() * 60_000
-    logEvent({
-      level: 'info',
-      kind: 'scan',
-      message: 'scan deferred: inside blackout window',
-      detail: `retrying in ${Math.round(delayMs / 60_000)}m`,
-    })
-    if (deferTimer) clearTimeout(deferTimer)
-    deferredScanAt = new Date(Date.now() + delayMs).toISOString()
-    deferTimer = setTimeout(() => void fire(), delayMs)
-    return
-  }
-
-  deferredScanAt = null
   await runScanSafely('cron')
 }
 
@@ -304,10 +277,8 @@ export function scheduleInfo(): {
   return {
     scan: {
       cron: policy.scan.cron,
-      // A deferral is the honest answer while one is pending: the cron says 03:00, the
-      // blackout says not yet.
-      nextAt: deferredScanAt ?? job?.nextRun()?.toISOString() ?? null,
-      deferred: deferredScanAt !== null,
+      nextAt: job?.nextRun()?.toISOString() ?? null,
+      deferred: false,
     },
     digest: {
       cron: policy.notify.cron,
@@ -343,21 +314,3 @@ async function runScanSafely(trigger: 'cron' | 'manual'): Promise<void> {
   }
 }
 
-/** Milliseconds until the end of whichever configured window contains "now". */
-function msUntilBlackoutEnds(windows: string[]): number {
-  const now = new Date()
-  const mins = now.getHours() * 60 + now.getMinutes()
-  let best = 15 * 60_000
-  for (const w of windows) {
-    const [from, to] = w.split('-') as [string, string]
-    const [fh, fm] = from.split(':').map(Number) as [number, number]
-    const [th, tm] = to.split(':').map(Number) as [number, number]
-    const start = fh * 60 + fm
-    const end = th * 60 + tm
-    const inside = start <= end ? mins >= start && mins < end : mins >= start || mins < end
-    if (!inside) continue
-    const untilMins = end >= mins ? end - mins : 24 * 60 - mins + end
-    best = Math.max(best, untilMins * 60_000)
-  }
-  return best
-}

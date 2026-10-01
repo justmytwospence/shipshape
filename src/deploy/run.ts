@@ -1,6 +1,6 @@
 import { execa } from 'execa'
 import { join } from 'node:path'
-import { env, inBlackout, loadPolicy, type Policy } from '../config.ts'
+import { env, loadPolicy, type Policy } from '../config.ts'
 import {
   DockerUnreadable,
   findForeign,
@@ -259,14 +259,13 @@ function removeArgs(target: DeployTarget, repoDir = env.repoDir): { cwd: string;
  */
 export function refuseReason(
   target: DeployTarget,
-  opts: { selfStack: string; excluded: string[]; blackout: boolean },
+  opts: { selfStack: string; excluded: string[] },
 ): string | null {
   if (target.stack === opts.selfStack) {
     return 'shipshape does not deploy itself — the container running the deploy would be replaced mid-command'
   }
   if (opts.excluded.includes(target.stack)) return `${target.stack} is an excluded stack`
   if (target.services.length === 0) return 'no services to deploy'
-  if (opts.blackout) return 'inside the configured blackout window'
   return null
 }
 
@@ -297,7 +296,6 @@ type DeployFailure = Extract<DeployOutcome, { ok: false }>
 export async function deploy(
   target: DeployTarget,
   opts: {
-    skipBlackout?: boolean
     carried?: ReadonlySet<string>
     record?: (p: RecordedPlan) => void
     io?: DeployIo
@@ -308,9 +306,6 @@ export async function deploy(
   const refusal = refuseReason(target, {
     selfStack: env.selfStack,
     excluded: policy.exclude_stacks,
-    // Restoring a known-good version is remediation, not a change: the blackout exists
-    // to keep upgrades out of the small hours, not to leave a service broken until 02:30.
-    blackout: opts.skipBlackout ? false : inBlackout(policy),
   })
   if (refusal) return { ok: false, phase: 'refused', reason: refusal }
 

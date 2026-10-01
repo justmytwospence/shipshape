@@ -3,12 +3,13 @@ import { Icon } from './icon.tsx'
 import type { SettingDef } from '../../../settings.ts'
 
 /**
- * Settings, split by whether getting it wrong changes what shipshape may do.
+ * Settings: one page, in the order an update travels through shipshape.
  *
- * The page it replaces had twelve panes and thirty-one keys presented as equals, which
- * is what made "how much happens without you" hard to find: it was one switch among many
- * rather than the question the tool is about. Fourteen decisions stay here. The rest are
- * tuning, correct out of the box, folded behind Advanced.
+ * It used to be two -- General and Advanced -- and before that twelve panes and
+ * thirty-one keys presented as equals. Two tabs made "where is X" a coin toss and let a
+ * save on one tab silently skip the other. Now every section shows the decisions that
+ * change what shipshape may do, and folds its tuning, and its longer explanation, into a
+ * "More" beneath them. Nothing lives on another page.
  */
 
 export interface SettingValue {
@@ -17,25 +18,17 @@ export interface SettingValue {
   changed: boolean
 }
 
-export const SETTINGS_TABS = [
-  { key: 'general', href: '/settings', label: 'General' },
-  { key: 'advanced', href: '/settings/advanced', label: 'Advanced' },
-] as const
-
-export const SettingsTabs: FC<{ active: string }> = ({ active }) => (
-  <div role="tablist" class="tabs tabs-box tabs-xs w-fit shrink-0 flex-nowrap p-0.5">
-    {SETTINGS_TABS.map((t) => (
-      <a
-        role="tab"
-        href={t.href}
-        class={`tab min-h-10 whitespace-nowrap lg:min-h-0 ${t.key === active ? 'tab-active' : ''}`}
-        aria-selected={t.key === active ? 'true' : 'false'}
-      >
-        {t.label}
-      </a>
-    ))}
-  </div>
-)
+export interface SettingGroup {
+  title: string
+  /** One sentence: what this stage is for. */
+  tagline?: string
+  /** The longer explanation, folded under More. */
+  prose?: string[]
+  /** Decisions: what shipshape may do. Always shown. */
+  items: SettingValue[]
+  /** Tuning: correct out of the box. Folded under More. */
+  more?: SettingValue[]
+}
 
 /**
  * The section list beside the form on a desktop: a map of the form, not just links.
@@ -48,28 +41,13 @@ const NAV_LINK =
   'border-l-2 border-transparent hover:bg-base-200 aria-[current=true]:border-primary ' +
   'aria-[current=true]:bg-primary/8 aria-[current=true]:font-medium flex h-7 items-center px-3 text-xs'
 
-export const SettingsNav: FC<{ sections: string[]; extra?: { href: string; label: string }[] }> = ({
-  sections,
-  extra,
-}) => (
+export const SettingsNav: FC<{ sections: string[] }> = ({ sections }) => (
   <nav data-spy aria-label="Sections" class="flex flex-col py-2">
     {sections.map((title) => (
       <a href={`#${slug(title)}`} class={NAV_LINK}>
         {title}
       </a>
     ))}
-    {extra && extra.length > 0 ? (
-      <>
-        <span class="px-3 pt-3 pb-1 text-xs font-medium tracking-wide uppercase opacity-50">
-          Prompts
-        </span>
-        {extra.map((e) => (
-          <a href={e.href} class={NAV_LINK}>
-            {e.label}
-          </a>
-        ))}
-      </>
-    ) : null}
   </nav>
 )
 
@@ -113,10 +91,13 @@ const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) 
               />
             </>
           ) : def.kind === 'enum' && def.options ? (
-            <select id={id} name={def.path} class="select select-sm tap w-full max-w-xs">
+            // Each option says what it does, not only what it is called: `act` or
+            // `compose-dir` means nothing until you have read the code behind it.
+            <select id={id} name={def.path} class="select select-sm tap w-full max-w-md">
               {def.options.map((o) => (
                 <option value={o} selected={o === value}>
                   {o}
+                  {def.optionHelp?.[o] ? ` — ${def.optionHelp[o]}` : ''}
                   {o === def.defaultValue ? ' (default)' : ''}
                 </option>
               ))}
@@ -146,41 +127,78 @@ const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) 
             />
           )}
         </div>
+        {def.kind === 'cron' && describeCron(value) ? (
+          <p class="mt-0.5 text-xs">{describeCron(value)}</p>
+        ) : null}
         {help ? <p class="mt-0.5 max-w-prose text-xs opacity-60">{help}</p> : null}
       </div>
     </fieldset>
   )
 }
 
+/**
+ * A seconds-first cron expression in words, for the shapes this file actually uses.
+ *
+ * Anything else returns null and the expression speaks for itself: a wrong description
+ * of a schedule is worse than none.
+ */
+export function describeCron(expr: string): string | null {
+  const f = expr.trim().split(/\s+/)
+  if (f.length !== 6) return null
+  const [sec, min, hour, dom, mon, dow] = f as [string, string, string, string, string, string]
+  if (sec !== '0' || dom !== '*' || mon !== '*') return null
+  if (!/^\d{1,2}$/.test(min) || !/^\d{1,2}$/.test(hour)) return null
+  const at = `${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
+  if (dow === '*') return `Every day at ${at}`
+  const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  if (/^[0-6]$/.test(dow)) return `Every ${DAYS[Number(dow)]} at ${at}`
+  return null
+}
+
 const Section: FC<{
-  title: string
-  prose?: string[]
-  items: SettingValue[]
+  group: SettingGroup
   models?: string[]
-}> = ({ title, prose, items, models }) => (
-  <section
-    id={slug(title)}
-    class="border-base-300 scroll-mt-2 border-t px-4 py-3 first:border-t-0 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] lg:grid-rows-[auto_1fr] lg:gap-x-8"
-  >
-    <h2 class="text-sm font-semibold lg:col-start-1 lg:row-start-1">{title}</h2>
-    {/* The explanation lives here rather than behind a link. It was a separate page for
-        a while, which meant answering "what does this actually do" cost a page load and
-        a scroll back to the control you were looking at. Beside the fields at lg, above
-        them on a phone. */}
-    <div class="lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:pt-0.5">
-      {prose?.map((para) => (
-        <p class="mt-1 max-w-prose text-xs leading-relaxed opacity-60 lg:mt-0 lg:mb-2">
-          {withCode(para)}
-        </p>
-      ))}
-    </div>
-    <div class="mt-2 lg:col-start-1 lg:row-start-2 lg:mt-1">
-      {items.map((item) => (
-        <Field item={item} models={models} />
-      ))}
-    </div>
-  </section>
-)
+  /** Anything a section carries besides its fields: the digest preview, under Notifications. */
+  extra?: unknown
+}> = ({ group, models, extra }) => {
+  const more = group.more ?? []
+  const prose = group.prose ?? []
+  return (
+    <section id={slug(group.title)} class="border-base-300 scroll-mt-2 border-t px-4 py-3 first:border-t-0">
+      <h2 class="text-sm font-semibold">{group.title}</h2>
+      {group.tagline ? (
+        <p class="mt-0.5 max-w-prose text-xs leading-relaxed opacity-70">{withCode(group.tagline)}</p>
+      ) : null}
+      <div class="mt-2">
+        {group.items.map((item) => (
+          <Field item={item} models={models} />
+        ))}
+      </div>
+      {extra ? <div class="mt-2">{extra}</div> : null}
+      {more.length > 0 || prose.length > 0 ? (
+        // A native disclosure: the fields inside are still in the form, so a save writes
+        // them back as they are whether or not anybody opened it.
+        <details class="group mt-1">
+          <summary class="tap inline-flex cursor-pointer items-center gap-1 text-xs opacity-70 hover:opacity-100">
+            <Icon name="chevron-right" class="size-3.5 transition-transform group-open:rotate-90" />
+            More
+            {more.some((m) => m.changed) ? (
+              <span class="badge badge-xs badge-primary badge-soft">changed</span>
+            ) : null}
+          </summary>
+          <div class="mt-1">
+            {prose.map((para) => (
+              <p class="mt-1 max-w-prose text-xs leading-relaxed opacity-60">{withCode(para)}</p>
+            ))}
+            {more.map((item) => (
+              <Field item={item} models={models} />
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </section>
+  )
+}
 
 /** Backticks in the prose are label and key names, and should look like ones. */
 function withCode(text: string): unknown[] {
@@ -194,16 +212,17 @@ export function slug(title: string): string {
 }
 
 export const SettingsForm: FC<{
-  groups: { title: string; prose?: string[]; items: SettingValue[] }[]
+  groups: SettingGroup[]
   models?: string[]
   banner?: { level: 'info' | 'error'; text: string } | null
-  advanced?: boolean
   readyCount?: number
-}> = ({ groups, models, banner, advanced, readyCount }) => (
+  /** Rendered inside the section of the same title. */
+  extras?: Record<string, unknown>
+}> = ({ groups, models, banner, readyCount, extras }) => (
   <form
     id="settings-form"
     data-dirty
-    hx-post={advanced ? '/settings/advanced' : '/settings'}
+    hx-post="/settings"
     hx-target="#settings-form"
     hx-swap="outerHTML"
     hx-indicator="#busy"
@@ -223,7 +242,7 @@ export const SettingsForm: FC<{
       </p>
     ) : null}
     {groups.map((g) => (
-      <Section title={g.title} prose={g.prose} items={g.items} models={models} />
+      <Section group={g} models={models} extra={extras?.[g.title]} />
     ))}
     <div class="savebar bg-base-100/95 border-base-300 flex items-center gap-3 border-t px-4 py-2 backdrop-blur">
       <button type="submit" class="btn btn-primary btn-sm tap">
@@ -234,97 +253,53 @@ export const SettingsForm: FC<{
   </form>
 )
 
-// ------------------------------------------------------- policy, prompts, digest
-
-
-export const RawPolicy: FC<{ text: string }> = ({ text }) => (
-  <pre class="p-4 font-mono text-xs break-words whitespace-pre-wrap">{text}</pre>
-)
-
-export const PromptEditor: FC<{
-  name: string
-  title: string
-  help: string
-  text: string
-  customised: boolean
-}> = ({ name, title, help, text, customised }) => (
-  <section id={`prompt-${name}`} class="border-base-300 scroll-mt-2 border-t px-4 py-3">
-    <div class="flex items-center gap-2">
-      <h2 class="text-sm font-semibold">{title}</h2>
-      <span class={`badge badge-xs badge-soft ${customised ? 'badge-primary' : 'badge-ghost'}`}>
-        {customised ? 'edited' : 'default'}
-      </span>
-    </div>
-    <p class="mt-1 max-w-prose text-xs opacity-60">{help}</p>
-    <form
-      hx-post={`/settings/prompt/${name}`}
-      hx-target={`#prompt-${name}`}
-      hx-swap="outerHTML"
-      hx-indicator="#busy"
-      class="mt-2 flex flex-col gap-2"
-    >
-      <textarea name="text" rows={12} class="textarea textarea-sm w-full font-mono text-xs">
-        {text}
-      </textarea>
-      <div class="flex items-center gap-2">
-        <button type="submit" class="btn btn-primary btn-sm tap">
-          Save prompt
-        </button>
-        {customised ? (
-          <button
-            type="button"
-            class="btn btn-ghost btn-sm tap"
-            hx-post={`/settings/prompt/${name}/reset`}
-            hx-target={`#prompt-${name}`}
-            hx-swap="outerHTML"
-          >
-            Reset to default
-          </button>
-        ) : null}
-        <span class="text-xs opacity-50">Takes effect on the next call.</span>
-      </div>
-    </form>
-  </section>
-)
-
+/**
+ * What the next digest would say, and the two ways to prove the path works.
+ *
+ * Both buttons existed and were reachable from nowhere: the preview lived at a URL no page
+ * linked to. They sit under Notifications now, beside the settings they test. Their
+ * buttons are `type="button"`, so pressing one never submits the settings form around it.
+ */
 export const DigestPreview: FC<{ title: string | null; body: string | null; count: number }> = ({
   title,
   body,
   count,
 }) => (
-  <div class="flex flex-col gap-2">
+  <div id="digest-preview" class="bg-base-200/50 flex flex-col gap-2 rounded p-3">
+    <p class="text-xs font-medium tracking-wide uppercase opacity-60">Next digest</p>
     {count === 0 ? (
-      <p class="text-sm opacity-60">Nothing is waiting to be sent. An empty digest is never sent.</p>
+      <p class="text-xs opacity-60">Nothing is waiting to be sent. An empty digest is never sent.</p>
     ) : (
       <>
         <p class="text-sm font-medium">{title}</p>
-        <pre class="bg-base-200 overflow-x-auto rounded p-3 font-mono text-xs whitespace-pre-wrap">
+        <pre class="bg-base-100 overflow-x-auto rounded p-2 font-mono text-xs whitespace-pre-wrap">
           {body}
         </pre>
       </>
     )}
-    <div class="flex items-center gap-2">
+    <div class="flex flex-wrap items-center gap-2">
       <button
         type="button"
         class="btn btn-ghost btn-sm tap gap-1"
         hx-post="/settings/digest/send"
-        hx-target="#digest-preview"
+        hx-target="#digest-result"
         hx-swap="innerHTML"
         hx-disabled-elt="this"
       >
         <Icon name="check" />
-        Send it now
+        Send the digest now
       </button>
       <button
         type="button"
         class="btn btn-ghost btn-sm tap gap-1"
         hx-post="/settings/email/test"
-        hx-target="#digest-preview"
+        hx-target="#digest-result"
         hx-swap="innerHTML"
         hx-disabled-elt="this"
       >
         Send a test email
       </button>
+      <span id="digest-result" class="text-xs" aria-live="polite"></span>
     </div>
   </div>
 )

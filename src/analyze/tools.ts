@@ -37,6 +37,13 @@ export function supportsDynamicFiltering(model: string): boolean {
   return MODERN.some((m) => family.startsWith(m))
 }
 
+/**
+ * How much a reading may fetch. These were three settings (`claude.web.*`); they are cost
+ * limits rather than reach, every installation ran the defaults, and the screen in front
+ * of the reader is now what decides how many reads happen at all.
+ */
+export const WEB_BUDGET: WebToolBudget = { searches: 4, fetches: 5, content_tokens: 12_000 }
+
 export interface WebToolBudget {
   /** How many searches the model may run. */
   searches: number

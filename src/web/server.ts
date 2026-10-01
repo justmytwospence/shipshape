@@ -4,7 +4,7 @@ import { Hono, type Context } from 'hono'
 import { raw } from 'hono/html'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { configured, env, loadPolicy, inBlackout } from '../config.ts'
+import { configured, env, loadPolicy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'
 import { buildUpdateDiff, type DiffHunk } from '../diff.ts'
@@ -30,7 +30,6 @@ import {
 import {
   ActivityPage,
   InboxPage,
-  RawPolicyPage,
   SettingsPage,
   StatusPage,
   ServicesPage,
@@ -43,8 +42,8 @@ import type { Chrome } from './views/ui/shell.tsx'
 import { ctxString, listHref, readCtx, type ListCtx } from './ctx.ts'
 import {
   DigestPreview,
-  PromptEditor,
   SettingsForm,
+  type SettingGroup,
   type SettingValue,
 } from './views/ui/settings.tsx'
 import type { StatusData } from './views/ui/status.tsx'
@@ -58,7 +57,8 @@ import {
   serviceRows,
 } from '../updates/services.ts'
 import { setServiceLabels, type LabelChange, type LabelKey } from '../gitops/labels.ts'
-import { llmConfigured } from '../analyze/client.ts'
+import { llmConfigured, llmProvider } from '../analyze/client.ts'
+import { jevConfigured } from '../analyze/jev.ts'
 import { previewLink } from '../resolver/preview.ts'
 import { InboxList, type InboxData } from './views/ui/inbox.tsx'
 import { ListCount, MergePreview, ScanStatus } from './views/ui/parts.tsx'
@@ -68,7 +68,6 @@ import { runPrPass } from '../gitops/pr.ts'
 import { runAnalysisPass } from '../analyze/run.ts'
 import { runProposePass } from '../propose/run.ts'
 import { runAutoMerge } from '../gitops/automerge.ts'
-import { PROMPTS, prompt, savePrompt, resetPrompt, isCustomised, type PromptName } from '../prompts/index.ts'
 import { DiffView } from './views/diff.tsx'
 import { mergeGate, type MergeFacts } from '../gitops/merge-gate.ts'
 import { pollPrs } from '../gitops/poll.ts'
@@ -85,8 +84,6 @@ import {
 import { activeChannels } from '../notify/index.ts'
 import { configured as emailConfigured, send as sendEmail, escapeHtml as escapeText } from '../notify/email.ts'
 import { rescheduleScan, rescheduleDigest } from '../scheduler.ts'
-import { readFileSync as readFile } from 'node:fs'
-import { paths } from '../config.ts'
 
 const PENDING_SQL = `
   SELECT u.id, u.stack, u.service, u.image, u.from_tag, u.to_tag, u.magnitude,
@@ -435,13 +432,6 @@ export function createApp(): Hono {
     return c.html(updatesRender(c, ctx) as string)
   })
 
-  /** Kept for anything that still asks by the old name; the toolbar asks /updates. */
-  app.get('/fragments/updates', (c) => {
-    const ctx = ctxOf(c, 'updates')
-    const updates = listUpdates({ stage: ctx.stage, q: ctx.q, magnitude: ctx.magnitude })
-    return c.html(UpdatesList({ updates, ctx: ctxString({ ...ctx, list: 'updates' }) }) as string)
-  })
-
   /** The pane's contents for one update, in the list it was opened from. */
   const updatePane = (id: number, ctx: ListCtx): { update: UpdateView; pane: unknown } | null => {
     const update = updateView(id)
@@ -527,18 +517,6 @@ export function createApp(): Hono {
       )
     }
     return c.html(servicesRender(c, ctx) as string)
-  })
-
-  app.get('/fragments/services', (c) => {
-    const ctx = ctxOf(c, 'services')
-    const services = filterServiceRows(serviceRows(), { filter: ctx.filter, q: ctx.q })
-    return c.html(
-      ServicesList({
-        services,
-        grouped: ctx.grouped,
-        ctx: ctxString({ ...ctx, list: 'services' }),
-      }) as string,
-    )
   })
 
   /** The pane's contents for one service. */
@@ -1027,52 +1005,42 @@ export function createApp(): Hono {
     return c.html(ActivityList({ rows, repo: env.githubRepo, more: moreLink(c, rows) }) as string)
   })
 
-  /** One prompt editor, rendered the same way whether saved, reset, or first shown. */
-  const promptEditor = (name: PromptName) =>
-    PromptEditor({
-      name,
-      title: PROMPTS[name].title,
-      help: PROMPTS[name].help,
-      text: prompt(name),
-      customised: isCustomised(name),
-    })
-
-  const promptStates = () =>
-    (Object.keys(PROMPTS) as PromptName[]).map((name) => ({
-      name,
-      body: prompt(name),
-      customised: isCustomised(name),
-    }))
-
   /**
-   * The settings, split by whether getting one wrong changes what shipshape may do.
+   * The settings, as one page in pipeline order.
    *
-   * Fourteen decisions are visible; the remaining twenty-one are tuning and live behind
-   * Advanced with their defaults. The distinction is not how obscure a key is -- it is
-   * whether it moves the line between what happens on its own and what waits for you.
+   * Each section shows what changes what shipshape may do, and folds its tuning under
+   * More -- with the longer explanation, which used to sit beside the fields and pushed
+   * the decisions below the fold.
    */
-  const settingGroups = (advanced: boolean) => {
+  const settingGroups = (): SettingGroup[] => {
     const { policy } = loadPolicy()
-    const groups: { title: string; prose?: string[]; items: SettingValue[] }[] = []
-    for (const [title] of SECTIONS) {
-      const items = SETTINGS.filter(
-        (d) => d.section === title && !!d.advanced === advanced,
-      ).map((def) => ({
-        def,
-        value: currentValue(policy, def.path),
-        changed: currentValue(policy, def.path) !== def.defaultValue,
-      }))
-      // The prose belongs with the decisions. On Advanced these are tuning knobs whose
-      // own `about` text is the explanation, and repeating the section essay there would
-      // bury them -- but a section with nothing on General (Deploys, Merging, Pull
-      // requests, Config proposals) is not repeating anything, and suppressing it there
-      // meant its essay rendered nowhere at all, including why an update reads Left stopped.
-      const onGeneral = SETTINGS.some((d) => d.section === title && !d.advanced)
-      if (items.length > 0) {
-        groups.push({ title, prose: advanced && onGeneral ? undefined : SECTION_PROSE[title], items })
-      }
+    const value = (def: (typeof SETTINGS)[number]): SettingValue => ({
+      def,
+      value: currentValue(policy, def.path),
+      changed: currentValue(policy, def.path) !== def.defaultValue,
+    })
+    const groups: SettingGroup[] = []
+    for (const [title, tagline] of SECTIONS) {
+      const defs = SETTINGS.filter((d) => d.section === title)
+      if (defs.length === 0) continue
+      groups.push({
+        title,
+        tagline,
+        prose: SECTION_PROSE[title],
+        items: defs.filter((d) => !d.advanced).map(value),
+        more: defs.filter((d) => d.advanced).map(value),
+      })
     }
     return groups
+  }
+
+  /** What the next digest would say, by the same code that sends it. */
+  const digestPreview = () => {
+    const rows = pendingDigest()
+    // Through the same correction the send applies, or the preview is the one place the
+    // old "opened" for a failed deploy would survive.
+    const message = renderDigest(withOutcomes(rows))
+    return DigestPreview({ title: message?.title ?? null, body: message?.body ?? null, count: rows.length })
   }
 
   /** What the machine is doing and what it has spent, for the Status page (`/status`). */
@@ -1100,7 +1068,6 @@ export function createApp(): Hono {
       repo: env.githubRepo,
       mergeMethod: policy.merge_method,
       pushMain: policy.sync.push_main,
-      blackout: policy.sync.blackout,
       scan: {
         cron: sched.scan.cron,
         lastAt: info.lastAt,
@@ -1122,15 +1089,16 @@ export function createApp(): Hono {
         // buys nothing once the budget is spent. Reading `set` through that is how a
         // fortnight of unreviewed merges looked normal on this page.
         {
-          name: 'ANTHROPIC_API_KEY',
+          name: llmProvider() === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENROUTER_API_KEY',
           state: !llmConfigured() ? 'missing' : budgetHealth().ok ? 'set' : 'budget spent',
         },
+        screenCredential(policy.review.screen),
         { name: 'NTFY_URL + NTFY_TOKEN', state: ntfyState() },
         { name: 'SMTP_URL + MAIL_TO', state: emailConfigured() ? 'set' : 'not in use' },
         { name: 'DOCKER_HUB_LOGIN', state: process.env.DOCKER_HUB_LOGIN ? 'set' : 'not in use' },
       ],
       spend: spend.map((s) => ({ ...s, cost: s.cost ?? 0 })),
-      budgetUsd: policy.claude.monthly_budget_usd,
+      budgetUsd: policy.review.monthly_budget_usd,
       spentUsd: spent ?? 0,
       deploys: db
         .prepare(
@@ -1146,6 +1114,22 @@ export function createApp(): Hono {
     }
   }
 
+  /**
+   * The screen's row: its mode, and -- when its last attempt failed -- why, in the words
+   * the gateway used. A guardrail that excludes the provider reads as a 404 that nothing
+   * else on this page would explain.
+   */
+  const screenCredential = (mode: 'off' | 'shadow' | 'on'): StatusData['credentials'][number] => {
+    if (mode === 'off') return { name: 'Screen (Jev)', state: 'off' }
+    if (!jevConfigured()) return { name: 'Screen (Jev)', state: 'missing', note: 'needs OPENROUTER_API_KEY' }
+    const last = getDb()
+      .prepare(`SELECT error FROM screens ORDER BY created_at DESC LIMIT 1`)
+      .get() as { error: string | null } | undefined
+    return last?.error
+      ? { name: 'Screen (Jev)', state: 'refused', note: last.error.slice(0, 200) }
+      : { name: 'Screen (Jev)', state: mode }
+  }
+
   /** Merged updates that will not move until someone presses Deploy. */
   const readyToDeploy = (): number =>
     (
@@ -1157,49 +1141,16 @@ export function createApp(): Hono {
   app.get('/settings', async (c) =>
     c.html(
       SettingsPage({
-        tab: 'general',
-        groups: settingGroups(false),
+        groups: settingGroups(),
         models: await listModels(),
         readyCount: loadPolicy().policy.paused ? readyToDeploy() : 0,
-        chrome: chrome(c),
-      }) as string,
-    ),
-  )
-
-  app.get('/settings/advanced', async (c) =>
-    c.html(
-      SettingsPage({
-        tab: 'advanced',
-        groups: settingGroups(true),
-        models: await listModels(),
-        // The prompts are tuning of the same kind: rarely the answer, and dangerous to
-        // reach for first. They were a tab of their own, which oversold them.
-        extra: promptStates().map((st) => promptEditor(st.name)),
-        extraNav: promptStates().map((st) => ({
-          href: `#prompt-${st.name}`,
-          label: PROMPTS[st.name].title,
-        })),
+        extras: { Notifications: digestPreview() },
         chrome: chrome(c),
       }) as string,
     ),
   )
 
   app.get('/status', (c) => c.html(StatusPage({ data: statusData(), chrome: chrome(c) }) as string))
-
-  app.post('/settings/prompt/:name', async (c) => {
-    const name = c.req.param('name') as PromptName
-    if (!(name in PROMPTS)) return c.text('unknown prompt', 404)
-    const form = await c.req.parseBody()
-    savePrompt(name, typeof form.text === 'string' ? form.text : '')
-    return c.html(promptEditor(name) as string)
-  })
-
-  app.post('/settings/prompt/:name/reset', (c) => {
-    const name = c.req.param('name') as PromptName
-    if (!(name in PROMPTS)) return c.text('unknown prompt', 404)
-    resetPrompt(name)
-    return c.html(promptEditor(name) as string)
-  })
 
   app.post('/settings', async (c) => {
     const form = await c.req.parseBody()
@@ -1212,43 +1163,17 @@ export function createApp(): Hono {
     // A schedule change should not wait for the old schedule to fire before applying.
     if (result.ok && result.applied.includes('scan.cron')) rescheduleScan()
     if (result.ok && result.applied.includes('notify.cron')) rescheduleDigest()
-    const advanced = c.req.path.endsWith('/advanced')
     return c.html(
       SettingsForm({
-        groups: settingGroups(advanced),
+        groups: settingGroups(),
         models: await listModels(),
-        advanced,
         readyCount: loadPolicy().policy.paused ? readyToDeploy() : 0,
+        extras: { Notifications: digestPreview() },
         banner: result.ok
           ? result.applied.length
             ? { level: 'info', text: `Saved: ${result.applied.join(', ')}. Committed to git.` }
             : null
           : { level: 'error', text: result.errors.join(' ') },
-      }) as string,
-    )
-  })
-
-  // The same handler: which page it came from decides which half of the settings it can
-  // write, so a save on one tab cannot silently reset the other.
-  app.post('/settings/advanced', async (c) => app.fetch(new Request(new URL('/settings', c.req.url), c.req.raw)))
-
-  /**
-   * What the next digest would say, and a way to send it now.
-   *
-   * A batched notification is invisible until it fires, which makes it hard to trust and
-   * hard to tune -- so the exact message is renderable on demand, by the same code that
-   * sends it.
-   */
-  app.get('/settings/digest', (c) => {
-    const rows = pendingDigest()
-    // Through the same correction the send applies, or the preview is the one place the
-    // old "opened" for a failed deploy would survive.
-    const message = renderDigest(withOutcomes(rows))
-    return c.html(
-      DigestPreview({
-        title: message?.title ?? null,
-        body: message?.body ?? null,
-        count: rows.length,
       }) as string,
     )
   })
@@ -1287,19 +1212,14 @@ export function createApp(): Hono {
   })
 
 
-  app.get('/settings/raw', (c) => {
-    let text: string
-    try {
-      text = readFile(paths.policy, 'utf8')
-    } catch (err) {
-      text = `policy.yaml could not be read: ${(err as Error).message}`
-    }
-    return c.html(RawPolicyPage({ text, chrome: chrome(c) }) as string)
-  })
-
   // Old addresses, kept as redirects: a bookmark or a link in a months-old digest
   // should land on the page that replaced it rather than a 404.
   app.get('/system', (c) => c.redirect('/status', 301))
+  // Settings was two tabs, a raw view and a digest preview nobody could reach; it is one
+  // page now, and the old addresses land on the part of it that replaced them.
+  app.get('/settings/advanced', (c) => c.redirect('/settings', 301))
+  app.get('/settings/raw', (c) => c.redirect('/settings', 301))
+  app.get('/settings/digest', (c) => c.redirect('/settings#notifications', 301))
   app.get('/settings/status', (c) => c.redirect('/status', 301))
   app.get('/images', (c) => c.redirect('/services', 301))
 

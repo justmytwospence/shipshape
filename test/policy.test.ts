@@ -149,9 +149,9 @@ test('canAutoMerge: Claude can demote but never promote', () => {
 })
 
 test('canAutoMerge: labels identify why a merge was withheld', () => {
-  assert.equal(merge({ verdict: 'block' }).merge === false && merge({ verdict: 'block' }).label, 'claude-block')
+  assert.equal(merge({ verdict: 'block' }).merge === false && merge({ verdict: 'block' }).label, 'review-block')
   const caution = merge({ verdict: 'caution' })
-  assert.equal(caution.merge === false && caution.label, 'claude-hold')
+  assert.equal(caution.merge === false && caution.label, 'review-hold')
 })
 
 test('canAutoMerge: absent analysis fails OPEN by default, CLOSED when required', () => {
@@ -161,7 +161,7 @@ test('canAutoMerge: absent analysis fails OPEN by default, CLOSED when required'
   // ...unless the service opted into fail-closed.
   const required = merge({ verdict: 'unavailable', claudeRequired: true })
   assert.equal(required.merge, false)
-  assert.equal(required.merge === false && required.label, 'needs-analysis')
+  assert.equal(required.merge === false && required.label, 'needs-review')
 })
 
 test('canAutoMerge: claude off skips the damper entirely', () => {
@@ -176,39 +176,17 @@ test('canAutoMerge: confidence threshold is inclusive', () => {
   assert.equal(merge({ confidence: 'medium', minConfidence: 'high' }).merge, false)
 })
 
-test('shouldOpenPr: coexist covers exactly what another updater leaves alone', () => {
+test('shouldOpenPr: every rung but held and skip opens one, and rolling never does', () => {
+  // There was a `coexist` scope for running beside WUD. WUD is retired; shipshape owns
+  // every update, so the only refusals left are the rungs that say "not without me".
   const s = (over: Partial<Parameters<typeof shouldOpenPr>[0]>) =>
-    shouldOpenPr({ scope: 'coexist', tier: 'auto', magnitude: 'patch', rolling: false, ...over })
-
-  // The other updater owns auto-tier patches and minors during coexistence
-  assert.equal(s({}), false)
-  assert.equal(s({ magnitude: 'minor' }), false)
-  // shipshape owns everything such a tool would skip
-  assert.equal(s({ magnitude: 'major' }), true)
-  assert.equal(s({ magnitude: 'digest' }), true)
-  assert.equal(s({ tier: 'manual' }), true)
-  assert.equal(s({ tier: 'manual' }), true)
-  // held is dashboard-only until the operator clicks through
+    shouldOpenPr({ tier: 'auto', magnitude: 'patch', rolling: false, ...over })
+  assert.equal(s({}), true)
+  assert.equal(s({ magnitude: 'major', tier: 'manual' }), true)
+  assert.equal(s({ tier: 'attended' }), true)
   assert.equal(s({ tier: 'held', magnitude: 'major' }), false)
   assert.equal(s({ tier: 'skip' }), false)
-  // a rolling latest has nothing to change in git
   assert.equal(s({ rolling: true, magnitude: 'major' }), false)
-})
-
-test('shouldOpenPr: full scope takes over the auto tier too', () => {
-  assert.equal(
-    shouldOpenPr({ scope: 'full', tier: 'auto', magnitude: 'patch', rolling: false }),
-    true,
-  )
-  // held and rolling stay excluded even at full scope
-  assert.equal(
-    shouldOpenPr({ scope: 'full', tier: 'held', magnitude: 'major', rolling: false }),
-    false,
-  )
-  assert.equal(
-    shouldOpenPr({ scope: 'full', tier: 'auto', magnitude: 'patch', rolling: true }),
-    false,
-  )
 })
 
 test('canAutoMerge refuses any pull request carrying unverified changes', () => {

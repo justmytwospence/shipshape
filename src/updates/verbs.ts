@@ -8,7 +8,7 @@ import { stackPeers, withNamespacePeers, type DeployIo, type DeployTarget } from
 import { syncMain } from '../gitops/sync.ts'
 import { withGitLock } from '../gitops/repo.ts'
 import { runAnalysisPass } from '../analyze/run.ts'
-import { verdictHolds, type Confidence, type Verdict } from '../policy.ts'
+import { MIN_CONFIDENCE, verdictHolds, type Confidence, type Verdict } from '../policy.ts'
 
 /**
  * The things a person can do to an update.
@@ -115,7 +115,7 @@ export function contextFor(id: number): { row: UpdateRow; ctx: ActionContext } |
         verdictHolds(
           verdict.recommendation as Verdict,
           (verdict.confidence as Confidence | null) ?? null,
-          loadPolicy().policy.claude.min_confidence,
+          MIN_CONFIDENCE,
         ),
       hasProposal: !!proposal,
       ackedAt: row.acked_at,

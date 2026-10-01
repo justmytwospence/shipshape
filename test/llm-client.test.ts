@@ -43,6 +43,13 @@ test('only the client module reads a model credential out of the environment', (
   assert.deepEqual(offenders, [])
 })
 
+test('only the Jev module talks to the Decisions endpoint', () => {
+  // The alpha endpoint is isolated behind one adapter, so a change to it is one file and
+  // its failure reads as "screen unavailable" everywhere.
+  const offenders = ALL.filter((f) => f !== 'analyze/jev.ts').filter((f) => /alpha\/decisions/.test(read(f)))
+  assert.deepEqual(offenders, [])
+})
+
 test('nothing outside the client module hardcodes the Anthropic API host', () => {
   const offenders = ALL.filter((f) => f !== 'analyze/client.ts').filter((f) =>
     /api\.anthropic\.com/.test(read(f)),

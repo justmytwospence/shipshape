@@ -59,6 +59,8 @@ export interface TierInput {
   policyLabel: string | null
   /** `shipshape.pr`: on-request. Deprecated, still read -- see EffectiveTier. */
   prLabel: string | null
+  /** The service carries a `disabled`/`standby` profile (see ScannedService.dormant). */
+  dormant?: boolean
   defaults: Policy['defaults']
 }
 
@@ -76,6 +78,9 @@ export function tierFor(i: TierInput): EffectiveTier {
   const pr = clean(i.prLabel)
 
   if (label === 'skip') return 'skip'
+  // A disabled stack is watched so its updates are known, but nothing moves on its own:
+  // held lists them until asked, whatever the labels or defaults would otherwise say.
+  if (i.dormant) return 'held'
   // Both spellings reach the same rung. `shipshape.pr` came first and is kept working;
   // `shipshape.policy: on-request` is the one to write, because the whole ladder then
   // lives in one label rather than being split across two that have to be read together.

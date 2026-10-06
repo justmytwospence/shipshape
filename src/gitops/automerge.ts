@@ -160,6 +160,7 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
       magnitude: r.magnitude,
       policyLabel: svcFor(r)?.policyLabel ?? null,
       prLabel: svcFor(r)?.prLabel ?? null,
+      dormant: svcFor(r)?.dormant ?? false,
       defaults: policy.defaults,
     }),
   )

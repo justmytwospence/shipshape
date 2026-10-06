@@ -14,7 +14,7 @@ import { parseImageRef, type ImageRef } from '../images/ref.ts'
  * entire class impossible.
  */
 
-export type UnwatchableReason = 'build' | 'interpolated' | 'no-image' | 'disabled' | 'excluded'
+export type UnwatchableReason = 'build' | 'interpolated' | 'no-image' | 'excluded'
 
 /** `traefik.http.services.<anything>.loadbalancer.server.port`, first one wins. */
 function traefikPort(labels: Record<string, string>): number | null {
@@ -73,6 +73,13 @@ export interface ScannedService {
   ref: ImageRef | null
   labels: Record<string, string>
   profiles: string[]
+  /**
+   * Carries a `disabled` or `standby` profile: intentionally not running. Still watched, so
+   * its pending updates are listed and a revival is not a jump across months of releases,
+   * but its tier is forced to `held` (see `tierFor`): nothing is ever opened for it
+   * unasked, and a deploy leaves a stopped service stopped anyway (deploy/runstate.ts).
+   */
+  dormant: boolean
   hasBuild: boolean
   watched: boolean
   unwatchable: UnwatchableReason | null
@@ -252,7 +259,6 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
     // `image: ${FOO}` cannot be compared against registry tags, and rewriting it would
     // corrupt the indirection.
     else if (imageRaw.includes('${')) unwatchable = 'interpolated'
-    else if (profiles.includes('disabled') || profiles.includes('standby')) unwatchable = 'disabled'
 
     const watched = watchLabel === 'true' && unwatchable === null
 
@@ -264,6 +270,7 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
       ref: imageRaw && !imageRaw.includes('${') ? parseImageRef(imageRaw) : null,
       labels,
       profiles,
+      dormant: profiles.includes('disabled') || profiles.includes('standby'),
       hasBuild,
       watched,
       unwatchable,

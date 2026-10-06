@@ -207,3 +207,13 @@ test('canAutoMerge refuses any pull request carrying unverified changes', () => 
   // Absent scope information behaves as before, so existing callers are unaffected.
   assert.equal(merge({}).merge, true)
 })
+
+test('tierFor: a dormant (disabled/standby) service is held, whatever else applies', () => {
+  const d = (magnitude: Magnitude, policyLabel: string | null = null) =>
+    tierFor({ magnitude, policyLabel, prLabel: null, dormant: true, defaults: { ...DEFAULTS } })
+  assert.equal(d('patch'), 'held') // defaults would say auto
+  assert.equal(d('minor', 'auto'), 'held')
+  assert.equal(d('major', 'manual'), 'held')
+  assert.equal(d('digest', 'attended'), 'held')
+  assert.equal(d('patch', 'skip'), 'skip') // an explicit skip still stops tracking entirely
+})

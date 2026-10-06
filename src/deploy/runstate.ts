@@ -6,8 +6,7 @@ import { missing, type ServiceObservation, type ServiceSnapshot } from './probe.
  * Whether a deploy may start anything, decided before it runs a single command.
  *
  * **An update never changes whether a service is running.** It changes which version a
- * service runs. Starting a service is the operator's act -- `bin/homelab up`, compose by
- * hand -- and every shipshape verb (Deploy, Redeploy, Try again, Roll back, the queue
+ * service runs. Starting a service is the operator's act -- compose by hand -- and every shipshape verb (Deploy, Redeploy, Try again, Roll back, the queue
  * drain) chooses a version, none of them means "start my service". So each target service
  * is read from live docker immediately before acting, and only one that is running is
  * brought up. Anything else is left exactly as it was: no create, no pull, no start, no

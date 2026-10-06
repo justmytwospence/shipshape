@@ -381,6 +381,7 @@ async function persist(
         magnitude: d.magnitude as Magnitude,
         policyLabel: svc.policyLabel,
         prLabel: svc.prLabel,
+        dormant: svc.dormant,
         defaults: policy.defaults,
       })
 
@@ -521,6 +522,7 @@ function persistDigest(svc: ScannedService, c: DigestCheck, policy: Policy): str
         magnitude: 'digest',
         policyLabel: svc.policyLabel,
         prLabel: svc.prLabel,
+        dormant: svc.dormant,
         defaults: policy.defaults,
       })
       const existing = liveRows(svc.stack, svc.service)

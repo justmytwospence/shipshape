@@ -142,7 +142,7 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
   const config: ConfigLine[] = []
 
   const rung = (magnitude: 'patch' | 'minor' | 'major' | 'digest') =>
-    tierFor({ magnitude, policyLabel, prLabel, defaults: policy.defaults })
+    tierFor({ magnitude, policyLabel, prLabel, dormant: live?.dormant ?? false, defaults: policy.defaults })
 
   config.push({
     key: 'policy',

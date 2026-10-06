@@ -382,7 +382,7 @@ async function onMerged(
  */
 export function deployWaits(
   members: { stack: string; service: string; magnitude: string }[],
-  scanned: { stack: string; service: string; policyLabel: string | null; prLabel: string | null }[],
+  scanned: { stack: string; service: string; policyLabel: string | null; prLabel: string | null; dormant?: boolean }[],
   defaults: Policy['defaults'],
 ): boolean {
   return members.some((m) => {
@@ -392,6 +392,7 @@ export function deployWaits(
         magnitude: m.magnitude as Magnitude,
         policyLabel: svc?.policyLabel ?? null,
         prLabel: svc?.prLabel ?? null,
+        dormant: svc?.dormant ?? false,
         defaults,
       }),
     )

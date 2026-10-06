@@ -14,6 +14,7 @@ import {
 } from './probe.ts'
 import { includedStacks, scanRepo } from '../compose/scan.ts'
 import { DEFAULT_VERIFY, runVerify, type Verdict } from './verify.ts'
+import { dockerEnvOptions } from './docker-env.ts'
 import { getDb, logEvent } from '../db.ts'
 import { notify } from '../notify/index.ts'
 import type { DeployTrigger } from './queue.ts'
@@ -168,7 +169,8 @@ export interface DeployIo {
 export const realIo: DeployIo = {
   observe: (project, service) => inspectService(project, service),
   foreign: (project, stack, service) => findForeign(project, stack, service),
-  exec: (args, opts) => execa('docker', args, { cwd: opts.cwd, reject: false, timeout: opts.timeout }),
+  exec: (args, opts) =>
+    execa('docker', args, { cwd: opts.cwd, reject: false, timeout: opts.timeout, ...dockerEnvOptions() }),
   verify: (target, project, snapshot, policy, pinned) => verifyDeploy(target, project, snapshot, policy, pinned),
   peers: (stack) => stackPeers(stack),
   pinned: (stack, policy) => pinnedRefs(stack, policy),

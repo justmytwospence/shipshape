@@ -2,6 +2,7 @@ import { execa } from 'execa'
 import { basename } from 'node:path'
 import { env } from '../config.ts'
 import { includedStacks } from '../compose/scan.ts'
+import { dockerEnvOptions } from './docker-env.ts'
 
 /**
  * Reading what Docker actually thinks, rather than what its output columns say.
@@ -152,7 +153,7 @@ export interface ExecResult {
 export type DockerExec = (args: string[]) => Promise<ExecResult>
 
 export const dockerExec: DockerExec = (args) =>
-  execa('docker', args, { reject: false, timeout: 20_000 })
+  execa('docker', args, { reject: false, timeout: 20_000, ...dockerEnvOptions() })
 
 /** The line of stderr that says what went wrong; docker puts it last. */
 function lastLine(s: unknown): string {

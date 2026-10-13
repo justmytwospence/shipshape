@@ -239,7 +239,7 @@ export function createApp(): Hono {
   const app = new Hono()
 
   // Run before every route, including static files, redirects and unknown paths.
-  // Only read-only GET /health is exempt so the container healthcheck needs no identity.
+  // Only read-only GET /health (not an upgrade) is exempt for the container healthcheck.
   app.use('*', trustedProxyAuth())
   app.get('/health', (c) => c.json({ ok: true }))
 

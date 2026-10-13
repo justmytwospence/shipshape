@@ -84,6 +84,7 @@ import {
 import { activeChannels } from '../notify/index.ts'
 import { configured as emailConfigured, send as sendEmail, escapeHtml as escapeText } from '../notify/email.ts'
 import { rescheduleScan, rescheduleDigest } from '../scheduler.ts'
+import { trustedProxyAuth } from './auth.ts'
 
 const PENDING_SQL = `
   SELECT u.id, u.stack, u.service, u.image, u.from_tag, u.to_tag, u.magnitude,
@@ -237,8 +238,9 @@ function lookedAgain(s: SourceInfo): string {
 export function createApp(): Hono {
   const app = new Hono()
 
-  // Authelia fronts every route (T1 router), so the app itself carries no auth. The
-  // health endpoint is the container healthcheck's target and is never routed publicly.
+  // Run before every route, including static files, redirects and unknown paths.
+  // Only read-only GET /health is exempt so the container healthcheck needs no identity.
+  app.use('*', trustedProxyAuth())
   app.get('/health', (c) => c.json({ ok: true }))
 
   app.use('/static/*', serveStatic({ root: './public', rewriteRequestPath: (p) => p.replace(/^\/static/, '') }))

@@ -47,6 +47,20 @@ compose file. Label and image-env changes silently never apply. shipshape deploy
 real `docker compose up -d`, and reads its own configuration from the compose files in
 git rather than from live container labels, so that failure class cannot occur.
 
+## Web authentication
+
+All web routes except `GET /health` require `SHIPSHAPE_TRUSTED_PROXY` (one exact
+IP address) and `SHIPSHAPE_ALLOWED_USER` (the exact authenticated username).
+The Node socket peer must match the proxy IP and its `Remote-User` header must
+match the user. `X-Forwarded-For` is never an authentication source. Missing
+configuration returns 503; missing/forged identity or a different peer returns 403.
+There is no development/test bypass.
+
+Put the app on a dedicated proxy network, not a shared application network, and
+have the trusted proxy authenticate every routed request before setting identity
+headers. A holder of the Docker socket is already a host operator and can bypass
+network isolation; this does not sandbox that authority.
+
 ## How it works
 
 ```

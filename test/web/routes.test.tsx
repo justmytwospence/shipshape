@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { socketBindings, TEST_PROXY, TEST_USER } from '../helpers/trusted-proxy.ts'
 
 /**
  * Every route, actually served.
@@ -24,8 +25,18 @@ before(async () => {
   delete process.env.HOMELAB_REPO
   delete process.env.ANTHROPIC_API_KEY
   delete process.env.GITHUB_TOKEN
+  process.env.SHIPSHAPE_TRUSTED_PROXY = TEST_PROXY
+  process.env.SHIPSHAPE_ALLOWED_USER = TEST_USER
   const { createApp } = await import('../../src/web/server.ts')
-  app = createApp() as never
+  const server = createApp()
+  // Exercise the real auth guard with explicit test identity and socket bindings.
+  app = {
+    request: async (path, init) => {
+      const headers = new Headers(init?.headers)
+      headers.set('Remote-User', TEST_USER)
+      return server.request(path, { ...init, headers }, socketBindings(TEST_PROXY))
+    },
+  }
 })
 
 after(() => rmSync(dir, { recursive: true, force: true }))

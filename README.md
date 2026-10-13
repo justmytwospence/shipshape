@@ -56,6 +56,30 @@ match the user. `X-Forwarded-For` is never an authentication source. Missing
 configuration returns 503; missing/forged identity or a different peer returns 403.
 There is no development/test bypass.
 
+Set `SHIPSHAPE_ALLOWED_ORIGIN=https://shipshape.${DOMAIN}` to the UI's exact browser
+origin, with `${DOMAIN}` expanded by your deployment (the app does not expand it).
+It must be one canonical HTTP(S) origin: scheme, hostname, and optional non-default
+port only. No trailing slash, path, credentials, query, fragment, wildcard, list,
+or surrounding whitespace. HTTPS is the production setting; HTTP origins are also
+accepted when explicitly configured. Configuration is captured at app creation;
+restart the app after changing these variables.
+
+Every unsafe request (`POST`, `PUT`, `PATCH`, `DELETE`, and any method other than
+`GET`/`HEAD`/`OPTIONS`) and every WebSocket upgrade attempt must carry an `Origin`
+header exactly equal to `SHIPSHAPE_ALLOWED_ORIGIN`, **in addition to** the trusted
+socket peer and exact username. Missing/invalid Origin configuration returns 503
+for these requests; a missing, `null`, malformed, multiple, or foreign request
+Origin returns 403. Denials are `Cache-Control: no-store` and run before handlers.
+The check applies to all content types, including browser forms and HTMX requests;
+neither `HX-Request` nor `Sec-Fetch-Site` bypasses it. The proxy must preserve the
+browser's `Origin`, not synthesize or overwrite it. `Host`, the request URL,
+`Referer`, `Forwarded`, and `X-Forwarded-*` never determine the allowed Origin.
+
+Safe `GET`/`HEAD`/`OPTIONS` requests without a WebSocket upgrade do not require
+Origin configuration or a request Origin, but keep the same authentication rules.
+Only exact `GET /health` (query strings allowed, no upgrade) remains anonymous;
+`HEAD /health` is still authenticated. There are currently no WebSocket routes.
+
 Put the app on a dedicated proxy network, not a shared application network, and
 have the trusted proxy authenticate every routed request before setting identity
 headers. A holder of the Docker socket is already a host operator and can bypass

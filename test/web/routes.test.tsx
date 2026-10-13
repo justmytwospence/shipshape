@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { socketBindings, TEST_PROXY, TEST_USER } from '../helpers/trusted-proxy.ts'
+import { socketBindings, TEST_ORIGIN, TEST_PROXY, TEST_USER } from '../helpers/trusted-proxy.ts'
 
 /**
  * Every route, actually served.
@@ -27,13 +27,15 @@ before(async () => {
   delete process.env.GITHUB_TOKEN
   process.env.SHIPSHAPE_TRUSTED_PROXY = TEST_PROXY
   process.env.SHIPSHAPE_ALLOWED_USER = TEST_USER
+  process.env.SHIPSHAPE_ALLOWED_ORIGIN = TEST_ORIGIN
   const { createApp } = await import('../../src/web/server.ts')
   const server = createApp()
-  // Exercise the real auth guard with explicit test identity and socket bindings.
+  // Exercise the real guard with explicit test Origin, identity and socket bindings.
   app = {
     request: async (path, init) => {
       const headers = new Headers(init?.headers)
       headers.set('Remote-User', TEST_USER)
+      headers.set('Origin', TEST_ORIGIN)
       return server.request(path, { ...init, headers }, socketBindings(TEST_PROXY))
     },
   }

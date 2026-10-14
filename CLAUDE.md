@@ -61,6 +61,9 @@ docker run -d --rm --name ss-chrome --network host --shm-size=1g \
 (The fonts file matters: without it the image resolves every family to a CJK face and
 the text renders letter-spaced, which looks like a layout bug and is not.)
 
+Stop it when the shots are done (`docker stop ss-chrome`; `--rm` removes it). Left running,
+an idle headless Chrome burns ~10% of a core: the last one sat there for six weeks.
+
 Each shot runs layout probes and the contact sheet flags them: horizontal overflow,
 nested scroll regions and interactive targets under 44px on the **phone** shots, and
 `rowsVisible` — how many list rows fit on screen — on all of them. Treat a new flag as

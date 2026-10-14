@@ -26,16 +26,20 @@ process.env.PATH = `${bin}:${process.env.PATH}`
 process.env.DATA_DIR = data
 process.env.REPO_DIR = repo
 process.env.GITHUB_REPO = 'you/repo'
-process.env.NTFY_URL = 'http://ntfy.invalid'
-process.env.NTFY_TOKEN = 'test'
+process.env.NOTIFY_URL = 'http://n8n.invalid/webhook/notify'
+process.env.NOTIFY_TOKEN = 'test'
 delete process.env.POLICY_FILE
 delete process.env.SMTP_URL
 
-const sent: { title: string; body: string; priority: string }[] = []
-globalThis.fetch = (async (_url: unknown, init: { headers: Record<string, string>; body: unknown }) => {
-  sent.push({ title: init.headers.title!, body: String(init.body), priority: init.headers.priority! })
+const sent: { title: string; body: string; priority: string; key?: string; status: string }[] = []
+globalThis.fetch = (async (_url: unknown, init: { body: unknown }) => {
+  const p = JSON.parse(String(init.body)) as { title?: string; message?: string; priority?: number; key?: string; status: string }
+  // Resolutions are bookkeeping, not messages: kept apart so counts mean "what was said".
+  if (p.status === 'resolved') resolved.push(p.key!)
+  else sent.push({ title: p.title!, body: p.message!, priority: String(p.priority), key: p.key, status: p.status })
   return new Response('ok', { status: 200 })
 }) as unknown as typeof fetch
+const resolved: string[] = []
 
 const { getDb } = await import('../src/db.ts')
 const { deployForPr } = await import('../src/deploy/run.ts')
@@ -50,9 +54,10 @@ after(() => rmSync(root, { recursive: true, force: true }))
 beforeEach(() => {
   getDb().exec(
     `DELETE FROM deploy_updates; DELETE FROM deploys; DELETE FROM pr_updates; DELETE FROM prs;
-     DELETE FROM updates; DELETE FROM digest_items; DELETE FROM events;`,
+     DELETE FROM updates; DELETE FROM digest_items; DELETE FROM events; DELETE FROM incidents;`,
   )
   sent.length = 0
+  resolved.length = 0
 })
 
 /** The block an operator would paste, one command per line. */
@@ -145,8 +150,10 @@ test('a plain up that fails after recreating pages that the service is DOWN', as
   await deployForPr(7, { stack: 'scratch', services: ['app'], strategy: 'up' }, undefined, { io })
 
   assert.equal(sent.length, 1)
-  // Titles travel as HTTP headers, so the em dash arrives transliterated.
-  assert.equal(sent[0]!.title, 'shipshape: scratch is DOWN - deploy failed')
+  // One incident per stack: a later message about it edits this one, a good deploy closes it.
+  assert.equal(sent[0]!.title, 'shipshape: scratch is DOWN — deploy failed')
+  assert.equal(sent[0]!.key, 'shipshape:deploy:scratch')
+  assert.equal(sent[0]!.status, 'firing')
   assert.equal(sent[0]!.priority, '5')
   assert.match(sent[0]!.body, /The old container was replaced and the new one did not start — the service is DOWN\./)
   assert.doesNotMatch(sent[0]!.body, /running whatever it was/)
@@ -157,7 +164,7 @@ test('a plain up that fails before recreating is not DOWN', async () => {
   await deployForPr(7, { stack: 'scratch', services: ['app'], strategy: 'up' }, undefined, { io })
 
   assert.equal(sent.length, 1)
-  assert.equal(sent[0]!.title, 'shipshape: deploy failed - scratch')
+  assert.equal(sent[0]!.title, 'shipshape: deploy failed — scratch')
   assert.equal(sent[0]!.priority, '4')
   assert.match(sent[0]!.body, /running whatever it was/)
 })

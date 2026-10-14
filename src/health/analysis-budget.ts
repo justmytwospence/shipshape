@@ -2,7 +2,7 @@ import { reviewMode } from '../policy.ts'
 import { loadPolicy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { monthlySpend } from '../analyze/claude.ts'
-import { notify } from '../notify/index.ts'
+import { notify, resolveIncident } from '../notify/index.ts'
 
 /**
  * Saying so when the analysis budget runs out.
@@ -125,6 +125,7 @@ export async function noteBudgetSpent(reading: BudgetReading): Promise<void> {
     detail: `$${reading.spent.toFixed(2)} of $${reading.budget} — nothing is being reviewed`,
   })
   await notify({
+    key: 'shipshape:budget',
     title: 'shipshape: the analysis budget is spent',
     body: [
       `$${reading.spent.toFixed(2)} of $${reading.budget} used this month.`,
@@ -147,26 +148,19 @@ export async function noteBudgetSpent(reading: BudgetReading): Promise<void> {
   })
 }
 
-/** Clear a standing exhaustion, and say that too -- silence is how the last one lasted. */
+/** Clear a standing exhaustion: the incident it opened is resolved, silently. */
 export async function noteBudgetAvailable(): Promise<void> {
   if (!spent) return
   const since = spent.since
   const unreviewed = mergedUnreviewedSince(since)
   spent = null
-  logEvent({ level: 'info', kind: 'analysis', message: 'analysis budget is available again' })
-  await notify({
-    title: 'shipshape: analysis is running again',
-    body: [
-      `The budget had been spent since ${since.slice(0, 10)}.`,
-      unreviewed > 0
-        ? `${unreviewed} pull request${unreviewed === 1 ? '' : 's'} merged unread while it lasted; minor and major updates are re-read after the fact, patches are not.`
-        : '',
-    ]
-      .filter(Boolean)
-      .join('\n'),
-    priority: 3,
-    tags: ['white_check_mark'],
+  logEvent({
+    level: 'info',
+    kind: 'analysis',
+    message: 'analysis budget is available again',
+    detail: unreviewed > 0 ? `${unreviewed} pull request(s) merged unread since ${since.slice(0, 10)}` : undefined,
   })
+  await resolveIncident('shipshape:budget')
 }
 
 /**

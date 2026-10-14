@@ -486,13 +486,13 @@ export const SETTINGS: SettingDef[] = [
   },
   {
     section: 'Notifications',
-    path: 'notify.ntfy',
+    path: 'notify.incidents',
     kind: 'enum',
     options: ['all', 'alerts', 'routine', 'off'],
     optionHelp: CHANNEL_HELP,
-    defaultValue: 'all',
-    label: 'Push (ntfy)',
-    help: 'needs NTFY_TOKEN',
+    defaultValue: 'alerts',
+    label: 'Homelab alerting',
+    help: 'needs NOTIFY_URL, NOTIFY_TOKEN',
     about:
       'Nothing reaches a channel that is not configured, whatever this says.',
   },
@@ -502,7 +502,7 @@ export const SETTINGS: SettingDef[] = [
     kind: 'enum',
     options: ['all', 'alerts', 'routine', 'off'],
     optionHelp: CHANNEL_HELP,
-    defaultValue: 'all',
+    defaultValue: 'off',
     label: 'Email',
     help: 'needs SMTP_URL, MAIL_TO',
     about:

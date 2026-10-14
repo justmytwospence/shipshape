@@ -416,6 +416,7 @@ export async function runDeployJob(
           job.id,
         )
         await notify({
+          key: `shipshape:deploy:${job.stack}`,
           title: `shipshape: deploy of ${job.stack} could not be run`,
           body: `#${job.pr_number}: ${(err as Error).message.slice(0, 300)}\n\nThe merge stands; deploy by hand. The command is on the pull request.`,
           priority: 5,
@@ -537,6 +538,7 @@ export async function runRechecks(
       detail,
     })
     await notify({
+      key: `shipshape:deploy:${row.stack}`,
       title: `shipshape: ${row.stack} degraded after deploying`,
       body:
         `#${row.pr_number} passed its verify window and has since stopped being healthy.\n\n${detail}\n\n` +

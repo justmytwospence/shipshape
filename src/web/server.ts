@@ -185,10 +185,10 @@ function toastHeader(c: Context, level: 'info' | 'warn' | 'error', text: string)
   )
 }
 
-/** Push needs both a topic and, on a deny-all server, a token; either alone is not set up. */
-function ntfyState(): 'set' | 'missing' | 'not in use' {
-  if (!process.env.NTFY_URL && !process.env.NTFY_TOKEN) return 'not in use'
-  return process.env.NTFY_URL && process.env.NTFY_TOPIC ? 'set' : 'missing'
+/** The incident channel needs both the router URL and its key; either alone is not set up. */
+function notifyState(): 'set' | 'missing' | 'not in use' {
+  if (!process.env.NOTIFY_URL && !process.env.NOTIFY_TOKEN) return 'not in use'
+  return process.env.NOTIFY_URL && process.env.NOTIFY_TOKEN ? 'set' : 'missing'
 }
 
 let mergeOcto: Octokit | null = null
@@ -1095,7 +1095,7 @@ export function createApp(): Hono {
           state: !llmConfigured() ? 'missing' : budgetHealth().ok ? 'set' : 'budget spent',
         },
         screenCredential(policy.review.screen),
-        { name: 'NTFY_URL + NTFY_TOKEN', state: ntfyState() },
+        { name: 'NOTIFY_URL + NOTIFY_TOKEN', state: notifyState() },
         { name: 'SMTP_URL + MAIL_TO', state: emailConfigured() ? 'set' : 'not in use' },
         { name: 'DOCKER_HUB_LOGIN', state: process.env.DOCKER_HUB_LOGIN ? 'set' : 'not in use' },
       ],

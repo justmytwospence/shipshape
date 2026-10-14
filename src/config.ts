@@ -41,9 +41,10 @@ export const env = {
   /** Overrides the gateway base URL. Only needed for a self-hosted Anthropic-compatible
    *  proxy; OpenRouter's own base is the default and needs no setting. */
   llmBaseUrl: process.env.LLM_BASE_URL ?? '',
-  ntfyUrl: process.env.NTFY_URL ?? '',
-  ntfyTopic: process.env.NTFY_TOPIC ?? 'shipshape',
-  ntfyToken: process.env.NTFY_TOKEN ?? '',
+  /** The homelab's notification router: n8n's Alerting workflow, `/webhook/notify`. */
+  notifyUrl: process.env.NOTIFY_URL ?? '',
+  /** Its bearer (ALERT_INTAKE_KEY). */
+  notifyToken: process.env.NOTIFY_TOKEN ?? '',
   /** A full SMTP connection string -- `smtps://user:pass@host:465`. Credentials, so it
    *  lives here rather than in the tracked policy file. */
   smtpUrl: process.env.SMTP_URL ?? '',
@@ -355,11 +356,11 @@ export const PolicySchema = z.object({
       cron: z.string().default('0 0 8 * * *'),
       // What each channel receives. Stated per channel rather than as two lists of
       // channels, because the question an operator actually has is "what does my phone
-      // buzz for" -- and the useful split is exactly this one: push for what is broken,
-      // email for the summary. A channel that is not configured is skipped whatever is
-      // set here, so the default of `all` is safe on a deployment with neither.
-      ntfy: z.enum(['all', 'alerts', 'routine', 'off']).default('all'),
-      email: z.enum(['all', 'alerts', 'routine', 'off']).default('all'),
+      // buzz for". `incidents` is the homelab's notification router (NOTIFY_URL): keyed
+      // incidents, edited in place and resolved silently. A channel that is not
+      // configured is skipped whatever is set here.
+      incidents: z.enum(['all', 'alerts', 'routine', 'off']).default('alerts'),
+      email: z.enum(['all', 'alerts', 'routine', 'off']).default('off'),
     })
     .prefault({}),
   deploy: z

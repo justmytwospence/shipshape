@@ -391,6 +391,8 @@ async function auditScreen(
     detail: (v.migration_steps[0] ?? v.breaking_changes[0] ?? v.summary).slice(0, 200),
   })
   await notify({
+    key: `shipshape:screen-miss:${row.service}`,
+    status: 'event',
     title: `shipshape: screen missed ${row.service} ${row.to_tag}`,
     body:
       `The screen called ${row.image} ${row.from_tag} -> ${row.to_tag} routine; a full reading found ` +

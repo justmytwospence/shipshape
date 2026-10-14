@@ -800,6 +800,22 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     ALTER TABLE updates ADD COLUMN review_requested_at TEXT;
   `,
   },
+  {
+    id: '027-incidents',
+    sql: `
+    -- The incident channel's memory (notify/index.ts). One row per incident key: whether
+    -- this process opened it (so a recovery is only sent for something that was open),
+    -- and the payload that could not be handed to the router yet, retried every tick.
+    -- One-shot events get a throwaway '~event:' key and a row only until delivered.
+    CREATE TABLE incidents (
+      key        TEXT PRIMARY KEY,
+      open       INTEGER NOT NULL DEFAULT 0,
+      pending    TEXT,
+      attempts   INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
+    );
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

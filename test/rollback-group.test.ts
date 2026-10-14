@@ -34,8 +34,8 @@ process.env.DATA_DIR = data
 process.env.REPO_DIR = repo
 process.env.GITHUB_REPO = 'you/repo'
 delete process.env.POLICY_FILE
-delete process.env.NTFY_URL
-delete process.env.NTFY_TOKEN
+delete process.env.NOTIFY_URL
+delete process.env.NOTIFY_TOKEN
 delete process.env.SMTP_URL
 
 const g = (...args: string[]) =>

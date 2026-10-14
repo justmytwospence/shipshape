@@ -1,7 +1,7 @@
 import { Octokit } from 'octokit'
 import { env } from '../config.ts'
 import { logEvent } from '../db.ts'
-import { notify } from '../notify/index.ts'
+import { notify, resolveIncident } from '../notify/index.ts'
 
 /**
  * Saying so when GitHub stops accepting the credentials.
@@ -101,6 +101,7 @@ export async function noteAuthFailure(reason: string): Promise<void> {
     detail: reason,
   })
   await notify({
+    key: 'shipshape:github-auth',
     title: 'shipshape: GitHub is refusing the credentials',
     body: [
       reason,
@@ -118,18 +119,13 @@ export async function noteAuthFailure(reason: string): Promise<void> {
   })
 }
 
-/** Clear a standing failure, and say that too -- silence is how the last one lasted. */
+/** Clear a standing failure: the incident it opened is resolved, silently. */
 export async function noteAuthOk(): Promise<void> {
   if (!failing) return
   const since = failing.since
   failing = null
-  logEvent({ level: 'info', kind: 'pr', message: 'GitHub is accepting the credentials again' })
-  await notify({
-    title: 'shipshape: GitHub credentials working again',
-    body: `Recovered. It had been refusing us since ${since}.`,
-    priority: 3,
-    tags: ['white_check_mark'],
-  })
+  logEvent({ level: 'info', kind: 'pr', message: 'GitHub is accepting the credentials again', detail: `refused since ${since}` })
+  await resolveIncident('shipshape:github-auth')
 }
 
 let probe: Octokit | null = null

@@ -9,8 +9,8 @@ process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 process.env.GITHUB_REPO = 'you/repo'
 // No channel configured, so the failure paths below have nobody to alert.
-delete process.env.NTFY_URL
-delete process.env.NTFY_TOKEN
+delete process.env.NOTIFY_URL
+delete process.env.NOTIFY_TOKEN
 delete process.env.SMTP_URL
 
 const { getDb } = await import('../src/db.ts')

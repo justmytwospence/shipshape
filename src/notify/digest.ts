@@ -17,7 +17,7 @@ import { escapeHtml } from './email.ts'
  *   of being able to batch them.
  *
  *   An alert going out on its own does not excuse the digest from telling the truth about
- *   the same pull request, though. Channels are routed per kind, so `ntfy: alerts` with
+ *   the same pull request, though. Channels are routed per kind, so `incidents: alerts` with
  *   `email: routine` means the failure buzzed a phone at 03:06 and the email never heard
  *   of it -- and the email then described that pull request as "opened", because opening
  *   was the last routine thing that happened to it. See `reconcile`.
@@ -198,7 +198,7 @@ const SAID_WORK: Partial<Record<Category, Contains['work']>> = {
  * The suffix a line carries, or null when the update is only a version bump.
  *
  * Pure, and the single place this is worded, so the plain-text digest, the HTML mail and
- * the ntfy push cannot describe the same pull request three ways.
+ * the push cannot describe the same pull request three ways.
  *
  * The two halves are joined rather than ranked, because they answer different questions.
  * What a pull request *carries* is a fact about a diff that exists; what a release
@@ -915,7 +915,7 @@ export function render(rows: Row[]): { title: string; body: string } | null {
  * The same digest as HTML, for channels that can render one.
  *
  * Worth the second renderer for exactly one reason: every item already knows the pull
- * request it is about, and in a mail client that can be a link. The ntfy body cannot use
+ * request it is about, and in a mail client that can be a link. A push body cannot use
  * them -- a push has one click target for the whole message -- so the plain-text version
  * leaves them out rather than pasting bare URLs into a phone notification.
  */

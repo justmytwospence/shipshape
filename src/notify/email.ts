@@ -72,7 +72,7 @@ export async function send(mail: Mail): Promise<{ ok: boolean; error?: string }>
   } catch (err) {
     const error = (err as Error).message.slice(0, 300)
     // A missed notification must never break the operation that triggered it -- the same
-    // contract ntfy delivery has held from the start.
+    // contract push delivery has held from the start.
     logEvent({
       level: 'warn',
       kind: 'system',

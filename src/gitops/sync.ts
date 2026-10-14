@@ -1,6 +1,12 @@
 import { env, loadPolicy } from '../config.ts'
 import { logEvent } from '../db.ts'
-import { notifyOnce, clearNotifyState, notify } from '../notify/index.ts'
+import { notifyOnce, clearNotifyState as clearReason, notify, resolveIncident } from '../notify/index.ts'
+
+/** Back to normal: forget the last reason and close the sync incident (silent if none). */
+function clearNotifyState(channel: 'sync'): void {
+  clearReason(channel)
+  resolveIncident('shipshape:sync').catch(() => {})
+}
 import { authorArgs, git, httpsUrl } from './repo.ts'
 
 /**
@@ -176,6 +182,7 @@ async function fastForward(): Promise<{ status: 'ok' } | { status: 'failed'; rea
     const reason = `local edits conflict with the merged change in: ${conflicting.join(', ')}`
     logEvent({ level: 'error', kind: 'sync', message: 'sync refused', detail: reason })
     await notify({
+      key: 'shipshape:sync',
       title: 'shipshape: sync blocked',
       body:
         `A pull request merged, but these files have conflicting local edits:\n` +
@@ -228,6 +235,7 @@ async function rebaseOntoOrigin(): Promise<{ status: 'ok' } | { status: 'failed'
     detail: reason,
   })
   await notify({
+    key: 'shipshape:sync',
     title: 'shipshape: rebase conflict',
     body:
       `Local commits could not be replayed onto origin/main.\n${r.stderr.slice(0, 300)}\n\n` +
@@ -241,6 +249,7 @@ async function rebaseOntoOrigin(): Promise<{ status: 'ok' } | { status: 'failed'
 async function pause(reason: string): Promise<void> {
   logEvent({ level: 'warn', kind: 'sync', message: 'sync paused', detail: reason })
   await notifyOnce('sync', reason, {
+    key: 'shipshape:sync',
     title: 'shipshape: paused',
     body: `${reason}.\n\nNothing was changed. shipshape resumes once the checkout is back on main and clean of in-progress operations.`,
     priority: 3,

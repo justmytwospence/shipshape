@@ -1,7 +1,7 @@
 import { authorArgs, git, withGitLock } from '../gitops/repo.ts'
 import { env, loadPolicy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
-import { notify } from '../notify/index.ts'
+import { notify, resolveIncident } from '../notify/index.ts'
 import { deploy, manualCommand, type DeployIo, type DeployTarget } from './run.ts'
 import type { LeftService, RecordedPlan } from './runstate.ts'
 import type { Verdict } from './verify.ts'
@@ -196,6 +196,7 @@ export async function handleFailure(opts: {
 
   if (!plan || plan.action === 'suggest') {
     await notify({
+      key: `shipshape:deploy:${opts.target.stack}`,
       title: `shipshape: ${opts.target.stack} failed verification`,
       body:
         `#${opts.prNumber}: ${opts.verdict.detail}\n\n` +
@@ -224,16 +225,20 @@ export async function handleFailure(opts: {
       message: `${opts.target.stack} failed verification and was rolled back`,
       detail: `${opts.verdict.detail} — revert ${result.revertSha}`,
     })
+    // A clean rollback needs nothing from anyone: the lab put itself back, the version will
+    // not be offered again, and the Activity page has the story. Silence, and the stack's
+    // incident (if an earlier failure opened one) closes. Only a rollback that left
+    // something down is still a problem.
+    if (!result.left?.length) {
+      await resolveIncident(`shipshape:deploy:${opts.target.stack}`)
+      return { rolledBack: true }
+    }
     await notify({
-      // Priority 4, not 5: the lab put itself back. Loud, but not "get up now".
-      title: `shipshape: ${opts.target.stack} failed and was rolled back`,
+      key: `shipshape:deploy:${opts.target.stack}`,
+      title: `shipshape: ${opts.target.stack} rolled back, not fully up`,
       body:
         `#${opts.prNumber}: ${opts.verdict.detail}\n\n` +
-        // "Healthy again" only when everything it meant to put back came up; otherwise say
-        // what was left, and why, rather than claim a state nobody checked.
-        (result.left?.length
-          ? `Rolled back. main carries revert ${result.revertSha}. ${result.notes!.join('; ')}.\n\n`
-          : `Rolled back and healthy again. main carries revert ${result.revertSha}.\n\n`) +
+        `Rolled back. main carries revert ${result.revertSha}. ${result.notes!.join('; ')}.\n\n` +
         `This version will not be offered again. Use Try again on the update page to re-land it.` +
         tail,
       priority: 4,
@@ -251,6 +256,7 @@ export async function handleFailure(opts: {
     detail: result.detail,
   })
   await notify({
+    key: `shipshape:deploy:${opts.target.stack}`,
     title: `shipshape: ${opts.target.stack} is DOWN — rollback failed`,
     body:
       `#${opts.prNumber} failed verification (${opts.verdict.detail}) and the previous ` +

@@ -332,6 +332,7 @@ async function onMerged(
       detail: sync.reason,
     })
     await notify({
+      key: 'shipshape:sync',
       title: `shipshape: #${number} merged, sync blocked`,
       body: `${sync.reason}\n\n${waits ? 'Once resolved, press Deploy in shipshape, or run:' : 'The deploy stays queued and runs once the checkout is clean.'}\n${command}`,
       priority: 4,

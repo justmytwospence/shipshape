@@ -277,8 +277,8 @@ test('the quoted reason is the last line, and a long one is cut', () => {
 
 test('the email says which channel failures went to', () => {
   const batch = [row({ summary: 'a (#1)', url: pr(1) }), row({ summary: 'b (#2)', url: pr(2) })]
-  assert.match(renderHtml(batch, { alertChannels: ['ntfy'] })!, /sent on their own, the moment they happen, by ntfy\./)
-  assert.match(renderHtml(batch, { alertChannels: ['ntfy', 'email'] })!, /by ntfy and email\./)
+  assert.match(renderHtml(batch, { alertChannels: ['homelab alerting'] })!, /sent on their own, the moment they happen, by homelab alerting\./)
+  assert.match(renderHtml(batch, { alertChannels: ['homelab alerting', 'email'] })!, /by homelab alerting and email\./)
   assert.match(renderHtml(batch, { alertChannels: [] })!, /this digest is the only place they appear/)
   assert.doesNotMatch(renderHtml(batch)!, /never in a digest/)
 })

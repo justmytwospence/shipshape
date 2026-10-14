@@ -97,7 +97,7 @@ registry poll ──▶ new tag ──▶ resolve source repo ──▶ fetch ch
                               sync into the live checkout ◀──────────┘
                                           │
                                           ▼
-                              docker compose up -d ──▶ health check ──▶ ntfy
+                              docker compose up -d ──▶ health check ──▶ alert
 ```
 
 A service that is not running when its update lands is not started: the merge stands and
@@ -247,7 +247,7 @@ start.
 | `BOT_EMAIL` | no | `shipshape@localhost` | Git author for shipshape's commits. |
 | `DATA_DIR` | no | `/data` | SQLite database and shipshape's own working clone. |
 | `PORT` / `TZ` | no | `8080` / `UTC` | |
-| `NTFY_URL`, `NTFY_TOPIC`, `NTFY_TOKEN` | no | — | Push notifications. |
+| `NOTIFY_URL`, `NOTIFY_TOKEN` | no | — | Incidents, as JSON with a bearer, to a notification router (here n8n's `/webhook/notify`). |
 | `SMTP_URL`, `MAIL_TO` | no | — | Email. Both are needed; either alone counts as off. `MAIL_FROM` defaults to `BOT_EMAIL`. |
 | `DOCKER_HUB_LOGIN` / `_PASSWORD` | no | — | Doubles the Docker Hub pull allowance (100→200 per 6h). |
 
@@ -370,8 +370,8 @@ deploy:
 notify:
   routine: digest             # digest | immediate | off
   cron: "0 0 8 * * *"         # when the digest goes out; empty ones are never sent
-  ntfy: all                   # all | alerts | routine | off
-  email: all                  # ...per channel, so push and mail can differ
+  incidents: alerts           # all | alerts | routine | off
+  email: off                  # ...per channel, so push and mail can differ
 sync:
   push_main: true             # false: alert-only, no pull requests
 scan:
@@ -406,9 +406,19 @@ useful split is one line each:
 
 ```yaml
 notify:
-  ntfy: alerts     # the phone buzzes only for what broke
-  email: routine   # the summary arrives in the inbox
+  incidents: alerts   # only what broke, as incidents
+  email: routine      # the summary arrives in the inbox
 ```
+
+The incident channel posts `{key, source, title, message, priority, status, click}` to
+`NOTIFY_URL`. Every alert about one condition carries the same key
+(`shipshape:deploy:<stack>`, `shipshape:sync`, `shipshape:github-auth`,
+`shipshape:budget`), so the router keeps one message per problem and edits it; when the
+condition clears (a later deploy of that stack verifies, a sync succeeds, the credentials
+or budget come back) shipshape sends `status: resolved` for the key and nothing else --
+recovery is never a message of its own. A clean automatic rollback needs nothing from
+anyone and sends nothing. A send the router cannot take is kept in the database and
+retried every tick.
 
 Each line also says what its update carries beyond the version, when it carries anything —
 one of `carries edits` (you pushed to the branch), `changes you asked for` (shipshape wrote
@@ -423,7 +433,7 @@ choose to turn on: `config changes drafted; new features`. It is a separate axis
 what a pull request carries is a fact about a diff that exists and what a release offers is
 an assertion read off upstream prose.
 
-An emailed digest carries a link per item, which a push cannot: ntfy has one click target
+An emailed digest carries a link per item, which a push cannot: a push has one click target
 for the whole message. A channel with no credentials is skipped whatever policy says, and
 the Settings page shows where messages actually land plus a button that sends a test
 email and reports the server's own error.

@@ -11,6 +11,7 @@ import { runScan } from './scan.ts'
 import { flush as flushDigest, lastItemId, prune as pruneDigest } from './notify/digest.ts'
 import { claimDigestSlot, digestOwed, MAX_WAIT_MS, requestDigest } from './notify/barrier.ts'
 import { checkGitHubAuth } from './health/github-auth.ts'
+import { retryPendingIncidents } from './notify/index.ts'
 import { checkAnalysisBudget } from './health/analysis-budget.ts'
 import { ingestInstructions } from './revise/ingest.ts'
 import { runInstructionPass } from './revise/run.ts'
@@ -165,6 +166,8 @@ function startPrLoop(): void {
       // working, which is a fault rather than a choice, and the state it reports is
       // exactly what the operator would otherwise have to infer from a silent backlog.
       await checkGitHubAuth()
+      // Incidents the router could not take earlier: at least once, latest state wins.
+      await retryPendingIncidents()
       // Outside the gate for the same reason, and asked here rather than where the budget
       // is spent. The old warning lived in `recordCost`, which only runs when a call is
       // made -- so it went quiet the moment `budgetExhausted()` started refusing to make

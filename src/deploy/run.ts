@@ -16,7 +16,7 @@ import { includedStacks, scanRepo } from '../compose/scan.ts'
 import { DEFAULT_VERIFY, runVerify, type Verdict } from './verify.ts'
 import { dockerEnvOptions } from './docker-env.ts'
 import { getDb, logEvent } from '../db.ts'
-import { notify } from '../notify/index.ts'
+import { notify, resolveIncident } from '../notify/index.ts'
 import type { DeployTrigger } from './queue.ts'
 import {
   countsAsRunning,
@@ -807,6 +807,7 @@ export async function deployForPr(
     const named = meant.length ? meant : target.services
     const next = nextStep(outcome, { ...target, services: meant }, opts.trigger)
     await notify({
+      key: `shipshape:deploy:${target.stack}`,
       title: down
         ? `shipshape: ${target.stack} is DOWN — deploy failed`
         : `shipshape: deploy failed — ${target.stack}`,
@@ -848,6 +849,7 @@ export async function deployForPr(
     // verifier (`error`) never reaches handleFailure, so this is its only alert.
     if (outcome.verdict?.kind === 'failed') return outcome
     await notify({
+      key: `shipshape:deploy:${target.stack}`,
       title: `shipshape: ${target.stack} unhealthy after deploy`,
       body: `#${prNumber}: ${outcome.detail}\n\nThe new image is running and failing. Roll back with git revert and redeploy if it does not recover.`,
       priority: 5,
@@ -863,5 +865,7 @@ export async function deployForPr(
     message: `${target.stack} deployed`,
     detail: outcome.detail,
   })
+  // A verified deploy is the stack's recovery: close whatever an earlier one left open.
+  await resolveIncident(`shipshape:deploy:${target.stack}`)
   return outcome
 }

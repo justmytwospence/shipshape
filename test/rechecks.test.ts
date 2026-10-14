@@ -9,8 +9,8 @@ process.env.DATA_DIR = dir
 process.env.GITHUB_REPO = 'you/repo'
 delete process.env.REPO_DIR
 // No channel configured, so a regression that alerts has nobody to reach.
-delete process.env.NTFY_URL
-delete process.env.NTFY_TOKEN
+delete process.env.NOTIFY_URL
+delete process.env.NOTIFY_TOKEN
 delete process.env.SMTP_URL
 
 const { getDb } = await import('../src/db.ts')

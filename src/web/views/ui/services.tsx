@@ -254,8 +254,8 @@ export interface ForkRefLine {
 
 export interface ServiceDetailData {
   svc: ServiceRowData
-  /** Present for a fork: the upstream base and the references it waits on. */
-  fork?: { upstream: string; refs: ForkRefLine[] } | null
+  /** Present for a fork: the upstream base, the references it waits on, and whether its last replay conflicted. */
+  fork?: { upstream: string; refs: ForkRefLine[]; conflict?: string | null } | null
   composeFile: string | null
   config: ConfigLine[]
   history: UpdateView[]
@@ -475,12 +475,18 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
 
 /**
  * What a fork is waiting for. Each reference links out to GitHub with where it stands;
- * a released one links to the release too, which is where retiring starts. The sentence
- * at the end says the one thing the badge cannot: nothing here is automatic.
+ * a released one links to the release too. A conflict -- the one thing a fork can need a
+ * person for -- is said first, in the sentence the update shows.
  */
 const ForkSection: FC<{ fork: NonNullable<ServiceDetailData['fork']> }> = ({ fork }) => (
   <section class="border-base-300 border-t px-4 py-3">
     <h3 class="mb-1.5 text-xs font-medium tracking-wide uppercase opacity-60">Fork</h3>
+    {fork.conflict ? (
+      <p class="text-warning mb-1.5 text-xs">
+        Cannot be rebased: {fork.conflict}. Rebase the fork's homelab branch by hand and move the pinned sha, or drop
+        the commit (FORKS.md); shipshape tries again once the pin or the target changes.
+      </p>
+    ) : null}
     <div class="divide-base-300 border-base-300 divide-y border-y text-xs">
       <div class="flex min-h-11 flex-wrap items-center gap-x-3 lg:min-h-7 lg:flex-nowrap">
         <span class="w-24 shrink-0 opacity-70">based on</span>
@@ -518,7 +524,8 @@ const ForkSection: FC<{ fork: NonNullable<ServiceDetailData['fork']> }> = ({ for
       )}
     </div>
     <p class="mt-1.5 text-xs opacity-60">
-      Always held: shipshape lists what upstream releases, and says so once every fix has shipped. Retiring it is by hand — FORKS.md.
+      Follows its rung like any service: a new upstream release replays these fixes onto it, and once every fix has
+      shipped the pull request retires the fork. A conflict comes to you — FORKS.md.
     </p>
   </section>
 )

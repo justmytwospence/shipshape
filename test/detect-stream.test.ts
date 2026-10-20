@@ -39,6 +39,7 @@ function svc(stack: string, service: string, image: string, pattern: string): Sc
     labels: {},
     profiles: [],
     hasBuild: false,
+    buildContext: null,
     watched: true,
     unwatchable: null,
     pattern,

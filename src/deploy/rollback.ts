@@ -129,8 +129,10 @@ export async function performRollback(
   if (!gitPart.ok) return gitPart
 
   // Deploy the reverted tree straight away. The image it wants is the one that was
-  // running minutes ago, so its layers are local and this is a recreate, not a pull.
-  const back = await deploy(target, { carried: opts.carried, record: opts.record, io: opts.io })
+  // running minutes ago, so its layers are local and this is a recreate, not a pull -- and
+  // for a fork not a build either: the reverted file names the previous local image by
+  // its sha, and that image is still on disk.
+  const back = await deploy({ ...target, build: [] }, { carried: opts.carried, record: opts.record, io: opts.io })
   if (!back.ok) {
     return { ok: false, detail: `reverted ${gitPart.revertSha}, but the redeploy failed: ${back.reason}` }
   }

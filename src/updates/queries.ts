@@ -1,4 +1,5 @@
 import { getDb } from '../db.ts'
+import { forkConflictFor } from '../forks.ts'
 import { loadPolicy } from '../config.ts'
 import { MIN_CONFIDENCE, normaliseTier, shouldOpenPr, verdictHolds, type EffectiveTier } from '../policy.ts'
 import { present, type Presentation } from './present.ts'
@@ -35,8 +36,10 @@ export interface UpdateView {
   state: UpdateState
   detail: string | null
   rolling: boolean
-  /** The service runs our own build of this image: held for good, retired by hand (FORKS.md). */
+  /** The service runs our own build of this image, which shipshape rebases and retires (FORKS.md). */
   fork: boolean
+  /** Why the fork's last replay onto this target opened nothing: the commit and file that conflicted. */
+  forkConflict: string | null
   detectedAt: string
   updatedAt: string
   ackedAt: string | null
@@ -307,6 +310,8 @@ function toView(u: RawUpdate, repo: string): UpdateView {
     .prepare(`SELECT current_tag, fork_upstream FROM images WHERE stack = ? AND service = ?`)
     .get(u.stack, u.service) as { current_tag: string | null; fork_upstream: string | null } | undefined
   const fork = !!image?.fork_upstream || u.detail === 'fork'
+  const conflict = fork ? forkConflictFor(u.stack, u.service) : null
+  const forkConflict = conflict && conflict.toTag === u.to_tag.split('@')[0] ? conflict.detail : null
   const hasProposal = pr
     ? !!getDb()
         .prepare(
@@ -367,6 +372,7 @@ function toView(u: RawUpdate, repo: string): UpdateView {
     detail: u.detail,
     rolling: u.detail === 'rolling',
     fork,
+    forkConflict,
     detectedAt: u.detected_at,
     updatedAt: u.updated_at,
     ackedAt: u.acked_at,

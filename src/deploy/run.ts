@@ -78,6 +78,14 @@ export interface DeployTarget {
    * reports success -- which for a moved rolling tag is the one thing it must not do.
    */
   pull?: boolean
+  /**
+   * Services built from source before `up`: the forks (FORKS.md). Their `image:` is a
+   * local name compose cannot pull, so the pull passes `--ignore-buildable` and an explicit
+   * `compose build` runs first -- a failed build then touches no container and is reported
+   * as a deploy failure. Resolved from the compose file when absent (`deployForPr`); a
+   * rollback passes an empty list, because the image it puts back is already on disk.
+   */
+  build?: string[]
 }
 
 /**
@@ -93,7 +101,7 @@ export interface DeployTarget {
  * the read and before any removal, so a pull that fails has removed nothing, whatever the
  * strategy -- reported as `up` it read as DOWN under rm-first, about a service still running.
  */
-export type DeployPhase = 'refused' | 'inspect' | 'pull' | 'rm' | 'up' | 'verify'
+export type DeployPhase = 'refused' | 'inspect' | 'pull' | 'build' | 'rm' | 'up' | 'verify'
 
 /**
  * What a deploy did.
@@ -163,6 +171,8 @@ export interface DeployIo {
   peers(stack: string): { service: string; network_mode: string | null }[]
   /** What the compose file pins now, per service of the stack. */
   pinned(stack: string, policy: Policy): Map<string, string | null>
+  /** Which of these services the compose file builds from source now (the forks). */
+  buildable(stack: string, services: string[], policy: Policy): string[]
   now(): number
 }
 
@@ -174,6 +184,7 @@ export const realIo: DeployIo = {
   verify: (target, project, snapshot, policy, pinned) => verifyDeploy(target, project, snapshot, policy, pinned),
   peers: (stack) => stackPeers(stack),
   pinned: (stack, policy) => pinnedRefs(stack, policy),
+  buildable: (stack, services, policy) => buildableServices(stack, services, policy),
   now: () => Date.now(),
 }
 
@@ -242,7 +253,26 @@ export function pullArgs(
 ): { cwd: string; args: string[] } {
   const up = composeArgs(target, repoDir)
   const head = up.args.slice(0, up.args.indexOf('up'))
-  return { cwd: up.cwd, args: [...head, 'pull', ...new Set(target.services)] }
+  // A fork's `image:` is a local build name no registry has; `--ignore-buildable` keeps
+  // compose from trying, while the other services of the target are still pulled.
+  const flags = (target.build ?? []).length > 0 ? ['--ignore-buildable'] : []
+  return { cwd: up.cwd, args: [...head, 'pull', ...flags, ...new Set(target.services)] }
+}
+
+/**
+ * `compose build` for the services of the target that are built from source, before `up`.
+ * Its own step rather than `up --build`, so a build that fails has recreated nothing and
+ * says so, and so the command an operator pastes shows the build it needs.
+ */
+export function buildArgs(
+  target: DeployTarget,
+  repoDir = env.repoDir,
+): { cwd: string; args: string[] } | null {
+  const build = [...new Set((target.build ?? []).filter((s) => target.services.includes(s)))]
+  if (build.length === 0) return null
+  const up = composeArgs(target, repoDir)
+  const head = up.args.slice(0, up.args.indexOf('up'))
+  return { cwd: up.cwd, args: [...head, 'build', ...build] }
 }
 
 function removeArgs(target: DeployTarget, repoDir = env.repoDir): { cwd: string; args: string[] } {
@@ -384,6 +414,18 @@ export async function deploy(
   }
   const { seen, plan } = read
 
+  // A fork is built before anything is recorded or removed: the build reaches no
+  // container, so a failure here leaves the host exactly as it was, and the old image
+  // name is untouched for whatever runs next. Only the running subset is built -- a
+  // service left stopped builds on the day it is brought up.
+  const build = buildArgs({ ...target, services: plan.up })
+  if (build) {
+    const b = await io.exec(build.args, { cwd: build.cwd, timeout: 1_800_000 })
+    if ((b.exitCode ?? 1) !== 0) {
+      return { ok: false, phase: 'build', reason: 'could not build the image', stderr: tail(b.stderr), up: plan.up }
+    }
+  }
+
   const recorded: RecordedPlan = {
     v: 1,
     at: new Date(io.now()).toISOString(),
@@ -485,6 +527,22 @@ export function expectedRef(
   fromDb: Map<string, string | null>,
 ): string | null {
   return fromFile.get(service) ?? fromDb.get(service) ?? null
+}
+
+/**
+ * The services of a stack that the compose file builds from source now: the forks
+ * (FORKS.md), whose `image:` is a local name. A plain `build:` service is never deployed
+ * by shipshape, so there is nothing to build for one; a fork just retired has no `build:`
+ * block any more and drops out here, which is what lets the deploy that follows the retire
+ * pull the upstream image instead.
+ */
+export function buildableServices(stack: string, services: string[], policy: Policy, repoDir = env.repoDir): string[] {
+  try {
+    const scanned = scanRepo(repoDir, policy.exclude_stacks)
+    return services.filter((s) => scanned.some((x) => x.stack === stack && x.service === s && x.hasBuild && x.fork))
+  } catch {
+    return []
+  }
 }
 
 /**
@@ -628,6 +686,8 @@ export function manualCommand(target: DeployTarget): string {
     const pu = pullArgs(target)
     lines.push(`docker ${pu.args.join(' ')}`)
   }
+  const build = buildArgs(target)
+  if (build) lines.push(`docker ${build.args.join(' ')}`)
   if (target.strategy === 'rm-first') {
     const rm = removeArgs(target)
     lines.push(`docker ${rm.args.join(' ')}`)
@@ -669,6 +729,7 @@ export function downAfter(outcome: Extract<DeployOutcome, { ok: false }>, strate
 export function failureState(outcome: Extract<DeployOutcome, { ok: false }>, strategy: DeployTarget['strategy']): string {
   if (outcome.phase === 'inspect') return 'Nothing was touched: shipshape does not guess whether a service is running.'
   if (outcome.phase === 'pull') return 'Nothing was removed or recreated; the service is running whatever it was.'
+  if (outcome.phase === 'build') return 'The build failed before anything was removed or recreated; the service is running whatever it was.'
   if (outcome.phase === 'up') {
     if (downAfter(outcome, strategy)) {
       return strategy === 'rm-first'
@@ -726,6 +787,13 @@ export async function deployForPr(
     trigger?: DeployTrigger
   } = {},
 ): Promise<DeployOutcome> {
+  // Which of these are built from source is read from the file now rather than carried on
+  // the queue row: a merged retire has just removed the `build:` block, and a merged bump
+  // has just moved its pin, and the deploy must follow the file either way.
+  if (target.build === undefined) {
+    const { policy } = loadPolicy()
+    target = { ...target, build: (opts.io ?? realIo).buildable(target.stack, target.services, policy) }
+  }
   const outcome = await deploy(target, {
     carried: opts.carried,
     io: opts.io,

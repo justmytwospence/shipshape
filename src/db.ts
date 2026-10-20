@@ -850,6 +850,25 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     );
   `,
   },
+  {
+    id: '029-fork-rebase',
+    sql: `
+    -- A fork is rebased by shipshape (src/forks/rebase.ts). Two memories per service:
+    --
+    -- fork_conflict: JSON { toTag, sha, commit, subject, files, detail, at } when the last
+    -- replay of the pinned sha onto toTag conflicted. The pull request pass leaves the
+    -- update alone while the file still pins that sha and the update still targets that
+    -- tag, so the conflict is not retried every poll; a changed pin or a newer target
+    -- retries, and a replay that succeeds -- or the update moving on -- clears it and
+    -- resolves the incident. NULL when there is none.
+    --
+    -- fork_prepared: JSON describing the last replay the pass made for this service (the
+    -- kind, the new sha and tag, the carried and dropped commits), so the update page can
+    -- show the change and the carried fixes without replaying anything.
+    ALTER TABLE images ADD COLUMN fork_conflict TEXT;
+    ALTER TABLE images ADD COLUMN fork_prepared TEXT;
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

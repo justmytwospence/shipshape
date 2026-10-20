@@ -7,6 +7,7 @@ import { ActivityList } from '../../src/web/views/ui/activity.tsx'
 import { SettingsForm } from '../../src/web/views/ui/settings.tsx'
 import { StatusBody } from '../../src/web/views/ui/status.tsx'
 import { Layout } from '../../src/web/views/ui/shell.tsx'
+import { DiffView } from '../../src/web/views/diff.tsx'
 import {
   ActivityPage,
   InboxPage,
@@ -68,6 +69,7 @@ function base(over: Partial<UpdateView>): UpdateView {
     detail: null,
     rolling: false,
     fork: false,
+    forkConflict: null,
     detectedAt: ago(30),
     updatedAt: ago(2),
     ackedAt: null,
@@ -688,6 +690,64 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
       detail(UPDATES.reviewFailed!, 'list=updates&stage=open', '/updates'),
     ),
     services: String(ServicesList({ services: [SERVICE, FORK_SERVICE], grouped: false, ctx: 'list=services' })),
+    'service-detail-fork-conflict': String(
+      ServiceDetail({
+        data: {
+          ...serviceData,
+          svc: FORK_SERVICE,
+          fork: { ...FORK, conflict: 'ecca03b "fix: keep the reading statistics (#2952)" conflicts with upstream v3.5.1 in src/kobo.ts' },
+          composeFile: 'books/docker-compose.yaml',
+          config: [],
+          history: [],
+        },
+        ctx: 'list=services',
+        listHref: '/services',
+      }),
+    ),
+    'update-detail-fork-conflict': String(
+      detail(
+        {
+          ...UPDATES.waiting!,
+          state: 'detected',
+          pr: null,
+          fork: true,
+          forkConflict: 'ecca03b "fix: keep the reading statistics (#2952)" conflicts with upstream v3.5.1 in src/kobo.ts',
+        },
+        'list=updates&stage=open',
+        '/updates',
+      ),
+    ),
+    'diff-fork': String(
+      DiffView({
+        result: {
+          hunks: [
+            {
+              file: 'books/docker-compose.yaml',
+              header: '@@ -81,6 +81,6 @@ grimmory',
+              lines: [
+                { kind: 'ctx', no: 81, text: '    build:' },
+                { kind: 'del', no: 82, text: '      context: https://github.com/justmytwospence/grimmory.git#ecca03b9b1b03f2aa6023ac34f5dc5dadbdbe4dd' },
+                { kind: 'add', no: null, text: '      context: https://github.com/justmytwospence/grimmory.git#9f1c2d3e4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d' },
+                { kind: 'ctx', no: 83, text: '      args:' },
+              ],
+            },
+          ],
+          fork: {
+            kind: 'bump',
+            sha: '9f1c2d3e4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d',
+            tag: 'homelab/v3.5.1-9f1c2d3',
+            forkUrl: 'https://github.com/justmytwospence/grimmory.git',
+            upstreamRef: 'ghcr.io/grimmory-tools/grimmory:v3.5.1@sha256:' + '0'.repeat(64),
+            carried: [{ sha: 'c'.repeat(40), short: 'ccccccc', subject: 'fix: keep the reading statistics (#2952)', author: 'Spencer' }],
+            dropped: [{ sha: 'd'.repeat(40), short: 'ddddddd', subject: 'fix: opds paging', author: 'Spencer', reason: 'upstream v3.5.1 carries the same change' }],
+            waitsOn: [{ ref: 'grimmory-tools/grimmory#2952', state: 'merged-unreleased', releasedIn: null }],
+          },
+        },
+        prNumber: 52,
+        prUrl: 'https://github.com/me/homelab/pull/52',
+        prScope: 'tag-only',
+      }),
+    ),
     'service-detail-fork': String(
       ServiceDetail({
         data: {
@@ -700,7 +760,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
               key: 'policy',
               value: 'manual',
               source: 'label' as const,
-              note: 'a fork: always held, whatever this says -- retire it by hand, see FORKS.md',
+              note: 'a fork: the pull request replays our fixes onto the new release, or retires the fork -- FORKS.md',
             },
           ],
           history: [],

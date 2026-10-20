@@ -6,7 +6,7 @@ import { routine } from '../notify/digest.ts'
 import { alreadyCommented, postIssueComment } from './comments.ts'
 import { ensureWorkRepo, git, httpsUrl, withGitLock } from './repo.ts'
 import { syncMain } from './sync.ts'
-import { manualCommand, stackPeers, withNamespacePeers, type DeployTarget } from '../deploy/run.ts'
+import { buildableServices, manualCommand, stackPeers, withNamespacePeers, type DeployTarget } from '../deploy/run.ts'
 import { enqueueDeploy, hasDueRechecks, hasPendingDeploys } from '../deploy/queue.ts'
 import { digestOwed } from '../notify/barrier.ts'
 import { logRetired, retireOvertaken, type Retired } from '../updates/overtaken.ts'
@@ -178,6 +178,12 @@ async function classifyScope(
     // against it. Without this the next poll relabels every proposal as `modified` and
     // the distinction disappears within one cycle.
     if (shipshapeOwns && scope === 'modified' && hasProposal(prId)) scope = 'proposed'
+    // A fork's bump is more than an image line by construction -- the build pin, the
+    // fork labels and the build args move with it (compose/fork-edit.ts), and a retire
+    // removes a block. The editor has already proved the diff is exactly those pins, and
+    // the head is still what shipshape pushed, so this is the fork's own bump and not an
+    // edit: it merges and rolls back like any tag-only change.
+    if (shipshapeOwns && scope === 'modified' && carriesFork(prId)) scope = 'tag-only'
     // And the other direction. A drafted change whose only operation rewrote an `image:`
     // line -- an image rename -- produces a patch the line test calls tag-only, and
     // tag-only is what auto-merge accepts. #32 was exactly that: drafted, committed and
@@ -213,6 +219,18 @@ function hasCommittedProposal(prId: number): boolean {
         WHERE pr_id = ? AND error IS NULL AND retryable = 0
           AND COALESCE(json_array_length(changed), 0) > 0
         LIMIT 1`,
+    )
+    .get(prId)
+}
+
+/** Whether any update this pull request carries is a fork's (FORKS.md). */
+function carriesFork(prId: number): boolean {
+  return !!getDb()
+    .prepare(
+      `SELECT 1 FROM pr_updates pu
+         JOIN updates u ON u.id = pu.update_id
+         JOIN images i ON i.stack = u.stack AND i.service = u.service
+        WHERE pu.pr_id = ? AND i.fork_upstream IS NOT NULL LIMIT 1`,
     )
     .get(prId)
 }
@@ -265,6 +283,8 @@ async function onMerged(
       ? 'rm-first'
       : 'up',
   }
+  // A fork is built before it is brought up, and the pasted command has to say so.
+  target.build = buildableServices(stack, target.services, policy)
   const command = manualCommand(target)
   // Merging leads to a deploy either way; what this decides is whether it starts itself or
   // waits for a button.

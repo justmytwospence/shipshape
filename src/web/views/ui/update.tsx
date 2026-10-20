@@ -683,9 +683,11 @@ export const UpdateDetail: FC<{
         target={target}
         reply={reply}
         warnings={[
-          ...(update.fork
-            ? ['This service is a fork of its upstream image, so shipshape only lists what upstream released: retire it by hand, see FORKS.md.']
-            : []),
+          ...(update.forkConflict
+            ? [`The fork's fixes could not be replayed onto ${update.toTag}: ${update.forkConflict}. Rebase the fork's homelab branch by hand and move the pinned sha, or drop the commit (FORKS.md); shipshape tries again once the pin or the target changes.`]
+            : update.fork
+              ? ['This service is a fork of its upstream image: the pull request replays our fixes onto the new release and moves the build pin, and the deploy builds it (FORKS.md).']
+              : []),
           ...(update.pr?.held ? [`You asked shipshape to hold this — it will not merge on its own.`] : []),
           ...(warnings ?? []),
         ]}

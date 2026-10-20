@@ -614,8 +614,9 @@ function persistDigest(svc: ScannedService, c: DigestCheck, policy: Policy): str
 
       // No PR is possible: the compose file says `latest` and will still say `latest`
       // afterwards. This row exists so the dashboard can offer a redeploy -- except for a
-      // fork, where a redeploy would not pick the upstream's new build up either, so the
-      // row is held like every other fork row and only says that upstream moved.
+      // fork, where a redeploy would not pick the upstream's new build up either, and a
+      // rolling tag is no release to rebase onto (src/forks/rebase.ts needs a tag), so the
+      // row is held and only says that upstream moved.
       insertUpdate({
         svc,
         fromTag,

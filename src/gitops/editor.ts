@@ -132,6 +132,45 @@ async function verify(opts: {
   return { ok: true, file: composeFile }
 }
 
+/**
+ * Land a fork edit (compose/fork-edit.ts) in the work clone.
+ *
+ * The pure editor has already proved the text differs from the original in exactly the
+ * fork's pins; what is left is what only the filesystem can answer -- that compose still
+ * accepts the file (Gate C above) and that git sees a change at all. Restored on any
+ * refusal, so a failed attempt leaves the clone as it found it.
+ */
+export async function applyForkEdit(opts: {
+  repoDir: string
+  composeFile: string
+  text: string
+}): Promise<EditResult> {
+  const abs = join(opts.repoDir, opts.composeFile)
+  let before: string
+  try {
+    before = readFileSync(abs, 'utf8')
+  } catch (err) {
+    return { ok: false, reason: `cannot read ${opts.composeFile}: ${(err as Error).message}` }
+  }
+  writeFileSync(abs, opts.text)
+
+  const diff = await git(opts.repoDir, ['diff', '-U0', '--', opts.composeFile], { allowFail: true })
+  if (!diff.stdout.split('\n').some((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l))) {
+    writeFileSync(abs, before)
+    return { ok: false, reason: 'the edit produced no diff' }
+  }
+  const cfg = await execa(
+    'docker',
+    ['compose', '-f', abs, 'config', '--no-interpolate', '-q'],
+    { reject: false, timeout: 60_000, cwd: opts.repoDir },
+  )
+  if ((cfg.exitCode ?? 1) !== 0) {
+    writeFileSync(abs, before)
+    return { ok: false, reason: `compose rejected the edited file: ${String(cfg.stderr ?? '').slice(0, 200)}` }
+  }
+  return { ok: true, file: opts.composeFile }
+}
+
 /** Path of a compose file relative to a repo root, for the DB's stored value. */
 export function relPath(repoDir: string, abs: string): string {
   return relative(repoDir, abs)

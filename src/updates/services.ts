@@ -6,7 +6,7 @@ import { patternFor } from '../detect.ts'
 import { tierFor, deployNeedsYou } from '../policy.ts'
 import { updatesForService } from './queries.ts'
 import { sourceForSync, type SourceInfo } from '../resolver/index.ts'
-import { describeState, forkRefs } from '../forks.ts'
+import { describeState, forkConflictFor, forkRefs } from '../forks.ts'
 import { forkRefUrl, releaseUrl } from '../upstream/forks.ts'
 import type { ConfigLine, ForkRefLine, ServiceDetailData, ServiceRowData } from '../web/views/ui/services.tsx'
 
@@ -164,7 +164,7 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
     value: policyLabel ?? '(none)',
     source: policyLabel ? 'label' : 'none',
     note: isFork
-      ? 'a fork: always held, whatever this says -- retire it by hand, see FORKS.md'
+      ? 'a fork: the pull request replays our fixes onto the new release, or retires the fork -- FORKS.md'
       : prLabel
         ? `also shipshape.pr: ${prLabel}, the old spelling of on-request`
         : undefined,
@@ -284,7 +284,8 @@ function forkSection(
       checkedAt: r.checkedAt,
     }
   })
-  return { upstream, refs }
+  const conflict = forkConflictFor(stack, service)
+  return { upstream, refs, conflict: conflict?.detail ?? null }
 }
 
 /** The line under `notes`: which label applies, and why one was ignored. */

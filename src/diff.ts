@@ -3,6 +3,8 @@ import { join } from 'node:path'
 import { LineCounter, parseDocument, isScalar } from 'yaml'
 import { env } from './config.ts'
 import { getDb } from './db.ts'
+import { bumpFork, retireFork } from './compose/fork-edit.ts'
+import { forkConflictFor, forkPreparedFor, type ForkPrepared } from './forks.ts'
 import { formatImageRef, parseImageRef } from './images/ref.ts'
 
 /**
@@ -27,7 +29,10 @@ export interface DiffHunk {
   lines: DiffLine[]
 }
 
-export type DiffResult = { hunks: DiffHunk[] } | { error: string }
+/** What a fork's change carries beyond its hunks (FORKS.md): the replay and its commits. */
+export type ForkChange = Pick<ForkPrepared, 'kind' | 'sha' | 'tag' | 'forkUrl' | 'upstreamRef' | 'carried' | 'dropped' | 'waitsOn'>
+
+export type DiffResult = { hunks: DiffHunk[]; fork?: ForkChange } | { error: string }
 
 const CONTEXT = 3
 
@@ -62,23 +67,18 @@ export function buildUpdateDiff(updateId: number): DiffResult {
     }
   }
 
-  // A fork's `image:` is the local build, not the upstream the update is about; the
-  // change it needs is a rebase of the fork, or its retirement, neither of which is an
-  // image line (FORKS.md).
-  if (row.detail === 'fork') {
-    return {
-      error:
-        'Nothing to change in git — this service runs its own build of the upstream image. ' +
-        'Rebase the fork onto the new release, or retire it; see FORKS.md.',
-    }
-  }
-
   const abs = join(env.repoDir, row.compose_file)
   let src: string
   try {
     src = readFileSync(abs, 'utf8')
   } catch (err) {
     return { error: `cannot read ${row.compose_file}: ${(err as Error).message}` }
+  }
+
+  // A fork's change is the replay of our fixes onto the new release and the compose edit
+  // that pins the result -- known once the pull request pass has made the replay (FORKS.md).
+  if (row.detail === 'fork' || isForkService(row.stack, row.service)) {
+    return forkDiff(row, src)
   }
 
   const located = locateImageLine(src, row.service)
@@ -128,6 +128,133 @@ export function buildUpdateDiff(updateId: number): DiffResult {
       },
     ],
   }
+}
+
+function isForkService(stack: string, service: string): boolean {
+  const r = getDb()
+    .prepare(`SELECT fork_upstream FROM images WHERE stack = ? AND service = ?`)
+    .get(stack, service) as { fork_upstream: string | null } | undefined
+  return !!r?.fork_upstream
+}
+
+/**
+ * The fork's change, rendered from the last replay the pull request pass recorded for this
+ * target: the same editor the branch was built with, run against the file as it is now, so
+ * what is shown is exactly what the branch carries. Before a replay there is nothing to
+ * show but what will happen; a conflict says why nothing has.
+ */
+function forkDiff(
+  row: { stack: string; service: string; from_tag: string; to_tag: string; compose_file: string },
+  src: string,
+): DiffResult {
+  const target = row.to_tag.split('@')[0]!
+  const conflict = forkConflictFor(row.stack, row.service)
+  if (conflict && conflict.toTag === target) {
+    return {
+      error:
+        `The fork's fixes could not be replayed onto ${target}: ${conflict.detail}. ` +
+        `Nothing was pushed and no pull request opened. Rebase the fork's homelab branch by hand and move the pinned sha, or drop the commit (FORKS.md).`,
+    }
+  }
+  const prepared = forkPreparedFor(row.stack, row.service)
+  if (!prepared || prepared.toTag !== target) {
+    return {
+      error:
+        `This service is a fork of its upstream image. When the pull request opens, shipshape replays the fork's ` +
+        `fixes onto ${target}, pushes the result to the fork, and moves the build pin, the image tag and the upstream ` +
+        `reference here; the exact commit and the fixes it carries are shown once that has happened (FORKS.md).`,
+    }
+  }
+  const edit =
+    prepared.kind === 'retire'
+      ? retireFork(src, row.service, { expectedSha: prepared.fromSha, upstreamRef: prepared.upstreamRef })
+      : bumpFork(src, row.service, {
+          expectedSha: prepared.fromSha,
+          newSha: prepared.sha ?? '',
+          newTag: target,
+          newUpstream: prepared.upstreamRef,
+        })
+  const fork: ForkChange = {
+    kind: prepared.kind,
+    sha: prepared.sha,
+    tag: prepared.tag,
+    forkUrl: prepared.forkUrl,
+    upstreamRef: prepared.upstreamRef,
+    carried: prepared.carried,
+    dropped: prepared.dropped,
+    waitsOn: prepared.waitsOn,
+  }
+  if (!edit.ok) {
+    if (edit.alreadyApplied) return { hunks: [], fork }
+    return { error: `${row.compose_file}: ${edit.reason} — rescan to refresh it` }
+  }
+  return { hunks: lineDiff(row.compose_file, src, edit.text, row.service), fork }
+}
+
+/**
+ * Hunks between two texts, by line. The fork edit touches a handful of lines and removes
+ * a block, so a plain longest-common-subsequence over lines is enough and exact.
+ */
+export function lineDiff(file: string, before: string, after: string, label: string): DiffHunk[] {
+  const a = before.split('\n')
+  const b = after.split('\n')
+  // lcs[i][j] = length of the LCS of a[i..] and b[j..]
+  const lcs: Uint16Array[] = Array.from({ length: a.length + 1 }, () => new Uint16Array(b.length + 1))
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      lcs[i]![j] = a[i] === b[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!)
+    }
+  }
+  type Op = { kind: 'ctx' | 'del' | 'add'; no: number | null; text: string }
+  const ops: Op[] = []
+  let i = 0
+  let j = 0
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      ops.push({ kind: 'ctx', no: i + 1, text: a[i]! })
+      i++
+      j++
+    } else if (j < b.length && (i >= a.length || lcs[i]![j + 1]! >= lcs[i + 1]![j]!)) {
+      ops.push({ kind: 'add', no: null, text: b[j]! })
+      j++
+    } else {
+      ops.push({ kind: 'del', no: i + 1, text: a[i]! })
+      i++
+    }
+  }
+
+  // Group changes that sit within 2*CONTEXT lines of each other into one hunk.
+  const hunks: DiffHunk[] = []
+  let k = 0
+  while (k < ops.length) {
+    if (ops[k]!.kind === 'ctx') {
+      k++
+      continue
+    }
+    const start = Math.max(0, k - CONTEXT)
+    let end = k
+    let last = k
+    while (end < ops.length) {
+      if (ops[end]!.kind !== 'ctx') last = end
+      else if (end - last > 2 * CONTEXT) break
+      end++
+    }
+    const stop = Math.min(ops.length, last + CONTEXT + 1)
+    const slice = ops.slice(start, stop)
+    const oldStart = slice.find((o) => o.no !== null)?.no ?? 1
+    const oldLen = slice.filter((o) => o.kind !== 'add').length
+    const newLen = slice.filter((o) => o.kind !== 'del').length
+    // The new-side start: old start shifted by the net lines added before this hunk.
+    const before = ops.slice(0, start)
+    const shift = before.filter((o) => o.kind === 'add').length - before.filter((o) => o.kind === 'del').length
+    hunks.push({
+      file,
+      header: `@@ -${oldStart},${oldLen} +${oldStart + shift},${newLen} @@ ${label}`,
+      lines: slice.map((o) => ({ kind: o.kind, no: o.no, text: o.text })),
+    })
+    k = stop
+  }
+  return hunks
 }
 
 /**

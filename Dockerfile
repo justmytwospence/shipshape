@@ -21,6 +21,11 @@ RUN apk add --no-cache git docker-cli sqlite
 # package versions from its index, so an apk pin works until the day the build breaks.
 COPY --from=docker/compose-bin:v5.5.1 /docker-compose /usr/libexec/docker/cli-plugins/docker-compose
 
+# buildx, pinned the same way: a fork deploy runs `compose build` (FORKS.md), and without
+# buildx compose falls back to the classic builder, which cannot read BuildKit-only
+# Dockerfiles (`--platform=$BUILDPLATFORM`, cache mounts, `ADD --checksum`).
+COPY --from=docker/buildx-bin:0.38.0 /buildx /usr/libexec/docker/cli-plugins/docker-buildx
+
 WORKDIR /app
 
 # better-sqlite3 ships prebuilds for musl/arm64+x64; build deps are only needed if the

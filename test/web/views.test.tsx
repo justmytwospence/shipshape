@@ -39,6 +39,9 @@ const FRAGMENTS = [
   'services',
   'service-detail',
   'service-detail-fork',
+  'service-detail-fork-conflict',
+  'update-detail-fork-conflict',
+  'diff-fork',
   'activity',
   'settings',
   'status',
@@ -49,8 +52,12 @@ function escapeClass(cls: string): string {
   return cls.replace(/[.:/[\]()%!#,+*~>&'=]/g, (ch) => `\\${ch}`)
 }
 
-/** State classes owned by htmx or the browser, never declared by us. */
-const NOT_OURS = new Set(['htmx-request', 'htmx-indicator', 'htmx-settling', 'is-dirty'])
+/**
+ * State classes owned by htmx or the browser, never declared by us -- and `ctx`, a diff
+ * line's unstyled kind: `.dl.add` and `.dl.del` colour the other two, and the context row
+ * is the plain `.dl`.
+ */
+const NOT_OURS = new Set(['htmx-request', 'htmx-indicator', 'htmx-settling', 'is-dirty', 'ctx'])
 
 test('every class a view emits exists in the built stylesheet', () => {
   const css = builtCss()

@@ -43,14 +43,21 @@ export interface GitResult {
 export async function git(
   cwd: string,
   args: string[],
-  opts: { remote?: boolean; allowFail?: boolean } = {},
+  opts: {
+    remote?: boolean
+    allowFail?: boolean
+    /** For the few commands that may legitimately take longer than two minutes: a first fetch of a large upstream. */
+    timeoutMs?: number
+    /** Extra environment, on top of the token and the no-prompt guard (a committer date, for a reproducible replay). */
+    env?: Record<string, string>
+  } = {},
 ): Promise<GitResult> {
   const full = [...(opts.remote ? credentialArgs() : []), ...args]
   const execOpts: Options = {
     cwd,
     reject: false,
-    timeout: 120_000,
-    env: { GITHUB_TOKEN: env.githubToken, GIT_TERMINAL_PROMPT: '0' },
+    timeout: opts.timeoutMs ?? 120_000,
+    env: { ...(opts.env ?? {}), GITHUB_TOKEN: env.githubToken, GIT_TERMINAL_PROMPT: '0' },
   }
   const r = await execa('git', full, execOpts)
   const out = {

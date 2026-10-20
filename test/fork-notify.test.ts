@@ -24,7 +24,8 @@ delete process.env.SMTP_URL
 
 const { getDb } = await import('../src/db.ts')
 const { setMinSpacingForTests } = await import('../src/registry/http.ts')
-const { checkFork, reconcileForks, forkRefs, forkVerdict, forkIncidentKey, newestUpstreamTag } = await import('../src/forks.ts')
+const { checkFork, reconcileForks, forkRefs, forkVerdict, forkIncidentKey, newestUpstreamTag, recordForkConflict, forkConflictFor, forkConflictKey } =
+  await import('../src/forks.ts')
 const { eligibleGroups, isFork } = await import('../src/gitops/pr.ts')
 const { PolicySchema } = await import('../src/config.ts')
 const { mockFetch, assertAllMocked, json, status } = await import('./helpers/http.ts')
@@ -48,6 +49,7 @@ function fork(waitsOn: string[], upstream = 'ghcr.io/o/r:v1.2.0@sha256:' + 'a'.r
     profiles: [],
     dormant: false,
     hasBuild: true,
+    buildContext: "https://github.com/me/r.git#abc1234abc1234abc1234abc1234abc1234abc12",
     watched: true,
     unwatchable: null,
     pattern: 'digest',
@@ -292,7 +294,7 @@ test('the newest release is the highest of what shipshape recorded and what GitH
   assertAllMocked(h)
 })
 
-test('the pull request pass never picks a fork up, and the editor refuses one', () => {
+test('the pull request pass picks a fork up like any service, except while its replay conflicts', async (t) => {
   const svc = fork(['o/r#1'])
   seedImage(svc)
   getDb()
@@ -305,12 +307,52 @@ test('the pull request pass never picks a fork up, and the editor refuses one', 
     `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detail, detected_at, updated_at)
      VALUES (?, ?, ?, ?, ?, 'minor', 'manual', 'detected', ?, 'now', 'now')`,
   )
-  // A fork row that somehow reached 'detected' with a PR-able tier: still refused.
-  insert.run('books', 'app', 'ghcr.io/o/r:v1.2.0', 'v1.2.0', 'v1.3.0', null)
+  insert.run('books', 'app', 'ghcr.io/o/r:v1.2.0', 'v1.2.0', 'v1.3.0', 'fork')
   insert.run('media', 'plain', 'x/y:1.0.0', '1.0.0', '1.1.0', null)
-  const groups = eligibleGroups(PolicySchema.parse({}))
-  const members = groups.flatMap((g) => g.members.map((m) => `${m.stack}/${m.service}`))
-  assert.deepEqual(members, ['media/plain'])
+  const names = () =>
+    eligibleGroups(PolicySchema.parse({}))
+      .flatMap((g) => g.members.map((m) => `${m.stack}/${m.service}`))
+      .sort()
+  assert.deepEqual(names(), ['books/app', 'media/plain'])
   assert.equal(isFork('books', 'app'), true)
   assert.equal(isFork('media', 'plain'), false)
+
+  // A recorded conflict raises one incident; the same conflict again sends nothing. There
+  // is no compose file here (REPO_DIR is unset), so the live pin reads as none, which does
+  // not match the recorded sha -- the pass only stands back while the file still pins
+  // what conflicted, so the row stays offered.
+  const bodies: { key: string; status: string }[] = []
+  const h = mockFetch(t, [
+    {
+      url: /n8n\.invalid/,
+      reply: async (req) => {
+        bodies.push((await req.json()) as { key: string; status: string })
+        return json({ ok: true })
+      },
+    },
+  ])
+  const conflict = {
+    toTag: 'v1.3.0',
+    sha: 'abc1234abc1234abc1234abc1234abc1234abc12',
+    commit: 'c'.repeat(40),
+    subject: 'fix: x',
+    files: ['a.txt'],
+    detail: 'ccccccc "fix: x" conflicts with upstream v1.3.0 in a.txt',
+  }
+  await recordForkConflict('books', 'app', conflict)
+  assert.deepEqual(names(), ['books/app', 'media/plain'])
+  assert.equal(h.calls.length, 1)
+  assert.equal(bodies[0]!.key, forkConflictKey('books', 'app'))
+  await recordForkConflict('books', 'app', { ...conflict, detail: 'again' })
+  assert.equal(h.calls.length, 1)
+  assert.equal(forkConflictFor('books', 'app')?.detail, conflict.detail)
+
+  // The update moving on resolves it: once nothing live targets v1.3.0, the scan's
+  // reconcile clears the conflict and sends the resolution.
+  getDb().prepare(`UPDATE updates SET state = 'superseded' WHERE stack = 'books'`).run()
+  await reconcileForks([svc])
+  assert.equal(forkConflictFor('books', 'app'), null)
+  assert.equal(h.calls.length, 2)
+  assert.equal(bodies[1]!.status, 'resolved')
+  assertAllMocked(h)
 })

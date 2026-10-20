@@ -103,23 +103,34 @@ test('waits-on without an upstream is said out loud and changes nothing', () => 
 
 const DEFAULTS = { patch: 'auto', minor: 'auto', major: 'manual', digest: 'manual' } as const
 
-test('a fork is held on every rung, whatever the labels say', () => {
+test('a fork follows the same ladder as every service', () => {
+  // Being a fork changes nothing about the rung: shipshape rebases the fork itself, so the
+  // upstream magnitude and the labels decide, exactly as for a plain image.
   for (const magnitude of ['patch', 'minor', 'major', 'digest'] as const) {
     for (const policyLabel of [null, 'auto', 'manual', 'attended', 'on-request', 'skip', 'typo']) {
-      assert.equal(
-        tierFor({ magnitude, policyLabel, prLabel: null, fork: true, defaults: DEFAULTS }),
-        'held',
-        `${magnitude} with policy ${policyLabel}`,
-      )
+      for (const dormant of [false, true]) {
+        assert.equal(
+          tierFor({ magnitude, policyLabel, prLabel: null, fork: true, dormant, defaults: DEFAULTS }),
+          tierFor({ magnitude, policyLabel, prLabel: null, fork: false, dormant, defaults: DEFAULTS }),
+          `${magnitude} with policy ${policyLabel}${dormant ? ', dormant' : ''}`,
+        )
+      }
     }
   }
-  // And nothing changes for everything else.
-  assert.equal(tierFor({ magnitude: 'patch', policyLabel: null, prLabel: null, fork: false, defaults: DEFAULTS }), 'auto')
-  assert.equal(tierFor({ magnitude: 'patch', policyLabel: 'skip', prLabel: null, defaults: DEFAULTS }), 'skip')
+  const fork = (magnitude: 'patch' | 'minor' | 'major' | 'digest', policyLabel: string | null = null, dormant = false) =>
+    tierFor({ magnitude, policyLabel, prLabel: null, fork: true, dormant, defaults: DEFAULTS })
+  assert.equal(fork('patch'), 'auto')
+  assert.equal(fork('minor'), 'auto')
+  assert.equal(fork('major'), 'manual')
+  assert.equal(fork('major', 'auto'), 'manual')
+  assert.equal(fork('patch', 'attended'), 'attended')
+  assert.equal(fork('patch', 'on-request'), 'held')
+  assert.equal(fork('patch', null, true), 'held')
+  assert.equal(fork('patch', 'skip'), 'skip')
 })
 
-test('a held fork update offers no pull request, and says why', () => {
-  assert.deepEqual(actionsFor({ state: 'held', fork: true }), ['skip'])
+test('a held fork update offers a pull request like any other held update', () => {
+  assert.deepEqual(actionsFor({ state: 'held', fork: true }), ['open-pr', 'skip'])
   assert.deepEqual(actionsFor({ state: 'held' }), ['open-pr', 'skip'])
-  assert.match(refusalFor('open-pr', { state: 'held', fork: true }), /fork.*FORKS\.md/)
+  assert.doesNotMatch(refusalFor('open-pr', { state: 'detected', fork: true }), /retire it by hand/)
 })

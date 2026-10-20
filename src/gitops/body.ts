@@ -107,10 +107,104 @@ function referenceSection(g: UpdateGroup, sources: Map<number, string | null>): 
   return lines.join('\n')
 }
 
+/**
+ * What a fork's pull request carries beyond the version (FORKS.md): the replay that was
+ * pushed to the fork, the commits it kept, the ones it dropped as already upstream, and
+ * where each reference the fork waits on stands. A `retire` has no replay: the fork is
+ * replaced by the plain upstream image.
+ */
+export interface ForkPrInfo {
+  kind: 'bump' | 'retire'
+  /** The pin the file carried before. */
+  fromSha: string
+  /** The replayed commit and its tag on the fork, for a bump. */
+  sha: string | null
+  tag: string | null
+  /** The fork repository, as `build.context` names it. */
+  forkUrl: string
+  /** The upstream reference the file moves to: `shipshape.fork.upstream` (bump) or `image:` (retire). */
+  upstreamRef: string
+  carried: { sha: string; short: string; subject: string; author: string }[]
+  dropped: { sha: string; short: string; subject: string; author: string; reason: string }[]
+  waitsOn: { ref: string; state: string; releasedIn: string | null }[]
+}
+
+/** The fork repository's web address, for linking a commit, when it is on GitHub. */
+function forkWeb(forkUrl: string): string | null {
+  const m = /^https:\/\/github\.com\/([^/]+\/[^/]+?)(?:\.git)?\/?$/.exec(forkUrl)
+  return m ? `https://github.com/${m[1]}` : null
+}
+
+function waitsOnLine(w: ForkPrInfo['waitsOn'][number]): string {
+  const url = /^([^#]+)#(\d+)$/.exec(w.ref)
+  const name = url ? `[${w.ref}](https://github.com/${url[1]}/issues/${url[2]})` : w.ref
+  const state =
+    w.state === 'released'
+      ? `released in ${w.releasedIn}`
+      : w.state === 'merged-unreleased'
+        ? 'merged, not released'
+        : w.state === 'closed-unfixed'
+          ? 'closed without a fix'
+          : w.state === 'open'
+            ? 'open'
+            : 'could not be looked up'
+  return `- ${name}: ${state}`
+}
+
+/**
+ * The section a fork's pull request adds. Each commit kept, each dropped and why, and the
+ * waits-on states, so the person merging can see what the new build still carries. A
+ * retire says what the fork is replaced with and flags the comment block, which
+ * shipshape does not rewrite.
+ */
+export function carriedFixesSection(g: UpdateGroup, forks: Map<number, ForkPrInfo>): string {
+  const lines: string[] = []
+  for (const m of g.members) {
+    const f = forks.get(m.id)
+    if (!f) continue
+    const web = forkWeb(f.forkUrl)
+    const commit = (c: { sha: string; short: string; subject: string; author: string }) =>
+      `${web ? `[\`${c.short}\`](${web}/commit/${c.sha})` : `\`${c.short}\``} ${c.subject} — ${c.author}`
+    const head = g.members.length > 1 ? ` — ${m.service}` : ''
+    if (f.kind === 'retire') {
+      lines.push(`### Retiring the fork${head}`, '')
+      lines.push(
+        `Nothing is left to carry: every fix the fork had is in upstream \`${short(m.to_tag)}\`. ` +
+          `This puts the plain upstream image back (\`${f.upstreamRef}\`) and removes the \`build:\` block and the \`shipshape.fork.*\` labels.`,
+        '',
+      )
+      if (f.dropped.length > 0) {
+        lines.push('Dropped, already upstream:', '', ...f.dropped.map((c) => `- ${commit(c)} — ${c.reason}`), '')
+      }
+      lines.push(
+        `> **Tidy the comment block by hand.** The service's comment still describes the fork; shipshape does not rewrite prose. ` +
+          `The \`homelab\` branch on the fork can go once this is merged (FORKS.md, "Retiring a fork").`,
+        '',
+      )
+      continue
+    }
+    lines.push(`### Carried fixes${head}`, '')
+    lines.push(
+      `Our fixes were replayed onto upstream \`${short(m.to_tag)}\` and pushed to the fork as ` +
+        `${web && f.sha ? `[\`${f.tag}\`](${web}/commit/${f.sha})` : `\`${f.tag}\``} ` +
+        `(\`${f.sha?.slice(0, 7)}\`, was \`${f.fromSha.slice(0, 7)}\`). The build pins that commit.`,
+      '',
+    )
+    lines.push(f.carried.length > 0 ? 'Kept:' : 'Kept: nothing', '')
+    if (f.carried.length > 0) lines.push(...f.carried.map((c) => `- ${commit(c)}`), '')
+    if (f.dropped.length > 0) {
+      lines.push('Dropped, already upstream:', '', ...f.dropped.map((c) => `- ${commit(c)} — ${c.reason}`), '')
+    }
+    if (f.waitsOn.length > 0) lines.push('Waiting on:', '', ...f.waitsOn.map(waitsOnLine), '')
+  }
+  return lines.join('\n').trimEnd()
+}
+
 export function prBody(
   g: UpdateGroup,
   policy: Policy,
   sources: Map<number, string | null>,
+  forks: Map<number, ForkPrInfo> = new Map(),
 ): string {
   const m0 = g.members[0]!
   const magnitude = foldGroupMagnitude(g.members.map((m) => m.magnitude as Magnitude))
@@ -144,7 +238,7 @@ ${grouped}
 ${rows}
 
 ${referenceSection(g, sources)}
-
+${forks.size > 0 ? `\n${carriedFixesSection(g, forks)}\n` : ''}
 <!-- shipshape:verdict:start -->
 ### Changelog analysis
 

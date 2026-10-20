@@ -81,6 +81,8 @@ export interface ScannedService {
    */
   dormant: boolean
   hasBuild: boolean
+  /** `build.context` as written, when it is a string: a fork's pinned git URL. */
+  buildContext: string | null
   watched: boolean
   unwatchable: UnwatchableReason | null
   /** shipshape.* label values, already split out. */
@@ -125,8 +127,9 @@ export interface ScannedService {
    * `upstream` is the image the fork is based on, as it stood in `image:` before the fork;
    * `waitsOn` the upstream issues or PRs the fork exists for, each `owner/repo#N`. When
    * set, `ref` is parsed from `upstream` rather than from `image:` -- the local build name
-   * has no registry to poll -- and the service is watchable despite `build:`. Its tier is
-   * always `held`: shipshape cannot rewrite a `build:` service, so it only reports.
+   * has no registry to poll -- and the service is watchable despite `build:`. Its tier
+   * follows the same ladder as every service: shipshape rebases the fork onto the new
+   * release itself (src/forks/rebase.ts) and retires it when nothing is left to carry.
    */
   fork: ForkInfo | null
 }
@@ -258,6 +261,12 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
     const labels = normaliseLabels(svc.labels)
     const profiles = toStringArray(svc.profiles)
     const hasBuild = svc.build !== undefined
+    const buildContext =
+      typeof svc.build === 'string'
+        ? svc.build
+        : svc.build && typeof svc.build === 'object' && typeof (svc.build as { context?: unknown }).context === 'string'
+          ? ((svc.build as { context: string }).context)
+          : null
 
     // `dockhand.*` was read as a fallback while the rename swept 140 services. None
     // carries it any more, so only the one prefix is read.
@@ -337,6 +346,7 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
       profiles,
       dormant: profiles.includes('disabled') || profiles.includes('standby'),
       hasBuild,
+      buildContext,
       watched,
       unwatchable,
       pattern,

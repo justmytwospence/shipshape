@@ -83,6 +83,7 @@ export function fakeIo(
     },
     peers: () => [],
     pinned: () => new Map(),
+    buildable: () => [],
     now: () => Date.parse('2026-09-14T09:02:00.000Z'),
     ...rest,
   }

@@ -1,5 +1,5 @@
 import type { FC } from 'hono/jsx'
-import type { DiffResult, DiffHunk } from '../../diff.ts'
+import type { DiffResult, DiffHunk, ForkChange } from '../../diff.ts'
 import type { RefLinks } from '../../links.ts'
 
 /**
@@ -41,6 +41,110 @@ const Hunk: FC<{ hunk: DiffHunk }> = ({ hunk: h }) => (
   </div>
 )
 
+/** The fork repository's web address, for linking a commit, when it is on GitHub. */
+function forkWeb(forkUrl: string): string | null {
+  const m = /^https:\/\/github\.com\/([^/]+\/[^/]+?)(?:\.git)?\/?$/.exec(forkUrl)
+  return m ? `https://github.com/${m[1]}` : null
+}
+
+const FORK_REF_WORDS: Record<string, string> = {
+  open: 'open',
+  'merged-unreleased': 'merged, not released',
+  released: 'released',
+  'closed-unfixed': 'closed without a fix',
+  unknown: 'could not be looked up',
+}
+
+const CommitLine: FC<{ c: { sha: string; short: string; subject: string; author: string }; web: string | null; note?: string }> = ({
+  c,
+  web,
+  note,
+}) => (
+  <li class="flex flex-wrap items-baseline gap-x-2">
+    {web ? (
+      <a href={`${web}/commit/${c.sha}`} target="_blank" rel="noopener" class="link link-hover font-mono">
+        {c.short}
+      </a>
+    ) : (
+      <span class="font-mono">{c.short}</span>
+    )}
+    <span>{c.subject}</span>
+    <span class="opacity-60">{c.author}</span>
+    {note ? <span class="opacity-60">— {note}</span> : null}
+  </li>
+)
+
+/**
+ * What a fork's change carries beyond its hunks (FORKS.md): the replay pushed to the fork,
+ * the fixes kept, the ones dropped as already upstream, and what the fork still waits on.
+ * A retire has no replay and says what the fork is replaced with.
+ */
+const ForkBlock: FC<{ fork: ForkChange }> = ({ fork }) => {
+  const web = forkWeb(fork.forkUrl)
+  return (
+    <div class="border-base-300 my-2 border-l-2 pl-3">
+      <p class="font-medium">{fork.kind === 'retire' ? 'Retiring the fork' : 'Carried fixes'}</p>
+      <p class="text-xs opacity-70">
+        {fork.kind === 'retire' ? (
+          <>
+            Nothing is left to carry: the plain upstream image comes back as{' '}
+            <code class="font-mono">{fork.upstreamRef}</code>, and the build block and the fork labels go. The
+            comment block is yours to tidy.
+          </>
+        ) : (
+          <>
+            Our fixes were replayed onto the new release and pushed to the fork as{' '}
+            {web && fork.sha ? (
+              <a href={`${web}/commit/${fork.sha}`} target="_blank" rel="noopener" class="link link-hover font-mono">
+                {fork.tag}
+              </a>
+            ) : (
+              <code class="font-mono">{fork.tag}</code>
+            )}
+            ; the build pins that commit.
+          </>
+        )}
+      </p>
+      {fork.carried.length > 0 ? (
+        <>
+          <p class="mt-1 text-xs font-medium tracking-wide uppercase opacity-60">Kept</p>
+          <ul class="text-xs">
+            {fork.carried.map((c) => (
+              <CommitLine c={c} web={web} />
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {fork.dropped.length > 0 ? (
+        <>
+          <p class="mt-1 text-xs font-medium tracking-wide uppercase opacity-60">Dropped, already upstream</p>
+          <ul class="text-xs">
+            {fork.dropped.map((c) => (
+              <CommitLine c={c} web={web} note={c.reason} />
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {fork.waitsOn.length > 0 ? (
+        <>
+          <p class="mt-1 text-xs font-medium tracking-wide uppercase opacity-60">Waiting on</p>
+          <ul class="text-xs">
+            {fork.waitsOn.map((w) => (
+              <li>
+                <span class="font-mono">{w.ref}</span>{' '}
+                <span class="opacity-60">
+                  {FORK_REF_WORDS[w.state] ?? w.state}
+                  {w.state === 'released' && w.releasedIn ? ` in ${w.releasedIn}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </div>
+  )
+}
+
 const Ext: FC<{ href: string; children?: unknown }> = ({ href, children }) => (
   <a href={href} target="_blank" rel="noopener" class="btn btn-ghost btn-xs tap font-normal">
     {children} ↗
@@ -64,6 +168,7 @@ export const DiffView: FC<{
     ) : (
       result.hunks.map((h) => <Hunk hunk={h} />)
     )}
+    {!('error' in result) && result.fork ? <ForkBlock fork={result.fork} /> : null}
 
     {proposal ? (
       <div class={`border-l-2 pl-3 ${proposal.error ? 'border-warning' : 'border-base-300'} my-2`}>

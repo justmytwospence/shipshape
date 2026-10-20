@@ -1,7 +1,14 @@
 import { Octokit } from 'octokit'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { configured, env, loadPolicy, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { scanRepo } from '../compose/scan.ts'
+import { bumpFork, readForkPin, retireFork } from '../compose/fork-edit.ts'
+import { clearForkConflict, forkConflictFor, forkRefs, recordForkConflict, recordForkPrepared } from '../forks.ts'
+import { prepareFork as realPrepareFork, upstreamUrlFor, type PrepareForkInput, type PrepareForkResult } from '../forks/rebase.ts'
+import { headDigest } from '../registry/index.ts'
+import { sameVersion, versionKey } from '../versions/key.ts'
 import { parseImageRef, formatImageRef } from '../images/ref.ts'
 import {
   branchFor,
@@ -15,8 +22,8 @@ import { applyCachedVerdict } from '../analyze/run.ts'
 import { routine } from '../notify/digest.ts'
 import { foldGroupMagnitude, shouldOpenPr, type EffectiveTier } from '../policy.ts'
 import type { Magnitude } from '../versions/patterns.ts'
-import { bumpImage } from './editor.ts'
-import { changeText, prBody, short } from './body.ts'
+import { applyForkEdit, bumpImage } from './editor.ts'
+import { changeText, prBody, short, type ForkPrInfo } from './body.ts'
 import { sourceFor } from '../resolver/index.ts'
 import { alreadyCommented, mark } from './comments.ts'
 import { authorArgs, ensureWorkRepo, git, httpsUrl, withGitLock } from './repo.ts'
@@ -399,6 +406,7 @@ async function retargetPr(
     else failGroup(group, built.reason)
     return 'retire'
   }
+  const forks = built.forks
 
   const push = await pushBranch(repoDir, pr.branch)
   if (!push.ok) {
@@ -442,7 +450,7 @@ async function retargetPr(
   }
 
   const { owner, repo } = repoParts()
-  const title = prTitle(group)
+  const title = prTitle(group, forks)
   try {
     const sources = await sourceRepos(group)
     await gh().rest.pulls.update({
@@ -453,7 +461,7 @@ async function retargetPr(
       // Regenerated whole rather than patched: it carries the members table, the
       // reference links and a fresh pair of verdict markers holding the "not run yet"
       // placeholder, so the previous target's analysis cannot survive into the new one.
-      body: prBody(group, policy, sources),
+      body: prBody(group, policy, sources, forks),
     })
   } catch (err) {
     logEvent({
@@ -713,20 +721,29 @@ export function eligibleGroups(policy: Policy): UpdateGroup[] {
     )
     .all() as (GroupMember & { detail: string | null })[]
 
-  const candidates = rows.filter(
-    (r) =>
-      shouldOpenPr({
-        tier: r.tier as EffectiveTier,
-        magnitude: r.magnitude as Magnitude,
-        rolling: r.detail === 'rolling',
-      }) &&
-      // Never for a fork, whatever its row says: there is no image line to rewrite.
-      r.detail !== 'fork' &&
-      !isFork(r.stack, r.service),
+  const wanted = rows.filter((r) =>
+    shouldOpenPr({
+      tier: r.tier as EffectiveTier,
+      magnitude: r.magnitude as Magnitude,
+      rolling: r.detail === 'rolling',
+    }),
   )
-  if (candidates.length === 0) return []
+  if (wanted.length === 0) return []
 
   const services = scanRepo(env.repoDir, policy.exclude_stacks)
+  // A fork whose last replay onto this very target conflicted, from this very pin, is
+  // left alone: the replay would fail identically every poll. A changed pin or a newer
+  // target is a new attempt (FORKS.md, "When a rebase conflicts").
+  const candidates = wanted.filter((r) => {
+    if (!isFork(r.stack, r.service)) return true
+    const conflict = forkConflictFor(r.stack, r.service)
+    if (!conflict) return true
+    const live = services.find((s) => s.stack === r.stack && s.service === r.service)
+    const pinned = /#([0-9a-f]{7,40})$/.exec(live?.buildContext ?? '')?.[1] ?? null
+    return !(conflict.toTag === r.to_tag.split('@')[0] && pinned === conflict.sha)
+  })
+  if (candidates.length === 0) return []
+
   const { sourceRepoFor, groupLabelFor } = makeLookups(services)
   return groupUpdates(candidates, sourceRepoFor, groupLabelFor)
 }
@@ -784,22 +801,59 @@ export function resolveBranch(g: UpdateGroup, retargeting?: number): string {
  *
  * Nothing is logged here. The two ways this fails mean different things to each caller.
  */
-async function buildBranch(
+/**
+ * What `buildBranch` reaches outside the work clone, replaceable so a test can hand it a
+ * replay that already happened and a registry that answers.
+ */
+export interface BuildDeps {
+  prepareFork: (input: PrepareForkInput) => Promise<PrepareForkResult>
+  /** The digest of an upstream tag, for a fork whose pin carries one. */
+  digestFor: (registry: string, repository: string, tag: string) => Promise<string | null>
+  /** The upstream repository (`owner/repo`) an image comes from. */
+  sourceRepoFor: (m: GroupMember) => Promise<string | null>
+}
+
+const realDeps: BuildDeps = {
+  prepareFork: realPrepareFork,
+  digestFor: headDigest,
+  sourceRepoFor: async (m) => {
+    const ref = parseImageRef(m.image)
+    try {
+      const r = await sourceFor(
+        { registry: ref.registry, repository: ref.repository },
+        { service: { stack: m.stack, service: m.service }, tag: ref.tag ?? m.from_tag },
+      )
+      return r.repo
+    } catch {
+      return null
+    }
+  },
+}
+
+export type BuildResult =
+  | { ok: true; sha: string; forks: Map<number, ForkPrInfo> }
+  | { ok: false; alreadyApplied?: boolean; conflict?: boolean; reason: string }
+
+export async function buildBranch(
   repoDir: string,
   group: UpdateGroup,
   branch: string,
-): Promise<{ ok: true; sha: string } | { ok: false; alreadyApplied?: boolean; reason: string }> {
+  deps: BuildDeps = realDeps,
+): Promise<BuildResult> {
   await git(repoDir, ['checkout', '-B', branch, 'origin/main'])
+  const forks = new Map<number, ForkPrInfo>()
 
   for (const m of group.members) {
-    // A fork's row is always held, so it should never reach here -- but a `build:`
-    // service cannot be bumped by rewriting `image:`, and the one way to be sure no path
-    // ever tries is to refuse at the edit itself (FORKS.md).
-    if (isFork(m.stack, m.service)) {
-      return { ok: false, reason: `${m.stack}/${m.service} is a fork: retire it by hand, see FORKS.md` }
-    }
     const file = composeFileFor(m.stack, m.service)
     if (!file) return { ok: false, reason: `no compose file recorded for ${m.stack}/${m.service}` }
+
+    if (isFork(m.stack, m.service)) {
+      const r = await buildForkMember(repoDir, file, m, deps)
+      if (!r.ok) return r
+      forks.set(m.id, r.info)
+      continue
+    }
+
     const oldRef = m.image
     const newRef = rewriteRef(oldRef, m.to_tag)
     if (!newRef) return { ok: false, reason: `cannot build a new reference from "${m.to_tag}"` }
@@ -814,8 +868,156 @@ async function buildBranch(
     if (!edit.ok) return { ok: false, alreadyApplied: edit.alreadyApplied, reason: edit.reason }
   }
 
-  await git(repoDir, [...authorArgs(), 'commit', '-am', prTitle(group)])
-  return { ok: true, sha: (await git(repoDir, ['rev-parse', 'HEAD'])).stdout }
+  await git(repoDir, [...authorArgs(), 'commit', '-am', prTitle(group, forks)])
+  return { ok: true, sha: (await git(repoDir, ['rev-parse', 'HEAD'])).stdout, forks }
+}
+
+/**
+ * A fork's bump is a replay of our fixes onto the new release (src/forks/rebase.ts),
+ * then the compose edit that moves its pins onto the result (compose/fork-edit.ts) --
+ * or, when nothing is left to carry, the edit that puts the plain upstream image back.
+ *
+ * A conflict is written down and raised as an incident here, because this is where it is
+ * found; the pass leaves the update alone afterwards until the pin or the target changes
+ * (see `eligibleGroups`). A successful replay clears whatever conflict was recorded.
+ */
+async function buildForkMember(
+  repoDir: string,
+  file: string,
+  m: GroupMember,
+  deps: BuildDeps,
+): Promise<{ ok: true; info: ForkPrInfo } | Extract<BuildResult, { ok: false }>> {
+  const who = `${m.stack}/${m.service}`
+  let text: string
+  try {
+    text = readFileSync(join(repoDir, file), 'utf8')
+  } catch (err) {
+    return { ok: false, reason: `cannot read ${file}: ${(err as Error).message}` }
+  }
+  const targetTag = m.to_tag.split('@')[0]!
+  const fromTag = m.from_tag.split('@')[0]!
+  const upstreamRef = await upstreamRefAt(m.image, m.to_tag, deps.digestFor)
+  if (!upstreamRef.ok) return { ok: false, reason: `${who}: ${upstreamRef.reason}` }
+
+  const read = readForkPin(text, m.service)
+  if (!read.ok) {
+    // No fork pin to read: retired already -- by an earlier pass, or by hand -- is done,
+    // and anything else is a shape to look at.
+    const retired = retireFork(text, m.service, { expectedSha: '', upstreamRef: upstreamRef.ref })
+    if (!retired.ok && retired.alreadyApplied) return { ok: false, alreadyApplied: true, reason: `${who}: ${retired.reason}` }
+    return { ok: false, reason: `${who}: ${read.reason}` }
+  }
+  const pin = read.pin
+  // The same assertion bumpImage makes on an image line: the file must still be where
+  // this update was computed from. Past it means done; anywhere else means a person.
+  if (sameTag(pin.baseTag, targetTag)) {
+    return { ok: false, alreadyApplied: true, reason: `${file} already builds ${m.service} from ${targetTag} (${pin.sha.slice(0, 7)})` }
+  }
+  if (!sameTag(pin.baseTag, fromTag)) {
+    return { ok: false, reason: `${file} now builds ${m.service} from ${pin.baseTag}, expected ${fromTag}` }
+  }
+
+  const refs = forkRefs(m.stack, m.service)
+  const waitsOn = refs.map((r) => ({ ref: r.ref, state: r.state, releasedIn: r.releasedIn }))
+  const upstreamUrl = upstreamUrlFor(await deps.sourceRepoFor(m), refs.map((r) => r.ref))
+  if (!upstreamUrl) {
+    return {
+      ok: false,
+      reason: `${who}: no upstream repository is known to rebase onto -- add a shipshape.source label naming it`,
+    }
+  }
+  const prepared = await deps.prepareFork({
+    forkUrl: pin.contextUrl,
+    upstreamUrl,
+    pinnedSha: pin.sha,
+    baseTag: pin.baseTag,
+    targetTag,
+    waitsOn,
+    shortLength: pin.shortSha.length,
+  })
+
+  switch (prepared.kind) {
+    case 'refused':
+      return { ok: false, reason: `${who}: ${prepared.reason}` }
+    case 'conflict':
+      await recordForkConflict(m.stack, m.service, {
+        toTag: targetTag,
+        sha: pin.sha,
+        commit: prepared.commit.sha,
+        subject: prepared.commit.subject,
+        files: prepared.files,
+        detail: prepared.detail,
+      })
+      return { ok: false, conflict: true, reason: `${who}: ${prepared.detail}` }
+    case 'retire':
+    case 'bump':
+      break
+  }
+
+  const edit =
+    prepared.kind === 'retire'
+      ? retireFork(text, m.service, { expectedSha: pin.sha, upstreamRef: upstreamRef.ref })
+      : bumpFork(text, m.service, {
+          expectedSha: pin.sha,
+          newSha: prepared.sha,
+          newTag: targetTag,
+          newUpstream: upstreamRef.ref,
+        })
+  if (!edit.ok) return { ok: false, alreadyApplied: edit.alreadyApplied, reason: `${who}: ${edit.reason}` }
+  const landed = await applyForkEdit({ repoDir, composeFile: file, text: edit.text })
+  if (!landed.ok) return { ok: false, reason: `${who}: ${landed.reason}` }
+
+  const info: ForkPrInfo = {
+    kind: prepared.kind,
+    fromSha: pin.sha,
+    sha: prepared.kind === 'bump' ? prepared.sha : null,
+    tag: prepared.kind === 'bump' ? prepared.tag : null,
+    forkUrl: pin.contextUrl,
+    upstreamRef: upstreamRef.ref,
+    carried: prepared.kind === 'bump' ? prepared.carried : [],
+    dropped: prepared.dropped,
+    waitsOn,
+  }
+  recordForkPrepared(m.stack, m.service, { ...info, waitsOn, forkUrl: pin.contextUrl, toTag: targetTag })
+  await clearForkConflict(m.stack, m.service)
+  return { ok: true, info }
+}
+
+/** The same version in either spelling (`v3.5.1` / `3.5.1`), or the same string. */
+function sameTag(a: string, b: string): boolean {
+  if (a === b) return true
+  const ka = versionKey(a)
+  const kb = versionKey(b)
+  return !!ka && !!kb && sameVersion(ka, kb)
+}
+
+/**
+ * The upstream reference at the new version: the tag, keeping a digest pin when the
+ * current reference has one. A `to_tag` that carries its own digest is used as is; one that
+ * does not, on a digest-pinned upstream, has its digest looked up -- and the edit is refused
+ * rather than written without the pin when the registry does not answer.
+ */
+export async function upstreamRefAt(
+  currentRef: string,
+  toTag: string,
+  digestFor: BuildDeps['digestFor'],
+): Promise<{ ok: true; ref: string } | { ok: false; reason: string }> {
+  const ref = parseImageRef(currentRef)
+  const at = toTag.indexOf('@')
+  if (at !== -1 || !ref.digest) {
+    const out = rewriteRef(currentRef, toTag)
+    return out ? { ok: true, ref: out } : { ok: false, reason: `cannot build a new reference from "${toTag}"` }
+  }
+  let digest: string | null = null
+  try {
+    digest = await digestFor(ref.registry, ref.repository, toTag)
+  } catch (err) {
+    return { ok: false, reason: `could not resolve the digest of ${ref.repository}:${toTag} (${(err as Error).message}); the digest pin would be lost` }
+  }
+  if (!digest) {
+    return { ok: false, reason: `could not resolve the digest of ${ref.repository}:${toTag}; the digest pin would be lost` }
+  }
+  return { ok: true, ref: formatImageRef(ref, toTag, digest) }
 }
 
 async function openPr(repoDir: string, group: UpdateGroup, policy: Policy): Promise<boolean> {
@@ -833,7 +1035,7 @@ async function openPr(repoDir: string, group: UpdateGroup, policy: Policy): Prom
     return failGroup(group, built.reason)
   }
   const sha = built.sha
-  const title = prTitle(group)
+  const title = prTitle(group, built.forks)
 
   let push = await pushBranch(repoDir, branch)
   if (!push.ok && branch !== taggedBranchFor(group)) {
@@ -863,7 +1065,7 @@ async function openPr(repoDir: string, group: UpdateGroup, policy: Policy): Prom
     base: 'main',
     head: branch,
     title,
-    body: prBody(group, policy, sources),
+    body: prBody(group, policy, sources, built.forks),
   })
   const number = created.data.number
 
@@ -1061,9 +1263,13 @@ function describe(g: UpdateGroup): string {
   return changeText(g.members, { named: true }) ?? ''
 }
 
-function prTitle(g: UpdateGroup): string {
+export function prTitle(g: UpdateGroup, forks?: Map<number, ForkPrInfo>): string {
   const m = g.members[0]!
   const names = g.members.map((x) => x.service).join(', ')
+  // A retire is still a version change, but "bump" would undersell what the diff does.
+  if (forks && g.members.every((x) => forks.get(x.id)?.kind === 'retire')) {
+    return `chore(deps): ${m.stack}: retire the ${names} fork, back to upstream ${short(m.to_tag)}`
+  }
   return `chore(deps): ${m.stack}: bump ${names} ${short(m.from_tag)} -> ${short(m.to_tag)}`
 }
 

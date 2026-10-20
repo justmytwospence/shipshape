@@ -32,6 +32,134 @@ export const FORK_INCIDENT_PREFIX = 'shipshape-fork-retire:'
 
 export const forkIncidentKey = (stack: string, service: string) => `${FORK_INCIDENT_PREFIX}${stack}/${service}`
 
+/**
+ * The one failure a rebase adds (src/forks/rebase.ts): a carried commit that no longer
+ * applies to the new release. One incident per service, raised when the pull request pass
+ * finds the conflict and resolved when a later replay succeeds or the update moves on.
+ */
+export const FORK_CONFLICT_PREFIX = 'shipshape-fork-conflict:'
+
+export const forkConflictKey = (stack: string, service: string) => `${FORK_CONFLICT_PREFIX}${stack}/${service}`
+
+export interface ForkConflict {
+  /** The upstream version the replay was onto, as the update's `to_tag` spells it. */
+  toTag: string
+  /** The pinned sha the replay started from. */
+  sha: string
+  /** The commit that would not apply. */
+  commit: string
+  subject: string
+  files: string[]
+  /** The sentence the update and the service show. */
+  detail: string
+  at: string
+}
+
+/** The recorded conflict for a service, if a replay left one. */
+export function forkConflictFor(stack: string, service: string): ForkConflict | null {
+  const row = getDb()
+    .prepare(`SELECT fork_conflict FROM images WHERE stack = ? AND service = ?`)
+    .get(stack, service) as { fork_conflict: string | null } | undefined
+  if (!row?.fork_conflict) return null
+  try {
+    return JSON.parse(row.fork_conflict) as ForkConflict
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Write the conflict down and raise its incident. The same conflict found again -- the
+ * same commit against the same target -- edits nothing and sends nothing; a different one
+ * (a newer target, a different commit) edits the message in place.
+ */
+export async function recordForkConflict(
+  stack: string,
+  service: string,
+  c: Omit<ForkConflict, 'at'>,
+): Promise<void> {
+  const db = getDb()
+  const prev = forkConflictFor(stack, service)
+  const same = prev && prev.toTag === c.toTag && prev.sha === c.sha && prev.commit === c.commit
+  if (same) return
+  const at = new Date().toISOString()
+  db.prepare(`UPDATE images SET fork_conflict = ? WHERE stack = ? AND service = ?`).run(
+    JSON.stringify({ ...c, at } satisfies ForkConflict),
+    stack,
+    service,
+  )
+  logEvent({
+    level: 'warn',
+    kind: 'pr',
+    stack,
+    service,
+    message: `fork cannot be rebased onto ${c.toTag}`,
+    detail: c.detail,
+  })
+  await notify({
+    key: forkConflictKey(stack, service),
+    title: `${service} fork conflicts with ${c.toTag}`,
+    body: [
+      `Replaying the ${service} fork's fixes onto upstream ${c.toTag} stopped at a conflict:`,
+      '',
+      `- ${c.detail}`,
+      '',
+      `Nothing was pushed and no pull request opened. Rebase the fork's homelab branch onto ${c.toTag} by hand and move the pinned sha in the compose file, or drop the commit -- FORKS.md, "When a rebase conflicts". shipshape tries again once the pin or the target changes.`,
+    ].join('\n'),
+    priority: 3,
+    tags: ['fork'],
+  })
+}
+
+/** Forget a conflict and resolve its incident, silently. No-op when there is none. */
+export async function clearForkConflict(stack: string, service: string): Promise<void> {
+  const db = getDb()
+  const row = db
+    .prepare(`SELECT fork_conflict FROM images WHERE stack = ? AND service = ?`)
+    .get(stack, service) as { fork_conflict: string | null } | undefined
+  if (!row?.fork_conflict) return
+  db.prepare(`UPDATE images SET fork_conflict = NULL WHERE stack = ? AND service = ?`).run(stack, service)
+  logEvent({ level: 'info', kind: 'pr', stack, service, message: 'fork conflict cleared' })
+  await resolveIncident(forkConflictKey(stack, service))
+}
+
+/** What the last replay for a service produced, for the update page. */
+export interface ForkPrepared {
+  kind: 'bump' | 'retire'
+  toTag: string
+  /** The pin the replay started from. */
+  fromSha: string
+  /** The replayed head and its tag, for a bump. */
+  sha: string | null
+  tag: string | null
+  /** The fork repository, as `build.context` names it. */
+  forkUrl: string
+  /** The `shipshape.fork.upstream` value (bump) or `image:` (retire) the file moves to. */
+  upstreamRef: string
+  carried: { sha: string; short: string; subject: string; author: string }[]
+  dropped: { sha: string; short: string; subject: string; author: string; reason: string }[]
+  waitsOn: { ref: string; state: ForkRefState; releasedIn: string | null }[]
+  at: string
+}
+
+export function forkPreparedFor(stack: string, service: string): ForkPrepared | null {
+  const row = getDb()
+    .prepare(`SELECT fork_prepared FROM images WHERE stack = ? AND service = ?`)
+    .get(stack, service) as { fork_prepared: string | null } | undefined
+  if (!row?.fork_prepared) return null
+  try {
+    return JSON.parse(row.fork_prepared) as ForkPrepared
+  } catch {
+    return null
+  }
+}
+
+export function recordForkPrepared(stack: string, service: string, p: Omit<ForkPrepared, 'at'>): void {
+  getDb()
+    .prepare(`UPDATE images SET fork_prepared = ? WHERE stack = ? AND service = ?`)
+    .run(JSON.stringify({ ...p, at: new Date().toISOString() } satisfies ForkPrepared), stack, service)
+}
+
 export interface ForkRefRow {
   ref: string
   state: ForkRefState
@@ -331,4 +459,28 @@ export async function reconcileForks(services: Pick<ScannedService, 'stack' | 's
     await resolveIncident(key)
   }
   db.prepare(`UPDATE images SET fork_notified = NULL WHERE fork_upstream IS NULL AND fork_notified IS NOT NULL`).run()
+
+  // A conflict whose update has moved on -- superseded, skipped, caught up, or the service
+  // retired -- has nothing left to retry, so its incident closes with it.
+  const conflicted = db
+    .prepare(`SELECT stack, service, fork_conflict FROM images WHERE fork_conflict IS NOT NULL`)
+    .all() as { stack: string; service: string; fork_conflict: string }[]
+  for (const r of conflicted) {
+    let c: ForkConflict | null = null
+    try {
+      c = JSON.parse(r.fork_conflict) as ForkConflict
+    } catch {
+      c = null
+    }
+    const live = c
+      ? (db
+          .prepare(
+            `SELECT 1 FROM updates WHERE stack = ? AND service = ? AND state IN ${sqlIn(LIVE_STATES)}
+               AND (to_tag = ? OR to_tag LIKE ?) LIMIT 1`,
+          )
+          .get(r.stack, r.service, c.toTag, `${c.toTag}@%`) as unknown)
+      : null
+    if (!current.has(`${r.stack}/${r.service}`) || !live) await clearForkConflict(r.stack, r.service)
+  }
+  db.prepare(`UPDATE images SET fork_prepared = NULL WHERE fork_upstream IS NULL AND fork_prepared IS NOT NULL`).run()
 }

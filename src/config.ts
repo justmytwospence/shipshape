@@ -34,9 +34,9 @@ export const env = {
   botEmail: process.env.BOT_EMAIL ?? 'shipshape@localhost',
 
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? '',
-  /** An OpenRouter key routes every model call through OpenRouter's Anthropic-compatible
-   *  endpoint instead of Anthropic directly. It wins when both are set, and the two are
-   *  never sent together -- see `src/analyze/client.ts`. */
+  /** An OpenRouter key serves Jev's Decisions API, and the Messages calls too when no
+   *  Anthropic key is set. The Anthropic key wins for Messages when both are set, and the
+   *  two are never sent together -- see `src/analyze/client.ts`. */
   openrouterApiKey: process.env.OPENROUTER_API_KEY ?? '',
   /** Overrides the gateway base URL. Only needed for a self-hosted Anthropic-compatible
    *  proxy; OpenRouter's own base is the default and needs no setting. */
@@ -124,7 +124,8 @@ const Tier = z
 export type Tier = z.infer<typeof Tier>
 
 /** The model every stage defaults to, spelled for whoever serves it. */
-export const DEFAULT_MODEL = process.env.OPENROUTER_API_KEY ? 'anthropic/claude-opus-5.5' : 'claude-opus-5-5'
+export const DEFAULT_MODEL =
+  !process.env.ANTHROPIC_API_KEY && process.env.OPENROUTER_API_KEY ? 'anthropic/claude-opus-5.5' : 'claude-opus-5-5'
 
 /** "HH:MM-HH:MM", may wrap past midnight. Only still parsed so a retired key can be named. */
 const Window = z.string().regex(/^\d{2}:\d{2}-\d{2}:\d{2}$/)

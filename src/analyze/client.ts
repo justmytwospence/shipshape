@@ -27,18 +27,24 @@ export function llmConfigured(): boolean {
 
 /** Which env var an operator is missing, named exactly, for the error they will read. */
 export function missingKeyMessage(): string {
-  return 'neither OPENROUTER_API_KEY nor ANTHROPIC_API_KEY is set'
+  return 'neither ANTHROPIC_API_KEY nor OPENROUTER_API_KEY is set'
 }
 
 /** Who is serving the model right now, for the status page and the activity log. */
+/**
+ * Anthropic wins when both keys are set (since 2026-10-20): the Messages calls run on the
+ * Max plan's monthly API credits, which only pay for Anthropic's own API, while the
+ * OpenRouter key stays for Jev's Decisions API alone (`decisionsKey`). Each key still
+ * goes only to its own vendor.
+ */
 export function llmProvider(): 'openrouter' | 'anthropic' | 'none' {
-  if (env.openrouterApiKey) return 'openrouter'
   if (env.anthropicApiKey) return 'anthropic'
+  if (env.openrouterApiKey) return 'openrouter'
   return 'none'
 }
 
 export function llmClient(maxRetries: number): Anthropic {
-  if (env.openrouterApiKey) {
+  if (llmProvider() === 'openrouter') {
     return new Anthropic({
       baseURL: env.llmBaseUrl || OPENROUTER_BASE,
       // Explicitly null, and load-bearing. The SDK defaults `apiKey` from
@@ -51,7 +57,9 @@ export function llmClient(maxRetries: number): Anthropic {
       maxRetries,
     })
   }
-  return new Anthropic({ apiKey: env.anthropicApiKey, maxRetries })
+  // authToken null for the same reason in reverse: never send a bearer from the
+  // environment (ANTHROPIC_AUTH_TOKEN) alongside the key.
+  return new Anthropic({ apiKey: env.anthropicApiKey, authToken: null, maxRetries })
 }
 
 /**
@@ -71,9 +79,9 @@ export function baseModel(model: string): string {
 /**
  * The credential for OpenRouter's Decisions API (Jev), or null.
  *
- * The same key as the Messages calls, and deliberately so: every model call shipshape
- * makes sits behind its one spending limit. There is no Anthropic fallback here -- the
- * Decisions API is OpenRouter's, and an Anthropic key must never be sent to it.
+ * Only the OpenRouter key, whoever serves the Messages calls. There is no Anthropic
+ * fallback here -- the Decisions API is OpenRouter's, and an Anthropic key must never be
+ * sent to it.
  */
 export function decisionsKey(): string | null {
   return env.openrouterApiKey || null
@@ -81,7 +89,7 @@ export function decisionsKey(): string | null {
 
 /** Where to list the models this credential may actually use. */
 export function modelsEndpoint(): { url: string; headers: Record<string, string> } | null {
-  if (env.openrouterApiKey) {
+  if (llmProvider() === 'openrouter') {
     return {
       url: `${env.llmBaseUrl || OPENROUTER_BASE}/v1/models`,
       headers: { authorization: `Bearer ${env.openrouterApiKey}` },

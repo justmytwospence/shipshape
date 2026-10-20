@@ -92,8 +92,8 @@ export function contextFor(id: number): { row: UpdateRow; ctx: ActionContext } |
     : undefined
 
   const image = db
-    .prepare(`SELECT current_tag FROM images WHERE stack = ? AND service = ?`)
-    .get(row.stack, row.service) as { current_tag: string | null } | undefined
+    .prepare(`SELECT current_tag, fork_upstream FROM images WHERE stack = ? AND service = ?`)
+    .get(row.stack, row.service) as { current_tag: string | null; fork_upstream: string | null } | undefined
 
   return {
     row,
@@ -123,6 +123,7 @@ export function contextFor(id: number): { row: UpdateRow; ctx: ActionContext } |
       held: pr?.hold_reason ?? null,
       // A digest pin carries `tag@sha`; compare the tag part only.
       atFromTag: image ? image.current_tag === row.from_tag.split('@')[0] : undefined,
+      fork: !!image?.fork_upstream || row.detail === 'fork',
     },
   }
 }

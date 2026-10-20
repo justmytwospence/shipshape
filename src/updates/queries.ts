@@ -35,6 +35,8 @@ export interface UpdateView {
   state: UpdateState
   detail: string | null
   rolling: boolean
+  /** The service runs our own build of this image: held for good, retired by hand (FORKS.md). */
+  fork: boolean
   detectedAt: string
   updatedAt: string
   ackedAt: string | null
@@ -302,8 +304,9 @@ function toView(u: RawUpdate, repo: string): UpdateView {
   const verdict = verdictFor(u)
   const deploy = deployFor(u.id)
   const image = getDb()
-    .prepare(`SELECT current_tag FROM images WHERE stack = ? AND service = ?`)
-    .get(u.stack, u.service) as { current_tag: string | null } | undefined
+    .prepare(`SELECT current_tag, fork_upstream FROM images WHERE stack = ? AND service = ?`)
+    .get(u.stack, u.service) as { current_tag: string | null; fork_upstream: string | null } | undefined
+  const fork = !!image?.fork_upstream || u.detail === 'fork'
   const hasProposal = pr
     ? !!getDb()
         .prepare(
@@ -335,6 +338,7 @@ function toView(u: RawUpdate, repo: string): UpdateView {
     ackedAt: u.acked_at,
     held: pr?.held ?? null,
     atFromTag: image ? image.current_tag === u.from_tag.split('@')[0] : undefined,
+    fork,
   }
   const actions = actionsFor(ctx)
   const presented = present(
@@ -362,6 +366,7 @@ function toView(u: RawUpdate, repo: string): UpdateView {
     state: u.state as UpdateState,
     detail: u.detail,
     rolling: u.detail === 'rolling',
+    fork,
     detectedAt: u.detected_at,
     updatedAt: u.updated_at,
     ackedAt: u.acked_at,

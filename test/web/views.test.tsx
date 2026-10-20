@@ -38,6 +38,7 @@ const FRAGMENTS = [
   'update-row',
   'services',
   'service-detail',
+  'service-detail-fork',
   'activity',
   'settings',
   'status',

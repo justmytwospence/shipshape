@@ -697,8 +697,9 @@ export async function closeSupersededPrs(candidates: SupersededPr[]): Promise<nu
   return closed
 }
 
-/** Pending updates that policy says deserve a PR, grouped so companions travel together. */
-function eligibleGroups(policy: Policy): UpdateGroup[] {
+/** Pending updates that policy says deserve a PR, grouped so companions travel together.
+ *  Exported for the tests, which check what never reaches it rather than what does. */
+export function eligibleGroups(policy: Policy): UpdateGroup[] {
   const db = getDb()
   const rows = db
     .prepare(
@@ -712,12 +713,16 @@ function eligibleGroups(policy: Policy): UpdateGroup[] {
     )
     .all() as (GroupMember & { detail: string | null })[]
 
-  const candidates = rows.filter((r) =>
-    shouldOpenPr({
-      tier: r.tier as EffectiveTier,
-      magnitude: r.magnitude as Magnitude,
-      rolling: r.detail === 'rolling',
-    }),
+  const candidates = rows.filter(
+    (r) =>
+      shouldOpenPr({
+        tier: r.tier as EffectiveTier,
+        magnitude: r.magnitude as Magnitude,
+        rolling: r.detail === 'rolling',
+      }) &&
+      // Never for a fork, whatever its row says: there is no image line to rewrite.
+      r.detail !== 'fork' &&
+      !isFork(r.stack, r.service),
   )
   if (candidates.length === 0) return []
 
@@ -787,6 +792,12 @@ async function buildBranch(
   await git(repoDir, ['checkout', '-B', branch, 'origin/main'])
 
   for (const m of group.members) {
+    // A fork's row is always held, so it should never reach here -- but a `build:`
+    // service cannot be bumped by rewriting `image:`, and the one way to be sure no path
+    // ever tries is to refuse at the edit itself (FORKS.md).
+    if (isFork(m.stack, m.service)) {
+      return { ok: false, reason: `${m.stack}/${m.service} is a fork: retire it by hand, see FORKS.md` }
+    }
     const file = composeFileFor(m.stack, m.service)
     if (!file) return { ok: false, reason: `no compose file recorded for ${m.stack}/${m.service}` }
     const oldRef = m.image
@@ -1089,6 +1100,14 @@ async function sourceRepos(g: UpdateGroup): Promise<Map<number, string | null>> 
   return out
 }
 
+
+/** Whether the compose file runs our own build of this service's upstream image. */
+export function isFork(stack: string, service: string): boolean {
+  const row = getDb()
+    .prepare(`SELECT fork_upstream FROM images WHERE stack = ? AND service = ?`)
+    .get(stack, service) as { fork_upstream: string | null } | undefined
+  return !!row?.fork_upstream
+}
 
 function composeFileFor(stack: string, service: string): string | null {
   const row = getDb()

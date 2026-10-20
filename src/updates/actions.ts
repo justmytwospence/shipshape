@@ -79,6 +79,8 @@ export interface ActionContext {
   atFromTag?: boolean
   /** Why this pull request is being held, when somebody asked shipshape to hold it. */
   held?: string | null
+  /** The service is a fork of its upstream image: nothing can open or deploy for it (FORKS.md). */
+  fork?: boolean
 }
 
 const ROLLING = (c: ActionContext) => c.detail === 'rolling'
@@ -96,7 +98,10 @@ export function actionsFor(c: ActionContext): Verb[] {
       break
 
     case 'held':
-      out.push('open-pr', 'skip')
+      // A fork's hold has no release: shipshape cannot rewrite a `build:` service, so the
+      // only verb left is to stop listing the version.
+      if (!c.fork) out.push('open-pr')
+      out.push('skip')
       break
 
     case 'pr_open':
@@ -185,6 +190,7 @@ export function refusalFor(verb: Verb, c: ActionContext): string {
     case 'merge-deploy':
       return c.prNumber ? `this update is ${stage}, not waiting on a merge` : 'there is no pull request to merge'
     case 'open-pr':
+      if (c.fork) return 'this service is a fork: retire it by hand, see FORKS.md'
       return `a pull request is not what ${stage} needs next`
     case 'deploy':
       return c.state === 'merged'

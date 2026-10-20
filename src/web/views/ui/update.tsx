@@ -682,11 +682,13 @@ export const UpdateDetail: FC<{
         update={update}
         target={target}
         reply={reply}
-        warnings={
-          update.pr?.held
-            ? [`You asked shipshape to hold this — it will not merge on its own.`, ...(warnings ?? [])]
-            : warnings
-        }
+        warnings={[
+          ...(update.fork
+            ? ['This service is a fork of its upstream image, so shipshape only lists what upstream released: retire it by hand, see FORKS.md.']
+            : []),
+          ...(update.pr?.held ? [`You asked shipshape to hold this — it will not merge on its own.`] : []),
+          ...(warnings ?? []),
+        ]}
       />
       <VerdictBlock update={update} />
       <ScreenBlock update={update} />

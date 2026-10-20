@@ -29,6 +29,8 @@ export interface ServiceRowData {
   policy?: string | null
   /** Whether the repository its release notes come from is certain, only likely, or unknown. */
   upstream?: 'linked' | 'likely' | 'none'
+  /** Our own build of the upstream image, waiting on an upstream fix (FORKS.md). */
+  fork?: boolean
 }
 
 export const FILTERS = [
@@ -126,14 +128,20 @@ export const ServiceRow: FC<{
           )}
         </span>
         {/* phone, line 1 right: the status */}
-        <span class="lg:hidden">
+        <span class="flex items-center gap-1 lg:hidden">
+          {svc.fork ? <ForkBadge /> : null}
           <span class={`badge badge-xs badge-soft ${st.cls}`}>{st.label}</span>
         </span>
-        <span class="hidden min-w-0 truncate lg:block">
-          <Mono>
-            {svc.image ?? '—'}
-            {svc.tag ? <span class="opacity-60">:{svc.tag}</span> : null}
-          </Mono>
+        {/* The fork badge sits by the image rather than the status: the status cell is
+            5rem, and the thing it qualifies is the image, which is not the one running. */}
+        <span class="hidden min-w-0 items-center gap-1.5 lg:flex">
+          <span class="min-w-0 truncate">
+            <Mono>
+              {svc.image ?? '—'}
+              {svc.tag ? <span class="opacity-60">:{svc.tag}</span> : null}
+            </Mono>
+          </span>
+          {svc.fork ? <ForkBadge /> : null}
         </span>
         <span class="hidden min-w-0 items-center gap-1.5 lg:flex">
           <span class={`badge badge-xs badge-soft ${st.cls}`}>{st.label}</span>
@@ -170,6 +178,9 @@ export const ServiceRow: FC<{
     </div>
   )
 }
+
+/** The one word that says this service is not running the image it watches. */
+const ForkBadge: FC = () => <span class="badge badge-xs badge-soft badge-info">fork</span>
 
 export const ServicesList: FC<{
   services: ServiceRowData[]
@@ -228,14 +239,37 @@ export interface ConfigLine {
   note?: string
 }
 
+/** One upstream reference a fork waits on, as the last scan left it. */
+export interface ForkRefLine {
+  ref: string
+  url: string | null
+  state: 'open' | 'merged-unreleased' | 'released' | 'closed-unfixed' | 'unknown'
+  /** The state in words: "merged, not released", "released in v3.4.0". */
+  label: string
+  releasedIn: string | null
+  releaseUrl: string | null
+  detail: string | null
+  checkedAt: string | null
+}
+
 export interface ServiceDetailData {
   svc: ServiceRowData
+  /** Present for a fork: the upstream base and the references it waits on. */
+  fork?: { upstream: string; refs: ForkRefLine[] } | null
   composeFile: string | null
   config: ConfigLine[]
   history: UpdateView[]
   canEdit: boolean
   /** What the link dialog starts from: the labels as the compose file has them. */
   link?: { source: string | null; changelog: string | null; inferred: string | null }
+}
+
+const FORK_STATE_CLS: Record<ForkRefLine['state'], string> = {
+  open: 'badge-ghost',
+  'merged-unreleased': 'badge-warning',
+  released: 'badge-success',
+  'closed-unfixed': 'badge-error',
+  unknown: 'badge-ghost',
 }
 
 const SOURCE_CLS: Record<Provenance, string> = {
@@ -294,6 +328,7 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
           <ServiceName stack={svc.stack} service={svc.service} />
         </h2>
         <span class={`badge badge-xs badge-soft ${st.cls}`}>{st.label}</span>
+        {svc.fork ? <ForkBadge /> : null}
         <Mono>
           {svc.image ?? 'no image'}
           {svc.tag ? `:${svc.tag}` : ''}
@@ -417,6 +452,8 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
         ) : null}
       </section>
 
+      {data.fork ? <ForkSection fork={data.fork} /> : null}
+
       {data.canEdit ? <RungDialog svc={svc} ctx={ctx} /> : null}
       {data.canEdit ? <LinkDialog svc={svc} link={data.link} ctx={ctx} /> : null}
 
@@ -435,6 +472,56 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
     </div>
   )
 }
+
+/**
+ * What a fork is waiting for. Each reference links out to GitHub with where it stands;
+ * a released one links to the release too, which is where retiring starts. The sentence
+ * at the end says the one thing the badge cannot: nothing here is automatic.
+ */
+const ForkSection: FC<{ fork: NonNullable<ServiceDetailData['fork']> }> = ({ fork }) => (
+  <section class="border-base-300 border-t px-4 py-3">
+    <h3 class="mb-1.5 text-xs font-medium tracking-wide uppercase opacity-60">Fork</h3>
+    <div class="divide-base-300 border-base-300 divide-y border-y text-xs">
+      <div class="flex min-h-11 flex-wrap items-center gap-x-3 lg:min-h-7 lg:flex-nowrap">
+        <span class="w-24 shrink-0 opacity-70">based on</span>
+        <span class="min-w-0 flex-1 font-mono break-all lg:truncate">{fork.upstream}</span>
+      </div>
+      {fork.refs.length === 0 ? (
+        <div class="flex min-h-11 items-center lg:min-h-7">
+          <span class="w-24 shrink-0 opacity-70">waits on</span>
+          <span class="opacity-70">nothing listed — add shipshape.fork.waits-on so shipshape can say when it can go</span>
+        </div>
+      ) : (
+        fork.refs.map((r, i) => (
+          <div class="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-0.5 py-1 lg:min-h-7 lg:flex-nowrap lg:py-0">
+            <span class="w-24 shrink-0 opacity-70">{i === 0 ? 'waits on' : ''}</span>
+            <span class="min-w-0 flex-1">
+              {r.url ? (
+                <a href={r.url} target="_blank" rel="noopener" class="link link-hover font-mono">
+                  {r.ref}
+                </a>
+              ) : (
+                <span class="font-mono">{r.ref}</span>
+              )}
+              {r.detail ? <span class="block opacity-60">{r.detail}</span> : null}
+            </span>
+            <span class="flex items-center gap-1.5">
+              <span class={`badge badge-xs badge-soft ${FORK_STATE_CLS[r.state]}`}>{r.label}</span>
+              {r.releaseUrl ? (
+                <a href={r.releaseUrl} target="_blank" rel="noopener" class="link link-hover">
+                  release
+                </a>
+              ) : null}
+            </span>
+          </div>
+        ))
+      )}
+    </div>
+    <p class="mt-1.5 text-xs opacity-60">
+      Always held: shipshape lists what upstream releases, and says so once every fix has shipped. Retiring it is by hand — FORKS.md.
+    </p>
+  </section>
+)
 
 /**
  * Changing a rung writes the label into the compose file and commits it.

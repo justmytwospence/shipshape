@@ -62,6 +62,17 @@ export function buildUpdateDiff(updateId: number): DiffResult {
     }
   }
 
+  // A fork's `image:` is the local build, not the upstream the update is about; the
+  // change it needs is a rebase of the fork, or its retirement, neither of which is an
+  // image line (FORKS.md).
+  if (row.detail === 'fork') {
+    return {
+      error:
+        'Nothing to change in git — this service runs its own build of the upstream image. ' +
+        'Rebase the fork onto the new release, or retire it; see FORKS.md.',
+    }
+  }
+
   const abs = join(env.repoDir, row.compose_file)
   let src: string
   try {

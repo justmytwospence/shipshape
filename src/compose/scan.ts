@@ -114,6 +114,46 @@ export interface ScannedService {
   groupLabel: string | null
   /** `shipshape.*` keys nothing reads: a typo, or a label left over from a retired one. */
   unknownLabels: string[]
+  /**
+   * A label that was read but could not be used, in words: a `fork.waits-on` entry that is
+   * not `owner/repo#N`, a `fork.upstream` that is not an image reference. Reported like
+   * unknown labels, and never a reason to stop the scan.
+   */
+  labelProblems: string[]
+  /**
+   * Our own build of an upstream image, carrying a fix upstream has not released (FORKS.md).
+   * `upstream` is the image the fork is based on, as it stood in `image:` before the fork;
+   * `waitsOn` the upstream issues or PRs the fork exists for, each `owner/repo#N`. When
+   * set, `ref` is parsed from `upstream` rather than from `image:` -- the local build name
+   * has no registry to poll -- and the service is watchable despite `build:`. Its tier is
+   * always `held`: shipshape cannot rewrite a `build:` service, so it only reports.
+   */
+  fork: ForkInfo | null
+}
+
+export interface ForkInfo {
+  upstream: string
+  waitsOn: string[]
+}
+
+/** `owner/repo#N`, as GitHub writes a cross-repository reference. */
+const WAITS_ON = /^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)#(\d+)$/
+
+/**
+ * Split `shipshape.fork.waits-on` into normalised references, keeping the entries that do
+ * not parse separate so they can be said out loud rather than dropped.
+ */
+export function parseWaitsOn(raw: string | null): { refs: string[]; malformed: string[] } {
+  const refs: string[] = []
+  const malformed: string[] = []
+  for (const part of (raw ?? '').split(',')) {
+    const s = part.trim()
+    if (!s) continue
+    const m = WAITS_ON.exec(s)
+    if (m) refs.push(`${m[1]}#${m[2]}`)
+    else malformed.push(s)
+  }
+  return { refs: [...new Set(refs)], malformed }
 }
 
 /** Every `shipshape.*` key the scanner understands. Anything else is reported, never guessed at. */
@@ -131,6 +171,8 @@ export const KNOWN_LABELS = new Set([
   'pr',
   'propose',
   'group',
+  'fork.upstream',
+  'fork.waits-on',
 ])
 
 const SKIP_DIRS = new Set(['.git', '.claude', '.agents', 'bin', 'node_modules'])
@@ -249,9 +291,31 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
     const proposeLabel = label('propose')
     const groupLabel = label('group')
     const watchLabel = label('watch')
+    const labelProblems: string[] = []
+
+    // A fork names the upstream image it stands in for, and that is what gets polled. The
+    // local build name in `image:` is kept as `imageRaw` -- the deploy still compares the
+    // running container against it -- but `ref` comes from the label.
+    let fork: ForkInfo | null = null
+    const forkUpstream = label('fork.upstream')?.trim() || null
+    if (forkUpstream !== null) {
+      if (forkUpstream.includes('${') || !/^[^\s]+$/.test(forkUpstream)) {
+        labelProblems.push(`shipshape.fork.upstream "${forkUpstream}" is not an image reference`)
+      } else {
+        const waits = parseWaitsOn(label('fork.waits-on'))
+        for (const bad of waits.malformed) {
+          labelProblems.push(`shipshape.fork.waits-on entry "${bad}" is not owner/repo#N`)
+        }
+        fork = { upstream: forkUpstream, waitsOn: waits.refs }
+      }
+    } else if (label('fork.waits-on') !== null) {
+      labelProblems.push('shipshape.fork.waits-on without shipshape.fork.upstream does nothing')
+    }
 
     let unwatchable: UnwatchableReason | null = null
     if (excludeStacks.includes(stack)) unwatchable = 'excluded'
+    // A fork is a `build:` service with a registry to poll after all: the upstream's.
+    else if (fork) unwatchable = null
     else if (!imageRaw) unwatchable = 'no-image'
     // A locally-built image has no registry to poll. `build:` wins even when `image:`
     // is also set -- that combination just names the local build output.
@@ -261,13 +325,14 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
     else if (imageRaw.includes('${')) unwatchable = 'interpolated'
 
     const watched = watchLabel === 'true' && unwatchable === null
+    const polled = fork ? fork.upstream : imageRaw
 
     out.push({
       stack,
       service: name,
       composeFile: rel,
       imageRaw,
-      ref: imageRaw && !imageRaw.includes('${') ? parseImageRef(imageRaw) : null,
+      ref: polled && !polled.includes('${') ? parseImageRef(polled) : null,
       labels,
       profiles,
       dormant: profiles.includes('disabled') || profiles.includes('standby'),
@@ -288,6 +353,8 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
       proposeLabel,
       groupLabel,
       unknownLabels,
+      labelProblems,
+      fork,
     })
   }
   return out

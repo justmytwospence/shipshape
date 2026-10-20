@@ -67,6 +67,7 @@ function base(over: Partial<UpdateView>): UpdateView {
     state: 'pr_open',
     detail: null,
     rolling: false,
+    fork: false,
     detectedAt: ago(30),
     updatedAt: ago(2),
     ackedAt: null,
@@ -279,6 +280,68 @@ const SERVICE = {
   constrainedFrom: null,
   lastSeenAt: ago(6),
   policy: 'manual',
+}
+
+/** A fork (FORKS.md): the row carries a badge and the pane a section of its own. */
+const FORK_SERVICE = {
+  stack: 'books',
+  service: 'grimmory',
+  image: 'grimmory-tools/grimmory',
+  tag: 'v3.3.3',
+  watched: true,
+  unwatchable: null,
+  lastStatus: null,
+  lastDetail: null,
+  constrainedFrom: null,
+  lastSeenAt: ago(6),
+  policy: 'manual',
+  fork: true,
+}
+
+const FORK = {
+  upstream: 'ghcr.io/grimmory-tools/grimmory:v3.3.3@sha256:fffd0ae0bfccd64ca00441e8fa58a14e286b9115e5df1cb47eecf294ad09e6ff',
+  refs: [
+    {
+      ref: 'grimmory-tools/grimmory#2952',
+      url: 'https://github.com/grimmory-tools/grimmory/issues/2952',
+      state: 'merged-unreleased' as const,
+      label: 'merged, not released',
+      releasedIn: null,
+      releaseUrl: null,
+      detail: 'merged',
+      checkedAt: ago(6),
+    },
+    {
+      ref: 'grimmory-tools/grimmory#2900',
+      url: 'https://github.com/grimmory-tools/grimmory/issues/2900',
+      state: 'released' as const,
+      label: 'released in v3.4.0',
+      releasedIn: 'v3.4.0',
+      releaseUrl: 'https://github.com/grimmory-tools/grimmory/releases/tag/v3.4.0',
+      detail: 'closing commit',
+      checkedAt: ago(6),
+    },
+    {
+      ref: 'grimmory-tools/grimmory#2800',
+      url: 'https://github.com/grimmory-tools/grimmory/issues/2800',
+      state: 'closed-unfixed' as const,
+      label: 'closed without a fix',
+      releasedIn: null,
+      releaseUrl: null,
+      detail: 'the issue was closed as not planned',
+      checkedAt: ago(6),
+    },
+    {
+      ref: 'grimmory-tools/grimmory#2700',
+      url: 'https://github.com/grimmory-tools/grimmory/issues/2700',
+      state: 'open' as const,
+      label: 'open',
+      releasedIn: null,
+      releaseUrl: null,
+      detail: null,
+      checkedAt: ago(6),
+    },
+  ],
 }
 
 const CHROME = {
@@ -624,7 +687,28 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
     'update-review-failed': String(
       detail(UPDATES.reviewFailed!, 'list=updates&stage=open', '/updates'),
     ),
-    services: String(ServicesList({ services: [SERVICE], grouped: false, ctx: 'list=services' })),
+    services: String(ServicesList({ services: [SERVICE, FORK_SERVICE], grouped: false, ctx: 'list=services' })),
+    'service-detail-fork': String(
+      ServiceDetail({
+        data: {
+          ...serviceData,
+          svc: FORK_SERVICE,
+          fork: FORK,
+          composeFile: 'books/docker-compose.yaml',
+          config: [
+            {
+              key: 'policy',
+              value: 'manual',
+              source: 'label' as const,
+              note: 'a fork: always held, whatever this says -- retire it by hand, see FORKS.md',
+            },
+          ],
+          history: [],
+        },
+        ctx: 'list=services',
+        listHref: '/services',
+      }),
+    ),
     'services-grouped': String(
       ServicesList({ services: [SERVICE], grouped: true, ctx: 'list=services&group=stack' }),
     ),

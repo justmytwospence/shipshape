@@ -6,7 +6,9 @@ import { patternFor } from '../detect.ts'
 import { tierFor, deployNeedsYou } from '../policy.ts'
 import { updatesForService } from './queries.ts'
 import { sourceForSync, type SourceInfo } from '../resolver/index.ts'
-import type { ConfigLine, ServiceDetailData, ServiceRowData } from '../web/views/ui/services.tsx'
+import { describeState, forkRefs } from '../forks.ts'
+import { forkRefUrl, releaseUrl } from '../upstream/forks.ts'
+import type { ConfigLine, ForkRefLine, ServiceDetailData, ServiceRowData } from '../web/views/ui/services.tsx'
 
 /**
  * What shipshape knows about one service, and where each part of it came from.
@@ -22,7 +24,8 @@ export function serviceRows(): ServiceRowData[] {
     getDb()
       .prepare(
         `SELECT stack, service, registry, repository, current_tag, watched, unwatchable,
-                last_status, last_detail, constrained_from, last_seen_at, policy_label
+                last_status, last_detail, constrained_from, last_seen_at, policy_label,
+                fork_upstream
            FROM images ORDER BY stack, service`,
       )
       .all() as {
@@ -38,6 +41,7 @@ export function serviceRows(): ServiceRowData[] {
       constrained_from: string | null
       last_seen_at: string | null
       policy_label: string | null
+      fork_upstream: string | null
     }[]
   ).map((r) => ({
     stack: r.stack,
@@ -52,6 +56,7 @@ export function serviceRows(): ServiceRowData[] {
     lastSeenAt: r.last_seen_at,
     policy: r.policy_label,
     upstream: upstreamState(r),
+    fork: !!r.fork_upstream,
   }))
 }
 
@@ -110,7 +115,7 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
   const image = db
     .prepare(
       `SELECT compose_file, pattern, tag_include, policy_label, claude_label,
-              deploy_label, registry, repository
+              deploy_label, registry, repository, fork_upstream, fork_waits_on
          FROM images WHERE stack = ? AND service = ?`,
     )
     .get(stack, service) as
@@ -123,6 +128,8 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
         deploy_label: string | null
         registry: string
         repository: string
+        fork_upstream: string | null
+        fork_waits_on: string | null
       }
     | undefined
 
@@ -139,16 +146,28 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
 
   const policyLabel = live?.policyLabel ?? image?.policy_label ?? null
   const prLabel = live?.prLabel ?? null
+  const isFork = live ? !!live.fork : !!image?.fork_upstream
   const config: ConfigLine[] = []
 
   const rung = (magnitude: 'patch' | 'minor' | 'major' | 'digest') =>
-    tierFor({ magnitude, policyLabel, prLabel, dormant: live?.dormant ?? false, defaults: policy.defaults })
+    tierFor({
+      magnitude,
+      policyLabel,
+      prLabel,
+      dormant: live?.dormant ?? false,
+      fork: isFork,
+      defaults: policy.defaults,
+    })
 
   config.push({
     key: 'policy',
     value: policyLabel ?? '(none)',
     source: policyLabel ? 'label' : 'none',
-    note: prLabel ? `also shipshape.pr: ${prLabel}, the old spelling of on-request` : undefined,
+    note: isFork
+      ? 'a fork: always held, whatever this says -- retire it by hand, see FORKS.md'
+      : prLabel
+        ? `also shipshape.pr: ${prLabel}, the old spelling of on-request`
+        : undefined,
   })
   for (const m of ['patch', 'minor', 'major', 'digest'] as const) {
     const t = rung(m)
@@ -212,8 +231,11 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
     config.push({ key: 'review', value: image.claude_label, source: 'label' })
   }
 
+  const fork = isFork ? forkSection(stack, service, live, image) : null
+
   return {
     svc,
+    fork,
     composeFile: image?.compose_file ?? null,
     config,
     history: updatesForService(stack, service),
@@ -225,6 +247,44 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
       inferred: source?.inferred?.repo ?? null,
     },
   }
+}
+
+/**
+ * The fork's own section: its upstream base and where each reference it waits on stands,
+ * from the last scan's answers. A reference in the label that no scan has looked at yet is
+ * listed too, as not checked, so the list always matches the compose file.
+ */
+function forkSection(
+  stack: string,
+  service: string,
+  live: ScannedService | undefined,
+  image: { fork_upstream: string | null; fork_waits_on: string | null } | undefined,
+): ServiceDetailData['fork'] {
+  const upstream = live?.fork?.upstream ?? image?.fork_upstream ?? ''
+  let listed: string[] = live?.fork?.waitsOn ?? []
+  if (!live && image?.fork_waits_on) {
+    try {
+      listed = JSON.parse(image.fork_waits_on) as string[]
+    } catch {
+      listed = []
+    }
+  }
+  const known = new Map(forkRefs(stack, service).map((r) => [r.ref, r]))
+  const refs: ForkRefLine[] = listed.map((ref) => {
+    const r = known.get(ref)
+    if (!r) return { ref, url: forkRefUrl(ref), state: 'unknown', label: 'not checked yet', releasedIn: null, releaseUrl: null, detail: null, checkedAt: null }
+    return {
+      ref,
+      url: forkRefUrl(ref),
+      state: r.state,
+      label: describeState(r),
+      releasedIn: r.releasedIn,
+      releaseUrl: r.releasedIn ? releaseUrl(ref, r.releasedIn) : null,
+      detail: r.detail,
+      checkedAt: r.checkedAt,
+    }
+  })
+  return { upstream, refs }
 }
 
 /** The line under `notes`: which label applies, and why one was ignored. */

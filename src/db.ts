@@ -816,6 +816,40 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     );
   `,
   },
+  {
+    id: '028-forks',
+    sql: `
+    -- A service running our own build of an upstream image while an upstream fix waits
+    -- (FORKS.md). fork_upstream is the image the fork is based on, as the label spells
+    -- it; the registry/repository/current_tag columns describe THAT image for a fork, and
+    -- image_ref keeps the local build name. fork_waits_on is a JSON array of the upstream
+    -- references (owner/repo#N) the fork exists for. NULL on everything that is not a fork.
+    ALTER TABLE images ADD COLUMN fork_upstream TEXT;
+    ALTER TABLE images ADD COLUMN fork_waits_on TEXT;
+
+    -- What the standing "fork can retire" incident was last sent with: the evidence,
+    -- as one string, so the same conclusion reached on the next scan sends nothing and a
+    -- changed one edits the message. NULL means no incident is open for this service.
+    ALTER TABLE images ADD COLUMN fork_notified TEXT;
+
+    -- Where each reference a fork waits on stands upstream, so the Services page answers
+    -- without asking GitHub. Rewritten once per scan per service; a lookup that fails
+    -- writes 'unknown' with the reason and keeps the previous fix_sha, so one bad night
+    -- never turns a merged fix back into an open one.
+    CREATE TABLE fork_refs (
+      stack        TEXT NOT NULL,
+      service      TEXT NOT NULL,
+      ref          TEXT NOT NULL,     -- owner/repo#N
+      state        TEXT NOT NULL,     -- open | merged-unreleased | released | closed-unfixed | unknown
+      fix_sha      TEXT,              -- the commit that fixed it, once there is one
+      released_in  TEXT,              -- the release tag that contains fix_sha
+      compared_to  TEXT,              -- the newest release tag the fix was looked for in
+      detail       TEXT,
+      checked_at   TEXT NOT NULL,
+      PRIMARY KEY (stack, service, ref)
+    );
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

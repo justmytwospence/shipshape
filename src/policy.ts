@@ -61,6 +61,8 @@ export interface TierInput {
   prLabel: string | null
   /** The service carries a `disabled`/`standby` profile (see ScannedService.dormant). */
   dormant?: boolean
+  /** The service is our own build of the upstream image (see ScannedService.fork). */
+  fork?: boolean
   defaults: Policy['defaults']
 }
 
@@ -77,6 +79,12 @@ export function tierFor(i: TierInput): EffectiveTier {
   const label = clean(i.policyLabel)
   const pr = clean(i.prLabel)
 
+  // A fork is always held, before every label: shipshape cannot rewrite a `build:`
+  // service, so no pull request may ever open for one, and the newer upstream releases
+  // are listed only so the fork does not quietly fall behind. Retiring it is a person's
+  // job (FORKS.md). Ahead of `skip` too: a fork is temporary by nature, and the one thing
+  // its labels exist for is to show how far upstream has moved on while it waits.
+  if (i.fork) return 'held'
   if (label === 'skip') return 'skip'
   // A disabled stack is watched so its updates are known, but nothing moves on its own:
   // held lists them until asked, whatever the labels or defaults would otherwise say.

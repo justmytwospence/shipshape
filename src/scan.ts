@@ -8,6 +8,7 @@ import type { TagInfo } from './registry/index.ts'
 import { resolveWatched } from './resolver/index.ts'
 import type { Magnitude } from './versions/patterns.ts'
 import { LIVE_STATES, REFUSED_STATES, sqlIn } from './updates/state.ts'
+import { checkFork, reconcileForks } from './forks.ts'
 
 /**
  * The nightly (or on-demand) sweep: read the compose files, ask each registry what
@@ -47,6 +48,9 @@ export async function runScan(trigger: 'cron' | 'manual'): Promise<ScanResult> {
     const services = scanRepo(env.repoDir, policy.exclude_stacks)
     syncInventory(services)
     reportUnknownLabels(services)
+    // Before detection, so a service that stopped being a fork since the last scan has
+    // its incident closed even if everything after this fails.
+    await reconcileForks(services)
 
     // Where each watched image comes from, for the ones never looked up or due another look.
     // Most images used to be looked up only when an update needed release notes, so the
@@ -98,8 +102,9 @@ export async function scanOne(svc: ScannedService, policy: Policy): Promise<stri
     // detect() is meant to be total, but a bug there must not cost the whole sweep.
     d = { status: 'error', detail: (err as Error).message }
   }
+  let outcome: string
   try {
-    return await persist(svc, d, policy)
+    outcome = await persist(svc, d, policy)
   } catch (err) {
     logEvent({
       level: 'error',
@@ -111,6 +116,24 @@ export async function scanOne(svc: ScannedService, policy: Policy): Promise<stri
     })
     return 'persist-error'
   }
+  // After detection, so the newest upstream release it may have just recorded is what
+  // the fix is looked for in. Isolated the same way: a GitHub failure costs this
+  // service's fork status and nothing else.
+  if (svc.fork) {
+    try {
+      await checkFork(svc)
+    } catch (err) {
+      logEvent({
+        level: 'warn',
+        kind: 'scan',
+        stack: svc.stack,
+        service: svc.service,
+        message: 'could not check the fork upstream',
+        detail: (err as Error).message,
+      })
+    }
+  }
+  return outcome
 }
 
 function summarise(counts: Record<string, number>, durationS: number): string {
@@ -139,11 +162,13 @@ function syncInventory(services: ScannedService[]): void {
     `INSERT INTO images (stack, service, compose_file, image_ref, registry, repository,
                          current_tag, current_digest, watched, pattern, tag_include,
                          policy_label, source_label, changelog_label, claude_label, deploy_label,
-                         probe_port, archive_pre, network_mode, unwatchable, last_seen_at)
+                         probe_port, archive_pre, network_mode, unwatchable,
+                         fork_upstream, fork_waits_on, last_seen_at)
      VALUES (@stack, @service, @compose_file, @image_ref, @registry, @repository,
              @current_tag, @current_digest, @watched, @pattern, @tag_include,
              @policy_label, @source_label, @changelog_label, @claude_label, @deploy_label,
-             @probe_port, @archive_pre, @network_mode, @unwatchable, @last_seen_at)
+             @probe_port, @archive_pre, @network_mode, @unwatchable,
+             @fork_upstream, @fork_waits_on, @last_seen_at)
      ON CONFLICT(stack, service) DO UPDATE SET
        compose_file = excluded.compose_file, image_ref = excluded.image_ref,
        registry = excluded.registry, repository = excluded.repository,
@@ -155,6 +180,7 @@ function syncInventory(services: ScannedService[]): void {
        deploy_label = excluded.deploy_label, probe_port = excluded.probe_port,
        archive_pre = excluded.archive_pre, network_mode = excluded.network_mode,
        unwatchable = excluded.unwatchable,
+       fork_upstream = excluded.fork_upstream, fork_waits_on = excluded.fork_waits_on,
        last_seen_at = excluded.last_seen_at`,
   )
 
@@ -181,6 +207,8 @@ function syncInventory(services: ScannedService[]): void {
         archive_pre: s.archivePre,
         network_mode: s.networkMode,
         unwatchable: s.unwatchable,
+        fork_upstream: s.fork?.upstream ?? null,
+        fork_waits_on: s.fork ? JSON.stringify(s.fork.waitsOn) : null,
         last_seen_at: now,
       })
     }
@@ -333,6 +361,9 @@ function insertUpdate(opts: {
   detail?: string
 }): void {
   const now = new Date().toISOString()
+  // A fork's update is about the upstream image -- that is what moved, and what any
+  // release notes are for -- so that is the image the row names, not the local build.
+  const image = opts.svc.fork?.upstream ?? opts.svc.imageRaw ?? ''
   getDb()
     .prepare(
       `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier,
@@ -348,7 +379,7 @@ function insertUpdate(opts: {
     .run(
       opts.svc.stack,
       opts.svc.service,
-      opts.svc.imageRaw ?? '',
+      image,
       opts.fromTag,
       opts.toTag,
       opts.magnitude,
@@ -382,6 +413,7 @@ async function persist(
         policyLabel: svc.policyLabel,
         prLabel: svc.prLabel,
         dormant: svc.dormant,
+        fork: !!svc.fork,
         defaults: policy.defaults,
       })
 
@@ -439,6 +471,7 @@ async function persist(
         magnitude: d.magnitude as Magnitude,
         tier,
         state: tier === 'held' ? 'held' : 'detected',
+        detail: svc.fork ? 'fork' : undefined,
       })
       logEvent({
         level: 'info',
@@ -523,6 +556,7 @@ function persistDigest(svc: ScannedService, c: DigestCheck, policy: Policy): str
         policyLabel: svc.policyLabel,
         prLabel: svc.prLabel,
         dormant: svc.dormant,
+        fork: !!svc.fork,
         defaults: policy.defaults,
       })
       const existing = liveRows(svc.stack, svc.service)
@@ -557,6 +591,7 @@ function persistDigest(svc: ScannedService, c: DigestCheck, policy: Policy): str
         magnitude: 'digest',
         tier,
         state: tier === 'held' ? 'held' : 'detected',
+        detail: svc.fork ? 'fork' : undefined,
       })
       logEvent({
         level: 'info',
@@ -578,15 +613,17 @@ function persistDigest(svc: ScannedService, c: DigestCheck, policy: Policy): str
       for (const r of existing) supersede(r.id, 'newer digest')
 
       // No PR is possible: the compose file says `latest` and will still say `latest`
-      // afterwards. This row exists so the dashboard can offer a redeploy.
+      // afterwards. This row exists so the dashboard can offer a redeploy -- except for a
+      // fork, where a redeploy would not pick the upstream's new build up either, so the
+      // row is held like every other fork row and only says that upstream moved.
       insertUpdate({
         svc,
         fromTag,
         toTag,
         magnitude: 'digest',
-        tier: 'manual',
-        state: 'detected',
-        detail: 'rolling',
+        tier: svc.fork ? 'held' : 'manual',
+        state: svc.fork ? 'held' : 'detected',
+        detail: svc.fork ? 'fork' : 'rolling',
       })
       logEvent({
         level: 'info',
@@ -637,16 +674,31 @@ function recordTelemetry(counts: Record<string, number>, durationS: number): voi
  * defaults. One line per service in the activity log is the whole fix, and the log folds
  * repeats into a count, so a label left in place is one row rather than one a night.
  */
-function reportUnknownLabels(services: { stack: string; service: string; unknownLabels: string[] }[]): void {
+function reportUnknownLabels(
+  services: { stack: string; service: string; unknownLabels: string[]; labelProblems: string[] }[],
+): void {
   for (const s of services) {
-    if (s.unknownLabels.length === 0) continue
-    logEvent({
-      level: 'warn',
-      kind: 'scan',
-      stack: s.stack,
-      service: s.service,
-      message: `${s.stack}/${s.service} carries ${s.unknownLabels.length === 1 ? 'a label' : 'labels'} shipshape does not read`,
-      detail: s.unknownLabels.map((k) => `shipshape.${k}`).join(', '),
-    })
+    if (s.unknownLabels.length > 0) {
+      logEvent({
+        level: 'warn',
+        kind: 'scan',
+        stack: s.stack,
+        service: s.service,
+        message: `${s.stack}/${s.service} carries ${s.unknownLabels.length === 1 ? 'a label' : 'labels'} shipshape does not read`,
+        detail: s.unknownLabels.map((k) => `shipshape.${k}`).join(', '),
+      })
+    }
+    // A label that was read and could not be used is the same kind of news: the
+    // operator wrote something, and it is silently doing less than they meant.
+    if (s.labelProblems.length > 0) {
+      logEvent({
+        level: 'warn',
+        kind: 'scan',
+        stack: s.stack,
+        service: s.service,
+        message: `${s.stack}/${s.service} carries ${s.labelProblems.length === 1 ? 'a label' : 'labels'} shipshape could not use`,
+        detail: s.labelProblems.join('; '),
+      })
+    }
   }
 }

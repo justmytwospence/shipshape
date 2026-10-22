@@ -335,6 +335,10 @@ export async function checkService(stack: string, service: string): Promise<bool
     (s) => s.stack === stack && s.service === service,
   )
   if (!svc) return false
+  // Labels first: a review reads them from the images table, which only a scan refreshed,
+  // so a label committed after the last scan was invisible to "check" and to every review
+  // it led to (tika's shipshape.changelog, 2026-10-22).
+  refreshServiceLabels(stack, service)
   if (svc.ref) {
     // Its upstream as well, when nothing has looked it up yet or the answer is due. Unbilled,
     // like the sweep: "Look again" is the button that spends pulls.

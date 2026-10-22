@@ -5,19 +5,19 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 /**
- * The machine-only actions listener: what a tap on an alert card can make happen. Only a
- * bearer gets in, only the stack verbs exist, and a verb lands on the stack's newest
+ * What a retry / roll back tap on a deploy card can make happen (through the MCP's
+ * stack_action): a verb lands on the stack's newest
  * deploy only when `actionsFor` allows it there -- otherwise the refusal sentence comes
  * back for the card.
  */
 
-const dir = mkdtempSync(join(tmpdir(), 'shipshape-actions-api-'))
+const dir = mkdtempSync(join(tmpdir(), 'shipshape-stack-verbs-'))
 process.env.DATA_DIR = dir
-process.env.ACTIONS_TOKEN = 'tok'
+process.env.MCP_PORT = '8082'
 delete process.env.REPO_DIR
 
 const { getDb } = await import('../src/db.ts')
-const { createActionsApp } = await import('../src/web/actions-api.ts')
+const { runStackVerb } = await import('../src/updates/stack-verbs.ts')
 const { linkDeployUpdates } = await import('../src/deploy/queue.ts')
 const { latestDeployUpdates } = await import('../src/updates/stack-verbs.ts')
 const { deployActions } = await import('../src/notify/index.ts')
@@ -25,9 +25,6 @@ const { deployActions } = await import('../src/notify/index.ts')
 after(() => rmSync(dir, { recursive: true, force: true }))
 
 const now = () => new Date().toISOString()
-const app = createActionsApp('tok')
-const call = (path: string, token = 'tok') =>
-  app.fetch(new Request(`http://shipshape${path}`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }))
 
 function seedDeploy(stack: string, state: string): { updateId: number; deployId: number } {
   const db = getDb()
@@ -56,28 +53,13 @@ beforeEach(() => {
   for (const t of ['deploy_updates', 'deploys', 'pr_updates', 'prs', 'updates']) db.prepare(`DELETE FROM ${t}`).run()
 })
 
-test('no bearer, no action', async () => {
-  const r = await call('/actions/stacks/app/retry', 'wrong')
-  assert.equal(r.status, 401)
-})
-
-test('only the stack verbs exist', async () => {
-  for (const verb of ['merge-deploy', 'skip', 'deploy']) {
-    const r = await call(`/actions/stacks/app/${verb}`)
-    assert.equal(r.status, 404, verb)
-  }
-  assert.equal((await call('/actions/stacks/..%2Fetc/retry')).status, 400)
-})
-
 test('a stack with no deploy says so', async () => {
-  const r = await call('/actions/stacks/nothing/retry')
-  assert.equal(r.status, 200)
-  assert.deepEqual(await r.json(), { ok: false, message: 'there is no deploy of nothing to retry' })
+  assert.deepEqual(await runStackVerb('nothing', 'retry'), { ok: false, message: 'there is no deploy of nothing to retry' })
 })
 
 test('a verb the newest deploy does not allow comes back as the refusal, and changes nothing', async () => {
   const { updateId } = seedDeploy('app', 'pr_open')
-  const r = await (await call('/actions/stacks/app/rollback')).json()
+  const r = await runStackVerb('app', 'rollback')
   assert.equal(r.ok, false)
   assert.ok(r.message.length > 0)
   const row = getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(updateId) as { state: string }
@@ -100,12 +82,3 @@ test('deploy incidents carry retry and roll back; others carry nothing', () => {
   assert.equal(deployActions('shipshape:sync'), undefined)
 })
 
-test('update verbs: only the listed ones, and actionsFor still decides', async () => {
-  const { updateId } = seedDeploy('app', 'pr_open')
-  assert.equal((await call(`/actions/updates/${updateId}/retry`)).status, 404)
-  assert.equal((await call(`/actions/updates/abc/skip`)).status, 400)
-  const r = await (await call(`/actions/updates/${updateId}/deploy`)).json()
-  assert.equal(r.ok, false)
-  const missing = await (await call(`/actions/updates/999999/skip`)).json()
-  assert.deepEqual(missing, { ok: false, message: 'that update no longer exists' })
-})

@@ -45,12 +45,6 @@ export const env = {
   notifyUrl: process.env.NOTIFY_URL ?? '',
   /** Its bearer (ALERT_INTAKE_KEY). */
   notifyToken: process.env.NOTIFY_TOKEN ?? '',
-  /** Bearer for the machine-only actions listener (`src/web/actions-api.ts`): what lets a
-   *  tap on an alert card retry or roll back a failed deploy. Unset, there is no listener
-   *  and deploy incidents carry no actions. */
-  actionsToken: process.env.ACTIONS_TOKEN ?? '',
-  /** Its port: a second listener, never routed by the reverse proxy. */
-  actionsPort: Number(process.env.ACTIONS_PORT ?? 8081),
   // The MCP listener (src/mcp): off unless set, and only ever reached through the OAuth sidecar.
   mcpPort: process.env.MCP_PORT ? Number(process.env.MCP_PORT) : null,
   /** A full SMTP connection string -- `smtps://user:pass@host:465`. Credentials, so it

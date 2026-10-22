@@ -10,7 +10,7 @@ const root = mkdtempSync(join(tmpdir(), 'shipshape-inbox-cards-'))
 process.env.DATA_DIR = root
 process.env.NOTIFY_URL = 'http://n8n.invalid/webhook/notify'
 process.env.NOTIFY_TOKEN = 'k'
-process.env.ACTIONS_TOKEN = 'tok'
+process.env.MCP_PORT = '8082'
 delete process.env.POLICY_FILE
 
 const wire: Record<string, any>[] = []

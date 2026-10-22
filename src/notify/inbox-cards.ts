@@ -86,7 +86,7 @@ export function cardFor(item: AttentionItem): Card {
     // inside it, so each point keeps its own line).
     body: [lines[0], lines.slice(1).join('  \n')].filter(Boolean).join('\n\n'),
     click: u.pr?.url ?? (origin ? `${origin}/updates/${u.id}` : undefined),
-    actions: env.actionsToken
+    actions: env.mcpPort
       ? verbs.map((verb) => {
           const [emoji, label] = VERB_UI[verb]!
           return { emoji, label, do: { target: 'shipshape' as const, verb, update: u.id } }

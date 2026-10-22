@@ -30,7 +30,7 @@ export type Kind = 'alert' | 'routine'
 
 export type IncidentStatus = 'firing' | 'resolved' | 'event'
 
-/** A tap the router offers on the card and calls back on (`src/web/actions-api.ts`). */
+/** A tap the router offers on the card; it calls back through the MCP's update_action / stack_action. */
 export interface IncidentAction {
   emoji: string
   label: string
@@ -42,7 +42,7 @@ export interface IncidentAction {
 /** Retry and roll back, for `shipshape:deploy:<stack>`; shipshape decides at tap time. */
 export function deployActions(key: string | undefined): IncidentAction[] | undefined {
   const m = key?.match(/^shipshape:deploy:(.+)$/)
-  if (!m || !env.actionsToken) return undefined
+  if (!m || !env.mcpPort) return undefined
   const stack = m[1]!
   return [
     { emoji: '🔁', label: 'retry', do: { target: 'shipshape', verb: 'retry', stack } },

@@ -248,6 +248,7 @@ start.
 | `DATA_DIR` | no | `/data` | SQLite database and shipshape's own working clone. |
 | `PORT` / `TZ` | no | `8080` / `UTC` | |
 | `NOTIFY_URL`, `NOTIFY_TOKEN` | no | — | Incidents, as JSON with a bearer, to a notification router (here n8n's `/webhook/notify`). |
+| `ACTIONS_TOKEN`, `ACTIONS_PORT` | no | — / `8081` | A second, bearer-only listener (`POST /actions/stacks/<stack>/<retry\|rollback>`) so the router can offer retry and roll back on a deploy incident's card. Never route it through the reverse proxy. Unset: no listener, and incidents carry no `actions`. |
 | `SMTP_URL`, `MAIL_TO` | no | — | Email. Both are needed; either alone counts as off. `MAIL_FROM` defaults to `BOT_EMAIL`. |
 | `DOCKER_HUB_LOGIN` / `_PASSWORD` | no | — | Doubles the Docker Hub pull allowance (100→200 per 6h). |
 

@@ -2,6 +2,7 @@ import { loadPolicy } from './config.ts'
 import { getDb, logEvent } from './db.ts'
 import { startScheduler } from './scheduler.ts'
 import { startServer } from './web/server.ts'
+import { startActionsServer } from './web/actions-api.ts'
 
 function main(): void {
   getDb()
@@ -17,6 +18,7 @@ function main(): void {
   })
 
   startServer()
+  startActionsServer()
 
   // `bin/dev-ui.mjs` sets this. Working on the interface needs realistic data, which
   // means a configured REPO_DIR -- and that is also what arms the scheduler, whose jobs

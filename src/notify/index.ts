@@ -30,6 +30,24 @@ export type Kind = 'alert' | 'routine'
 
 export type IncidentStatus = 'firing' | 'resolved' | 'event'
 
+/** A tap the router offers on the card and calls back on (`src/web/actions-api.ts`). */
+export interface IncidentAction {
+  emoji: string
+  label: string
+  do: { target: 'shipshape'; verb: 'retry' | 'rollback'; stack: string }
+}
+
+/** Retry and roll back, for `shipshape:deploy:<stack>`; shipshape decides at tap time. */
+export function deployActions(key: string | undefined): IncidentAction[] | undefined {
+  const m = key?.match(/^shipshape:deploy:(.+)$/)
+  if (!m || !env.actionsToken) return undefined
+  const stack = m[1]!
+  return [
+    { emoji: '🔁', label: 'retry', do: { target: 'shipshape', verb: 'retry', stack } },
+    { emoji: '⏪', label: 'roll back', do: { target: 'shipshape', verb: 'rollback', stack } },
+  ]
+}
+
 export interface Message {
   title: string
   body: string
@@ -47,6 +65,9 @@ export interface Message {
   key?: string
   /** Defaults to `firing` with a key, `event` without one. */
   status?: IncidentStatus
+  /** One-tap fixes for the alert card (the router's `actions` contract). Deploy incidents
+   *  get retry and roll back automatically when the actions listener is configured. */
+  actions?: IncidentAction[]
 }
 
 /** Does a channel set to `mode` want a message of this kind? */
@@ -90,6 +111,7 @@ interface Payload {
   priority?: Priority
   status: IncidentStatus
   click?: string
+  actions?: IncidentAction[]
 }
 
 async function sendIncident(opts: Message): Promise<void> {
@@ -113,6 +135,7 @@ async function sendIncident(opts: Message): Promise<void> {
           priority: opts.priority ?? 3,
           status,
           click: opts.click,
+          actions: opts.actions ?? deployActions(opts.key),
         }
   const slot = opts.key ?? `~event:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
   db.prepare(

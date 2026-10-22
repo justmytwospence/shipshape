@@ -66,7 +66,7 @@ import { UpdateDetail, UpdateRow } from './views/ui/update.tsx'
 import { ReleaseList } from './views/ui/releases.tsx'
 import { runPrPass } from '../gitops/pr.ts'
 import { runAnalysisPass } from '../analyze/run.ts'
-import { runProposePass } from '../propose/run.ts'
+import { proposeForPr } from '../updates/operator-verbs.ts'
 import { runAutoMerge } from '../gitops/automerge.ts'
 import { DiffView } from './views/diff.tsx'
 import { mergeGate, type MergeFacts } from '../gitops/merge-gate.ts'
@@ -322,6 +322,63 @@ export function openPrForUpdate(id: number): VerbResult {
   // "open a pull request"; a wait with no feedback reads as nothing having happened.
   void runPrPass().catch(() => {})
   return { ok: true, message: 'Opening a pull request\u2026' }
+}
+
+/**
+ * Re-check one service now, rather than waiting for a sweep: its labels from git, its
+ * upstream when nothing has looked it up yet, and its registry. False when the compose
+ * files no longer have it.
+ */
+export async function checkService(stack: string, service: string): Promise<boolean> {
+  const { policy } = loadPolicy()
+  const svc = scanRepo(env.repoDir, policy.exclude_stacks).find(
+    (s) => s.stack === stack && s.service === service,
+  )
+  if (!svc) return false
+  if (svc.ref) {
+    // Its upstream as well, when nothing has looked it up yet or the answer is due. Unbilled,
+    // like the sweep: "Look again" is the button that spends pulls.
+    await sourceFor(
+      { registry: svc.ref.registry, repository: svc.ref.repository },
+      { service: { stack, service }, ownLabel: svc.sourceLabel, allowBilled: false },
+    ).catch(() => undefined)
+  }
+  if (svc.watched) await scanOne(svc, policy)
+  return true
+}
+
+/** The activity log, newest first: the Activity page's query. */
+export const activityRows = (opts: {
+  kind: string
+  problems: boolean
+  q: string
+  before?: string | null
+  limit?: number
+}): ActivityRow[] => {
+  const where: string[] = []
+  const args: (string | number)[] = []
+  if ((ACTIVITY_KINDS as readonly string[]).includes(opts.kind)) {
+    where.push('kind = ?')
+    args.push(opts.kind)
+  }
+  if (opts.problems) where.push(`level IN ('warn','error')`)
+  if (opts.q) {
+    where.push(`(message LIKE ? OR IFNULL(detail,'') LIKE ? OR IFNULL(stack,'') LIKE ?)`)
+    const like = `%${opts.q}%`
+    args.push(like, like, like)
+  }
+  if (opts.before) {
+    where.push(`COALESCE(last_at, at) < ?`)
+    args.push(opts.before)
+  }
+  args.push(opts.limit ?? 100)
+  return getDb()
+    .prepare(
+      `SELECT id, at, last_at AS lastAt, count, level, kind, stack, service, message, detail
+         FROM events ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY COALESCE(last_at, at) DESC LIMIT ?`,
+    )
+    .all(...args) as ActivityRow[]
 }
 
 export function createApp(): Hono {
@@ -653,21 +710,9 @@ export function createApp(): Hono {
 
   /** Re-check one service now, rather than waiting for a sweep that takes 156 seconds. */
   app.post('/services/:stack/:service/check', async (c) => {
-    const { policy } = loadPolicy()
     const stack = c.req.param('stack')
     const service = c.req.param('service')
-    const svc = scanRepo(env.repoDir, policy.exclude_stacks).find(
-      (s) => s.stack === stack && s.service === service,
-    )
-    if (svc?.ref) {
-      // Its upstream as well, when nothing has looked it up yet or the answer is due. Unbilled,
-      // like the sweep: "Look again" is the button that spends pulls.
-      await sourceFor(
-        { registry: svc.ref.registry, repository: svc.ref.repository },
-        { service: { stack, service }, ownLabel: svc.sourceLabel, allowBilled: false },
-      ).catch(() => undefined)
-    }
-    if (svc?.watched) await scanOne(svc, policy)
+    await checkService(stack, service)
     const found = servicePane(stack, service, ctxOf(c, 'services'))
     if (!found) {
       toastHeader(c, 'warn', `${stack}/${service} is no longer here`)
@@ -878,29 +923,7 @@ export function createApp(): Hono {
   app.post('/prs/:number/propose', async (c) => {
     const number = Number(c.req.param('number'))
     const id = updateOfPr(c, number) ?? 0
-    const r = await runProposePass(number)
-    if (r.drafted > 0) {
-      return verbReply(c, id, { ok: true, message: 'Drafted. The changes are on the pull request.' })
-    }
-    if (r.failed > 0) {
-      return verbReply(c, id, { ok: false, message: 'Could not draft; see the activity log.' })
-    }
-    // Drafting costs a model call, so a spent budget refuses before it looks at the pull
-    // request at all. Saying "nothing to draft" there told the operator the opposite of
-    // what had happened -- that the pull request needed no change.
-    if (r.reason === 'budget') {
-      return verbReply(c, id, {
-        ok: false,
-        message: 'The analysis budget for this window is spent, so nothing was drafted.',
-      })
-    }
-    if (r.reason === 'unconfigured') {
-      return verbReply(c, id, {
-        ok: false,
-        message: 'Drafting needs an Anthropic key and a GitHub token; one of them is missing.',
-      })
-    }
-    return verbReply(c, id, { ok: false, message: 'Nothing to draft for this pull request.' })
+    return verbReply(c, id, await proposeForPr(number))
   })
 
   /** What auto-merge would do right now, decided by the code that does it. */
@@ -943,39 +966,6 @@ export function createApp(): Hono {
    * A repeated message is one row with a count, so a fact that recurred all afternoon
    * sorts by the afternoon and not by the morning it started.
    */
-  const activityRows = (opts: {
-    kind: string
-    problems: boolean
-    q: string
-    before?: string | null
-    limit?: number
-  }): ActivityRow[] => {
-    const where: string[] = []
-    const args: (string | number)[] = []
-    if ((ACTIVITY_KINDS as readonly string[]).includes(opts.kind)) {
-      where.push('kind = ?')
-      args.push(opts.kind)
-    }
-    if (opts.problems) where.push(`level IN ('warn','error')`)
-    if (opts.q) {
-      where.push(`(message LIKE ? OR IFNULL(detail,'') LIKE ? OR IFNULL(stack,'') LIKE ?)`)
-      const like = `%${opts.q}%`
-      args.push(like, like, like)
-    }
-    if (opts.before) {
-      where.push(`COALESCE(last_at, at) < ?`)
-      args.push(opts.before)
-    }
-    args.push(opts.limit ?? 100)
-    return getDb()
-      .prepare(
-        `SELECT id, at, last_at AS lastAt, count, level, kind, stack, service, message, detail
-           FROM events ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-          ORDER BY COALESCE(last_at, at) DESC LIMIT ?`,
-      )
-      .all(...args) as ActivityRow[]
-  }
-
   const activityQuery = (c: Context) => ({
     kind: c.req.query('kind') ?? 'all',
     problems: c.req.query('level') === 'problems',
@@ -1331,14 +1321,14 @@ function diffFragment(id: number): string {
   )
 }
 
-interface ScanInfo {
+export interface ScanInfo {
   lastAt: string | null
   durationS: number | null
   counts: Record<string, number> | null
   running: boolean
 }
 
-function scanInfo(): ScanInfo {
+export function scanInfo(): ScanInfo {
   const rows = getDb()
     .prepare(`SELECT key, value, window FROM budgets WHERE key LIKE 'scan.%'`)
     .all() as { key: string; value: number; window: string | null }[]

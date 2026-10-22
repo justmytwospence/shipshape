@@ -51,6 +51,8 @@ export const env = {
   actionsToken: process.env.ACTIONS_TOKEN ?? '',
   /** Its port: a second listener, never routed by the reverse proxy. */
   actionsPort: Number(process.env.ACTIONS_PORT ?? 8081),
+  // The MCP listener (src/mcp): off unless set, and only ever reached through the OAuth sidecar.
+  mcpPort: process.env.MCP_PORT ? Number(process.env.MCP_PORT) : null,
   /** A full SMTP connection string -- `smtps://user:pass@host:465`. Credentials, so it
    *  lives here rather than in the tracked policy file. */
   smtpUrl: process.env.SMTP_URL ?? '',

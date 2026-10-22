@@ -4,6 +4,9 @@ import { timingSafeEqual } from 'node:crypto'
 import { env } from '../config.ts'
 import { logEvent } from '../db.ts'
 import { isStackVerb, runStackVerb } from '../updates/stack-verbs.ts'
+import { actionsFor, refusalFor } from '../updates/actions.ts'
+import { contextFor, runVerb, type VerbResult } from '../updates/verbs.ts'
+import { mergeUpdatePr, openPrForUpdate } from './server.ts'
 
 /**
  * The machine-only listener: a second port, never routed by the reverse proxy, reached
@@ -11,9 +14,25 @@ import { isStackVerb, runStackVerb } from '../updates/stack-verbs.ts'
  * alert card can retry or roll back a failed deploy without a browser session.
  *
  * The web interface trusts only its reverse proxy's asserted identity (`auth.ts`); this
- * listener trusts only a bearer (ACTIONS_TOKEN), and offers nothing but the stack verbs,
+ * listener trusts only a bearer (ACTIONS_TOKEN), and offers nothing but the stack verbs
+ * (deploy incidents) and the update verbs below (the cards for updates waiting on you),
  * each of which still goes through `actionsFor`. No token, no listener.
  */
+export const UPDATE_VERBS = ['merge-deploy', 'open-pr', 'deploy', 'redeploy', 'skip', 'rerun-review', 'release-hold'] as const
+type UpdateVerb = (typeof UPDATE_VERBS)[number]
+const isUpdateVerb = (v: string): v is UpdateVerb => (UPDATE_VERBS as readonly string[]).includes(v)
+
+export async function runUpdateVerb(id: number, verb: UpdateVerb): Promise<VerbResult> {
+  const found = contextFor(id)
+  if (!found) return { ok: false, message: 'that update no longer exists' }
+  if (!actionsFor(found.ctx).includes(verb)) return { ok: false, message: refusalFor(verb, found.ctx) }
+  if (verb === 'merge-deploy') {
+    if (!found.ctx.prNumber) return { ok: false, message: 'there is no pull request to merge' }
+    return mergeUpdatePr(found.ctx.prNumber, id)
+  }
+  if (verb === 'open-pr') return openPrForUpdate(id)
+  return runVerb(id, verb)
+}
 export function createActionsApp(token: string = env.actionsToken): Hono {
   const app = new Hono()
   const expected = Buffer.from(`Bearer ${token}`)
@@ -35,6 +54,22 @@ export function createActionsApp(token: string = env.actionsToken): Hono {
       kind: 'deploy',
       stack,
       message: `${verb} requested from an alert card`,
+      detail: result.message,
+    })
+    return c.json(result)
+  })
+
+  app.post('/actions/updates/:id/:verb', async (c) => {
+    if (!authorized(c.req.header('Authorization'))) return c.json({ ok: false, message: 'unauthorized' }, 401)
+    const id = Number(c.req.param('id'))
+    const verb = c.req.param('verb')
+    if (!isUpdateVerb(verb)) return c.json({ ok: false, message: `${verb} is not offered here` }, 404)
+    if (!Number.isInteger(id) || id <= 0) return c.json({ ok: false, message: 'bad update id' }, 400)
+    const result = await runUpdateVerb(id, verb)
+    logEvent({
+      level: result.ok ? 'info' : 'warn',
+      kind: 'pr',
+      message: `${verb} on update ${id} requested from an alert card`,
       detail: result.message,
     })
     return c.json(result)

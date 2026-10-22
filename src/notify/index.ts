@@ -34,7 +34,9 @@ export type IncidentStatus = 'firing' | 'resolved' | 'event'
 export interface IncidentAction {
   emoji: string
   label: string
-  do: { target: 'shipshape'; verb: 'retry' | 'rollback'; stack: string }
+  do:
+    | { target: 'shipshape'; verb: 'retry' | 'rollback'; stack: string }
+    | { target: 'shipshape'; verb: string; update: number }
 }
 
 /** Retry and roll back, for `shipshape:deploy:<stack>`; shipshape decides at tap time. */

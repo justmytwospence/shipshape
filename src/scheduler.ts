@@ -12,6 +12,7 @@ import { flush as flushDigest, lastItemId, prune as pruneDigest } from './notify
 import { claimDigestSlot, digestOwed, MAX_WAIT_MS, requestDigest } from './notify/barrier.ts'
 import { checkGitHubAuth } from './health/github-auth.ts'
 import { retryPendingIncidents } from './notify/index.ts'
+import { syncInboxCards } from './notify/inbox-cards.ts'
 import { checkAnalysisBudget } from './health/analysis-budget.ts'
 import { ingestInstructions } from './revise/ingest.ts'
 import { runInstructionPass } from './revise/run.ts'
@@ -168,6 +169,11 @@ function startPrLoop(): void {
       await checkGitHubAuth()
       // Incidents the router could not take earlier: at least once, latest state wins.
       await retryPendingIncidents()
+      // One card per update waiting on you, kept in line with the Inbox (inbox-cards.ts).
+      // Never allowed to stop the tick: a card is a convenience, the Inbox is the record.
+      await syncInboxCards().catch((err) =>
+        logEvent({ level: 'warn', kind: 'system', message: 'inbox cards not synced', detail: (err as Error).message }),
+      )
       // Outside the gate for the same reason, and asked here rather than where the budget
       // is spent. The old warning lived in `recordCost`, which only runs when a call is
       // made -- so it went quiet the moment `budgetExhausted()` started refusing to make

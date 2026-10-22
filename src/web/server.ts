@@ -235,6 +235,95 @@ function lookedAgain(s: SourceInfo): string {
   return `Found ${found}${likely}.${label}`
 }
 
+/**
+ * Merge an update's pull request as the operator, then close the loop at once: the
+ * dashboard's Merge button and an alert card's tap both land here.
+ */
+export async function mergeUpdatePr(number: number, id: number, force = false): Promise<VerbResult> {
+  const { policy } = loadPolicy()
+  const refuse = (message: string): VerbResult => ({ ok: false, message })
+
+  const facts = mergeFacts(number)
+  // Asked before the merge, while the update still reads as waiting on one: whether the
+  // deploy starts itself is the same answer the button's label gave.
+  const deploys = updateView(id)?.presented?.['merge-deploy']?.label !== 'Merge'
+  let gate = mergeGate(facts, { force })
+  if (!gate.allowed) return refuse(gate.blocked ?? 'the merge gate refused')
+
+  try {
+    const { owner, repo } = repoParts()
+    const live = await gh().rest.pulls.get({ owner, repo, pull_number: number })
+    if (live.data.merged) return refuse(`#${number} has already been merged.`)
+    // GitHub's own answer beats ours: it knows about conflicts and branch protection.
+    gate = mergeGate({ ...facts, mergeable: live.data.mergeable }, { force })
+    if (!gate.allowed) return refuse(gate.blocked ?? 'the merge gate refused')
+    if (gate.needsForce) return refuse(gate.warnings.join('; '))
+
+    await gh().rest.pulls.merge({
+      owner,
+      repo,
+      pull_number: number,
+      merge_method: policy.merge_method,
+    })
+
+    // Recorded as an override when policy would have refused, so the decision is
+    // legible afterwards rather than indistinguishable from an automatic merge.
+    logEvent({
+      level: gate.warnings.length > 0 ? 'warn' : 'info',
+      kind: 'pr',
+      message: `#${number} merged from the dashboard`,
+      detail: gate.warnings.length > 0 ? gate.warnings.join('; ') : 'no objections',
+    })
+  } catch (err) {
+    const msg = (err as Error).message.slice(0, 200)
+    return refuse(`GitHub refused the merge: ${msg}`)
+  }
+
+  // Close the loop now rather than waiting for the next tick: this is what captures
+  // the commit sha, marks the updates, syncs the checkout and queues the deploy.
+  // Never let a failure here report a merge that did land as a failure.
+  try {
+    await pollPrs()
+  } catch {
+    /* the scheduler will pick it up on its next pass */
+  }
+
+  return {
+    ok: true,
+    // The deploy follows the merge unless the service says otherwise, so the reply can
+    // no longer be decided by `paused` -- it is decided by the rung, and the poll pass
+    // that runs a moment from now is what knows it.
+    message: deploys
+      ? 'Merged. The deploy follows, and is watched.'
+      : 'Merged. This one is deployed by hand: press Deploy when you are ready.',
+  }
+}
+
+/** Release a held update for a pull request (the on-request rung). */
+export function openPrForUpdate(id: number): VerbResult {
+  const found = contextFor(id)
+  if (!found) return { ok: false, message: 'that update no longer exists' }
+  if (!actionsFor(found.ctx).includes('open-pr')) {
+    return { ok: false, message: refusalFor('open-pr', found.ctx) }
+  }
+  getDb()
+    .prepare(
+      `UPDATE updates SET state = 'detected', tier = 'manual', updated_at = ? WHERE id = ?`,
+    )
+    .run(new Date().toISOString(), id)
+  logEvent({
+    level: 'info',
+    kind: 'pr',
+    stack: found.row.stack,
+    service: found.row.service,
+    message: 'held update released for PR by operator',
+  })
+  // Ask for it now rather than at some point in the next ten minutes. The button said
+  // "open a pull request"; a wait with no feedback reads as nothing having happened.
+  void runPrPass().catch(() => {})
+  return { ok: true, message: 'Opening a pull request\u2026' }
+}
+
 export function createApp(): Hono {
   const app = new Hono()
 
@@ -768,27 +857,7 @@ export function createApp(): Hono {
    */
   app.post('/updates/:id/open-pr', (c) => {
     const id = Number(c.req.param('id'))
-    const found = contextFor(id)
-    if (!found) return verbReply(c, id, { ok: false, message: 'that update no longer exists' })
-    if (!actionsFor(found.ctx).includes('open-pr')) {
-      return verbReply(c, id, { ok: false, message: refusalFor('open-pr', found.ctx) })
-    }
-    getDb()
-      .prepare(
-        `UPDATE updates SET state = 'detected', tier = 'manual', updated_at = ? WHERE id = ?`,
-      )
-      .run(new Date().toISOString(), id)
-    logEvent({
-      level: 'info',
-      kind: 'pr',
-      stack: found.row.stack,
-      service: found.row.service,
-      message: 'held update released for PR by operator',
-    })
-    // Ask for it now rather than at some point in the next ten minutes. The button said
-    // "open a pull request"; a wait with no feedback reads as nothing having happened.
-    void runPrPass().catch(() => {})
-    return verbReply(c, id, { ok: true, message: 'Opening a pull request\u2026' })
+    return verbReply(c, id, openPrForUpdate(id))
   })
 
   /** Bring up a merge that has been waiting, run it again, put it back, or say you saw it. */
@@ -858,65 +927,8 @@ export function createApp(): Hono {
    */
   app.post('/prs/:number/merge', async (c) => {
     const number = Number(c.req.param('number'))
-    const force = c.req.query('force') === '1'
-    const { policy } = loadPolicy()
     const id = updateOfPr(c, number) ?? 0
-    const refuse = (message: string) => verbReply(c, id, { ok: false, message })
-
-    const facts = mergeFacts(number)
-    // Asked before the merge, while the update still reads as waiting on one: whether the
-    // deploy starts itself is the same answer the button's label gave.
-    const deploys = updateView(id)?.presented?.['merge-deploy']?.label !== 'Merge'
-    let gate = mergeGate(facts, { force })
-    if (!gate.allowed) return refuse(gate.blocked ?? 'the merge gate refused')
-
-    try {
-      const { owner, repo } = repoParts()
-      const live = await gh().rest.pulls.get({ owner, repo, pull_number: number })
-      if (live.data.merged) return refuse(`#${number} has already been merged.`)
-      // GitHub's own answer beats ours: it knows about conflicts and branch protection.
-      gate = mergeGate({ ...facts, mergeable: live.data.mergeable }, { force })
-      if (!gate.allowed) return refuse(gate.blocked ?? 'the merge gate refused')
-      if (gate.needsForce) return refuse(gate.warnings.join('; '))
-
-      await gh().rest.pulls.merge({
-        owner,
-        repo,
-        pull_number: number,
-        merge_method: policy.merge_method,
-      })
-
-      // Recorded as an override when policy would have refused, so the decision is
-      // legible afterwards rather than indistinguishable from an automatic merge.
-      logEvent({
-        level: gate.warnings.length > 0 ? 'warn' : 'info',
-        kind: 'pr',
-        message: `#${number} merged from the dashboard`,
-        detail: gate.warnings.length > 0 ? gate.warnings.join('; ') : 'no objections',
-      })
-    } catch (err) {
-      const msg = (err as Error).message.slice(0, 200)
-      return refuse(`GitHub refused the merge: ${msg}`)
-    }
-
-    // Close the loop now rather than waiting for the next tick: this is what captures
-    // the commit sha, marks the updates, syncs the checkout and queues the deploy.
-    // Never let a failure here report a merge that did land as a failure.
-    try {
-      await pollPrs()
-    } catch {
-      /* the scheduler will pick it up on its next pass */
-    }
-
-    return verbReply(c, id, {
-      ok: true,
-      // The deploy follows the merge unless the service says otherwise, so the reply can
-      // no longer be decided by `paused` -- it is decided by the rung, and the poll pass
-      // that runs a moment from now is what knows it.
-      message: deploys
-        ? 'Merged. The deploy follows, and is watched.'
-        : 'Merged. This one is deployed by hand: press Deploy when you are ready.',
-    })
+    return verbReply(c, id, await mergeUpdatePr(number, id, c.req.query('force') === '1'))
   })
 
   app.get('/merge/preview', async (c) => {

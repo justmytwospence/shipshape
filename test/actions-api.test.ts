@@ -99,3 +99,13 @@ test('deploy incidents carry retry and roll back; others carry nothing', () => {
   ])
   assert.equal(deployActions('shipshape:sync'), undefined)
 })
+
+test('update verbs: only the listed ones, and actionsFor still decides', async () => {
+  const { updateId } = seedDeploy('app', 'pr_open')
+  assert.equal((await call(`/actions/updates/${updateId}/retry`)).status, 404)
+  assert.equal((await call(`/actions/updates/abc/skip`)).status, 400)
+  const r = await (await call(`/actions/updates/${updateId}/deploy`)).json()
+  assert.equal(r.ok, false)
+  const missing = await (await call(`/actions/updates/999999/skip`)).json()
+  assert.deepEqual(missing, { ok: false, message: 'that update no longer exists' })
+})

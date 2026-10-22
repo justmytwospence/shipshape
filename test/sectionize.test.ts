@@ -141,3 +141,34 @@ test('a huge section is cut, and past the total the rest are named rather than d
   assert.deepEqual(kept.map((s) => s.heading), ['1.3.0'])
   assert.deepEqual(omitted, ['1.2.0', '1.1.0'])
 })
+
+test('tika: a plain-text CHANGES.txt with bare `Release X - date` lines is cut by version', () => {
+  const text = [
+    'Release 3.4.0 - ???',
+    '',
+    '  * tika-server now requires Java 17 (TIKA-4979).',
+    '',
+    'Release 3.3.3 - 10/09/2026',
+    '',
+    '  * tika-server caps attachments on the multipart/form-data endpoints at 50 MB by',
+    '    default (CVE-2026-54225).',
+    '',
+    'Release 3.3.2 - 09/01/2026',
+    '',
+    '  * PDF: bookmark outlines are walked without recursion (TIKA-4894).',
+    '',
+    'Release 3.3.1 - 08/01/2026',
+    '',
+    '  * Older.',
+  ].join('\n')
+  const sections = sectionize(text, { filename: 'CHANGES.txt' })
+  assert.deepEqual(sections.map((s) => s.key?.raw), ['3.4.0', '3.3.3', '3.3.2', '3.3.1'])
+  const { sections: kept } = sectionsInRange(sections, key('3.3.1.0'), key('3.3.3.0'))
+  assert.deepEqual(kept.map((s) => s.key?.raw), ['3.3.3', '3.3.2'])
+  assert.match(kept[0]!.body, /50 MB/)
+})
+
+test('plain lines are only a fallback: one stray version line in a markdown file is not a heading', () => {
+  const text = ['# Notes', '', '1.2.3 is the minimum supported version.', '', 'Nothing else.'].join('\n')
+  assert.deepEqual(sectionize(text), [])
+})

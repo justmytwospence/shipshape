@@ -42,15 +42,22 @@ export function sectionize(
 ): Section[] {
   const lines = text.replace(/\r\n?/g, '\n').split('\n')
   const atx = atxHeadings(lines)
-  const headings = /\.rst$/i.test(o.filename ?? '') || atx.length === 0 ? rstHeadings(lines) : atx
+  const marked = /\.rst$/i.test(o.filename ?? '') || atx.length === 0 ? rstHeadings(lines) : atx
+  const found = cut(lines, marked, atx.length > 0 && marked === atx, o.family)
+  // No markup at all: Apache's CHANGES.txt (tika) names each version on a bare
+  // `Release 3.3.3 - 10/09/2026` line at the margin, with its entries indented below.
+  return found.length > 0 ? found : cut(lines, plainHeadings(lines), false, o.family)
+}
+
+function cut(lines: string[], headings: Heading[], sortRanks: boolean, family?: VersionKey['family']): Section[] {
 
   // Levels in rank order: ATX by depth, RST by first appearance, which is RST's own rule.
   const ranks: string[] = []
   for (const h of headings) if (!ranks.includes(h.level)) ranks.push(h.level)
-  if (atx.length > 0 && headings === atx) ranks.sort()
+  if (sortRanks) ranks.sort()
 
   const versioned = (h: Heading) => {
-    const v = headingVersion(h.title, o.family)
+    const v = headingVersion(h.title, family)
     return v.key !== null
   }
   const level = ranks.find((l) => headings.filter((h) => h.level === l && versioned(h)).length >= 2)
@@ -63,7 +70,7 @@ export function sectionize(
     // The body runs to the next heading at this level or above.
     const next = headings.slice(i + 1).find((n) => ranks.indexOf(n.level) <= rank)
     const body = lines.slice(h.bodyStart, next ? next.start : lines.length).join('\n').trim()
-    const { key, unreleased } = headingVersion(h.title, o.family)
+    const { key, unreleased } = headingVersion(h.title, family)
     // A title sharing the versions' style -- glances overlines "Glances ChangeLog" exactly as
     // it overlines each version -- is not a section. `Unreleased` is kept, and says so.
     if (!key && !unreleased) return
@@ -141,6 +148,21 @@ function atxHeadings(lines: string[]): Heading[] {
     if (fence !== null) return
     const m = /^ {0,3}(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line)
     if (m) out.push({ start: i, bodyStart: i + 1, level: String(m[1]!.length), title: m[2]!.trim() })
+  })
+  return out
+}
+
+/**
+ * Headings with no markup: a line at the margin that starts with `Release`/`Version` and a
+ * version, or with the version itself. Only consulted when a file has no ATX or RST
+ * headings, and still needs two versioned lines to count as a changelog.
+ */
+function plainHeadings(lines: string[]): Heading[] {
+  const out: Heading[] = []
+  lines.forEach((line, i) => {
+    if (/^(?:(?:release|version)\s+)?v?\d+\.\d+[\w.+-]*(?:\s|$)/i.test(line)) {
+      out.push({ start: i, bodyStart: i + 1, level: 'plain', title: line.trim() })
+    }
   })
   return out
 }

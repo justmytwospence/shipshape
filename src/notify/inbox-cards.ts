@@ -82,7 +82,9 @@ export function cardFor(item: AttentionItem): Card {
   return {
     key: `${PREFIX}${u.stack}/${u.service}`,
     title: `${name} ${u.fromTag} → ${u.toTag}`,
-    body: lines.join('\n'),
+    // The status line, then the description as its own paragraph (markdown hard breaks
+    // inside it, so each point keeps its own line).
+    body: [lines[0], lines.slice(1).join('  \n')].filter(Boolean).join('\n\n'),
     click: u.pr?.url ?? (origin ? `${origin}/updates/${u.id}` : undefined),
     actions: env.actionsToken
       ? verbs.map((verb) => {

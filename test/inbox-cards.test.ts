@@ -52,7 +52,7 @@ test('what waits on you', () => {
 
 test('a card carries its verbs as taps, primary first and skip last', () => {
   const c = cardFor(item('pr-waiting'))
-  assert.equal(c.key, 'shipshape:update:7')
+  assert.equal(c.key, 'shipshape:update:media/jellyfin')
   assert.equal(c.title, 'media/jellyfin 10.9 → 10.10')
   assert.deepEqual(c.actions!.map((a) => a.emoji), ['🚀', '📖', '⏭️'])
 })
@@ -63,5 +63,14 @@ test('sent once, edited only on change, resolved when it stops waiting', async (
   assert.equal(wire.length, 1)
   assert.equal(wire[0]!.priority, 2)
   await syncInboxCards([])
-  assert.deepEqual(wire[1], { key: 'shipshape:update:7', source: 'shipshape', status: 'resolved' })
+  assert.deepEqual(wire[1], { key: 'shipshape:update:media/jellyfin', source: 'shipshape', status: 'resolved' })
+})
+
+test('a newer version edits the same card', async () => {
+  await syncInboxCards([item('pr-waiting')])
+  await syncInboxCards([item('pr-waiting', { id: 8, toTag: '10.11' })])
+  assert.equal(wire.length, 2)
+  assert.equal(wire[1]!.key, wire[0]!.key)
+  assert.equal(wire[1]!.status, 'firing')
+  assert.match(wire[1]!.title, /10\.11/)
 })

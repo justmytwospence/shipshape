@@ -7,7 +7,8 @@ import { notify, resolveIncident, type IncidentAction } from './index.ts'
 /**
  * One card per update waiting on you, in the router's Shipshape room: the Inbox, live.
  *
- * Each is an incident keyed `shipshape:update:<id>`, priority 2 (a silent notice: a
+ * Each is an incident keyed `shipshape:update:<stack>/<service>` -- by service, not by
+ * update, so a newer version that supersedes a waiting one edits its card in place -- priority 2 (a silent notice: a
  * decision never pushes), with its verbs as one-tap actions, and resolved the moment the
  * update stops waiting -- merged, skipped, superseded. Synced on every loop tick; a card
  * is re-sent only when what it says changed (an edit, which never pushes).
@@ -79,7 +80,7 @@ export function cardFor(item: AttentionItem): Card {
     .filter((a, i, all): a is Verb => !!a && !!VERB_UI[a] && u.actions.includes(a) && all.indexOf(a) === i)
     .slice(0, 3)
   return {
-    key: `${PREFIX}${u.id}`,
+    key: `${PREFIX}${u.stack}/${u.service}`,
     title: `${name} ${u.fromTag} → ${u.toTag}`,
     body: lines.join('\n'),
     click: u.pr?.url ?? (origin ? `${origin}/updates/${u.id}` : undefined),
@@ -100,6 +101,8 @@ export async function syncInboxCards(items: AttentionItem[] = inboxNeedsYou()): 
   for (const item of items) {
     if (!waitsOnYou(item, policy.paused)) continue
     const card = cardFor(item)
+    // Newest first (inboxNeedsYou's order): a service's later rows are older versions.
+    if (live.has(card.key)) continue
     live.add(card.key)
     const fingerprint = JSON.stringify(card)
     if (sent.get(card.key) === fingerprint) continue

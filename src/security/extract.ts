@@ -79,7 +79,16 @@ export function normaliseTargets(input: unknown): { applicable: boolean; targets
   const o = (input ?? {}) as { applicable?: unknown; targets?: unknown }
   const applicable = o.applicable !== false
   const out: Target[] = []
-  for (const raw of Array.isArray(o.targets) ? o.targets : []) {
+  // Models sometimes hand a nested array back as a JSON string inside the tool input.
+  let list: unknown = o.targets
+  if (typeof list === 'string') {
+    try {
+      list = JSON.parse(list)
+    } catch {
+      list = []
+    }
+  }
+  for (const raw of Array.isArray(list) ? list : []) {
     const t = raw as Partial<Record<keyof Target, unknown>>
     const eco = String(t.ecosystem ?? '')
     if (!(ECOSYSTEMS as readonly string[]).includes(eco)) continue
@@ -289,7 +298,11 @@ export async function runExtraction(call: ExtractCall = callReader, limit = PER_
         // Tagged with a stack, but nothing found: read again later, a bounded number of times.
         if (d.extract_attempts < 2) {
           const wait = BACKOFF_MS[Math.min(d.extract_attempts, BACKOFF_MS.length - 1)]!
-          fail.run('the reader found nothing for an incident tagged with a stack', new Date(Date.now() + wait).toISOString(), d.slug)
+          fail.run(
+            `the reader found nothing for an incident tagged with a stack: ${JSON.stringify(r.input).slice(0, 300)}`,
+            new Date(Date.now() + wait).toISOString(),
+            d.slug,
+          )
           out.failed++
           continue
         }
@@ -309,5 +322,13 @@ export function incidentTargets(): Map<string, Target[]> {
   const rows = getDb()
     .prepare(`SELECT slug, targets FROM security_incidents WHERE targets IS NOT NULL AND targets != '[]'`)
     .all() as { slug: string; targets: string }[]
-  return new Map(rows.map((r) => [r.slug, JSON.parse(r.targets) as Target[]]))
+  // Filtered here too, so targets stored before the filter existed obey it.
+  const out = new Map<string, Target[]>()
+  for (const r of rows) {
+    const ts = (JSON.parse(r.targets) as Target[])
+      .map((t) => ({ ...t, names: t.names.filter((n) => !TRUST_STORE_NAMES.has(n.toLowerCase())) }))
+      .filter((t) => t.names.length > 0)
+    if (ts.length > 0) out.set(r.slug, ts)
+  }
+  return out
 }

@@ -163,6 +163,11 @@ test('a re-read that finds nothing keeps the earlier targets', async () => {
   assert.match(row.extract_error, /kept the earlier targets/)
 })
 
+test('a targets array handed back as a JSON string is still read', () => {
+  const r = normaliseTargets({ applicable: true, targets: JSON.stringify(NODE_TARGETS.targets) })
+  assert.equal(r.targets.length, 2)
+})
+
 test('trust-store packages never become targets', () => {
   const r = normaliseTargets({
     applicable: true,

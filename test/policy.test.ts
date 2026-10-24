@@ -245,3 +245,12 @@ test('canAutoMerge: a verified security fix lifts exactly the manual rung, major
   assert.equal(merge({ verdict: 'caution' }).merge, false)
   assert.equal(merge({ securityFix: false, verdict: 'caution' }).merge, false)
 })
+
+test('canAutoMerge: the cooldown holds a young release, and nothing else changes', () => {
+  const day = 24 * 60 * 60_000
+  assert.equal(merge({ cooldown: { ageMs: 2 * day, requiredMs: 7 * day } }).merge, false)
+  assert.equal(merge({ cooldown: { ageMs: 8 * day, requiredMs: 7 * day } }).merge, true)
+  assert.equal(merge({ cooldown: { ageMs: 0, requiredMs: 0 } }).merge, true)
+  // A security fix does not skip it by itself: the caller decides how long it is.
+  assert.equal(merge({ securityFix: true, cooldown: { ageMs: day, requiredMs: 2 * day } }).merge, false)
+})

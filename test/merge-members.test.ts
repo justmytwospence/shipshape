@@ -24,7 +24,8 @@ const { getDb } = await import('../src/db.ts')
 const { PolicySchema } = await import('../src/config.ts')
 const { decide, memberVerdict, REVIEW_WAIT_MS } = await import('../src/gitops/automerge.ts')
 
-const policy = PolicySchema.parse({ paused: false })
+// No cooldown here: these are about the review gate. The cooldown has its own test below.
+const policy = PolicySchema.parse({ paused: false, merge: { cooldown_days: 0 } })
 
 beforeEach(() => {
   getDb().exec(`DELETE FROM prs; DELETE FROM updates; DELETE FROM pr_updates; DELETE FROM verdicts;`)
@@ -128,7 +129,7 @@ test('a review that was tried and failed follows static policy, as before', () =
 
 test('nothing waits for a review that is switched off', () => {
   const a = update('a')
-  const off = PolicySchema.parse({ paused: false, claude: { mode: 'off' } })
+  const off = PolicySchema.parse({ paused: false, claude: { mode: 'off' }, merge: { cooldown_days: 0 } })
   assert.equal(decide(pr(7, [a.id]), 7, 'tag-only', false, off).merge, true)
 })
 
@@ -151,4 +152,25 @@ test('memberVerdict: the clock is the later of the pull request and the update',
     memberVerdict({ verdict_row: 'x', verdict_error: 'boom', recommendation: null, pr_created_at: recent, detected_at: recent }, true, now),
     'unavailable',
   )
+})
+
+test('a release younger than the cooldown waits; an old one merges', () => {
+  const week = PolicySchema.parse({ paused: false, merge: { cooldown_days: 7 }, claude: { mode: 'off' } })
+  const fresh = update('cool-fresh')
+  const d = decide(pr(90, [fresh.id]), 90, 'tag-only', false, week)
+  assert.equal(d.merge, false)
+  assert.match(d.reason, /released .* ago; merges on its own at 7 days old/)
+  const old = new Date(Date.now() - 8 * 24 * 60 * 60_000).toISOString()
+  const aged = update('cool-old', { detectedAt: old })
+  assert.equal(decide(pr(91, [aged.id], old), 91, 'tag-only', false, week).merge, true)
+})
+
+test('a verified fix waits less, and one for a critical or exploited incident not at all', async () => {
+  const { cooldownFor } = await import('../src/gitops/automerge.ts')
+  const p = PolicySchema.parse({ merge: { cooldown_days: 7 }, security: { fix_cooldown_days: 2 } })
+  const r = { image: 'img/x:1.0.0', to_tag: '1.0.1', detected_at: new Date().toISOString() }
+  const day = 24 * 60 * 60_000
+  assert.equal(cooldownFor(r, null, p).requiredMs, 7 * day)
+  assert.equal(cooldownFor(r, { critical: false }, p).requiredMs, 2 * day)
+  assert.equal(cooldownFor(r, { critical: true }, p).requiredMs, 0)
 })

@@ -341,6 +341,11 @@ export const PolicySchema = z.object({
       auto: z.boolean().optional(),
       // A ceiling so a misconfiguration merges a couple of things and stops.
       max_per_run: z.number().int().min(1).max(50).default(3),
+      // Nothing merges on its own until its release is this many days old, so a broken or
+      // hijacked release has time to be noticed and pulled before it reaches the host. A
+      // merge you press is not held. A verified security fix waits `security.fix_cooldown_days`
+      // instead, and one for a critical or exploited incident does not wait at all.
+      cooldown_days: z.number().min(0).max(90).default(7),
     })
     .prefault({}),
   /**
@@ -430,6 +435,9 @@ export const PolicySchema = z.object({
       // `caution` review. It never passes a hold, a `block` review, a pending review,
       // the attended / on-request / skip rungs, a dormant service, or `paused`.
       auto_merge: z.boolean().default(false),
+      // How long a verified fix for a non-critical incident waits instead of the full
+      // cooldown. A fix for a critical, KEV-listed or exploited incident does not wait.
+      fix_cooldown_days: z.number().min(0).max(90).default(2),
       // The incident index: one file, every category, each incident with its updatedAt.
       feed: z.string().url().default('https://pwn.watch/incidents.json'),
       // Which categories to follow. `breach` has nothing to match an image against.
@@ -476,7 +484,7 @@ export const PolicySchema = z.object({
       poll_active_s: sync.poll_active_s,
       poll_idle_s: sync.poll_idle_s,
     },
-    merge: { max_per_run: merge.max_per_run },
+    merge: { max_per_run: merge.max_per_run, cooldown_days: merge.cooldown_days },
     deploy: {
       verify_window_s: deploy.verify_window_s,
       probe: deploy.probe,

@@ -240,6 +240,11 @@ export interface AutoMergeInput {
    * service, a fail-closed service with no review, an edited pull request -- still refuses.
    */
   securityFix?: boolean
+  /**
+   * How old the release is, and how old it must be before it may merge on its own
+   * (`merge.cooldown_days`, shortened for a verified security fix). Absent: no cooldown.
+   */
+  cooldown?: { ageMs: number; requiredMs: number }
 }
 
 export type AutoMergeDecision =
@@ -271,6 +276,9 @@ export function canAutoMerge(i: AutoMergeInput): AutoMergeDecision {
   }
   if (i.magnitude === 'major' && !fix) return { merge: false, reason: 'majors always need a human' }
   if (i.magnitude === 'digest' && !fix) return { merge: false, reason: 'digest bumps always need a human' }
+  if (i.cooldown && i.cooldown.ageMs < i.cooldown.requiredMs) {
+    return { merge: false, reason: `released ${ageWords(i.cooldown.ageMs)} ago; merges on its own at ${ageWords(i.cooldown.requiredMs)} old` }
+  }
 
   if (i.claudeMode === 'off') return { merge: true }
 
@@ -346,4 +354,14 @@ export function shouldOpenPr(opts: {
 }): boolean {
   if (opts.rolling) return false
   return opts.tier !== 'skip' && opts.tier !== 'held'
+}
+
+/** `3 days`, `5 hours`, `20 minutes`: the largest unit that fits. */
+export function ageWords(ms: number): string {
+  const m = Math.max(0, Math.floor(ms / 60_000))
+  if (m < 60) return `${m} minute${m === 1 ? '' : 's'}`
+  const h = Math.floor(m / 60)
+  if (h < 48) return `${h} hour${h === 1 ? '' : 's'}`
+  const d = Math.floor(h / 24)
+  return `${d} day${d === 1 ? '' : 's'}`
 }

@@ -189,6 +189,8 @@ export interface SecurityFix {
   slug: string
   title: string
   evidence: { type: string; name: string; from: string; to: string[] }[]
+  /** Critical, or exploited in the wild (KEV, exploited, zero-day): skips the cooldown. */
+  critical: boolean
 }
 
 /**
@@ -206,11 +208,19 @@ export function securityFixFor(updateId: number, policy: Policy = loadPolicy().p
 export function verifiedFix(updateId: number): SecurityFix | null {
   const row = getDb()
     .prepare(
-      `SELECT f.slug, f.evidence, i.title FROM security_fixes f JOIN security_incidents i ON i.slug = f.slug
-        WHERE f.update_id = ? ORDER BY f.verified_at LIMIT 1`,
+      `SELECT f.slug, f.evidence, i.title, i.severity, i.tags FROM security_fixes f JOIN security_incidents i ON i.slug = f.slug
+        WHERE f.update_id = ?`,
     )
-    .get(updateId) as { slug: string; evidence: string; title: string } | undefined
-  return row ? { slug: row.slug, title: row.title, evidence: JSON.parse(row.evidence) as SecurityFix['evidence'] } : null
+    .all(updateId) as { slug: string; evidence: string; title: string; severity: string | null; tags: string }[]
+  if (row.length === 0) return null
+  // The most serious incident it fixes speaks for it.
+  const views = row.map((r) => ({
+    slug: r.slug,
+    title: r.title,
+    evidence: JSON.parse(r.evidence) as SecurityFix['evidence'],
+    critical: r.severity === 'critical' || exploited(JSON.parse(r.tags) as string[]),
+  }))
+  return views.find((v) => v.critical) ?? views[0]!
 }
 
 /** Reachable from outside WireGuard: a Traefik router whose rule has no ClientIP gate. */

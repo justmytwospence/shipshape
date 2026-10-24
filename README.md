@@ -195,6 +195,14 @@ unless `security.auto_merge` says otherwise.
 This is also the prompt-injection boundary: release notes are untrusted input, and the
 worst a hostile changelog can achieve is to stop an update.
 
+**Cooldown.** Nothing merges on its own until its release is `merge.cooldown_days` old
+(default 7): the registry's publish date where it gives one, else when shipshape first saw
+the tag; a digest move counts from when it was seen. A broken or hijacked release usually
+surfaces within days, and a week of nothing merging is cheap. A merge you press is not
+held. A verified security fix waits `security.fix_cooldown_days` (default 2) instead, and
+one for a critical, KEV-listed or exploited incident does not wait at all. Release notes
+never shorten the wait -- "security release" is exactly what a hostile release would say.
+
 `gated` is accepted as a spelling of `manual`. It used to be a fifth rung, and it
 behaved identically to `manual` in every decision — same merge answer, same PR answer —
 so it was a choice with no consequence rather than a control.

@@ -6,6 +6,7 @@ import { budgetExhausted } from '../analyze/claude.ts'
 import { llmConfigured } from '../analyze/client.ts'
 import { scanRepo } from '../compose/scan.ts'
 import { securityFixFor } from '../security/act.ts'
+import { parseImageRef } from '../images/ref.ts'
 import type { Magnitude } from '../versions/patterns.ts'
 
 /**
@@ -196,6 +197,7 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
     // A verified security fix (src/security/act.ts), offered only under `security.mode: on`
     // with `auto_merge`. Asked per member: in a group, each member must stand on its own.
     const fix = securityFixFor(r.id, policy)
+    const cooldown = cooldownFor(r, fix, policy)
     const plain = fix
       ? canAutoMerge({
           tier,
@@ -206,11 +208,13 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
           claudeMode: reviewMode(policy),
           minConfidence: MIN_CONFIDENCE,
           prScope: 'tag-only',
+          cooldown: cooldownFor(r, null, policy),
         }).merge
       : true
     if (fix && !plain) fixes.push(`${r.service}: ${fix.title}`)
     const d = canAutoMerge({
       securityFix: fix !== null,
+      cooldown,
       tier,
       magnitude: r.magnitude,
       verdict: memberVerdict(r, reviewCanRun) as never,
@@ -229,6 +233,38 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
   if (fixes.length > 0) return { number, merge: true, reason: `security fix -- ${fixes.join('; ')}`.slice(0, 300) }
   return { number, merge: true, reason: 'policy allows it' }
 
+}
+
+/**
+ * When a release was published: the registry's own date where it gave one, else when
+ * shipshape first saw the tag, else when the update was detected. Exported for the tests.
+ */
+export function releasedAt(r: { image: string; to_tag: string; detected_at: string }): string {
+  const ref = parseImageRef(r.image)
+  const tag = r.to_tag.split('@')[0]!
+  const row = getDb()
+    .prepare(`SELECT published_at, first_seen_at FROM tags_seen WHERE registry = ? AND repository = ? AND tag = ?`)
+    .get(ref.registry, ref.repository, tag) as { published_at: string | null; first_seen_at: string } | undefined
+  // A digest move re-publishes an existing tag: the tag's date says nothing about the new
+  // image, so its age is counted from when the move was seen.
+  if (r.to_tag.includes('@')) return r.detected_at
+  return row?.published_at ?? row?.first_seen_at ?? r.detected_at
+}
+
+/**
+ * The cooldown that applies to one update: `merge.cooldown_days`, shortened to
+ * `security.fix_cooldown_days` for a verified fix, and none for a fix to a critical or
+ * exploited incident. Exported for the tests.
+ */
+export function cooldownFor(
+  r: { image: string; to_tag: string; detected_at: string },
+  fix: { critical: boolean } | null,
+  policy: Policy,
+  now = Date.now(),
+): { ageMs: number; requiredMs: number } {
+  const days = fix ? (fix.critical ? 0 : policy.security.fix_cooldown_days) : policy.merge.cooldown_days
+  const at = Date.parse(releasedAt(r))
+  return { ageMs: Number.isFinite(at) ? now - at : 0, requiredMs: days * 24 * 60 * 60_000 }
 }
 
 /**

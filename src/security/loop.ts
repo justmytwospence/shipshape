@@ -84,7 +84,12 @@ export async function runSecurityPass(force = false): Promise<PassResult | null>
       await Promise.all(batch.slice(k, k + PARALLEL).map((r) => scanImage(r.imageId, r.imageRef, policy)))
       out.inventoried += Math.min(PARALLEL, batch.length - k)
     }
-    backlog = pending.length > Math.max(0, budget)
+    // Work still waiting -- images to read, or incidents to extract -- keeps the clock short.
+    const unread = (getDb()
+      .prepare(`SELECT COUNT(*) c FROM security_incidents WHERE status = 'live' AND (targets_hash IS NULL OR targets_hash != versions_hash)
+                  AND (next_extract_at IS NULL OR next_extract_at <= ?)`)
+      .get(new Date().toISOString()) as { c: number }).c
+    backlog = pending.length > Math.max(0, budget) || unread > 0
 
     found = computeExposures(targets, live)
     out.exposures = recordExposures(found)

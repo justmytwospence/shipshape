@@ -21,6 +21,8 @@ import { contextFor, type VerbResult } from '../updates/verbs.ts'
 import { activityRows, checkService, scanInfo } from '../web/server.ts'
 import { KINDS as ACTIVITY_KINDS } from '../web/views/ui/activity.tsx'
 import { version } from '../web/version.ts'
+import { exposureViews, findPackage, incidentViews } from '../security/queries.ts'
+import { securityStatus } from '../security/loop.ts'
 
 /**
  * Shipshape for agents: the dashboard's reads and the operator's verbs, over MCP.
@@ -226,6 +228,44 @@ export function createServer(): McpServer {
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
     async ({ stack, verb }) => verbReply(logged(`${verb} of ${stack} requested via MCP`, await runStackVerb(stack, verb), { stack })),
+  )
+
+  server.registerTool(
+    'list_exposures',
+    {
+      title: 'Security exposures',
+      description:
+        'Running services that carry a package version a followed security incident (pwn.watch) names, read from syft ' +
+        'inventories of the running images. Each service shows the affected packages and the update, if any, verified from ' +
+        'its own image to remove them. Pass `slug` for one incident.',
+      inputSchema: z.object({ slug: z.string().max(200).optional() }),
+      annotations: READ,
+    },
+    async ({ slug }) => json({ status: securityStatus(), exposures: exposureViews(slug) }),
+  )
+
+  server.registerTool(
+    'list_security_incidents',
+    {
+      title: 'Security incidents',
+      description:
+        'Incidents shipshape follows, with the package targets extracted from each (null until read; empty when nothing ' +
+        'could run in a container). `matched_only` limits to incidents with a running exposure.',
+      inputSchema: z.object({ matched_only: z.boolean().optional() }),
+      annotations: READ,
+    },
+    async ({ matched_only }) => json(incidentViews({ matchedOnly: matched_only ?? false })),
+  )
+
+  server.registerTool(
+    'find_package',
+    {
+      title: 'Find a package',
+      description: 'Which running services carry a package (npm, PyPI, deb, apk, a runtime binary such as node), and at what version.',
+      inputSchema: z.object({ name: z.string().min(1).max(200) }),
+      annotations: READ,
+    },
+    async ({ name }) => json(findPackage(name)),
   )
 
   return server

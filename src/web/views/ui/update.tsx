@@ -417,6 +417,30 @@ const SCREEN_DECISION: Record<string, { text: string; cls: string }> = {
  * Under `review.screen: shadow` it is folded away and says so, because nothing acted on
  * it: it is there so its answers can be compared with the reader's before they count.
  */
+/**
+ * The security incident this update removes from the running service, and the evidence:
+ * the affected package as it runs now, and as the new image carries it. Both read from
+ * the images' own inventories, never from the advisory.
+ */
+export const SecurityFixBlock: FC<{ update: UpdateView }> = ({ update }) => {
+  const f = update.securityFix
+  if (!f) return null
+  return (
+    <section class="border-base-300 border-t px-4 py-3">
+      <h3 class="mb-1 text-xs font-medium tracking-wide uppercase opacity-60">Security fix</h3>
+      <p class="text-sm">Removes an exposure to {f.title}.</p>
+      <ul class="mt-1 text-xs">
+        {f.evidence.map((e) => (
+          <li class="font-mono">
+            {e.name} ({e.type}): {e.from} → {e.to.join(', ')}
+          </li>
+        ))}
+      </ul>
+      <p class="mt-1 text-xs opacity-60">Read from both images' inventories, not from the advisory.</p>
+    </section>
+  )
+}
+
 export const ScreenBlock: FC<{ update: UpdateView }> = ({ update }) => {
   const s = update.screen
   if (!s) return null
@@ -692,6 +716,7 @@ export const UpdateDetail: FC<{
           ...(warnings ?? []),
         ]}
       />
+      <SecurityFixBlock update={update} />
       <VerdictBlock update={update} />
       <ScreenBlock update={update} />
 

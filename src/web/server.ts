@@ -85,6 +85,7 @@ import { activeChannels } from '../notify/index.ts'
 import { configured as emailConfigured, send as sendEmail, escapeHtml as escapeText } from '../notify/email.ts'
 import { rescheduleScan, rescheduleDigest } from '../scheduler.ts'
 import { trustedProxyAuth } from './auth.ts'
+import { securityPanel } from '../security/panel.ts'
 
 const PENDING_SQL = `
   SELECT u.id, u.stack, u.service, u.image, u.from_tag, u.to_tag, u.magnitude,
@@ -1118,6 +1119,7 @@ export function createApp(): Hono {
         .prepare(`SELECT key, value, window FROM budgets ORDER BY key`)
         .all() as StatusData['budgets'],
       upstream: sourceCounts(),
+      security: securityPanel(),
       sandbox: !!process.env.SHIPSHAPE_UI_DEV,
     }
   }

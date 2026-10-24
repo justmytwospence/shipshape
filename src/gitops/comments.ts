@@ -51,6 +51,7 @@ export type CommentKind =
   | 'proposal'
   | 'reply'
   | 'held'
+  | 'security'
 
 const PREFIX = '<!-- shipshape:'
 

@@ -18,7 +18,7 @@ import { paths } from '../config.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
-export type PromptName = 'verdict' | 'proposal' | 'revision'
+export type PromptName = 'verdict' | 'proposal' | 'revision' | 'security'
 
 export const PROMPTS: Record<PromptName, { title: string; help: string }> = {
   verdict: {
@@ -32,6 +32,10 @@ export const PROMPTS: Record<PromptName, { title: string; help: string }> = {
   revision: {
     title: 'Your comments',
     help: 'Runs when you comment on an open pull request. It can answer, hold, re-read the changelog, skip, or write the change — never merge, never deploy.',
+  },
+  security: {
+    title: 'Security incidents',
+    help: 'Runs once per incident (again only when its version text changes). Turns an advisory into package names and affected version ranges; whether anything here matches is then decided without a model.',
   },
 }
 

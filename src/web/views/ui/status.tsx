@@ -1,5 +1,6 @@
 import type { FC } from 'hono/jsx'
 import { Relative } from './parts.tsx'
+import type { SecurityPanel } from '../../../security/panel.ts'
 
 /**
  * The machine's own state: what it is doing, what it is wired to, what it has spent.
@@ -45,6 +46,8 @@ export interface StatusData {
   budgets: { key: string; value: number; window: string | null }[]
   /** Where watched images' release notes come from: how many are certain, likely, or unknown. */
   upstream?: { total: number; linked: number; likely: number; notFound: number; notLooked: number; failing: number }
+  /** Security incidents matched against what runs here (src/security). */
+  security?: SecurityPanel
   /** True in the sandbox dev server, where the credentials are deliberately absent. */
   sandbox?: boolean
 }
@@ -182,6 +185,68 @@ const UpstreamCounts: FC<{ u: NonNullable<StatusData['upstream']> }> = ({ u }) =
   )
 }
 
+/**
+ * Security incidents, as matched against the running images' own inventories.
+ *
+ * Facts only: which services carry a version an incident names, and which update was
+ * read -- from its own image -- to remove it. Whether that update may merge on its own is
+ * the merge gate's question, answered on the update.
+ */
+const SecurityBlock: FC<{ s: SecurityPanel }> = ({ s }) => (
+  <Block>
+    <H>Security incidents</H>
+    <KV
+      rows={[
+        ['mode', `${s.mode}${s.mode === 'on' ? (s.autoMerge ? ' · verified fixes merge on their own' : ' · fixes wait for you') : ' · shown, not acted on'}`],
+        ['incidents', `${s.incidents} followed · ${s.withTargets} could match an image`],
+        [
+          'inventories',
+          `${s.running - s.uninventoried} of ${s.running} running services${s.uninventoried > 0 ? ` · ${s.uninventoried} images still to read` : ''}`,
+        ],
+        ['next look', s.nextAt ? <Relative at={s.nextAt} /> : 'not scheduled'],
+      ]}
+    />
+    {s.exposures.length === 0 ? (
+      <p class="mt-1 text-xs opacity-60">Nothing running carries a version a followed incident names.</p>
+    ) : (
+      <div class="divide-base-300 border-base-300 mt-2 divide-y border-y text-xs">
+        {s.exposures.map((e) => (
+          <div class="py-1.5">
+            <div class="flex items-baseline gap-2">
+              <span class={`badge badge-xs badge-soft ${e.severity === 'critical' ? 'badge-error' : 'badge-warning'}`}>
+                {e.severity ?? 'unrated'}
+              </span>
+              {e.exploited ? <span class="badge badge-xs badge-soft badge-error">exploited</span> : null}
+              {e.url ? (
+                <a href={e.url} class="link min-w-0 flex-1 truncate" target="_blank" rel="noopener">
+                  {e.title}
+                </a>
+              ) : (
+                <span class="min-w-0 flex-1 truncate">{e.title}</span>
+              )}
+            </div>
+            {e.services.map((sv) => (
+              <div class="mt-0.5 flex flex-wrap gap-x-2 pl-2 opacity-80">
+                <a href={`/services/${sv.stack}/${sv.service}`} class="link font-mono">
+                  {sv.stack === sv.service ? sv.service : `${sv.stack}/${sv.service}`}
+                </a>
+                <span class="font-mono">{sv.packages.map((p) => `${p.name} ${p.installed}`).join(', ')}</span>
+                {sv.fix ? (
+                  <a href={`/updates/${sv.fix.updateId}`} class="link">
+                    fixed by {sv.fix.toTag}
+                  </a>
+                ) : (
+                  <span class="opacity-60">no fix yet</span>
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    )}
+  </Block>
+)
+
 export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
   const hub = hubPulls(data.budgets)
   return (
@@ -304,6 +369,8 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
               its own $1 ceiling. It never stops a pull request opening.
             </p>
           </Block>
+
+          {data.security && data.security.mode !== 'off' ? <SecurityBlock s={data.security} /> : null}
 
           <Block>
             <H>This deployment</H>

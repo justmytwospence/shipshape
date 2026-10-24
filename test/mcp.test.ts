@@ -59,8 +59,9 @@ beforeEach(() => {
 test('the tools: reads plus the operator verbs, nothing that edits settings or labels', async () => {
   const tools = (await rpc('tools/list')).result.tools as { name: string; inputSchema: any }[]
   assert.deepEqual(tools.map((t) => t.name).sort(), [
-    'activity', 'check_service', 'get_service', 'get_update', 'inbox', 'list_services',
-    'list_updates', 'scan_now', 'scan_status', 'stack_action', 'update_action',
+    'activity', 'check_service', 'find_package', 'get_service', 'get_update', 'inbox', 'list_exposures',
+    'list_security_incidents', 'list_services', 'list_updates', 'scan_now', 'scan_status', 'stack_action',
+    'update_action',
   ])
   const verbs = tools.find((t) => t.name === 'update_action')!.inputSchema.properties.verb.enum
   assert.deepEqual(verbs, [...OPERATOR_VERBS])

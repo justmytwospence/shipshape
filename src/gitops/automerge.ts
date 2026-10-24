@@ -5,6 +5,7 @@ import { MIN_CONFIDENCE, canAutoMerge, foldGroupTier, reviewMode, tierFor } from
 import { budgetExhausted } from '../analyze/claude.ts'
 import { llmConfigured } from '../analyze/client.ts'
 import { scanRepo } from '../compose/scan.ts'
+import { securityFixFor } from '../security/act.ts'
 import type { Magnitude } from '../versions/patterns.ts'
 
 /**
@@ -113,7 +114,7 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
 
   const rows = getDb()
     .prepare(
-      `SELECT u.stack, u.service, u.magnitude, u.detail, u.image, u.from_tag, u.to_tag,
+      `SELECT u.id, u.stack, u.service, u.magnitude, u.detail, u.image, u.from_tag, u.to_tag,
               u.detected_at, p.created_at AS pr_created_at,
               v.image AS verdict_row,
               v.recommendation, v.confidence, v.error AS verdict_error,
@@ -130,6 +131,7 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
        WHERE pu.pr_id = ? AND u.state != 'superseded'`,
     )
     .all(prId) as {
+    id: number
     stack: string
     service: string
     magnitude: Magnitude
@@ -189,8 +191,26 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
   // drift from it.
   const tier = foldGroupTier(tiers)
   const reviewCanRun = reviewExpected(policy)
+  const fixes: string[] = []
   for (const r of rows) {
+    // A verified security fix (src/security/act.ts), offered only under `security.mode: on`
+    // with `auto_merge`. Asked per member: in a group, each member must stand on its own.
+    const fix = securityFixFor(r.id, policy)
+    const plain = fix
+      ? canAutoMerge({
+          tier,
+          magnitude: r.magnitude,
+          verdict: memberVerdict(r, reviewCanRun) as never,
+          confidence: (r.confidence ?? 'low') as never,
+          claudeRequired,
+          claudeMode: reviewMode(policy),
+          minConfidence: MIN_CONFIDENCE,
+          prScope: 'tag-only',
+        }).merge
+      : true
+    if (fix && !plain) fixes.push(`${r.service}: ${fix.title}`)
     const d = canAutoMerge({
+      securityFix: fix !== null,
       tier,
       magnitude: r.magnitude,
       verdict: memberVerdict(r, reviewCanRun) as never,
@@ -204,6 +224,9 @@ export function decide(prId: number, number: number, scope: string, userOwned: b
       return { number, merge: false, reason: rows.length > 1 ? `${r.service}: ${d.reason}` : d.reason }
     }
   }
+  // Said when the fix is what made the difference, so the log and the digest show why a
+  // manual-rung or cautioned update merged on its own.
+  if (fixes.length > 0) return { number, merge: true, reason: `security fix -- ${fixes.join('; ')}`.slice(0, 300) }
   return { number, merge: true, reason: 'policy allows it' }
 
 }

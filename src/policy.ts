@@ -228,6 +228,18 @@ export interface AutoMergeInput {
    * that reads it.
    */
   hold?: string | null
+  /**
+   * This update was verified, from both images' own inventories, to remove a running
+   * exposure to a security incident (src/security/act.ts), and the policy lets such fixes
+   * merge. The caller passes it only when `security.mode` is `on` with `auto_merge`.
+   *
+   * It is the one input that can widen what merges, so what it lifts is spelled out and
+   * short: the manual rung, a major or digest move, a `caution` review, and an approval
+   * below the confidence floor. Everything that is a decision -- a hold, a `block`
+   * review, a review still on its way, the attended / on-request / skip rungs, a dormant
+   * service, a fail-closed service with no review, an edited pull request -- still refuses.
+   */
+  securityFix?: boolean
 }
 
 export type AutoMergeDecision =
@@ -246,7 +258,8 @@ export function canAutoMerge(i: AutoMergeInput): AutoMergeDecision {
   // First, and it can only ever refuse. Like a verdict, a comment may withhold a merge
   // and may never cause one -- so there is no branch here that returns { merge: true }.
   if (i.hold) return { merge: false, reason: i.hold }
-  if (i.tier !== 'auto') return { merge: false, reason: `tier is ${i.tier}` }
+  const fix = i.securityFix === true
+  if (i.tier !== 'auto' && !(fix && i.tier === 'manual')) return { merge: false, reason: `tier is ${i.tier}` }
   if (i.prScope && i.prScope !== 'tag-only') {
     return {
       merge: false,
@@ -256,8 +269,8 @@ export function canAutoMerge(i: AutoMergeInput): AutoMergeDecision {
           : 'the pull request has been edited',
     }
   }
-  if (i.magnitude === 'major') return { merge: false, reason: 'majors always need a human' }
-  if (i.magnitude === 'digest') return { merge: false, reason: 'digest bumps always need a human' }
+  if (i.magnitude === 'major' && !fix) return { merge: false, reason: 'majors always need a human' }
+  if (i.magnitude === 'digest' && !fix) return { merge: false, reason: 'digest bumps always need a human' }
 
   if (i.claudeMode === 'off') return { merge: true }
 
@@ -265,6 +278,7 @@ export function canAutoMerge(i: AutoMergeInput): AutoMergeDecision {
     case 'block':
       return { merge: false, reason: 'the changelog review found breaking changes', label: 'review-block' }
     case 'caution':
+      if (fix) return { merge: true }
       return { merge: false, reason: 'the changelog review says to read this first', label: 'review-hold' }
     case 'pending':
       return { merge: false, reason: 'the changelog review has not run yet', label: 'needs-review' }
@@ -278,7 +292,7 @@ export function canAutoMerge(i: AutoMergeInput): AutoMergeDecision {
         : { merge: true }
     case 'approve': {
       const conf = i.confidence ?? 'low'
-      if (CONFIDENCE_RANK[conf] < CONFIDENCE_RANK[i.minConfidence]) {
+      if (!fix && CONFIDENCE_RANK[conf] < CONFIDENCE_RANK[i.minConfidence]) {
         return {
           merge: false,
           reason: `the changelog review approved, but only at ${conf} confidence`,

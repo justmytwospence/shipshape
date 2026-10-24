@@ -411,6 +411,41 @@ export const PolicySchema = z.object({
       ...d,
       verify_window_s: d.health_window_s ?? d.verify_window_s,
     })),
+  /**
+   * Security incidents (pwn.watch) matched against what actually runs here. See
+   * src/security/.
+   *
+   * The feed only ever supplies *which* package versions are bad. Whether a service carries
+   * one, and whether an update removes it, is read here from both images' own inventories
+   * (syft), so an incident can never make shipshape merge an update that does not
+   * demonstrably fix something running on this host.
+   */
+  security: z
+    .object({
+      // off    -- nothing is fetched or scanned
+      // shadow -- fetch, extract, inventory and match; record what would happen, act on none of it
+      // on     -- also post exposure cards and, with auto_merge, let verified fixes merge
+      mode: z.enum(['off', 'shadow', 'on']).default('off'),
+      // A verified fix may merge past the manual rung, a major or digest move, and a
+      // `caution` review. It never passes a hold, a `block` review, a pending review,
+      // the attended / on-request / skip rungs, a dormant service, or `paused`.
+      auto_merge: z.boolean().default(false),
+      // The incident index: one file, every category, each incident with its updatedAt.
+      feed: z.string().url().default('https://pwn.watch/incidents.json'),
+      // Which categories to follow. `breach` has nothing to match an image against.
+      categories: z.array(z.enum(['patch', 'supply-chain', 'breach'])).default(['patch', 'supply-chain']),
+      // Minutes between feed reads. Inventory work runs on the same clock, more often while
+      // there is a backlog.
+      interval_m: z.number().int().min(5).max(24 * 60).default(15),
+      // Image inventories taken per pass, at most. Each one is 20-60 s of syft.
+      sbom_per_pass: z.number().int().min(1).max(50).default(6),
+      // The scanner, pinned by digest. Run as its own short-lived container so a large
+      // image cannot push shipshape itself past its memory limit.
+      syft_image: z
+        .string()
+        .default('anchore/syft:v1.54.1@sha256:3eb5379ba7b409c3f4069b686110527af0c47df993fa5c10d13e7cf34f49b1aa'),
+    })
+    .prefault({}),
   /** Stacks the tool must never touch. Its own stack is appended unconditionally --
    *  WUD's self-update crash-loop is not a mistake worth repeating. */
   exclude_stacks: z.array(z.string()).default([]),

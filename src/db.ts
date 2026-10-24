@@ -869,6 +869,110 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     ALTER TABLE images ADD COLUMN fork_prepared TEXT;
   `,
   },
+  {
+    id: '030-security',
+    sql: `
+    -- Security incidents from an external feed (pwn.watch), matched against what runs here.
+    -- See src/security/. Everything in these tables is reconstructible: the feed can be
+    -- re-read, the extraction re-run, every image re-scanned.
+    --
+    -- versions_hash: a hash of the incident's affected/fixed version text. The extraction
+    -- is only paid for again when that text changes, not on every timeline update.
+    -- relevant: the cheap screen's answer -- 1 could run in a container, 0 could not, NULL
+    -- not asked yet (or no screen configured).
+    -- targets: the extracted, structured packages and version ranges (JSON), and the hash
+    -- of the text they were extracted from.
+    CREATE TABLE security_incidents (
+      slug            TEXT PRIMARY KEY,
+      category        TEXT NOT NULL,
+      title           TEXT NOT NULL,
+      severity        TEXT,
+      patch_status    TEXT,
+      status          TEXT,
+      tags            TEXT,
+      cve_ids         TEXT,
+      url             TEXT,
+      updated_at      TEXT,
+      raw             TEXT NOT NULL,
+      fetched_at      TEXT NOT NULL,
+      versions_hash   TEXT NOT NULL,
+      relevant        INTEGER,
+      targets         TEXT,
+      targets_hash    TEXT,
+      extract_error   TEXT,
+      extract_attempts INTEGER NOT NULL DEFAULT 0,
+      next_extract_at TEXT
+    );
+
+    -- One software inventory per local image id (sha256 of the image config), from syft.
+    -- Keyed by id, not by tag: a rebuilt image under the same tag is a different inventory.
+    CREATE TABLE sbom_images (
+      image_id    TEXT PRIMARY KEY,
+      ref         TEXT,
+      scanned_at  TEXT NOT NULL,
+      error       TEXT,
+      packages    INTEGER NOT NULL DEFAULT 0,
+      attempts    INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE sbom_packages (
+      image_id TEXT NOT NULL REFERENCES sbom_images(image_id) ON DELETE CASCADE,
+      type     TEXT NOT NULL,
+      name     TEXT NOT NULL,
+      version  TEXT NOT NULL,
+      path     TEXT
+    );
+    CREATE INDEX idx_sbom_packages_image ON sbom_packages(image_id);
+    CREATE INDEX idx_sbom_packages_name ON sbom_packages(name);
+
+    -- What each compose service is running right now, as last read from docker.
+    CREATE TABLE security_running (
+      stack     TEXT NOT NULL,
+      service   TEXT NOT NULL,
+      image_id  TEXT NOT NULL,
+      image_ref TEXT,
+      seen_at   TEXT NOT NULL,
+      PRIMARY KEY (stack, service)
+    );
+
+    -- The image an update would bring in, pulled and inventoried only for services that
+    -- are exposed. image_id NULL with an error when it could not be pulled.
+    CREATE TABLE security_candidates (
+      update_id  INTEGER PRIMARY KEY REFERENCES updates(id) ON DELETE CASCADE,
+      image_ref  TEXT NOT NULL,
+      image_id   TEXT,
+      error      TEXT,
+      attempts   INTEGER NOT NULL DEFAULT 0,
+      checked_at TEXT NOT NULL
+    );
+
+    -- A running service carrying a package an incident names, in an affected version.
+    -- Recomputed on every pass; first_seen_at survives the recompute.
+    CREATE TABLE exposures (
+      slug          TEXT NOT NULL,
+      stack         TEXT NOT NULL,
+      service       TEXT NOT NULL,
+      type          TEXT NOT NULL,
+      package       TEXT NOT NULL,
+      installed     TEXT NOT NULL,
+      fixed         TEXT,
+      first_seen_at TEXT NOT NULL,
+      last_seen_at  TEXT NOT NULL,
+      PRIMARY KEY (slug, stack, service, type, package, installed)
+    );
+
+    -- An update whose own image was inventoried and carries no affected version of any
+    -- package the running image is exposed through, for one incident. The evidence is
+    -- local -- both inventories were read here -- and is what lets a security fix merge.
+    CREATE TABLE security_fixes (
+      update_id   INTEGER NOT NULL REFERENCES updates(id) ON DELETE CASCADE,
+      slug        TEXT NOT NULL,
+      evidence    TEXT NOT NULL,
+      verified_at TEXT NOT NULL,
+      commented   INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (update_id, slug)
+    );
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

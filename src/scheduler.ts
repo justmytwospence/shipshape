@@ -18,6 +18,7 @@ import { ingestInstructions } from './revise/ingest.ts'
 import { runInstructionPass } from './revise/run.ts'
 import { createTicker, type Ticker } from './loop/ticker.ts'
 import { logRetired, retireOvertaken } from './updates/overtaken.ts'
+import { startSecurityLoop } from './security/loop.ts'
 
 /**
  * Nightly scan scheduling.
@@ -68,6 +69,9 @@ export function startScheduler(): void {
   schedule()
   scheduleDigest()
   startPrLoop()
+  // Security incidents against what runs here, on its own clock (src/security/loop.ts).
+  // Off unless policy.yaml turns it on; the loop checks on every tick.
+  startSecurityLoop()
 }
 
 /**

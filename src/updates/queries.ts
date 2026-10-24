@@ -1,4 +1,5 @@
 import { getDb } from '../db.ts'
+import { verifiedFix, type SecurityFix } from '../security/act.ts'
 import { forkConflictFor } from '../forks.ts'
 import { loadPolicy } from '../config.ts'
 import { MIN_CONFIDENCE, normaliseTier, shouldOpenPr, verdictHolds, type EffectiveTier } from '../policy.ts'
@@ -92,6 +93,11 @@ export interface UpdateView {
   presented: Partial<Record<Verb, Presentation>>
   /** What the screen (Jev) found, when it has looked. Absent while `review.screen` is off. */
   screen: ScreenView | null
+  /**
+   * A security incident this update was verified, from its own image's inventory, to
+   * remove from the running service (src/security). Optional so older fixtures still read.
+   */
+  securityFix?: SecurityFix | null
 }
 
 export interface ScreenView {
@@ -373,6 +379,7 @@ function toView(u: RawUpdate, repo: string): UpdateView {
     rolling: u.detail === 'rolling',
     fork,
     forkConflict,
+    securityFix: verifiedFix(u.id),
     detectedAt: u.detected_at,
     updatedAt: u.updated_at,
     ackedAt: u.acked_at,

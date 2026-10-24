@@ -189,7 +189,8 @@ damper:
 
 The review can **block** an update that policy would have merged. It can never
 **promote** one. Majors, digest moves, and any pull request carrying more than an image line are
-never auto-merged, and that is not configurable.
+never auto-merged -- with one exception, a verified security fix, described below and off
+unless `security.auto_merge` says otherwise.
 
 This is also the prompt-injection boundary: release notes are untrusted input, and the
 worst a hostile changelog can achieve is to stop an update.
@@ -225,6 +226,45 @@ reader already wrote.
 
 The whole model is also rendered in the running app: each section of the Settings page
 says what that stage does, in the order an update moves through them.
+
+### Security incidents
+
+shipshape can follow [pwn.watch](https://pwn.watch)'s incident index and say which running
+services carry a version an incident names -- and which update removes it.
+
+1. **Feed.** `incidents.json` is read every `security.interval_m` minutes with a
+   conditional GET; live incidents in the followed categories (`patch`, `supply-chain`)
+   are stored, and re-stored only when their `updatedAt` moves.
+2. **Extract.** The screen asks whether anything named could be inside a container at all
+   (appliances, phones and hosted services fall out here). For the rest, the reader turns
+   the advisory's affected/fixed text into package targets -- ecosystem, names, version
+   intervals -- once per version text (`src/prompts/security.md`, overridable like the
+   others). This is the only judgement in the path.
+3. **Inventory.** [syft](https://github.com/anchore/syft), pinned by digest
+   (`security.syft_image`), runs as its own short-lived container against the host's docker
+   socket and lists every package in each running image -- runtimes such as `node` by their
+   binary, npm, PyPI, Debian and Alpine packages. Inventories are keyed by image id, so each
+   image is read once. For an *exposed* service only, the image an open update would bring
+   in is pulled and inventoried too.
+4. **Match.** No model: a package either is in an inventory with a version inside an
+   affected interval, or it is not. An update is a **verified fix** for an incident when
+   its own image carries every exposed package, and none of them -- nor anything else the
+   incident names -- in an affected version. A package that vanished verifies nothing.
+5. **Act.** `security.mode: shadow` records all of this (Status page, the MCP's
+   `list_exposures`) and says nothing. `on` adds one card per incident
+   (`shipshape:security:<slug>`, loudness by severity, exploitation and whether the service
+   has a public router) for exposure no verified fix is about to remove, and a comment on
+   each fixing pull request with the evidence.
+
+**The one exception to "never promote".** With `security.mode: on` and
+`security.auto_merge: true`, a verified fix may merge past the `manual` rung, a major or
+digest move, a `caution` review, or an approval below the confidence floor. It never
+passes a hold, a `block` review, a review still on its way, the `attended`, `on-request`
+or `skip` rungs, a dormant service, a fail-closed service with no review, an edited pull
+request, red checks, the per-run ceiling or `paused`. The advisory cannot cause this on
+its own: it only says which versions are bad, and the evidence that an update removes one
+is both images' own inventories, read here. The worst a hostile feed achieves is a merge
+of a real upstream release that demonstrably changes a package it named.
 
 ## Running it yourself
 

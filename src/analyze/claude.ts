@@ -380,7 +380,7 @@ reportUnknownModels((model) =>
   }),
 )
 
-export type CallPurpose = 'verdict' | 'proposal' | 'revision' | 'screen' | 'replay'
+export type CallPurpose = 'verdict' | 'proposal' | 'revision' | 'screen' | 'replay' | 'security'
 
 /** What the ledger knows about a call beyond its usage. */
 export interface CallMeta {

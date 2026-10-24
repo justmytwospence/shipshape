@@ -1,0 +1,220 @@
+{
+  "incidents": [
+    {
+      "slug": "postiz-account-takeover-file-read-cve-2026-115933",
+      "title": "Postiz: forged signed tokens and post-media path traversal let any registered user take over orgs and read server files (CVE-2026-115933, CVE-2026-115932)",
+      "url": "https://pwn.watch/i/postiz-account-takeover-file-read-cve-2026-115933",
+      "json": "https://pwn.watch/i/postiz-account-takeover-file-read-cve-2026-115933.json",
+      "category": "patch",
+      "status": "live",
+      "severity": "critical",
+      "patchStatus": "patched",
+      "product": "Postiz (gitroomhq/postiz-app), self-hosted",
+      "stacks": [
+        "node"
+      ],
+      "tags": [
+        "node",
+        "postiz",
+        "account-takeover",
+        "path-traversal"
+      ],
+      "cveIds": [
+        "CVE-2026-115933",
+        "CVE-2026-115932"
+      ],
+      "affectedVersions": [
+        "postiz-app 2.15.0 to before 2.25.3 (CVE-2026-115933, forged tokens)",
+        "postiz-app 2.23.0 to before 2.25.3 (CVE-2026-115932, path traversal; main route needs the Discord provider configured)"
+      ],
+      "fixedVersions": [
+        "postiz-app 2.25.3"
+      ],
+      "startedAt": "2026-10-24",
+      "closedAt": null,
+      "updatedAt": "2026-10-24T14:55:16Z",
+      "summary": "Two critical bugs in the self-hosted Postiz social media scheduler, both reported with working PoCs by Anthropic. Postiz signed session, invite and password-reset tokens with one shared secret and no purpose marker, and an extension-refresh route signed request data, so any registered user could forge tokens and become super admin of another organization (CVE-2026-115933, CVSS 9.9). A separate path traversal in post media let a registered user have the worker send any server file, including the JWT secret and env file, to their own Discord server (CVE-2026-115932, CVSS 9.6). Both are fixed in Postiz 2.25.3; self-registration is open by default, so upgrade now.",
+      "xPost": null,
+      "isExample": false
+    },
+    {
+      "slug": "pillow-fpx-heap-overflow-cve-2026-112398",
+      "title": "Pillow: heap buffer overflow in FlashPix (FPX) JPEG decoding lets one crafted image run code (CVE-2026-112398)",
+      "url": "https://pwn.watch/i/pillow-fpx-heap-overflow-cve-2026-112398",
+      "json": "https://pwn.watch/i/pillow-fpx-heap-overflow-cve-2026-112398.json",
+      "category": "patch",
+      "status": "live",
+      "severity": "critical",
+      "patchStatus": "patched",
+      "product": "Pillow (Python imaging library)",
+      "stacks": [
+        "python",
+        "pypi"
+      ],
+      "tags": [
+        "python",
+        "pypi",
+        "pillow",
+        "heap-overflow",
+        "rce",
+        "image-processing"
+      ],
+      "cveIds": [
+        "CVE-2026-112398",
+        "CVE-2026-112900",
+        "CVE-2026-112393",
+        "CVE-2026-112403"
+      ],
+      "affectedVersions": [
+        "pillow <= 12.3.0"
+      ],
+      "fixedVersions": [
+        "pillow 13.0.0"
+      ],
+      "startedAt": "2026-10-23",
+      "closedAt": null,
+      "updatedAt": "2026-10-24T14:55:16Z",
+      "summary": "A heap buffer overflow in Pillow's FlashPix (FPX) JPEG-tile decoder lets an attacker run code by getting an application to open a single crafted file with Image.open(). Pillow detects FPX files by their OLE2 content, not their extension, so any service that opens or thumbnails untrusted uploads with the optional olefile package installed can be hit with no user interaction. The advisory includes a working proof of concept (shown on Pillow 12.2.0 with ASLR disabled). Pillow 12.3.0 and earlier are affected; upgrade to 13.0.0. GitHub rates it critical (CVSS 4.0 score 9.2). The same 13.0.0 release (Oct 16) also fixes other critical bugs: CVE-2026-112900, where an EPS filename starting with - or @ is passed to Ghostscript as an option and can lead to code execution (2.6.0 through 12.3.0); CVE-2026-112393, a heap overflow when saving TIFF to BytesIO (public reproducer); and CVE-2026-112403, a JPEG heap overflow with draft()/thumbnail() on libjpeg-turbo 3.x builds.",
+      "xPost": {
+        "id": "2113756350581026990",
+        "postedAt": "2026-10-23T22:16:00.601Z",
+        "url": "https://x.com/pwnwatch_app/status/2113756350581026990"
+      },
+      "isExample": false
+    },
+    {
+      "slug": "nodejs-october-2026-security-releases",
+      "title": "Node2Shell / HTTP2Shell: Brotli RCE (CVE-2026-111497) in Node.js, Python, Envoy and Istio + Node.js October releases",
+      "url": "https://pwn.watch/i/nodejs-october-2026-security-releases",
+      "json": "https://pwn.watch/i/nodejs-october-2026-security-releases.json",
+      "category": "patch",
+      "status": "live",
+      "severity": "critical",
+      "patchStatus": "patched",
+      "product": "Node.js",
+      "stacks": [
+        "node",
+        "python"
+      ],
+      "tags": [
+        "node",
+        "python",
+        "node2shell",
+        "emudhra",
+        "tls",
+        "rce",
+        "brotli",
+        "pypi",
+        "http2shell",
+        "envoy",
+        "istio"
+      ],
+      "cveIds": [
+        "CVE-2026-111497",
+        "CVE-2026-105482",
+        "CVE-2026-105483",
+        "CVE-2026-106069",
+        "CVE-2026-105481",
+        "CVE-2026-106072",
+        "CVE-2026-106074",
+        "CVE-2026-106070",
+        "CVE-2026-106071",
+        "CVE-2026-106073"
+      ],
+      "affectedVersions": [
+        "22.x before 22.23.4, 24.x before 24.22.1, 26.x before 26.12.1",
+        "End-of-life lines 20.x, 23.x, 25.x and older: affected, no fix (upgrade to a supported line)",
+        "Bun before 1.4.4",
+        "Google Brotli 1.0.3 to 1.2.0 (fixed 1.0.10 / 1.1.1 / 1.2.1)",
+        "PyPI Brotli up to 1.2.0 and brotlicffi up to 1.2.0.2 (bundle the same decoder)",
+        "Envoy v1.39.2, v1.38.5, v1.37.7 and v1.36.11 with a Brotli decompressor configured (GHSA-3wvj-j6qm-62mr)",
+        "Istio releases before 1.29.9 / 1.30.6 / 1.31.2 that decompress Brotli (per Patch the Planet)"
+      ],
+      "fixedVersions": [
+        "22.23.4",
+        "24.22.1",
+        "26.12.1",
+        "Bun 1.4.4",
+        "PyPI Brotli 1.2.1",
+        "PyPI brotlicffi 1.2.1.0",
+        "Envoy 1.40.0 / 1.39.3 / 1.38.6 / 1.37.8 (1.36.12 too, but 1.36 is unsupported)",
+        "Istio 1.29.9 / 1.30.6 / 1.31.2"
+      ],
+      "startedAt": "2026-10-21",
+      "closedAt": null,
+      "updatedAt": "2026-10-24T02:18:28Z",
+      "summary": "Node2Shell (CVE-2026-111497, also written Node 2 Shell) is a Brotli decoder out-of-bounds write in Node.js that can let an attacker run code when an app decompresses attacker-controlled Brotli data: Express 5 / body-parser 2.x request bodies sent with Content-Encoding: br, Brotli responses read by fetch(), or node:zlib on untrusted input. OpenAI Codex Security (Khai Tran and Sylvie Mayer) reported it; Node.js fixed it on Oct 21 2026 in 26.12.1, 24.22.1 and 22.23.4, alongside nine other CVEs (TLS hostname/IP bypasses, DNS NUL truncation) and a CA store refresh for the eMudhra incident. On Oct 22 Imperva Red Team, which coined the name Node2Shell, ran code on the official Node.js 24.22.0 image. NVD lists CVSS 4.0 9.2 (critical); Node.js rates it High. End-of-life lines (Node.js 20, 23, 25 and older) get no fix: upgrade to 26.12.1, 24.22.1 or 22.23.4. Bun is fixed in 1.4.4. On Oct 23 Aikido started calling the wider impact HTTP2Shell: the bug sits in Google Brotli itself, so other software that decodes Brotli needs its own update. Envoy published a critical advisory (GHSA-3wvj-j6qm-62mr) for deployments with a Brotli decompressor configured, fixed in 1.40.0, 1.39.3, 1.38.6 and 1.37.8, and Istio has the fix in 1.29.9, 1.30.6 and 1.31.2. If you can't patch yet, disable Brotli decoding of untrusted data.",
+      "xPost": null,
+      "isExample": false
+    },
+    {
+      "slug": "plex2shell-cve-2026-96652",
+      "title": "Plex2Shell: chained Plex Media Server RCE exploited for miners",
+      "url": "https://pwn.watch/i/plex2shell-cve-2026-96652",
+      "json": "https://pwn.watch/i/plex2shell-cve-2026-96652.json",
+      "category": "patch",
+      "status": "live",
+      "severity": "critical",
+      "patchStatus": "patched",
+      "product": "Plex Media Server",
+      "stacks": [],
+      "tags": [
+        "plex",
+        "cisa-kev",
+        "rce"
+      ],
+      "cveIds": [
+        "CVE-2026-96652",
+        "CVE-2026-96654",
+        "CVE-2026-96655",
+        "CVE-2026-96656"
+      ],
+      "affectedVersions": [
+        "Before 1.43.3.10861"
+      ],
+      "fixedVersions": [
+        "1.43.3.10861+"
+      ],
+      "startedAt": "2026-10-16",
+      "closedAt": null,
+      "updatedAt": "2026-10-23T21:26:09Z",
+      "summary": "Four Plex Media Server flaws (CVE-2026-96652/96654/96655/96656), together called Plex2Shell, chain to unauthenticated admin-token theft and code execution. Researcher Zach Main published details Oct 16 and a PoC shortly after; exploitation of internet-facing servers (cryptominers + residential proxies) began by Oct 17. Fixed in 1.43.3.10861 (released earlier in August); CISA added the chain to KEV with a federal deadline of Oct 23.",
+      "xPost": null,
+      "isExample": false
+    },
+    {
+      "slug": "fortimail-cve-2026-104286",
+      "title": "FortiMail unauthenticated file-write zero-day CVE-2026-104286",
+      "url": "https://pwn.watch/i/fortimail-cve-2026-104286",
+      "json": "https://pwn.watch/i/fortimail-cve-2026-104286.json",
+      "category": "patch",
+      "status": "live",
+      "severity": "critical",
+      "patchStatus": "patched",
+      "product": "Fortinet FortiMail",
+      "stacks": [],
+      "tags": [
+        "fortinet",
+        "zero-day",
+        "cisa-kev"
+      ],
+      "cveIds": [
+        "CVE-2026-104286"
+      ],
+      "affectedVersions": [
+        "7.2.0–7.2.9, 7.4.0–7.4.8, 7.6.0–7.6.6, 8.0.0–8.0.1 (migrate/upgrade per Fortinet matrix)"
+      ],
+      "fixedVersions": [
+        "8.0.2+",
+        "7.6.7+",
+        "7.4.9+; 7.2.x migrate to 7.4.9+"
+      ],
+      "startedAt": "2026-09-30",
+      "closedAt": null,
+      "updatedAt": "2026-10-23T21:26:09Z",
+      "summary": "Fortinet FortiMail CVE-2026-104286 (CVSS 9.8) is an unauthenticated arbitrary file write via path traversal / null-byte issues in Identity-Based Encryption web flows. CISA confirmed active exploitation and ordered federal mitigation; Fortinet published FG-IR-26-175 with patches and interim mitigations (disable IBE / restrict admin/webmail).",
+      "xPost": null,
+      "isExample": false
+    }
+  ]
+}

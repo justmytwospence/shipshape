@@ -217,3 +217,31 @@ test('tierFor: a dormant (disabled/standby) service is held, whatever else appli
   assert.equal(d('digest', 'attended'), 'held')
   assert.equal(d('patch', 'skip'), 'skip') // an explicit skip still stops tracking entirely
 })
+
+test('canAutoMerge: a verified security fix lifts exactly the manual rung, majors, digests and caution', () => {
+  const fix = (over: Partial<Parameters<typeof canAutoMerge>[0]> = {}) => merge({ securityFix: true, ...over })
+  // What it lifts.
+  assert.equal(fix({ tier: 'manual' }).merge, true)
+  assert.equal(fix({ magnitude: 'major' }).merge, true)
+  assert.equal(fix({ magnitude: 'digest', tier: 'manual' }).merge, true)
+  assert.equal(fix({ verdict: 'caution' }).merge, true)
+  assert.equal(fix({ verdict: 'approve', confidence: 'low' }).merge, true)
+  assert.equal(fix({ verdict: 'unavailable' }).merge, true)
+
+  // What it never lifts.
+  for (const tier of ['attended', 'held', 'skip'] as const) {
+    assert.equal(fix({ tier }).merge, false, tier)
+  }
+  assert.equal(fix({ hold: 'do not merge yet' }).merge, false)
+  assert.equal(fix({ verdict: 'block' }).merge, false)
+  assert.equal(fix({ verdict: 'pending' }).merge, false)
+  assert.equal(fix({ verdict: 'unavailable', claudeRequired: true }).merge, false)
+  assert.equal(fix({ prScope: 'proposed' }).merge, false)
+  assert.equal(fix({ prScope: 'modified' }).merge, false)
+
+  // And without it, nothing changed.
+  assert.equal(merge({ tier: 'manual' }).merge, false)
+  assert.equal(merge({ magnitude: 'major' }).merge, false)
+  assert.equal(merge({ verdict: 'caution' }).merge, false)
+  assert.equal(merge({ securityFix: false, verdict: 'caution' }).merge, false)
+})

@@ -21,9 +21,22 @@ here, one of the two is wrong.
 | `on-request` | Nothing opens. The update is listed until you ask. You deploy it. |
 | `skip` | Not tracked at all. |
 
-Majors and digest moves are **always** manual, and that is not configurable. A
+Majors and digest moves are **always** manual, and that is not configurable -- except for
+a **verified security fix** under `security.mode: on` with `security.auto_merge`, which may
+merge past the manual rung, a major or digest move and a **Read first** review (never past
+a hold, **Breaking changes**, **Review pending**, attended, on-request, skip, or Pause). A
 `shipshape.policy` label on a service overrides the default for that service and always
 wins; anything unrecognised narrows to `manual` rather than widening.
+
+## Security incidents
+
+Incidents from pwn.watch, matched against syft inventories of the running images. Words:
+a service is **exposed** to an incident when it runs a package version the incident names;
+an update is a **security fix** when its own image was read and carries none. Say "read
+from the images' inventories", never that the advisory or a model confirmed anything --
+the model only turns the advisory into package names and version ranges. The facts live on
+**Status** (Security incidents) and on the update (Security fix); there is no seventh
+destination. Cards are keyed `shipshape:security:<slug>`, one per incident.
 
 **Pause** is the one global switch: while it is on, shipshape merges nothing on its own.
 Scanning, pull requests and changelog reviews continue. A merge *you* press still deploys —

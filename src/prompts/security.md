@@ -41,5 +41,10 @@ A bundled copy of a library inside another package is matched through that packa
 so name the package the advisory names (PyPI `brotli` and `brotlicffi`, not Google's C
 library).
 
+Certificate trust-store incidents (a compromised or distrusted CA) are not package
+vulnerabilities: do not emit `certifi`, `ca-certificates`, `pip`, `uv` or webpki targets
+for them. Name a runtime only when the advisory says that runtime release fixes a flaw
+in the runtime itself.
+
 Prefer fewer, correct targets over many speculative ones: a wrong target raises an alert
 about software that is fine.

@@ -27,6 +27,9 @@ import {
  * images, then match, verify, and only then say anything.
  */
 
+/** syft containers at once. */
+const PARALLEL = 3
+
 let ticker: Ticker | null = null
 let lastFeedAt = 0
 let backlog = false
@@ -56,9 +59,10 @@ export async function runSecurityPass(force = false): Promise<PassResult | null>
         out.feed = 'failed'
         logEvent({ level: 'warn', kind: 'system', message: 'security feed could not be read', detail: (err as Error).message })
       }
-      const ex = await runExtraction()
-      out.extracted = ex.extracted
     }
+    // Every pass, not only when the feed is read: it is bounded per pass, and an incident
+    // waiting its turn should not wait a whole feed interval for it.
+    out.extracted = (await runExtraction()).extracted
 
     const live = await listRunning()
     recordRunning(live)
@@ -74,9 +78,11 @@ export async function runSecurityPass(force = false): Promise<PassResult | null>
 
     // Then running images nobody has inventoried yet, one image id at a time.
     const pending = [...new Map(live.filter((r) => !hasInventory(r.imageId)).map((r) => [r.imageId, r])).values()]
-    for (const r of pending.slice(0, Math.max(0, budget))) {
-      await scanImage(r.imageId, r.imageRef, policy)
-      out.inventoried++
+    // A few at a time: syft is CPU and disk bound per image, and the host has the cores.
+    const batch = pending.slice(0, Math.max(0, budget))
+    for (let k = 0; k < batch.length; k += PARALLEL) {
+      await Promise.all(batch.slice(k, k + PARALLEL).map((r) => scanImage(r.imageId, r.imageRef, policy)))
+      out.inventoried += Math.min(PARALLEL, batch.length - k)
     }
     backlog = pending.length > Math.max(0, budget)
 

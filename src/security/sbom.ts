@@ -124,7 +124,7 @@ export function hasInventory(imageId: string): boolean {
   const r = getDb().prepare(`SELECT error, attempts FROM sbom_images WHERE image_id = ?`).get(imageId) as
     | { error: string | null; attempts: number }
     | undefined
-  return Boolean(r && (r.error === null || r.attempts >= 3))
+  return Boolean(r && (r.error === null || r.attempts >= 2))
 }
 
 export function inventory(imageId: string): Package[] | null {
@@ -160,7 +160,9 @@ export async function scanImage(imageId: string, ref: string | null, policy: Pol
       'syft-json',
       '-q',
     ],
-    { timeout: 15 * 60_000 },
+    // Five minutes is three times the slowest image that finished here (hermes, 3 GB, ~2 min).
+    // One that never finished (paperless-ai) used to hold the queue for 45 minutes.
+    { timeout: 5 * 60_000 },
   )
   const now = new Date().toISOString()
   if (r.exitCode !== 0 || r.timedOut) {

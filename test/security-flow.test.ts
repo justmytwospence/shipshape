@@ -130,7 +130,10 @@ test('extraction runs once per version text, through the injected reader', async
     }
     return { input: { applicable: false, targets: [] } }
   }, 10)
-  assert.equal(r.extracted, 5)
+  // Postiz (node) and Pillow (python) are tagged with a stack, so "nothing here" is
+  // doubted and read again later rather than stored.
+  assert.equal(r.extracted, 3)
+  assert.equal(r.failed, 2)
   assert.equal(calls, 5)
   // Again: nothing is due.
   const again = await runExtraction(async () => {
@@ -140,6 +143,35 @@ test('extraction runs once per version text, through the injected reader', async
   assert.equal(again.extracted, 0)
   assert.equal(calls, 5)
   assert.deepEqual([...incidentTargets().keys()].sort(), ['nodejs-october-2026-security-releases', 'plex2shell-cve-2026-96652'])
+})
+
+test('a re-read that finds nothing keeps the earlier targets', async () => {
+  const db = getDb()
+  // The advisory's text is edited: the extraction is due again.
+  db.prepare(`UPDATE security_incidents SET versions_hash = 'edited' WHERE slug = 'nodejs-october-2026-security-releases'`).run()
+  const r = await runExtraction(async (_s, user) => {
+    if (/Node2Shell/.test(user)) return { input: { applicable: false, targets: [] } }
+    return { error: 'not due' }
+  }, 10)
+  assert.equal(r.extracted, 1)
+  assert.ok(incidentTargets().has('nodejs-october-2026-security-releases'))
+  const row = db.prepare(`SELECT targets_hash, extract_error FROM security_incidents WHERE slug = 'nodejs-october-2026-security-releases'`).get() as {
+    targets_hash: string
+    extract_error: string
+  }
+  assert.equal(row.targets_hash, 'edited')
+  assert.match(row.extract_error, /kept the earlier targets/)
+})
+
+test('trust-store packages never become targets', () => {
+  const r = normaliseTargets({
+    applicable: true,
+    targets: [
+      { ecosystem: 'pypi', names: ['certifi'], affected: [{ lt: '2026.10.19' }], fixed: [] },
+      { ecosystem: 'pypi', names: ['pip', 'requests'], affected: [{ lt: '9.0' }], fixed: [] },
+    ],
+  })
+  assert.deepEqual(r.targets.map((t) => t.names), [['requests']])
 })
 
 test('exposures, verified fixes and the gate follow the inventories, not the advisory', async () => {

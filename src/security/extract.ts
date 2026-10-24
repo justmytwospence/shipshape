@@ -85,7 +85,7 @@ export function normaliseTargets(input: unknown): { applicable: boolean; targets
     if (!(ECOSYSTEMS as readonly string[]).includes(eco)) continue
     const names = (Array.isArray(t.names) ? t.names : [])
       .map((n) => String(n).trim().toLowerCase())
-      .filter((n) => n.length > 0 && n.length < 200)
+      .filter((n) => n.length > 0 && n.length < 200 && !TRUST_STORE_NAMES.has(n))
     const affected: Range[] = []
     for (const r of Array.isArray(t.affected) ? t.affected : []) {
       const rr = r as Record<string, unknown>
@@ -187,13 +187,35 @@ interface Due {
   versions_hash: string
   relevant: number | null
   extract_attempts: number
+  targets: string | null
+}
+
+/**
+ * Packages that only ever stand for a certificate trust store. A CA incident lists them
+ * because they bundle root certificates, and matching them flags nearly every image while
+ * meaning nothing actionable about the software itself. Dropped in code, not only in the
+ * prompt, because an update that only bumps one must never count as a security fix.
+ */
+export const TRUST_STORE_NAMES = new Set(['certifi', 'ca-certificates', 'pip', 'uv', 'rustls-webpki', 'webpki-roots', 'webpki'])
+
+/**
+ * Whether an empty answer should be doubted rather than stored.
+ *
+ * An incident's version text gets edited as news arrives, and every edit means another
+ * reading. One reading that answers "nothing here could be in a container" must not wipe
+ * out the targets an earlier reading found -- that turned Node2Shell into silence on
+ * 2026-10-24. Doubted too when the feed itself says which stacks are involved: an
+ * incident tagged node or python is about software that runs in containers.
+ */
+export function doubtEmpty(prior: Target[] | null, stacks: readonly string[] | null | undefined): boolean {
+  return (prior !== null && prior.length > 0) || (stacks ?? []).length > 0
 }
 
 /** Incidents whose targets are missing or stale, oldest-updated last. */
 function due(limit: number): Due[] {
   return getDb()
     .prepare(
-      `SELECT slug, raw, versions_hash, relevant, extract_attempts FROM security_incidents
+      `SELECT slug, raw, versions_hash, relevant, extract_attempts, targets FROM security_incidents
         WHERE status = 'live'
           AND (targets_hash IS NULL OR targets_hash != versions_hash)
           AND (next_extract_at IS NULL OR next_extract_at <= ?)
@@ -252,6 +274,27 @@ export async function runExtraction(call: ExtractCall = callReader, limit = PER_
       continue
     }
     const { applicable, targets } = normaliseTargets(r.input)
+    if (targets.length === 0) {
+      const prior = d.targets ? (JSON.parse(d.targets) as Target[]) : null
+      if (doubtEmpty(prior, i.stacks)) {
+        if (prior && prior.length > 0) {
+          // Keep what the earlier reading found, mark it current, and say so.
+          db.prepare(
+            `UPDATE security_incidents SET targets_hash = ?, extract_error = ?, extract_attempts = 0, next_extract_at = NULL WHERE slug = ?`,
+          ).run(d.versions_hash, 'a re-read found nothing; kept the earlier targets', d.slug)
+          logEvent({ level: 'warn', kind: 'analysis', message: 'security: a re-read found nothing; kept the earlier targets', detail: d.slug })
+          out.extracted++
+          continue
+        }
+        // Tagged with a stack, but nothing found: read again later, a bounded number of times.
+        if (d.extract_attempts < 2) {
+          const wait = BACKOFF_MS[Math.min(d.extract_attempts, BACKOFF_MS.length - 1)]!
+          fail.run('the reader found nothing for an incident tagged with a stack', new Date(Date.now() + wait).toISOString(), d.slug)
+          out.failed++
+          continue
+        }
+      }
+    }
     save.run(applicable ? 1 : 0, JSON.stringify(targets), d.versions_hash, d.slug)
     out.extracted++
   }

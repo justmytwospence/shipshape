@@ -237,6 +237,9 @@ export async function runExtraction(call: ExtractCall = callReader, limit = PER_
         out.skipped++
         continue
       }
+      // Remembered, so an incident waiting its turn for the reader is not screened again
+      // on every pass until it gets one.
+      if (verdict === true) db.prepare(`UPDATE security_incidents SET relevant = 1 WHERE slug = ?`).run(d.slug)
     }
     if (out.extracted + out.failed >= limit) continue
     if (budgetExhausted()) return { ...out, reason: 'budget' }

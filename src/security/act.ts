@@ -179,7 +179,14 @@ export function verifyFixes(targets: Map<string, Target[]>, found: ReturnType<ty
   }
   // A fix that no longer verifies -- the exposure is gone, or the candidate changed -- is
   // withdrawn, so the gate can never act on a stale claim.
-  const all = db.prepare(`SELECT update_id, slug FROM security_fixes`).all() as { update_id: number; slug: string }[]
+  // Except an update that already went through: its fix is history now (the comment, the
+  // update page), and the gate never asks about a merged update again.
+  const all = db
+    .prepare(
+      `SELECT f.update_id, f.slug FROM security_fixes f JOIN updates u ON u.id = f.update_id
+        WHERE u.state NOT IN ('merged', 'deploying', 'deployed', 'verified', 'left-stopped')`,
+    )
+    .all() as { update_id: number; slug: string }[]
   const del = db.prepare(`DELETE FROM security_fixes WHERE update_id = ? AND slug = ?`)
   for (const f of all) if (!keep.has(`${f.update_id}\u0000${f.slug}`)) del.run(f.update_id, f.slug)
   return verified
@@ -337,7 +344,9 @@ export async function commentFixes(policy: Policy): Promise<number> {
          FROM security_fixes f
          JOIN security_incidents i ON i.slug = f.slug
          JOIN pr_updates pu ON pu.update_id = f.update_id
-         JOIN prs p ON p.id = pu.pr_id AND p.state = 'open'
+         -- Merged too: a critical fix can merge in the same minute it is verified, before
+         -- this pass runs, and the evidence belongs on its pull request either way.
+         JOIN prs p ON p.id = pu.pr_id AND p.state IN ('open', 'merged')
         WHERE f.commented = 0`,
     )
     .all() as { update_id: number; slug: string; evidence: string; title: string; url: string | null; number: number }[]

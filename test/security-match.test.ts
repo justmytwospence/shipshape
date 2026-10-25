@@ -116,3 +116,11 @@ test('a target with no ranges matches nothing', () => {
     0,
   )
 })
+
+test('a runtime installed from the distribution is matched as the runtime', () => {
+  const hits = matchPackages([node], [{ type: 'deb', name: 'nodejs', version: '20.19.2+dfsg-1+deb13u3' }])
+  assert.equal(hits.length, 0, 'the target names node, not nodejs')
+  const both: Target = { ...node, names: ['node', 'nodejs'] }
+  assert.equal(matchPackages([both], [{ type: 'deb', name: 'nodejs', version: '20.19.2+dfsg-1+deb13u3' }]).length, 1)
+  assert.equal(matchPackages([both], [{ type: 'deb', name: 'nodejs', version: '24.22.1-1' }]).length, 0)
+})

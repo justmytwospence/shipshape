@@ -32,7 +32,12 @@ export interface Package {
 
 /** syft package types an ecosystem covers. `any` covers all of them. */
 const TYPES: Record<Exclude<Ecosystem, 'any'>, string[]> = {
-  binary: ['binary'],
+  // A runtime is often installed from the distribution rather than as a static binary:
+  // Debian's /usr/bin/node is a 26 KB launcher for libnode, invisible to syft's binary
+  // classifier and listed only as the `nodejs` deb. Upstream versions are compared, so a
+  // distribution backport under the same upstream version still reads as affected -- a
+  // card, never a verified fix, which is the safe direction.
+  binary: ['binary', 'deb', 'apk', 'rpm', 'alpm'],
   npm: ['npm'],
   pypi: ['python'],
   go: ['go-module'],

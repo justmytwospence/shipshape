@@ -134,10 +134,26 @@ export function inventory(imageId: string): Package[] | null {
   return db.prepare(`SELECT type, name, version, path FROM sbom_packages WHERE image_id = ?`).all(imageId) as Package[]
 }
 
+/**
+ * How long syft may take on one image, by its size.
+ *
+ * Most of a scan is docker exporting and unpacking the image, which grows with its size:
+ * hermes (3 GB) took two minutes, paperless-ai (8.6 GB) thirteen, of which a minute was
+ * syft's own catalogers. A flat limit either gave up on the large ones every time or let a
+ * stuck small one hold the queue. 2.5 minutes a gigabyte, at least 5, at most 40.
+ */
+export async function timeoutFor(imageId: string, exec: Exec = run): Promise<number> {
+  const r = await exec('docker', ['image', 'inspect', '--format', '{{.Size}}', imageId])
+  const bytes = Number(r.stdout.trim())
+  const gb = Number.isFinite(bytes) && bytes > 0 ? bytes / 1e9 : 0
+  return Math.round(Math.min(40, Math.max(5, gb * 2.5)) * 60_000)
+}
+
 /** Take one image's inventory with syft and store it. */
 export async function scanImage(imageId: string, ref: string | null, policy: Policy, exec: Exec = run): Promise<boolean> {
   const db = getDb()
   const started = Date.now()
+  const timeout = await timeoutFor(imageId, exec)
   const r = await exec(
     'docker',
     [
@@ -160,9 +176,7 @@ export async function scanImage(imageId: string, ref: string | null, policy: Pol
       'syft-json',
       '-q',
     ],
-    // Five minutes is three times the slowest image that finished here (hermes, 3 GB, ~2 min).
-    // One that never finished (paperless-ai) used to hold the queue for 45 minutes.
-    { timeout: 5 * 60_000 },
+    { timeout },
   )
   const now = new Date().toISOString()
   if (r.exitCode !== 0 || r.timedOut) {

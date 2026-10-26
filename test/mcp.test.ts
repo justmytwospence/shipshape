@@ -59,12 +59,52 @@ beforeEach(() => {
 test('the tools: reads plus the operator verbs, nothing that edits settings or labels', async () => {
   const tools = (await rpc('tools/list')).result.tools as { name: string; inputSchema: any }[]
   assert.deepEqual(tools.map((t) => t.name).sort(), [
-    'activity', 'check_service', 'find_package', 'get_service', 'get_update', 'inbox', 'list_exposures',
+    'activity', 'api_usage', 'check_service', 'find_package', 'get_service', 'get_update', 'inbox', 'list_exposures',
     'list_security_incidents', 'list_services', 'list_updates', 'scan_now', 'scan_status', 'stack_action',
     'update_action',
   ])
   const verbs = tools.find((t) => t.name === 'update_action')!.inputSchema.properties.verb.enum
   assert.deepEqual(verbs, [...OPERATOR_VERBS])
+})
+
+test('MCP declarations, context and guidance are complete, bounded and read-only', async (t) => {
+  let requests = 0
+  t.mock.method(globalThis, 'fetch', async () => { requests++; throw new Error('unexpected upstream request') })
+  const init = (await rpc('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'test', version: '1' } })).result
+  assert.ok(init.capabilities.resources)
+  assert.ok(init.capabilities.prompts)
+  assert.match(init.instructions, /zero upstream requests/)
+  const tools = (await rpc('tools/list')).result.tools
+  const writes = ['scan_now', 'check_service', 'update_action', 'stack_action']
+  for (const tool of tools) {
+    for (const key of ['readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint']) assert.equal(typeof tool.annotations[key], 'boolean', `${tool.name}.${key}`)
+    assert.equal(tool.annotations.readOnlyHint, !writes.includes(tool.name), tool.name)
+  }
+  assert.equal(tools.find((x: any) => x.name === 'check_service').annotations.idempotentHint, false)
+  const usage = (await rpc('tools/call', { name: 'api_usage', arguments: {} })).result
+  assert.deepEqual(usage.structuredContent, JSON.parse(usage.content[0].text))
+  assert.equal(usage.structuredContent.github.remaining, null)
+  assert.equal(usage.structuredContent.docker_hub.current_remaining, 'unknown')
+  assert.ok(tools.find((x: any) => x.name === 'api_usage').outputSchema)
+  const resources = (await rpc('resources/list')).result.resources
+  assert.deepEqual(resources.map((r: any) => r.uri).sort(), ['shipshape://status', 'shipshape://usage'])
+  for (const resource of resources) {
+    const body = (await rpc('resources/read', { uri: resource.uri })).result
+    assert.ok(body.contents[0].text.length < 120000)
+  }
+  const templates = (await rpc('resources/templates/list')).result.resourceTemplates
+  assert.equal(templates.length, 2)
+  const id = seedUpdate('held')
+  const update = (await rpc('resources/read', { uri: `shipshape://updates/${id}` })).result
+  assert.ok(JSON.parse(update.contents[0].text).allowed_verbs.includes('open-pr'))
+  assert.ok((await rpc('resources/read', { uri: 'shipshape://updates/not-an-id' })).error)
+  const prompts = (await rpc('prompts/list')).result.prompts
+  assert.deepEqual(prompts.map((p: any) => p.name), ['review-update'])
+  const prompt = (await rpc('prompts/get', { name: 'review-update', arguments: { id: String(id) } })).result
+  assert.match(prompt.messages[0].content.text, /Do not run an action/)
+  assert.ok((await rpc('prompts/get', { name: 'review-update', arguments: { id: '../escape' } })).error)
+  assert.equal(requests, 0)
+  assert.equal(getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(id).state, 'held')
 })
 
 test('get_update says which verbs are allowed now', async () => {

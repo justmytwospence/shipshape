@@ -297,6 +297,17 @@ start.
 | `PORT` / `TZ` | no | `8080` / `UTC` | |
 | `NOTIFY_URL`, `NOTIFY_TOKEN` | no | — | Incidents, as JSON with a bearer, to a notification router (here n8n's `/webhook/notify`). |
 | `MCP_PORT` | no | — | An MCP server (Streamable HTTP at `/mcp`) for agents: the dashboard's reads plus the operator verbs (`update_action`, `stack_action`, `scan_now`, `check_service`), each checked by `actionsFor` exactly like a button. It has **no auth of its own**: put an OAuth gateway in front and keep the port on a network only that gateway shares. Unset: no listener. |
+
+The MCP also publishes `shipshape://usage`, cached `shipshape://status`, and bounded
+`shipshape://updates/{id}` / `shipshape://services/{stack}/{service}` context templates.
+`review-update` is a read-first planning prompt, not permission to run an action.
+`api_usage` exposes the same zero-upstream-call budget observations as the status resource:
+Docker Hub's last reported count and timestamp, its deploy reserve, unknown GitHub quota,
+and the shared local model-spend ledger. Cached observations are not a fresh quota probe
+or a per-agent allowance. `scan_now`, `check_service`, paid readings and deployment actions
+can contact upstreams or spend money; inspect existing work before repeating them. Every
+tool has explicit behavioral hints, and results retain text while also supplying structured
+data. Resource/prompt discovery never triggers a scan, reading, merge or deployment.
 | `SMTP_URL`, `MAIL_TO` | no | — | Email. Both are needed; either alone counts as off. `MAIL_FROM` defaults to `BOT_EMAIL`. |
 | `DOCKER_HUB_LOGIN` / `_PASSWORD` | no | — | Doubles the Docker Hub pull allowance (100→200 per 6h). |
 

@@ -23,6 +23,7 @@ import { KINDS as ACTIVITY_KINDS } from '../web/views/ui/activity.tsx'
 import { version } from '../web/version.ts'
 import { exposureViews, findPackage, incidentViews } from '../security/queries.ts'
 import { securityStatus } from '../security/loop.ts'
+import { apiUsage, registerContext, USAGE } from './context.ts'
 
 /**
  * Shipshape for agents: the dashboard's reads and the operator's verbs, over MCP.
@@ -35,7 +36,12 @@ import { securityStatus } from '../security/loop.ts'
  * must only be reachable from that sidecar.
  */
 
-const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }] })
+const json = (value: unknown) => ({
+  content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }],
+  // Keep the existing text shape; MCP structured content must be an object.
+  structuredContent: value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown> : { data: value },
+})
 
 const verbReply = (r: VerbResult) => ({ ...json(r), isError: !r.ok })
 
@@ -55,9 +61,16 @@ export function createServer(): McpServer {
         'request per update, has the changelog reviewed, merges what policy allows, deploys, verifies and ' +
         'rolls back. Start with `inbox` for what is waiting on a decision. `get_update` lists the verbs ' +
         'allowed on an update right now (`allowed_verbs`); `update_action` accepts only those. Deploys run ' +
-        'in the background: an action returns once started, and `get_update` shows how it went.',
+        'in the background: an action returns once started, and `get_update` shows how it went. ' + USAGE,
     },
   )
+
+  registerContext(server)
+  server.registerTool('api_usage', {
+    title: 'API usage and limits', description: 'Zero-call local budget observations, timestamps and safe-use guidance. Unknown quota is not a remaining allowance.',
+    inputSchema: z.object({}), annotations: READ,
+    outputSchema: z.object({ observed_at: z.string(), source: z.string(), docker_hub: z.object({}).passthrough(), github: z.object({}).passthrough(), model_budget: z.object({}).passthrough(), guidance: z.string() }),
+  }, async () => json(apiUsage()))
 
   server.registerTool(
     'inbox',
@@ -171,7 +184,7 @@ export function createServer(): McpServer {
       description:
         'Scan every service now (labels from git, registries, upstream sources) instead of waiting for the nightly scan. Runs in the background for a few minutes; poll scan_status.',
       inputSchema: z.object({}),
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
     async () => {
       if (isScanning()) return verbReply({ ok: true, message: 'A scan is already running.' })
@@ -186,7 +199,7 @@ export function createServer(): McpServer {
       title: 'Check service',
       description: 'Re-check one service now: its labels from git, its upstream, and its registry. Returns the service afterwards.',
       inputSchema: z.object({ stack: z.string(), service: z.string() }),
-      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
     async ({ stack, service }) => {
       if (!(await checkService(stack, service))) {

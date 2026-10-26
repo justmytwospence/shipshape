@@ -17,7 +17,7 @@ const USER_AGENT = 'shipshape/0.1 (+https://github.com/justmytwospence/shipshape
 /** Never spend the last slice of the Hub budget: a `docker compose pull` during a
  *  deploy needs headroom, and being locked out mid-deploy is far worse than a delayed
  *  changelog. */
-const HUB_RESERVE = 40
+export const HUB_RESERVE = 40
 
 interface TokenEntry {
   token: string

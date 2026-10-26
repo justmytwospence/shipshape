@@ -23,6 +23,9 @@ export const USAGE =
   'Changelog readings/proposals and security work can consume model budget; rerun-review is not a read. ' +
   'Honor throttling and bounded polling; do not repeatedly trigger scans to refresh context. ' +
   'Only explicitly requested actions may run. Inspect get_update.allowed_verbs immediately before acting. ' +
+  'Context catalog: shipshape://usage and shipshape://status are fixed resources; ' +
+  'shipshape://updates/{id} and shipshape://services/{stack}/{service} are bounded URI templates. ' +
+  'Use known IDs/names, for example shipshape://updates/123, rather than guessing. The prompt is review-update (id). ' +
   'Prompt/resource retrieval never authorizes or performs a merge, deploy, rollback, scan or paid reading. ' +
   'Deploy actions start background work; inspect existing state before retrying ambiguous results.'
 

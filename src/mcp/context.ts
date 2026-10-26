@@ -17,7 +17,7 @@ export const USAGE =
   'Read local inbox, update/service views and shipshape://status before requesting new work. ' +
   'These reads and api_usage cost zero upstream requests. Status is cached evidence, not a fresh quota probe. ' +
   'scan_now and check_service update state and contact registries/GitHub; they are not free or safe to repeat blindly. ' +
-  'Docker Hub billed manifest/config pulls share the host allowance; Shipshape reserves 40 pulls for deploys. ' +
+  `Docker Hub billed manifest/config pulls share the host allowance; Shipshape reserves ${HUB_RESERVE} pulls for deploys. ` +
   'The recorded remaining count is the last observed response header, not guaranteed current usage. ' +
   'GitHub quota remaining is unknown here; classified throttling and reset guidance come from upstream clients. ' +
   'Changelog readings/proposals and security work can consume model budget; rerun-review is not a read. ' +

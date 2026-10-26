@@ -6,6 +6,7 @@ import { getDb } from './db.ts'
 import { bumpFork, retireFork } from './compose/fork-edit.ts'
 import { forkConflictFor, forkPreparedFor, type ForkPrepared } from './forks.ts'
 import { formatImageRef, parseImageRef } from './images/ref.ts'
+import { rewriteFroms } from './compose/dockerfile.ts'
 
 /**
  * The exact one-line change a PR for this update would contain, rendered as a diff.
@@ -39,7 +40,8 @@ const CONTEXT = 3
 export function buildUpdateDiff(updateId: number): DiffResult {
   const row = getDb()
     .prepare(
-      `SELECT u.stack, u.service, u.from_tag, u.to_tag, u.detail, i.compose_file, i.image_ref
+      `SELECT u.stack, u.service, u.image, u.from_tag, u.to_tag, u.detail, i.compose_file, i.image_ref,
+              i.base_dockerfile
        FROM updates u JOIN images i ON i.stack = u.stack AND i.service = u.service
        WHERE u.id = ?`,
     )
@@ -49,13 +51,18 @@ export function buildUpdateDiff(updateId: number): DiffResult {
         service: string
         from_tag: string
         to_tag: string
+        image: string
         detail: string | null
         compose_file: string
         image_ref: string
+        base_dockerfile: string | null
       }
     | undefined
 
   if (!row) return { error: 'no such update' }
+
+  // Our own build, watched through its base: the change is the Dockerfile's FROM line.
+  if (row.base_dockerfile) return baseDiff({ ...row, base_dockerfile: row.base_dockerfile })
 
   // A rolling tag still reads `latest` after the image moves, so there is nothing in
   // git to change and nothing to diff.
@@ -189,6 +196,45 @@ function forkDiff(
     return { error: `${row.compose_file}: ${edit.reason} — rescan to refresh it` }
   }
   return { hunks: lineDiff(row.compose_file, src, edit.text, row.service), fork }
+}
+
+/**
+ * A base image's change: the Dockerfile's `FROM` lines naming the base, moved to the new
+ * one, by the same editor the branch is built with (compose/dockerfile.ts). A digest pin
+ * is kept, so a version bump on a pinned base needs the new tag's digest; this reads the
+ * one the scan saw, and says so when it has none rather than showing an unpinned line the
+ * branch would never carry.
+ */
+function baseDiff(row: { stack: string; service: string; image: string; to_tag: string; base_dockerfile: string }): DiffResult {
+  let src: string
+  try {
+    src = readFileSync(join(env.repoDir, row.base_dockerfile), 'utf8')
+  } catch (err) {
+    return { error: `cannot read ${row.base_dockerfile}: ${(err as Error).message}` }
+  }
+  const ref = parseImageRef(row.image)
+  let next: string | null
+  if (row.to_tag.includes('@') || !ref.digest) next = rewriteRef(row.image, row.to_tag)
+  else {
+    const seen = getDb()
+      .prepare(`SELECT digest FROM tags_seen WHERE registry = ? AND repository = ? AND tag = ?`)
+      .get(ref.registry, ref.repository, row.to_tag) as { digest: string | null } | undefined
+    if (!seen?.digest) {
+      return {
+        error:
+          `${row.base_dockerfile} pins its base by digest. The pull request looks up the digest of ` +
+          `${row.to_tag} when it opens and moves the FROM line to it; nothing else changes.`,
+      }
+    }
+    next = formatImageRef(ref, row.to_tag, seen.digest)
+  }
+  if (!next) return { error: `cannot build the new reference from "${row.to_tag}"` }
+  const edit = rewriteFroms(src, row.image, next)
+  if (!edit.ok) {
+    if (edit.alreadyApplied) return { hunks: [] }
+    return { error: `${row.base_dockerfile}: ${edit.reason} — rescan to refresh it` }
+  }
+  return { hunks: lineDiff(row.base_dockerfile, src, edit.text, row.service) }
 }
 
 /**

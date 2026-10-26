@@ -188,6 +188,16 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
     })
   }
   config.push({ key: 'watch', value: svc.watched ? 'on' : 'off', source: 'label' })
+  // Our own build, watched through the image its Dockerfile's final stage is built on: the
+  // lines below describe that base, which is what is polled and what a bump moves.
+  if (live?.base) {
+    config.push({
+      key: 'base',
+      value: live.base.ref,
+      source: 'inferred',
+      note: `built here from ${live.base.dockerfile}; a bump moves its FROM line and rebuilds`,
+    })
+  }
   config.push({
     key: 'pattern',
     value: (live ? patternFor(live) : (image?.pattern ?? null)) ?? '(none)',

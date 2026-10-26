@@ -171,8 +171,13 @@ export interface DeployIo {
   peers(stack: string): { service: string; network_mode: string | null }[]
   /** What the compose file pins now, per service of the stack. */
   pinned(stack: string, policy: Policy): Map<string, string | null>
-  /** Which of these services the compose file builds from source now (the forks). */
+  /** Which of these services the compose file builds from source now (forks, base-watched builds). */
   buildable(stack: string, services: string[], policy: Policy): string[]
+  /**
+   * Which of these a rollback must rebuild: the builds watched through their base image,
+   * whose local image name does not change with the base. Absent means none.
+   */
+  rebuildable?(stack: string, services: string[], policy: Policy): string[]
   now(): number
 }
 
@@ -185,6 +190,7 @@ export const realIo: DeployIo = {
   peers: (stack) => stackPeers(stack),
   pinned: (stack, policy) => pinnedRefs(stack, policy),
   buildable: (stack, services, policy) => buildableServices(stack, services, policy),
+  rebuildable: (stack, services, policy) => buildableServices(stack, services, policy, env.repoDir, { forks: false }),
   now: () => Date.now(),
 }
 
@@ -531,15 +537,28 @@ export function expectedRef(
 
 /**
  * The services of a stack that the compose file builds from source now: the forks
- * (FORKS.md), whose `image:` is a local name. A plain `build:` service is never deployed
- * by shipshape, so there is nothing to build for one; a fork just retired has no `build:`
- * block any more and drops out here, which is what lets the deploy that follows the retire
- * pull the upstream image instead.
+ * (FORKS.md), whose `image:` is a local name, and our own builds watched through their base
+ * image (compose/dockerfile.ts), whose merged change is a `FROM` line only a build reads. A
+ * plain unwatched `build:` service is never deployed by shipshape, so there is nothing to
+ * build for one; a fork just retired has no `build:` block any more and drops out here,
+ * which is what lets the deploy that follows the retire pull the upstream image instead.
  */
-export function buildableServices(stack: string, services: string[], policy: Policy, repoDir = env.repoDir): string[] {
+export function buildableServices(
+  stack: string,
+  services: string[],
+  policy: Policy,
+  repoDir = env.repoDir,
+  kinds: { forks?: boolean; bases?: boolean } = {},
+): string[] {
+  const forks = kinds.forks ?? true
+  const bases = kinds.bases ?? true
   try {
     const scanned = scanRepo(repoDir, policy.exclude_stacks)
-    return services.filter((s) => scanned.some((x) => x.stack === stack && x.service === s && x.hasBuild && x.fork))
+    return services.filter((s) =>
+      scanned.some(
+        (x) => x.stack === stack && x.service === s && x.hasBuild && ((forks && !!x.fork) || (bases && !!x.base)),
+      ),
+    )
   } catch {
     return []
   }

@@ -973,6 +973,17 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     );
   `,
   },
+  {
+    id: '031-base-images',
+    sql: `
+    -- A build: service of our own, watched through the base image of its Dockerfile's
+    -- final stage (compose/dockerfile.ts). base_dockerfile is that Dockerfile, relative to
+    -- the repository root; the registry/repository/current_tag columns then describe the
+    -- base, as they describe the upstream for a fork, and image_ref keeps the local build
+    -- name. NULL on everything that is not watched this way.
+    ALTER TABLE images ADD COLUMN base_dockerfile TEXT;
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

@@ -200,11 +200,47 @@ export function carriedFixesSection(g: UpdateGroup, forks: Map<number, ForkPrInf
   return lines.join('\n').trimEnd()
 }
 
+/**
+ * Our own build, watched through its base image (compose/dockerfile.ts): which Dockerfile
+ * the pull request edits, and the `FROM` it moves.
+ */
+export interface BasePrInfo {
+  /** Relative to the repository root. */
+  dockerfile: string
+  fromRef: string
+  toRef: string
+  /** How many `FROM` lines named the base: a builder stage on the same image moves too. */
+  lines: number
+}
+
+/**
+ * The section a base-image pull request adds: the image is ours, built here, so the
+ * version in the table is the base's, and merging rebuilds rather than pulls.
+ */
+export function baseImageSection(g: UpdateGroup, bases: Map<number, BasePrInfo>): string {
+  const lines: string[] = []
+  for (const m of g.members) {
+    const b = bases.get(m.id)
+    if (!b) continue
+    const head = g.members.length > 1 ? ` — ${m.service}` : ''
+    lines.push(`### Base image${head}`, '')
+    lines.push(
+      `\`${m.service}\` is built here from \`${b.dockerfile}\`. This moves ` +
+        `${b.lines === 1 ? 'its final stage' : `the ${b.lines} stages built`} on ` +
+        `\`${short(b.fromRef)}\` to \`${short(b.toRef)}\`, and nothing else. ` +
+        `Merging rebuilds the image on the new base and deploys it; a rollback reverts the line and rebuilds on the old one.`,
+      '',
+    )
+  }
+  return lines.join('\n').trimEnd()
+}
+
 export function prBody(
   g: UpdateGroup,
   policy: Policy,
   sources: Map<number, string | null>,
   forks: Map<number, ForkPrInfo> = new Map(),
+  bases: Map<number, BasePrInfo> = new Map(),
 ): string {
   const m0 = g.members[0]!
   const magnitude = foldGroupMagnitude(g.members.map((m) => m.magnitude as Magnitude))
@@ -238,7 +274,7 @@ ${grouped}
 ${rows}
 
 ${referenceSection(g, sources)}
-${forks.size > 0 ? `\n${carriedFixesSection(g, forks)}\n` : ''}
+${forks.size > 0 ? `\n${carriedFixesSection(g, forks)}\n` : ''}${bases.size > 0 ? `\n${baseImageSection(g, bases)}\n` : ''}
 <!-- shipshape:verdict:start -->
 ### Changelog analysis
 

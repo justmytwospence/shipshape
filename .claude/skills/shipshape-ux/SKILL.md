@@ -38,6 +38,16 @@ the model only turns the advisory into package names and version ranges. The fac
 **Status** (Security incidents) and on the update (Security fix); there is no seventh
 destination. Cards are keyed `shipshape:security:<slug>`, one per incident.
 
+## Our own builds
+
+A watched `build:` service is watched through its **base image**: the published image its
+Dockerfile's final stage is built `FROM`. Its update names the base, its pull request is
+titled "rebuild <service> on <base> <from> -> <to>" and edits only the `FROM` lines, and
+the Services pane shows it as the **base** line ("built here from <Dockerfile>"). Say
+**rebuild**, never "bump <service>": the version moving is the base's, not a release of
+the service. It is otherwise an ordinary update -- same rungs, same review, same deploy,
+which builds before `up`, and a rollback rebuilds on the old base.
+
 **Pause** is the one global switch: while it is on, shipshape merges nothing on its own.
 Scanning, pull requests and changelog reviews continue. A merge *you* press still deploys —
 you are present, and that is the point: merging is the decision and deploying is carrying

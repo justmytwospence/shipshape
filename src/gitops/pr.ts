@@ -1,5 +1,5 @@
 import { Octokit } from 'octokit'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { configured, env, loadPolicy, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
@@ -9,7 +9,8 @@ import { clearForkConflict, forkConflictFor, forkRefs, recordForkConflict, recor
 import { prepareFork as realPrepareFork, upstreamUrlFor, type PrepareForkInput, type PrepareForkResult } from '../forks/rebase.ts'
 import { headDigest } from '../registry/index.ts'
 import { sameVersion, versionKey } from '../versions/key.ts'
-import { parseImageRef, formatImageRef } from '../images/ref.ts'
+import { parseImageRef, formatImageRef, displayName } from '../images/ref.ts'
+import { rewriteFroms } from '../compose/dockerfile.ts'
 import {
   branchFor,
   groupUpdates,
@@ -23,7 +24,7 @@ import { routine } from '../notify/digest.ts'
 import { foldGroupMagnitude, shouldOpenPr, type EffectiveTier } from '../policy.ts'
 import type { Magnitude } from '../versions/patterns.ts'
 import { applyForkEdit, bumpImage } from './editor.ts'
-import { changeText, prBody, short, type ForkPrInfo } from './body.ts'
+import { changeText, prBody, short, type BasePrInfo, type ForkPrInfo } from './body.ts'
 import { sourceFor } from '../resolver/index.ts'
 import { alreadyCommented, mark } from './comments.ts'
 import { authorArgs, ensureWorkRepo, git, httpsUrl, withGitLock } from './repo.ts'
@@ -407,6 +408,7 @@ async function retargetPr(
     return 'retire'
   }
   const forks = built.forks
+  const bases = built.bases
 
   const push = await pushBranch(repoDir, pr.branch)
   if (!push.ok) {
@@ -450,7 +452,7 @@ async function retargetPr(
   }
 
   const { owner, repo } = repoParts()
-  const title = prTitle(group, forks)
+  const title = prTitle(group, forks, bases)
   try {
     const sources = await sourceRepos(group)
     await gh().rest.pulls.update({
@@ -461,7 +463,7 @@ async function retargetPr(
       // Regenerated whole rather than patched: it carries the members table, the
       // reference links and a fresh pair of verdict markers holding the "not run yet"
       // placeholder, so the previous target's analysis cannot survive into the new one.
-      body: prBody(group, policy, sources, forks),
+      body: prBody(group, policy, sources, forks, bases),
     })
   } catch (err) {
     logEvent({
@@ -831,7 +833,7 @@ const realDeps: BuildDeps = {
 }
 
 export type BuildResult =
-  | { ok: true; sha: string; forks: Map<number, ForkPrInfo> }
+  | { ok: true; sha: string; forks: Map<number, ForkPrInfo>; bases: Map<number, BasePrInfo> }
   | { ok: false; alreadyApplied?: boolean; conflict?: boolean; reason: string }
 
 export async function buildBranch(
@@ -842,6 +844,7 @@ export async function buildBranch(
 ): Promise<BuildResult> {
   await git(repoDir, ['checkout', '-B', branch, 'origin/main'])
   const forks = new Map<number, ForkPrInfo>()
+  const bases = new Map<number, BasePrInfo>()
 
   for (const m of group.members) {
     const file = composeFileFor(m.stack, m.service)
@@ -851,6 +854,14 @@ export async function buildBranch(
       const r = await buildForkMember(repoDir, file, m, deps)
       if (!r.ok) return r
       forks.set(m.id, r.info)
+      continue
+    }
+
+    const dockerfile = baseDockerfileFor(m.stack, m.service)
+    if (dockerfile) {
+      const r = await buildBaseMember(repoDir, dockerfile, m, deps)
+      if (!r.ok) return r
+      bases.set(m.id, r.info)
       continue
     }
 
@@ -868,8 +879,40 @@ export async function buildBranch(
     if (!edit.ok) return { ok: false, alreadyApplied: edit.alreadyApplied, reason: edit.reason }
   }
 
-  await git(repoDir, [...authorArgs(), 'commit', '-am', prTitle(group, forks)])
-  return { ok: true, sha: (await git(repoDir, ['rev-parse', 'HEAD'])).stdout, forks }
+  await git(repoDir, [...authorArgs(), 'commit', '-am', prTitle(group, forks, bases)])
+  return { ok: true, sha: (await git(repoDir, ['rev-parse', 'HEAD'])).stdout, forks, bases }
+}
+
+/**
+ * Our own build's bump: the final stage's `FROM` moves to the new base (compose/dockerfile.ts),
+ * and nothing else in the Dockerfile or the compose file changes. A digest pin is kept: the
+ * new tag's digest is looked up, and the edit refused rather than written without it.
+ */
+async function buildBaseMember(
+  repoDir: string,
+  dockerfile: string,
+  m: GroupMember,
+  deps: BuildDeps,
+): Promise<{ ok: true; info: BasePrInfo } | Extract<BuildResult, { ok: false }>> {
+  const who = `${m.stack}/${m.service}`
+  const abs = join(repoDir, dockerfile)
+  let text: string
+  try {
+    text = readFileSync(abs, 'utf8')
+  } catch (err) {
+    return { ok: false, reason: `cannot read ${dockerfile}: ${(err as Error).message}` }
+  }
+  const next = await upstreamRefAt(m.image, m.to_tag, deps.digestFor)
+  if (!next.ok) return { ok: false, reason: `${who}: ${next.reason}` }
+  // `m.image` is the base exactly as the final stage named it when this update was found:
+  // the same assertion bumpImage makes on an image line. Past it means done; anything
+  // else means a person edited the Dockerfile and should look.
+  const edit = rewriteFroms(text, m.image, next.ref)
+  if (!edit.ok) return { ok: false, alreadyApplied: edit.alreadyApplied, reason: `${dockerfile}: ${edit.reason}` }
+  writeFileSync(abs, edit.text)
+  const diff = await git(repoDir, ['diff', '--quiet', '--', dockerfile], { allowFail: true })
+  if (diff.exitCode === 0) return { ok: false, reason: `${dockerfile}: the edit produced no diff` }
+  return { ok: true, info: { dockerfile, fromRef: m.image, toRef: next.ref, lines: edit.count } }
 }
 
 /**
@@ -1035,7 +1078,7 @@ async function openPr(repoDir: string, group: UpdateGroup, policy: Policy): Prom
     return failGroup(group, built.reason)
   }
   const sha = built.sha
-  const title = prTitle(group, built.forks)
+  const title = prTitle(group, built.forks, built.bases)
 
   let push = await pushBranch(repoDir, branch)
   if (!push.ok && branch !== taggedBranchFor(group)) {
@@ -1065,7 +1108,7 @@ async function openPr(repoDir: string, group: UpdateGroup, policy: Policy): Prom
     base: 'main',
     head: branch,
     title,
-    body: prBody(group, policy, sources, built.forks),
+    body: prBody(group, policy, sources, built.forks, built.bases),
   })
   const number = created.data.number
 
@@ -1263,12 +1306,18 @@ function describe(g: UpdateGroup): string {
   return changeText(g.members, { named: true }) ?? ''
 }
 
-export function prTitle(g: UpdateGroup, forks?: Map<number, ForkPrInfo>): string {
+export function prTitle(g: UpdateGroup, forks?: Map<number, ForkPrInfo>, bases?: Map<number, BasePrInfo>): string {
   const m = g.members[0]!
   const names = g.members.map((x) => x.service).join(', ')
   // A retire is still a version change, but "bump" would undersell what the diff does.
   if (forks && g.members.every((x) => forks.get(x.id)?.kind === 'retire')) {
     return `chore(deps): ${m.stack}: retire the ${names} fork, back to upstream ${short(m.to_tag)}`
+  }
+  // The version in the title is the base's, so the title says it is the base that moves:
+  // "bump obsidian-sync 22-slim -> 24-slim" would read as a release of obsidian-sync.
+  if (bases && g.members.every((x) => bases.has(x.id))) {
+    const base = displayName(parseImageRef(m.image))
+    return `chore(deps): ${m.stack}: rebuild ${names} on ${base} ${short(m.from_tag)} -> ${short(m.to_tag)}`
   }
   return `chore(deps): ${m.stack}: bump ${names} ${short(m.from_tag)} -> ${short(m.to_tag)}`
 }
@@ -1306,6 +1355,14 @@ async function sourceRepos(g: UpdateGroup): Promise<Map<number, string | null>> 
   return out
 }
 
+
+/** The Dockerfile of our own build watched through its base image, or null (compose/scan.ts). */
+export function baseDockerfileFor(stack: string, service: string): string | null {
+  const row = getDb()
+    .prepare(`SELECT base_dockerfile FROM images WHERE stack = ? AND service = ?`)
+    .get(stack, service) as { base_dockerfile: string | null } | undefined
+  return row?.base_dockerfile ?? null
+}
 
 /** Whether the compose file runs our own build of this service's upstream image. */
 export function isFork(stack: string, service: string): boolean {

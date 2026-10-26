@@ -383,6 +383,44 @@ takes effect on the next scan without recreating anything.
 A `shipshape.*` key the scanner does not read is logged as a warning on every scan, so a
 typo is not silently a label that does nothing.
 
+### Images you build yourself
+
+A service with `build:` runs an image no registry publishes, so there is nothing to poll for
+it -- but its base image is published, and that is where most of what it carries comes
+from: the distribution's packages, the language runtime, OpenSSL. Left alone, a local build
+keeps the base it was last built on for as long as nobody rebuilds it, because `compose up
+-d` reuses the cached image.
+
+So `shipshape.watch: "true"` on a `build:` service watches it through the base of its
+Dockerfile's **final stage** (followed back through any earlier stage it names):
+
+```dockerfile
+FROM python:3.13-slim@sha256:...   # what shipshape watches and moves
+```
+
+- The other `shipshape.*` labels describe that base, as they describe the upstream for a
+  fork. Pin it by digest and leave `shipshape.pattern` unset: every move of the tag (a
+  distribution security rebuild, a runtime patch) is then a digest update. Or give it a
+  version pattern to follow releases instead -- a tag without a digest can still move by
+  edit. A floating base (`latest`, no tag, or a `latest`/`digest` pattern without a pin) is
+  refused, because the file would say the same thing after the move.
+- The pull request edits the `FROM` lines that name the base -- a builder stage on the same
+  image moves with the final one -- and nothing else, so it is as clean as an image line
+  and merges, deploys and rolls back like one. A digest pin is kept on a version bump.
+- Deploying builds the service before `up`. A rollback reverts the line and **rebuilds** on
+  the old base: the image keeps one local name whatever it is built on, so no previous
+  image is on disk under a name a revert could point at. The old base and the layers built
+  on it usually are, so the rebuild is quick.
+- The Dockerfile must be a file in this repository. A remote context (a git URL), an
+  inline Dockerfile, an `escape` directive, a `FROM` continued across lines or a base set by
+  a build argument are refused, and said on the service's activity line.
+- Digest moves are manual like any other. The security pass already inventories the
+  running build, so an incident in a base package finds it, and a digest move whose new
+  base carries the fixed version is a verified fix -- the one way a digest move merges on
+  its own.
+
+The build's own dependencies -- a version in an `ARG`, a `pip install` -- are not watched.
+
 ### Where the release notes come from
 
 For each update, shipshape reads the notes for exactly the versions it crosses — after the

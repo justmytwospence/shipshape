@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { parseImageRef, type ImageRef } from '../images/ref.ts'
+import { finalBase, parseFroms } from './dockerfile.ts'
 
 /**
  * Reads the desired state out of the compose files themselves.
@@ -132,6 +133,21 @@ export interface ScannedService {
    * release itself (src/forks/rebase.ts) and retires it when nothing is left to carry.
    */
   fork: ForkInfo | null
+  /**
+   * A `build:` service of our own, watched through the base image of its Dockerfile's
+   * final stage (compose/dockerfile.ts). Set only when the service opts in with
+   * `shipshape.watch` and its Dockerfile is a file in this repository. When set, `ref` is
+   * parsed from the base, the other `shipshape.*` labels describe the base -- as they
+   * describe the upstream for a fork -- and a bump edits the `FROM` line.
+   */
+  base: BaseInfo | null
+}
+
+export interface BaseInfo {
+  /** The Dockerfile, relative to the repository root. */
+  dockerfile: string
+  /** The base image, exactly as the final stage's `FROM` names it. */
+  ref: string
 }
 
 export interface ForkInfo {
@@ -321,10 +337,23 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
       labelProblems.push('shipshape.fork.waits-on without shipshape.fork.upstream does nothing')
     }
 
+    // Our own build, opted in: watched through its base image. Only looked for when the
+    // service asks to be watched, so an unwatched build never reports a Dockerfile problem.
+    let base: BaseInfo | null = null
+    // A service that names a fork upstream meant to be a fork, even when the label is
+    // unusable: that is said above, and it is not quietly watched some other way instead.
+    if (hasBuild && forkUpstream === null && watchLabel === 'true' && !excludeStacks.includes(stack)) {
+      const found = baseFor(repoRoot, file, svc.build, pattern)
+      if (found.ok) base = found.base
+      else labelProblems.push(`shipshape.watch on a build: ${found.reason}`)
+    }
+
     let unwatchable: UnwatchableReason | null = null
     if (excludeStacks.includes(stack)) unwatchable = 'excluded'
     // A fork is a `build:` service with a registry to poll after all: the upstream's.
     else if (fork) unwatchable = null
+    // And so is our own build, through the image it is built on.
+    else if (base) unwatchable = null
     else if (!imageRaw) unwatchable = 'no-image'
     // A locally-built image has no registry to poll. `build:` wins even when `image:`
     // is also set -- that combination just names the local build output.
@@ -334,7 +363,7 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
     else if (imageRaw.includes('${')) unwatchable = 'interpolated'
 
     const watched = watchLabel === 'true' && unwatchable === null
-    const polled = fork ? fork.upstream : imageRaw
+    const polled = fork ? fork.upstream : base ? base.ref : imageRaw
 
     out.push({
       stack,
@@ -365,9 +394,69 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
       unknownLabels,
       labelProblems,
       fork,
+      base,
     })
   }
   return out
+}
+
+/** A remote build context: a git URL or an archive, which this repository cannot edit. */
+function isRemoteContext(ctx: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(ctx) || ctx.startsWith('git@') || /^github\.com\//.test(ctx)
+}
+
+/**
+ * Where a `build:` service's Dockerfile is and which published image its final stage is
+ * built on. Refused in words when the Dockerfile is not a file of this repository, or its
+ * base cannot be followed to a published reference that can be moved by editing it.
+ */
+export function baseFor(
+  repoRoot: string,
+  composeFile: string,
+  build: unknown,
+  pattern: string | null,
+): { ok: true; base: BaseInfo } | { ok: false; reason: string } {
+  let context = '.'
+  let dockerfile = 'Dockerfile'
+  if (typeof build === 'string') context = build
+  else if (build && typeof build === 'object') {
+    const b = build as { context?: unknown; dockerfile?: unknown; dockerfile_inline?: unknown }
+    if (b.dockerfile_inline !== undefined) return { ok: false, reason: 'the Dockerfile is inline (dockerfile_inline)' }
+    if (typeof b.context === 'string') context = b.context
+    if (typeof b.dockerfile === 'string') dockerfile = b.dockerfile
+  } else return { ok: false, reason: 'cannot read the build: block' }
+  if (context.includes('${') || dockerfile.includes('${')) {
+    return { ok: false, reason: 'the build context is interpolated' }
+  }
+  if (isRemoteContext(context)) return { ok: false, reason: `the build context is remote (${context})` }
+
+  const root = resolve(repoRoot)
+  const abs = isAbsolute(dockerfile) ? dockerfile : resolve(dirname(composeFile), context, dockerfile)
+  const rel = relative(root, abs)
+  if (!rel || rel.startsWith('..') || isAbsolute(rel)) {
+    return { ok: false, reason: `the Dockerfile ${dockerfile} is outside this repository` }
+  }
+  let text: string
+  try {
+    text = readFileSync(abs, 'utf8')
+  } catch {
+    return { ok: false, reason: `cannot read ${rel}` }
+  }
+  const parsed = parseFroms(text)
+  if (!parsed.ok) return { ok: false, reason: `${rel}: ${parsed.reason}` }
+  const found = finalBase(parsed.froms)
+  if (!found.ok) return { ok: false, reason: `${rel}: ${found.reason}` }
+
+  // A floating base cannot be moved by an edit: the file would say the same thing after.
+  // Rebuilding it is exactly the silent drift this exists to end, so ask for a pin.
+  const ref = parseImageRef(found.from.image)
+  if (!ref.digest && (!ref.tag || ref.tag === 'latest' || pattern === 'latest' || pattern === 'digest')) {
+    return {
+      ok: false,
+      reason: `${rel}: the base ${found.from.image} floats; pin it by digest (FROM ${found.from.image}@sha256:...) so a move is a pull request`,
+    }
+  }
+  return { ok: true, base: { dockerfile: rel, ref: found.from.image } }
 }
 
 export function scanRepo(repoRoot: string, excludeStacks: string[] = []): ScannedService[] {

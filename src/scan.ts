@@ -163,12 +163,12 @@ function syncInventory(services: ScannedService[]): void {
                          current_tag, current_digest, watched, pattern, tag_include,
                          policy_label, source_label, changelog_label, claude_label, deploy_label,
                          probe_port, archive_pre, network_mode, unwatchable,
-                         fork_upstream, fork_waits_on, last_seen_at)
+                         fork_upstream, fork_waits_on, base_dockerfile, last_seen_at)
      VALUES (@stack, @service, @compose_file, @image_ref, @registry, @repository,
              @current_tag, @current_digest, @watched, @pattern, @tag_include,
              @policy_label, @source_label, @changelog_label, @claude_label, @deploy_label,
              @probe_port, @archive_pre, @network_mode, @unwatchable,
-             @fork_upstream, @fork_waits_on, @last_seen_at)
+             @fork_upstream, @fork_waits_on, @base_dockerfile, @last_seen_at)
      ON CONFLICT(stack, service) DO UPDATE SET
        compose_file = excluded.compose_file, image_ref = excluded.image_ref,
        registry = excluded.registry, repository = excluded.repository,
@@ -181,6 +181,7 @@ function syncInventory(services: ScannedService[]): void {
        archive_pre = excluded.archive_pre, network_mode = excluded.network_mode,
        unwatchable = excluded.unwatchable,
        fork_upstream = excluded.fork_upstream, fork_waits_on = excluded.fork_waits_on,
+       base_dockerfile = excluded.base_dockerfile,
        last_seen_at = excluded.last_seen_at`,
   )
 
@@ -209,6 +210,7 @@ function syncInventory(services: ScannedService[]): void {
         unwatchable: s.unwatchable,
         fork_upstream: s.fork?.upstream ?? null,
         fork_waits_on: s.fork ? JSON.stringify(s.fork.waitsOn) : null,
+        base_dockerfile: s.base?.dockerfile ?? null,
         last_seen_at: now,
       })
     }
@@ -362,8 +364,9 @@ function insertUpdate(opts: {
 }): void {
   const now = new Date().toISOString()
   // A fork's update is about the upstream image -- that is what moved, and what any
-  // release notes are for -- so that is the image the row names, not the local build.
-  const image = opts.svc.fork?.upstream ?? opts.svc.imageRaw ?? ''
+  // release notes are for -- so that is the image the row names, not the local build. The
+  // same for our own build watched through its base: the row names the base.
+  const image = opts.svc.fork?.upstream ?? opts.svc.base?.ref ?? opts.svc.imageRaw ?? ''
   getDb()
     .prepare(
       `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier,
@@ -616,14 +619,17 @@ function persistDigest(svc: ScannedService, c: DigestCheck, policy: Policy): str
       // afterwards. This row exists so the dashboard can offer a redeploy -- except for a
       // fork, where a redeploy would not pick the upstream's new build up either, and a
       // rolling tag is no release to rebase onto (src/forks/rebase.ts needs a tag), so the
-      // row is held and only says that upstream moved.
+      // row is held and only says that upstream moved. A floating base is refused at scan
+      // time (compose/scan.ts), so a build only lands here if that ever changes -- and a
+      // redeploy would not rebuild it either, so it is held the same way.
+      const unmovable = !!svc.fork || !!svc.base
       insertUpdate({
         svc,
         fromTag,
         toTag,
         magnitude: 'digest',
-        tier: svc.fork ? 'held' : 'manual',
-        state: svc.fork ? 'held' : 'detected',
+        tier: unmovable ? 'held' : 'manual',
+        state: unmovable ? 'held' : 'detected',
         detail: svc.fork ? 'fork' : 'rolling',
       })
       logEvent({

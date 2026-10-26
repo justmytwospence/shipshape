@@ -150,11 +150,14 @@ export function classifyPatch(
 ): 'tag-only' | 'modified' {
   if (truncated) return 'modified'
   for (const f of files) {
-    if (!f.filename.endsWith('docker-compose.yaml')) return 'modified'
+    // A Dockerfile's `FROM` is the image line of our own build (compose/dockerfile.ts).
+    const dockerfile = /(^|\/)(Dockerfile[^/]*|[^/]+\.Dockerfile)$/.test(f.filename)
+    if (!dockerfile && !f.filename.endsWith('docker-compose.yaml')) return 'modified'
+    const allowed = dockerfile ? /^[+-][ \t]*FROM[ \t]/i : /^[+-]\s*image:\s/
     for (const line of (f.patch ?? '').split('\n')) {
       if (!/^[+-]/.test(line) || /^(\+\+\+|---)/.test(line)) continue
       // Same test the editor and the repo's own commit script use.
-      if (!/^[+-]\s*image:\s/.test(line)) return 'modified'
+      if (!allowed.test(line)) return 'modified'
     }
   }
   return 'tag-only'

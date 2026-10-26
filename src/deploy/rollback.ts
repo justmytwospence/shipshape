@@ -2,7 +2,7 @@ import { authorArgs, git, withGitLock } from '../gitops/repo.ts'
 import { env, loadPolicy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { notify, resolveIncident } from '../notify/index.ts'
-import { deploy, manualCommand, type DeployIo, type DeployTarget } from './run.ts'
+import { deploy, manualCommand, realIo, type DeployIo, type DeployTarget } from './run.ts'
 import type { LeftService, RecordedPlan } from './runstate.ts'
 import type { Verdict } from './verify.ts'
 
@@ -131,8 +131,13 @@ export async function performRollback(
   // Deploy the reverted tree straight away. The image it wants is the one that was
   // running minutes ago, so its layers are local and this is a recreate, not a pull -- and
   // for a fork not a build either: the reverted file names the previous local image by
-  // its sha, and that image is still on disk.
-  const back = await deploy({ ...target, build: [] }, { carried: opts.carried, record: opts.record, io: opts.io })
+  // its sha, and that image is still on disk. A build watched through its base is the
+  // exception: its image keeps one local name whatever it is built on, so the name now
+  // points at the build that failed. It is rebuilt from the reverted Dockerfile, whose
+  // `FROM` names the previous base -- still on disk, as are the layers built on it.
+  const io = opts.io ?? realIo
+  const rebuild = io.rebuildable ? io.rebuildable(target.stack, target.services, loadPolicy().policy) : []
+  const back = await deploy({ ...target, build: rebuild }, { carried: opts.carried, record: opts.record, io: opts.io })
   if (!back.ok) {
     return { ok: false, detail: `reverted ${gitPart.revertSha}, but the redeploy failed: ${back.reason}` }
   }

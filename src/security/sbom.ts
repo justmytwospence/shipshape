@@ -140,30 +140,58 @@ export function inventory(imageId: string): Package[] | null {
  * Most of a scan is docker exporting and unpacking the image, which grows with its size:
  * hermes (3 GB) took two minutes, paperless-ai (8.6 GB) thirteen, of which a minute was
  * syft's own catalogers. A flat limit either gave up on the large ones every time or let a
- * stuck small one hold the queue. 2.5 minutes a gigabyte, at least 5, at most 40.
+ * stuck small one hold the queue. 2.5 minutes a gigabyte, at least 5, at most 40 -- or,
+ * under a write cap, long enough to write the image twice at that rate (the saved image,
+ * then its unpacked layers) plus 3 minutes, at most 90.
  */
-export async function timeoutFor(imageId: string, exec: Exec = run): Promise<number> {
+export async function timeoutFor(imageId: string, exec: Exec = run, writeBytesPerSec = 0): Promise<number> {
   const r = await exec('docker', ['image', 'inspect', '--format', '{{.Size}}', imageId])
   const bytes = Number(r.stdout.trim())
-  const gb = Number.isFinite(bytes) && bytes > 0 ? bytes / 1e9 : 0
-  return Math.round(Math.min(40, Math.max(5, gb * 2.5)) * 60_000)
+  const size = Number.isFinite(bytes) && bytes > 0 ? bytes : 0
+  const base = Math.min(40, Math.max(5, (size / 1e9) * 2.5))
+  const capped = writeBytesPerSec > 0 ? Math.min(90, (2 * size) / writeBytesPerSec / 60 + 3) : 0
+  return Math.round(Math.max(base, capped) * 60_000)
+}
+
+/** `8mb` -> bytes per second (docker's units are powers of 1024). */
+export function rateBytes(rate: string): number {
+  const m = /^(\d+)([kmg]?)b?$/i.exec(rate)
+  if (!m) return 0
+  const mult = { '': 1, k: 1024, m: 1024 ** 2, g: 1024 ** 3 }[(m[2] ?? '').toLowerCase() as '' | 'k' | 'm' | 'g']
+  return Number(m[1]) * mult
+}
+
+/** The slowest write cap any configured device gets, in bytes per second; 0 if none. */
+export function writeCapBytes(policy: Policy): number {
+  const rates = policy.security.syft.device_write_bps.map((d) => rateBytes(d.slice(d.lastIndexOf(':') + 1))).filter((n) => n > 0)
+  return rates.length ? Math.min(...rates) : 0
+}
+
+/** docker run flags that bound one syft container (policy.security.syft). */
+export function syftLimitArgs(policy: Policy): string[] {
+  const s = policy.security.syft
+  return [
+    '--memory', s.memory,
+    '--cpus', String(s.cpus),
+    '--cpu-shares', String(s.cpu_shares),
+    ...s.device_write_bps.flatMap((d) => ['--device-write-bps', d]),
+    ...s.device_read_bps.flatMap((d) => ['--device-read-bps', d]),
+  ]
 }
 
 /** Take one image's inventory with syft and store it. */
 export async function scanImage(imageId: string, ref: string | null, policy: Policy, exec: Exec = run): Promise<boolean> {
   const db = getDb()
   const started = Date.now()
-  const timeout = await timeoutFor(imageId, exec)
+  const timeout = await timeoutFor(imageId, exec, writeCapBytes(policy))
   const r = await exec(
     'docker',
     [
       'run',
       '--rm',
-      // A 3 GB image (hermes) needs more than 3g; 8g is a ceiling, not a reservation.
-      '--memory',
-      '8g',
-      '--cpus',
-      '2',
+      // A 3 GB image (hermes) needs more than 3g, so memory defaults to 8g: a ceiling, not
+      // a reservation. Disk caps are host-specific and come from the policy.
+      ...syftLimitArgs(policy),
       '--network',
       'none',
       '-v',

@@ -253,7 +253,11 @@ services carry a version an incident names -- and which update removes it.
    socket and lists every package in each running image -- runtimes such as `node` by their
    binary, npm, PyPI, Debian and Alpine packages. Inventories are keyed by image id, so each
    image is read once. For an *exposed* service only, the image an open update would bring
-   in is pulled and inventoried too.
+   in is pulled and inventoried too. A scan copies the whole image to syft's temp dir, so
+   `security.syft` bounds each container: `parallel` (3), `memory` (8g), `cpus` (2),
+   `cpu_shares` (256, below every service), and host-specific `device_write_bps` /
+   `device_read_bps` (`/dev/nvme0n1:8mb`; name the physical disk, not an LVM mapper). The
+   scan timeout stretches to fit a write cap.
 4. **Match.** No model: a package either is in an inventory with a version inside an
    affected interval, or it is not. An update is a **verified fix** for an incident when
    its own image carries every exposed package, and none of them -- nor anything else the

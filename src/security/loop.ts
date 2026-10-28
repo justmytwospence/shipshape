@@ -27,9 +27,6 @@ import {
  * images, then match, verify, and only then say anything.
  */
 
-/** syft containers at once. */
-const PARALLEL = 3
-
 let ticker: Ticker | null = null
 let lastFeedAt = 0
 let backlog = false
@@ -78,11 +75,13 @@ export async function runSecurityPass(force = false): Promise<PassResult | null>
 
     // Then running images nobody has inventoried yet, one image id at a time.
     const pending = [...new Map(live.filter((r) => !hasInventory(r.imageId)).map((r) => [r.imageId, r])).values()]
-    // A few at a time: syft is CPU and disk bound per image, and the host has the cores.
+    // A few at a time (security.syft.parallel): syft is CPU and disk bound per image, and
+    // every write cap is per container, so this is also how many caps add up.
     const batch = pending.slice(0, Math.max(0, budget))
-    for (let k = 0; k < batch.length; k += PARALLEL) {
-      await Promise.all(batch.slice(k, k + PARALLEL).map((r) => scanImage(r.imageId, r.imageRef, policy)))
-      out.inventoried += Math.min(PARALLEL, batch.length - k)
+    const parallel = policy.security.syft.parallel
+    for (let k = 0; k < batch.length; k += parallel) {
+      await Promise.all(batch.slice(k, k + parallel).map((r) => scanImage(r.imageId, r.imageRef, policy)))
+      out.inventoried += Math.min(parallel, batch.length - k)
     }
     // Work still waiting -- images to read, or incidents to extract -- keeps the clock short.
     const unread = (getDb()

@@ -3,6 +3,9 @@ import { isAbsolute, join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { z } from 'zod'
 
+/** `<device>:<rate>` for docker's --device-*-bps, e.g. `/dev/nvme0n1:8mb`. */
+const DEVICE_RATE = /^\/dev\/[\w.\/-]+:\d+[kmg]?b?$/i
+
 /**
  * Process-level constants come from the environment; everything the operator tunes
  * lives in the tracked policy.yaml inside the repository being watched. Per-service
@@ -452,6 +455,24 @@ export const PolicySchema = z.object({
       syft_image: z
         .string()
         .default('anchore/syft:v1.54.1@sha256:3eb5379ba7b409c3f4069b686110527af0c47df993fa5c10d13e7cf34f49b1aa'),
+      // What each syft container may use. A scan copies the whole image to syft's temp dir,
+      // so on a slow disk the writes, not the CPU, are what hurts the rest of the host.
+      // Caps, not reservations; the timeout stretches to fit a write cap.
+      syft: z
+        .object({
+          // How many scan at once. Write caps are per container, so this multiplies them.
+          parallel: z.number().int().min(1).max(8).default(3),
+          memory: z.string().regex(/^\d+[kmg]$/i).default('8g'),
+          cpus: z.number().positive().max(64).default(2),
+          // CPU weight under contention (docker's default is 1024): scans yield to services.
+          cpu_shares: z.number().int().min(2).max(262144).default(256),
+          // Host-specific, so empty by default: `<device>:<rate>`, e.g. `/dev/nvme0n1:8mb`,
+          // passed as --device-write-bps / --device-read-bps. The device must be the physical
+          // disk: cgroup-v2 io.max does not throttle buffered writeback on an LVM mapper.
+          device_write_bps: z.array(z.string().regex(DEVICE_RATE)).default([]),
+          device_read_bps: z.array(z.string().regex(DEVICE_RATE)).default([]),
+        })
+        .prefault({}),
     })
     .prefault({}),
   /** Stacks the tool must never touch. Its own stack is appended unconditionally --

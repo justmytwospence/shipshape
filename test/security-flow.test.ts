@@ -260,6 +260,25 @@ test('helpers: candidate refs, public routers, loudness, syft output', () => {
   assert.equal(isPublic(svc({ 'traefik.enable': 'true', 'traefik.http.routers.a.rule': 'Host(`a`)' })), true)
   assert.equal(isPublic(svc({ 'traefik.enable': 'true', 'traefik.http.routers.a.rule': 'Host(`a`) && ClientIP(`10.0.0.0/8`)' })), false)
   assert.equal(isPublic(svc({ 'traefik.http.routers.a.rule': 'Host(`a`)' })), false)
+  assert.equal(
+    isPublic(svc({ 'traefik.enable': 'true', 'traefik.http.routers.a.rule': 'Host(`a`)', 'traefik.http.routers.a.middlewares': 'lan-only@file, authelia, error-pages' })),
+    false,
+  )
+  assert.equal(
+    isPublic(svc({ 'traefik.enable': 'true', 'traefik.http.routers.a.rule': 'Host(`a`)', 'traefik.http.routers.a.middlewares': 'authelia' })),
+    true,
+  )
+  assert.equal(
+    isPublic(
+      svc({
+        'traefik.enable': 'true',
+        'traefik.http.routers.a.rule': 'Host(`a`)',
+        'traefik.http.routers.a.middlewares': 'lan-only@file',
+        'traefik.http.routers.b.rule': 'Host(`b`)',
+      }),
+    ),
+    true,
+  )
   assert.equal(priorityOf('critical', true, true), 5)
   assert.equal(priorityOf('critical', false, true), 4)
   assert.equal(priorityOf('high', true, false), 4)

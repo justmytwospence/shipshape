@@ -230,11 +230,16 @@ export function verifiedFix(updateId: number): SecurityFix | null {
   return views.find((v) => v.critical) ?? views[0]!
 }
 
-/** Reachable from outside WireGuard: a Traefik router whose rule has no ClientIP gate. */
+/** Reachable from outside WireGuard: a Traefik router gated neither by ClientIP in its rule nor by the lan-only middleware. */
 export function isPublic(s: ScannedService | undefined): boolean {
   if (!s) return false
   if (String(s.labels['traefik.enable']).toLowerCase() !== 'true') return false
-  return Object.entries(s.labels).some(([k, v]) => /^traefik\.http\.routers\.[^.]+\.rule$/.test(k) && !/ClientIP\(/.test(v))
+  return Object.entries(s.labels).some(([k, v]) => {
+    const router = /^traefik\.http\.routers\.([^.]+)\.rule$/.exec(k)?.[1]
+    if (!router || /ClientIP\(/.test(v)) return false
+    const middlewares = String(s.labels[`traefik.http.routers.${router}.middlewares`] ?? '')
+    return !middlewares.split(',').some((m) => /^lan-only(@file)?$/.test(m.trim()))
+  })
 }
 
 /** How loud an exposure card is (rule 4 of the homelab's notification model). */

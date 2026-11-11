@@ -896,7 +896,7 @@ export function createApp(): Hono {
   const readyToDeploy = (): number =>
     (
       getDb()
-        .prepare(`SELECT COUNT(*) AS n FROM deploys WHERE status IN ('ready','pending')`)
+        .prepare(`SELECT COUNT(*) AS n FROM deploys WHERE status = 'ready'`)
         .get() as { n: number }
     ).n
 

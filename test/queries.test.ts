@@ -170,6 +170,14 @@ test('a stateful update whose review could not run asks, and says why', () => {
   assert.equal(item.update.verdict?.attempts, 3)
 })
 
+test('a queued deploy is not waiting on you; one that waits for the button is', () => {
+  const queued = addUpdate({ service: 'queued', state: 'merged' })
+  addDeploy(queued, { status: 'pending', finishedAt: null })
+  const waiting = addUpdate({ service: 'waiting', state: 'merged' })
+  addDeploy(waiting, { status: 'ready', finishedAt: null })
+  assert.deepEqual(inboxNeedsYou().map((i) => `${i.kind}:${i.update.service}`), ['ready-to-deploy:waiting'])
+})
+
 test('a failure leaves the inbox once a newer update of the service has shipped', () => {
   const old = addUpdate({ service: 'svc', state: 'failed', detail: 'rolled back' })
   assert.equal(inboxNeedsYou().filter((i) => i.update.id === old).length, 1)

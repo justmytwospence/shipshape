@@ -517,7 +517,9 @@ function attentionKind(v: UpdateView): AttentionKind | null {
     (v.state === 'merged' && (d === 'failed' || d === 'error') && !seen) ||
     (d === 'degraded' && !seen)
   if (broken) return brokenExpired(v) ? null : 'broken'
-  if (v.state === 'merged' && (d === 'ready' || d === 'pending')) return 'ready-to-deploy'
+  // `ready` waits for the button (v1's attended rung). `pending` is queued and starts on the
+  // next tick by itself, so it is not waiting on you.
+  if (v.state === 'merged' && d === 'ready') return 'ready-to-deploy'
   if (v.state === 'detected' && v.rolling) return 'rolling-moved'
   if (v.state === 'detected' && v.shipStatus === 'decision' && !v.snoozedUntil) return 'decision'
   return null

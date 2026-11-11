@@ -130,14 +130,27 @@ Three git locations, with strict roles:
 
 ### One decision, four answers
 
-A decision is one image repository at one target tag, across every stack that runs it: nineteen
-sidecars on one agentgateway bump are one card, not nineteen. The card leads with the
-question and names why it is held:
+A decision is a stack: everything in it that is waiting on you, answered with one tap and
+shipped as one merge commit and one deploy. The card lists each update with what holds it:
+
+> **payments: 3 updates**
+> Ship these together? One merge commit, one deploy of payments.
+> - btcpayserver 2.1.0 → 2.2.0: this service always asks
+> - nbxplorer 2.5.26 → 2.5.30: this service always asks
+> - payments-db 17 → 18: Unsafe: a major PostgreSQL upgrade needs a dump and restore
+> 🚀 ship · 💤 snooze 1w · ⏭️ skip
+
+The exception is one bump fanned out across stacks that have nothing else waiting: nineteen
+sidecars on one agentgateway release are one card keyed by the image, not nineteen.
 
 > **agentgateway v1.6.0 → v1.7.0 · 19 services**
 > Ship? this service always asks
 > Session ids are now encrypted; clients reconnect once.
 > 🚀 ship · 💤 snooze 1w · ♾️ always ship · ⏭️ skip
+
+Once answered (or superseded, or no longer waiting) a card is removed from the room rather
+than left as a resolved line: the record of what was decided is git and the Activity page.
+A sink that cannot remove a message resolves it instead.
 
 - **Ship** merges it now, whatever is holding it, the cooldown and pause included.
 - **Snooze** puts it off a week; the card comes back with its escalation clock restarted.
@@ -206,9 +219,9 @@ A hold is a reason a person is needed. These are all of them:
 | `ask` | the service always asks | yes |
 | `unsafe` | the review says block, naming what breaks | no |
 | `needs-action` | the review lists steps this deployment must take (or a breaking change) | no |
-| `no-evidence` | no release notes were read, *and* it is a major, a stateful service, or `shipshape.review: required` | yes |
+| `no-evidence` | no release notes were read, *and* it is a major, a stateful service, or `shipshape.review: required` -- never for a digest rebuild of the running tag | yes |
 | `irreversible` | the review says it migrates stored data one-way | yes |
-| `no-restore-point` | a stateful service with no `shipshape.snapshot`, or one whose dump failed | yes |
+| `no-restore-point` | a stateful service with neither a `shipshape.snapshot` nor an offsite backup job, or one whose restore point failed -- never for a digest rebuild of the running tag | yes |
 
 **"Caution" no longer holds anything.** It held 43 of 75 open updates, none of which listed
 a single breaking change or step; it had quietly become a second "you merge it" setting.
@@ -248,9 +261,15 @@ shipshape runs the service's own `shipshape.snapshot` command inside its contain
 command that prints a dump to stdout: `pg_dump -U app app`), gzips the output under
 `DATA_DIR/restore-points/<stack>/`, and keeps the newest `restore_points.keep` per service.
 It also optionally asks any MCP tool for an offsite copy (`restore_points.offsite`: here
-backup-mcp's `run_backup`, which re-runs the stack's backup job); a failure there is
-recorded and never blocks a ship. A failed local dump does: the update waits with a
+backup-mcp's `run_backup`, which re-runs the stack's backup job); beside a dump, a failure
+there is recorded and never blocks a ship. A failed local dump does: the update waits with a
 `no-restore-point` hold that says why.
+
+A stack with no snapshot label but a job on the offsite server (`list_tool`, read hourly)
+gets that backup as its restore point instead: shipshape runs it, polls `status_tool` until
+it finishes (up to `wait_minutes`), and ships only if it succeeded. It is recorded as
+`offsite:<job>`. A digest rebuild of the tag already running takes no restore point and
+asks for none: there is no version change to migrate data.
 
 **Restoring is deliberately manual.** Putting data back blindly loses whatever was written
 after the dump. A card for a rolled-back update names the file, and you decide.
@@ -518,6 +537,10 @@ restore_points:
     url: http://backup-mcp:8000/mcp
     tool: run_backup
     job: "{stack}"
+    status_tool: run_status   # polled when the backup is the restore point itself
+    list_tool: list_jobs      # which stacks have a job
+    wait_minutes: 30
+    poll_seconds: 10
 deploy:
   verify_window_s: 300        # how long a deploy has to prove itself
   soak_s: 1800                # a second look before it reads verified

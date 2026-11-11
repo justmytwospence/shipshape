@@ -41,6 +41,11 @@ export const env = {
   /** Overrides the gateway base URL. Only needed for a self-hosted Anthropic-compatible
    *  proxy; OpenRouter's own base is the default and needs no setting. */
   llmBaseUrl: process.env.LLM_BASE_URL ?? '',
+  /**
+   * Where git operations go instead of github.com/<GITHUB_REPO>. For a self-hosted forge,
+   * and for the tests, which point it at a local bare repository.
+   */
+  gitRemoteUrl: process.env.GIT_REMOTE_URL ?? '',
   /** The homelab's notification router: n8n's Alerting workflow, `/webhook/notify`. */
   notifyUrl: process.env.NOTIFY_URL ?? '',
   /** Its bearer (ALERT_INTAKE_KEY). */

@@ -454,8 +454,9 @@ export function applySettings(changes: Record<string, string>): ApplyResult {
       { cwd: env.repoDir },
     )
   } catch (err) {
+    // Unstage first: `checkout -- file` restores from the index, which holds the edit.
+    execFileSync('git', ['reset', '-q', '--', rel], { cwd: env.repoDir })
     writeFileSync(file, original)
-    execFileSync('git', ['checkout', '--', rel], { cwd: env.repoDir })
     return { ok: false, errors: [`could not commit the change: ${(err as Error).message}`] }
   }
 

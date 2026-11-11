@@ -235,8 +235,9 @@ export function appendRule(rule: Rule): { sha: string } {
       { cwd: env.repoDir },
     )
   } catch (err) {
+    // Unstage first: `checkout -- file` restores from the index, which now holds the rule.
+    execFileSync('git', ['reset', '-q', '--', rel], { cwd: env.repoDir })
     writeFileSync(file, original)
-    execFileSync('git', ['checkout', '--', rel], { cwd: env.repoDir })
     throw new Error(`could not commit the rule: ${(err as Error).message.slice(0, 160)}`)
   }
   const sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: env.repoDir }).toString().trim()

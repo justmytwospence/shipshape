@@ -30,7 +30,7 @@ function credentialArgs(): string[] {
 }
 
 export function httpsUrl(): string {
-  return `https://github.com/${env.githubRepo}.git`
+  return env.gitRemoteUrl || `https://github.com/${env.githubRepo}.git`
 }
 
 export interface GitResult {

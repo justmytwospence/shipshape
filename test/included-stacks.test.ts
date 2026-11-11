@@ -76,3 +76,19 @@ test('an included stack verifies under the root project name', () => {
   assert.equal(projectName('pihole', dir), projectName('root', dir))
   assert.notEqual(projectName('jellyfin', dir), projectName('root', dir))
 })
+
+test('a compose file that names itself is that project, not its directory', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'shipshape-named-'))
+  const stack = (n: string, body: string) => {
+    mkdirSync(join(dir, n), { recursive: true })
+    writeFileSync(join(dir, n, 'docker-compose.yaml'), body)
+  }
+  stack('crypto-nodes', '# comment\nname: payments\nservices:\n  btc:\n    image: x\n')
+  stack('quoted', 'name: "My_App"  # why\nservices: {}\n')
+  stack('var', 'name: ${PROJECT:-x}\nservices: {}\n')
+  stack('plain', 'services:\n  a:\n    image: x\n    labels:\n      name: nope\n')
+  assert.equal(projectName('crypto-nodes', dir), 'payments')
+  assert.equal(projectName('quoted', dir), 'my_app')
+  assert.equal(projectName('var', dir), 'var', 'a variable is left to the directory')
+  assert.equal(projectName('plain', dir), 'plain', 'only a top-level name counts')
+})

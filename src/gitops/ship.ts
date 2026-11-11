@@ -63,10 +63,30 @@ export function eligibleGroups(policy: Policy): UpdateGroup[] {
   if (wanted.length === 0) return []
 
   const services = scanRepo(env.repoDir, policy.exclude_stacks)
+  // A service that is in no compose file any more (removed, or its stack renamed) has
+  // nothing to bump: retire its update rather than retry it, and ask about it, forever.
+  // Both sources must agree it is gone -- absent from this scan of the files *and* from the
+  // images the last full scan recorded -- so a scan that read nothing retires nothing.
+  const present = new Set(services.map((s) => `${s.stack}/${s.service}`))
+  const isGone = (r: { stack: string; service: string }) =>
+    services.length > 0 && !present.has(`${r.stack}/${r.service}`) && composeFileFor(r.stack, r.service) === null
+  const gone = wanted.filter(isGone)
+  if (gone.length > 0) {
+    const mark = db.prepare(`UPDATE updates SET state = 'superseded', detail = 'service removed', updated_at = ? WHERE id = ?`)
+    const now = new Date().toISOString()
+    for (const r of gone) mark.run(now, r.id)
+    logEvent({
+      level: 'info',
+      kind: 'pr',
+      message: `retired ${gone.length} update(s) for services no longer in any compose file`,
+      detail: gone.map((r) => `${r.stack}/${r.service}`).join(', ').slice(0, 300),
+    })
+  }
   // A fork whose last replay onto this very target conflicted, from this very pin, is
   // left alone: the replay would fail identically every poll. A changed pin or a newer
   // target is a new attempt (FORKS.md, "When a rebase conflicts").
   const candidates = wanted.filter((r) => {
+    if (isGone(r)) return false
     if (!isFork(r.stack, r.service)) return true
     const conflict = forkConflictFor(r.stack, r.service)
     if (!conflict) return true

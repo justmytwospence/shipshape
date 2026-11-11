@@ -232,3 +232,18 @@ test('one tap on a stack card ships everything in it as one merge commit', async
   assert.match(compose, /example\/db:18/)
   assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM deploys`).get() as { n: number }).n, 1, 'one deploy')
 })
+
+test('an update for a service that is in no compose file any more is retired, not retried', async () => {
+  setup([{ name: 'web' }])
+  const db = getDb()
+  const id = Number(
+    db.prepare(
+      `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at, approved_at)
+       VALUES ('payments', 'btc', 'example/btc:1.0.0', '1.0.0', '1.1.0', 'patch', 'ask', 'detected', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', '2026-02-02T00:00:00Z')`,
+    ).run().lastInsertRowid,
+  )
+  const r = await runShipPass()
+  assert.deepEqual([r.shipped, r.failed], [0, 0])
+  const row = db.prepare(`SELECT state, detail FROM updates WHERE id = ?`).get(id) as { state: string; detail: string }
+  assert.deepEqual([row.state, row.detail], ['superseded', 'service removed'])
+})

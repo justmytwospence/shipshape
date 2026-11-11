@@ -1,5 +1,6 @@
 import { execa } from 'execa'
-import { basename } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { basename, join } from 'node:path'
 import { env } from '../config.ts'
 import { includedStacks } from '../compose/scan.ts'
 import { dockerEnvOptions } from './docker-env.ts'
@@ -54,8 +55,25 @@ export function projectName(stack: string, repoDir = env.repoDir): string {
   // under their own would find nothing and the verifier would report "no container"
   // for a service that is running perfectly well.
   const root = stack === 'root' || includedStacks(repoDir).has(stack)
-  const raw = root ? basename(repoDir) : stack
+  const raw = root ? basename(repoDir) : (declaredName(join(repoDir, stack, 'docker-compose.yaml')) ?? stack)
   return raw.toLowerCase().replace(/[^a-z0-9_-]/g, '')
+}
+
+/**
+ * A compose file's own top-level `name:`, which overrides the directory as the project
+ * name (crypto-nodes/ runs as project `payments`). Null when absent, unreadable, or built
+ * from a variable this process cannot resolve the way compose would.
+ */
+export function declaredName(file: string): string | null {
+  let text: string
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch {
+    return null
+  }
+  const m = /^name:[ \t]*["']?([^"'\s#]+)["']?[ \t]*(?:#.*)?$/m.exec(text)
+  if (!m || m[1]!.includes('$')) return null
+  return m[1]!
 }
 
 /** Pull the fields that matter out of one `docker inspect` object. */

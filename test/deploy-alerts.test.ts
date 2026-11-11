@@ -88,7 +88,7 @@ test('a pull that fails names only what it meant to bring up', async () => {
 
   assert.deepEqual(composeCalls(io.calls), ['compose -f actual/docker-compose.yaml pull actual'])
   assert.equal(sent.length, 1)
-  assert.match(sent[0]!.body, /^#0 merged but actual did not deploy\./)
+  assert.match(sent[0]!.body, /^The change shipped but actual did not deploy\./)
   const lines = retryLines(sent[0]!.body)
   assert.ok(lines.length > 0, sent[0]!.body)
   assert.ok(

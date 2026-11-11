@@ -32,7 +32,7 @@ import type { ReleaseView } from '../../../updates/queries.ts'
  * anything ever read this release. The copy does not promise a changelog, because for an
  * image with no resolved project the only honest link is its registry.
  */
-const NO_REVIEW = 'No review — this applied without a pull request.'
+const NO_REVIEW = 'No review — this shipped without being read.'
 
 /*
  * inline-flex, not inline: `.tap` works by min-height, and an inline box ignores it. As

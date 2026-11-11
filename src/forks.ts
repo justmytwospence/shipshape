@@ -104,7 +104,7 @@ export async function recordForkConflict(
       '',
       `- ${c.detail}`,
       '',
-      `Nothing was pushed and no pull request opened. Rebase the fork's homelab branch onto ${c.toTag} by hand and move the pinned sha in the compose file, or drop the commit -- FORKS.md, "When a rebase conflicts". shipshape tries again once the pin or the target changes.`,
+      `Nothing was shipped. Rebase the fork's homelab branch onto ${c.toTag} by hand and move the pinned sha in the compose file, or drop the commit -- FORKS.md, "When a rebase conflicts". shipshape tries again once the pin or the target changes.`,
     ].join('\n'),
     priority: 3,
     tags: ['fork'],

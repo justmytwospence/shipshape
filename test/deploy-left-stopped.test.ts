@@ -381,5 +381,5 @@ test('a docker that cannot be asked records a failure, and no plan', async () =>
   assert.equal(row.snapshot, null, 'a guess is never recorded as a plan')
   assert.match(row.detail, /^could not ask docker whether bitwarden is running: permission denied/)
   assert.equal(stateOf(ids[0]!), 'merged', 'still merged, so Try again is offered')
-  assert.deepEqual(lastEvent().message, 'deploy of bitwarden failed after #101 merged')
+  assert.deepEqual(lastEvent().message, 'deploy of bitwarden failed after #101 shipped')
 })

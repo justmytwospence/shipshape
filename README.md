@@ -2,10 +2,11 @@
 
 A Docker image update bot for a single-host Docker Compose homelab.
 
-It polls registries for new image tags, opens **real GitHub pull requests** that bump the
-`image:` line, asks **Claude** to find and read the upstream changelog and judge the
-release, auto-merges what policy allows, and then deploys the change on the host with a
-true `docker compose up -d`.
+It polls registries for new image tags, asks **Claude** to find and read the upstream
+changelog, **ships** what nothing holds back -- a merge commit on `main` -- and deploys it
+on the host with a true `docker compose up -d`, then verifies it, soaks it, and rolls it
+back if it broke. What does need you arrives as **one card per decision** with four
+answers: ship, snooze, always ship, skip.
 
 Think Renovate, but scoped to one operator's compose repo, and with the part Renovate
 structurally cannot do: an LLM that goes and finds the changelog when the image doesn't
@@ -25,7 +26,8 @@ but has two problems here:
    is technically correct and useless. ~24% carry nothing at all. Renovate has no
    override for this and simply renders an empty changelog section.
 2. **No extension point for an LLM.** Renovate has no hook that can write to a PR body,
-   so any AI summary has to be a separate bot commenting afterwards.
+   so any AI summary has to be a separate bot commenting afterwards. (shipshape has no
+   pull requests at all now: the review is in the merge commit and on the update's page.)
 
 shipshape finds the source repository by asking, most certain first: a short curated map
 for Docker Official Images; LinuxServer's API and, where that names a website, the
@@ -92,54 +94,63 @@ registry poll ──▶ new tag ──▶ resolve source repo ──▶ fetch ch
                                                                               │
                               ┌───────────────────────────────────────────────┘
                               ▼
-                      open PR on GitHub ──▶ policy: auto-merge? ──▶ merge
-                                                                     │
-                              sync into the live checkout ◀──────────┘
+                  holds? ── none ──▶ cooldown ──▶ restore point? ──▶ merge commit on main
+                    │                                                     │
+                    └─ some ──▶ one card: ship · snooze · always ship · skip
+                                                                          │
+                              sync into the live checkout ◀───────────────┘
                                           │
                                           ▼
-                              docker compose up -d ──▶ health check ──▶ alert
+                       docker compose up -d ──▶ verify ──▶ soak ──▶ verified
+                                                    └─ failed ──▶ revert -m 1, redeploy, tell you
 ```
 
-A service that is not running when its update lands is not started: the merge stands and
+An update ships on its own unless a **hold** says a person is needed. There are only a few,
+and each is concrete (see [The policy model](#the-policy-model)). Nothing predicts how
+risky a version looks; verifying, soaking and rolling back carry that.
+
+**Shipping is a merge commit.** Shipshape builds a branch in its own work clone, merges it
+into `main` with `git merge --no-ff`, and pushes `main`. The branch is never pushed and
+there is no pull request, so `git log --graph` keeps the shape of each change, the merge
+commit's message carries the review (what moved, what the reader said, which rule waived
+a hold), and `git revert -m 1` undoes it. The one thing that still travels as a branch is
+a drafted config change, because it is a diff you should read before shipping.
+
+A service that is not running when its update lands is not started: the change stands and
 the update reads Left stopped. Compose brings it up on the new version the next time it
 runs; `docker start` on the old container would resume the old one.
-
-### Comment on a pull request and it does what you asked
-
-The pull request is the review surface, so it is also where you answer back. Comment on an
-open one and shipshape reads it as an instruction: it can reply to a question, write the
-change you asked for as a second commit, hold the pull request so it will not merge on its
-own, or read the changelog again. There is no prefix and no bot to summon — any comment
-counts — and it answers every one, including the ones it decides need no change.
-
-```
-you: "PAPERLESS_HOST isn't set here — drop that line and use the URL form instead"
-     ↓  (within a minute)
-shipshape: 👀 → second commit on the branch → a reply saying what it changed
-```
-
-Two things it will not do:
-
-- **Never merge, never deploy.** Not at any setting. A merge reaches your host through a
-  real `compose up`, and that is not something a model's reading of prose should be able
-  to start. You merge; shipshape carries it out.
-- **Never skip on inference.** Skipping tombstones an update so the scan will not offer it
-  again, and "don't skip this" differs from "skip this" by one word. It needs the literal
-  `/skip` typed in your comment.
-
-Off by default (`revise.mode: off`). `reply` lets it answer, hold, skip and re-read
-without touching the branch; `act` lets it commit as well. Anything it commits is subject
-to the same boundary as a drafted proposal — it can never reach shipshape's own
-configuration, CI workflows, `bin/` or `scripts/` at any depth, credentials, `.env` files,
-or anything that executes — and a pull request it has written to can never auto-merge.
 
 Three git locations, with strict roles:
 
 | Location | Role |
 |---|---|
 | the live checkout | the **only** place deploys run; touched solely to fetch, fast-forward, and `compose up` |
-| the tool's own clone (`/data/repo`) | all branch, edit, commit, and push work — immune to your uncommitted WIP |
-| GitHub | where PRs live and merge |
+| the tool's own clone (`/data/repo`) | all branch, edit, merge and push work — immune to your uncommitted WIP |
+| GitHub | where `main` is published; nothing else lives there |
+
+### One decision, four answers
+
+A decision is one image repository at one target tag, across every stack that runs it: nineteen
+sidecars on one agentgateway bump are one card, not nineteen. The card leads with the
+question and names why it is held:
+
+> **agentgateway v1.6.0 → v1.7.0 · 19 services**
+> Ship? this service always asks
+> Session ids are now encrypted; clients reconnect once.
+> 🚀 ship · 💤 snooze 1w · ♾️ always ship · ⏭️ skip
+
+- **Ship** merges it now, whatever is holding it, the cooldown and pause included.
+- **Snooze** puts it off a week; the card comes back with its escalation clock restarted.
+- **Skip** dismisses that version for good (and the drafted change that carried it).
+- **Always ship** does what ship does, and also writes a **rule** to `policy.yaml` as a
+  commit: the narrowest scope that explains the card (one image across many stacks, or one
+  service), waiving only the reasons that were on it. A model picks the scope when it can; a
+  deterministic default stands in when it cannot. It is never offered for a hold no rule may
+  waive, so there is nothing quiet to regret: a lifeline service, an unsafe verdict and a list
+  of work to do always ask.
+
+The same four verbs are on the update page, in the MCP (`update_action`), and behind signed
+links in email and ntfy messages. A decision waiting a week is announced once more, louder.
 
 ## Configuration
 
@@ -163,49 +174,89 @@ and a key it omits is one nobody reading it knows exists.
 
 ## The policy model
 
-One axis — **how much happens without you** — with five rungs. Set the default per
-version magnitude in `policy.yaml`; override it for one service with a
-`shipshape.policy` label, which always wins.
+One sentence: **an update ships on its own unless a hold says a person is needed.** The
+model has three parts -- a class per service, the holds, and the rules that waive some of
+them.
 
-| Rung | What happens |
+### Classes
+
+A service has a class, set rarely, with `shipshape.class`:
+
+| Class | What it means |
 |---|---|
-| `auto` | A pull request opens and shipshape merges it, unless the changelog review objects. |
-| `manual` | A pull request opens. You merge it, and the deploy follows. |
-| `attended` | A pull request opens. You merge it, and you press Deploy. |
-| `on-request` | Nothing opens. The update is listed until you ask for a pull request. |
-| `skip` | Not tracked at all. |
+| `normal` (the default) | Ships on its own once the review finds nothing to do and the release has aged. |
+| `stateful` | Ships on its own **after a restore point**; a one-way migration, or a jump with no release notes behind it, asks. Databases and the services that own data. |
+| `ask` | Always asks. Crypto nodes, docker-socket proxies, anything you want to look at. |
+| `lifeline` | Always asks, and **no rule can waive it**: the way back in (traefik, authelia, wireguard, pihole). |
+| `frozen` | Tracked; nothing happens until you ask. A disabled stack is frozen automatically. |
+| `skip` | Not tracked at all (`shipshape.policy: skip`). |
 
-The static rung and the changelog review combine by taking **the more conservative of
-the two**, asked of every update a pull request carries. The review is a one-directional
-damper:
+The v1 labels still work: `shipshape.policy: auto|manual|attended|on-request` and
+`shipshape.pr: on-request` map onto these, and a `shipshape.class` beside them wins.
+Anything unrecognised narrows to `ask`, so a typo never grants reach. The Services page
+writes the class and removes the v1 labels in the same commit.
 
-| Static rung | Review | Result |
+### Holds
+
+A hold is a reason a person is needed. These are all of them:
+
+| Hold | When | A rule may waive it |
 |---|---|---|
-| auto | approve, medium or high confidence | auto-merge, then deploy |
-| auto | caution / block / low confidence | PR stays open for a human |
-| auto | *still on its way* | waits, up to six hours |
-| auto | *unavailable* | merge per static policy (fail-open) |
-| manual | anything | PR always; never auto-merged |
+| `lifeline` | the service is a lifeline | no |
+| `ask` | the service always asks | yes |
+| `unsafe` | the review says block, naming what breaks | no |
+| `needs-action` | the review lists steps this deployment must take (or a breaking change) | no |
+| `no-evidence` | no release notes were read, *and* it is a major, a stateful service, or `shipshape.review: required` | yes |
+| `irreversible` | the review says it migrates stored data one-way | yes |
+| `no-restore-point` | a stateful service with no `shipshape.snapshot`, or one whose dump failed | yes |
 
-The review can **block** an update that policy would have merged. It can never
-**promote** one. Majors, digest moves, and any pull request carrying more than an image line are
-never auto-merged -- with one exception, a verified security fix, described below and off
-unless `security.auto_merge` says otherwise.
+**"Caution" no longer holds anything.** It held 43 of 75 open updates, none of which listed
+a single breaking change or step; it had quietly become a second "you merge it" setting.
+Missing release notes on a patch or minor are fine: rollback covers it. What the reader says
+is now concrete -- work to do, something unsafe, a one-way migration -- or it is nothing.
+A verified security fix lifts `ask` and `no-evidence` and nothing that is a real warning.
 
-This is also the prompt-injection boundary: release notes are untrusted input, and the
-worst a hostile changelog can achieve is to stop an update.
+Anything that is still waiting is, in order: **ready** (you said ship), **waiting** (a review
+still coming, a snooze, the cooldown, pause), or a **decision** (a card).
 
-**Cooldown.** Nothing merges on its own until its release is `merge.cooldown_days` old
+**Cooldown.** Nothing ships on its own until its release is `ship.cooldown_days` old
 (default 7): the registry's publish date where it gives one, else when shipshape first saw
 the tag; a digest move counts from when it was seen. A broken or hijacked release usually
-surfaces within days, and a week of nothing merging is cheap. A merge you press is not
-held. A verified security fix waits `security.fix_cooldown_days` (default 2) instead, and
-one for a critical, KEV-listed or exploited incident does not wait at all. Release notes
-never shorten the wait -- "security release" is exactly what a hostile release would say.
+surfaces within days, and a week of nothing shipping is cheap. A ship you press is not held.
+A verified security fix waits `security.fix_cooldown_days` (default 2) instead, and one for
+a critical, KEV-listed or exploited incident does not wait at all. Release notes never
+shorten the wait -- "security release" is exactly what a hostile release would say.
 
-`gated` is accepted as a spelling of `manual`. It used to be a fifth rung, and it
-behaved identically to `manual` in every decision — same merge answer, same PR answer —
-so it was a choice with no consequence rather than a control.
+### Rules
+
+Pressing **Always ship** writes a rule:
+
+```yaml
+rules:
+  - { id: r1, match: { image: ghcr.io/agentgateway/agentgateway }, waive: [ask], because: "2026-11-11, agentgateway v1.7.0 card: always ship" }
+```
+
+`match` keys all have to match: `image` (a repository, any stack), `stack`, `service`, or
+`base_build: true` for our own builds. `waive` is the reasons it removes, from the table
+above. Rules are an ordinary commit, readable and editable like anything else; the Settings
+page lists them. A rule can never waive what is not waivable, even if the file says so.
+
+### Restore points
+
+Before a `stateful` service is updated -- or any update the review calls irreversible --
+shipshape runs the service's own `shipshape.snapshot` command inside its container (a
+command that prints a dump to stdout: `pg_dump -U app app`), gzips the output under
+`DATA_DIR/restore-points/<stack>/`, and keeps the newest `restore_points.keep` per service.
+It also optionally asks any MCP tool for an offsite copy (`restore_points.offsite`: here
+backup-mcp's `run_backup`, which re-runs the stack's backup job); a failure there is
+recorded and never blocks a ship. A failed local dump does: the update waits with a
+`no-restore-point` hold that says why.
+
+**Restoring is deliberately manual.** Putting data back blindly loses whatever was written
+after the dump. A card for a rolled-back update names the file, and you decide.
+
+This is also the prompt-injection boundary: release notes are untrusted input, and the
+worst a hostile changelog can achieve is a card asking you.
 
 ### The review, in two stages
 
@@ -228,8 +279,9 @@ so it was a choice with no consequence rather than a control.
 update page without acting on them. `on` lets a routine update through on the screen's
 approval, sends everything else to the reader, and still reads one routine update in ten
 as an audit — an alert fires if the reader finds work the screen called routine. A
-finding holds the merge *provisionally* until the reader has looked, and keeps holding it
-if the reader cannot run. `npm run jev-replay` calibrates the screen against verdicts the
+finding holds the update *provisionally* until the reader has looked; once the reader has
+had a reasonable wait (six hours), an update it could not read is treated as having no
+evidence. `npm run jev-replay` calibrates the screen against verdicts the
 reader already wrote.
 
 The whole model is also rendered in the running app: each section of the Settings page
@@ -261,18 +313,16 @@ services carry a version an incident names -- and which update removes it.
 5. **Act.** `security.mode: shadow` records all of this (Status page, the MCP's
    `list_exposures`) and says nothing. `on` adds one card per incident
    (`shipshape:security:<slug>`, loudness by severity, exploitation and whether the service
-   has a public router) for exposure no verified fix is about to remove, and a comment on
-   each fixing pull request with the evidence.
+   has a public router) for exposure no verified fix is about to remove.
 
-**The one exception to "never promote".** With `security.mode: on` and
-`security.auto_merge: true`, a verified fix may merge past the `manual` rung, a major or
-digest move, a `caution` review, or an approval below the confidence floor. It never
-passes a hold, a `block` review, a review still on its way, the `attended`, `on-request`
-or `skip` rungs, a dormant service, a fail-closed service with no review, an edited pull
-request, red checks, the per-run ceiling or `paused`. The advisory cannot cause this on
-its own: it only says which versions are bad, and the evidence that an update removes one
-is both images' own inventories, read here. The worst a hostile feed achieves is a merge
-of a real upstream release that demonstrably changes a package it named.
+**The one place an outside signal widens what ships.** With `security.mode: on` and
+`security.auto_merge: true`, a verified fix lifts the `ask` and `no-evidence` holds and
+ships after `security.fix_cooldown_days`. It never passes a `lifeline`, an `unsafe` review,
+a list of work to do, a review still on its way, a frozen or dormant service, the per-run
+ceiling or `paused`. The advisory cannot cause this on its own: it only says which versions
+are bad, and the evidence that an update removes one is both images' own inventories, read
+here. The worst a hostile feed achieves is shipping a real upstream release that
+demonstrably changes a package it named.
 
 ## Running it yourself
 
@@ -285,9 +335,9 @@ start.
 | Variable | Required | Default | What it is |
 |---|---|---|---|
 | `REPO_DIR` | **yes** | — | The checkout of your compose repository. Must be bind-mounted at the *identical* path inside the container (see below). |
-| `GITHUB_REPO` | **yes** | — | `owner/repo` of that repository, for pull requests. |
-| `GITHUB_TOKEN` | for PRs | — | Fine-grained PAT scoped to that repo: **Contents** read+write, **Pull requests** read+write. |
-| `ANTHROPIC_API_KEY` | for analysis | — | One of this or `OPENROUTER_API_KEY`. Without either, PRs still open, labelled `needs-review`. |
+| `GITHUB_REPO` | **yes** | — | `owner/repo` of that repository, where `main` is published. |
+| `GITHUB_TOKEN` | to publish | — | Fine-grained PAT scoped to that repo: **Contents** read+write. (Pull requests: read+write only for the one-time cleanup of v1's open ones.) |
+| `ANTHROPIC_API_KEY` | for analysis | — | One of this or `OPENROUTER_API_KEY`. Without either, updates still ship, on the evidence that is left (no reading counts as no evidence). |
 | `OPENROUTER_API_KEY` | for analysis | — | Routes every model call through OpenRouter's Anthropic-compatible endpoint instead, and is the only way to run the screen (Jev, via the Decisions API). Wins when both are set; the two are never sent together. Model ids then carry a vendor prefix — `anthropic/claude-opus-5.5`. The workspace guardrail must allow the TypeSafe provider for the screen. |
 | `LLM_BASE_URL` | no | OpenRouter's base | Only for a self-hosted Anthropic-compatible gateway. |
 | `POLICY_FILE` | no | `$REPO_DIR/shipshape/config/policy.yaml` | Where the tracked policy file lives. |
@@ -295,7 +345,9 @@ start.
 | `BOT_EMAIL` | no | `shipshape@localhost` | Git author for shipshape's commits. |
 | `DATA_DIR` | no | `/data` | SQLite database and shipshape's own working clone. |
 | `PORT` / `TZ` | no | `8080` / `UTC` | |
-| `NOTIFY_URL`, `NOTIFY_TOKEN` | no | — | Incidents, as JSON with a bearer, to a notification router (here n8n's `/webhook/notify`). |
+| `NOTIFY_URL`, `NOTIFY_TOKEN` | no | — | What the default `webhook` sink reads (`notify.sinks` can name other variables): incidents, as JSON with a bearer, to a notification router (here n8n's `/webhook/notify`). |
+| `GIT_REMOTE_URL` | no | `https://github.com/$GITHUB_REPO.git` | Where git fetches and pushes, for a self-hosted forge. |
+| `SHIPSHAPE_ACTION_SECRET` | no | — | Signs the action links in email and ntfy messages (with `SHIPSHAPE_ALLOWED_ORIGIN`). Unset: those sinks send no links. |
 | `MCP_PORT` | no | — | An MCP server (Streamable HTTP at `/mcp`) for agents: the dashboard's reads plus the operator verbs (`update_action`, `stack_action`, `scan_now`, `check_service`), each checked by `actionsFor` exactly like a button. It has **no auth of its own**: put an OAuth gateway in front and keep the port on a network only that gateway shares. Unset: no listener. |
 
 The MCP also publishes `shipshape://usage`, cached `shipshape://status`, and bounded
@@ -307,7 +359,7 @@ and the shared local model-spend ledger. Cached observations are not a fresh quo
 or a per-agent allowance. `scan_now`, `check_service`, paid readings and deployment actions
 can contact upstreams or spend money; inspect existing work before repeating them. Every
 tool has explicit behavioral hints, and results retain text while also supplying structured
-data. Resource/prompt discovery never triggers a scan, reading, merge or deployment.
+data. Resource/prompt discovery never triggers a scan, reading, ship or deployment.
 | `SMTP_URL`, `MAIL_TO` | no | — | Email. Both are needed; either alone counts as off. `MAIL_FROM` defaults to `BOT_EMAIL`. |
 | `DOCKER_HUB_LOGIN` / `_PASSWORD` | no | — | Doubles the Docker Hub pull allowance (100→200 per 6h). |
 
@@ -358,12 +410,17 @@ takes effect on the next scan without recreating anything.
                                    #  | digest | latest | regex
       # Optional:
       shipshape.tag.include: '^\d{1,3}\.\d+\.\d+$$'  # narrow the candidates ($$ escapes $)
-      shipshape.policy: manual      # auto | manual | attended | on-request | skip
-                                   #   this service's rung. `gated` and `model` are
-                                   #   accepted and mean `manual`. Anything unrecognised
-                                   #   narrows to `manual` rather than widening.
-                                   #   (`shipshape.pr: on-request` is the old spelling
-                                   #   of on-request: still honoured, never needed.)
+      shipshape.class: stateful     # normal | stateful | ask | lifeline | frozen
+                                   #   how much this service asks of you. Anything
+                                   #   unrecognised narrows to `ask`. The v1 labels are
+                                   #   still read and mapped (`shipshape.policy: auto |
+                                   #   manual | attended | on-request | skip`, and
+                                   #   `shipshape.pr: on-request`); the class wins.
+      shipshape.snapshot: pg_dump -U app app
+                                   # a command that prints a dump of this service's data to
+                                   #   stdout, run inside its container before a stateful
+                                   #   update. Write compose's `$$` where the shell needs `$`.
+      shipshape.backup-job: app-nightly  # the offsite backup job to trigger alongside it
       shipshape.source: owner/repo  # the upstream repository, when shipshape cannot find it;
                                    #   a github.com link works too, and is written as owner/repo
       shipshape.changelog: https://example.com/release-notes
@@ -374,9 +431,9 @@ takes effect on the next scan without recreating anything.
                                    #   how far a drafted change may reach, derived from
                                    #   where the compose file sits. Any text file inside
                                    #   the boundary is editable. Default `service`.
-      shipshape.review: required    # refuse to auto-merge without a reader's verdict
+      shipshape.review: required    # a major or a thin reading asks, rather than ships
                                    #   (`shipshape.claude` is the old spelling)
-      shipshape.group: mygroup      # force services into one PR
+      shipshape.group: mygroup      # force services to ship together
       shipshape.deploy: rm-first    # recreate rather than update (re-reads image env)
 ```
 
@@ -404,7 +461,7 @@ FROM python:3.13-slim@sha256:...   # what shipshape watches and moves
   version pattern to follow releases instead -- a tag without a digest can still move by
   edit. A floating base (`latest`, no tag, or a `latest`/`digest` pattern without a pin) is
   refused, because the file would say the same thing after the move.
-- The pull request edits the `FROM` lines that name the base -- a builder stage on the same
+- The change edits the `FROM` lines that name the base -- a builder stage on the same
   image moves with the final one -- and nothing else, so it is as clean as an image line
   and merges, deploys and rolls back like one. A digest pin is kept on a version bump.
 - Deploying builds the service before `up`. A rollback reverts the line and **rebuilds** on
@@ -443,119 +500,101 @@ releases as prereleases — keeps moving along it.
 A starter `policy.yaml`, which the Settings page also edits for you:
 
 ```yaml
-merge_method: squash          # must match what your repo allows
-paused: true                  # nothing merges on its own. A merge you press still deploys.
-defaults:                     # auto | manual | attended | on-request | skip
-  patch: auto
-  minor: auto
-  major: manual               # forced; majors always need a human
-  digest: manual
+paused: true                  # nothing ships on its own. A ship you press still deploys.
+ship:
+  cooldown_days: 7            # a release must be this old before it ships on its own
+  max_per_run: 3
 review:
   screen: shadow              # off | shadow | on -- Jev, needs OPENROUTER_API_KEY
   model: anthropic/claude-opus-5.5        # the reader; `off` for none
-  code_model: anthropic/claude-opus-5.5   # drafts config changes, answers comments
+  code_model: anthropic/claude-opus-5.5   # drafts config changes, picks a rule's scope
   monthly_budget_usd: 40      # every model call together
 propose:
-  mode: auto                  # auto | off (the button works either way)
-prs:
-  max_open: null              # null: no ceiling
-merge:
-  max_per_run: 3
+  mode: auto                  # auto | off (the verb works either way)
+restore_points:
+  keep: 3                     # dumps kept per service
+  offsite:                    # optional: ask any MCP tool for an offsite copy too
+    type: mcp
+    url: http://backup-mcp:8000/mcp
+    tool: run_backup
+    job: "{stack}"
 deploy:
   verify_window_s: 300        # how long a deploy has to prove itself
   soak_s: 1800                # a second look before it reads verified
   rollback: auto              # auto | suggest | off
 notify:
-  routine: digest             # digest | immediate | off
-  cron: "0 0 8 * * *"         # when the digest goes out; empty ones are never sent
-  incidents: alerts           # all | alerts | routine | off
-  email: off                  # ...per channel, so push and mail can differ
+  sinks:                      # where messages go; each may list the events it wants
+    - type: webhook           # decision | broken | security | system
+  escalate_after_days: 7      # a waiting decision is announced once more, louder
+rules: []                     # written by the Always ship button
 sync:
-  push_main: true             # false: alert-only, no pull requests
+  push_main: true             # false: alert-only, nothing ships
 scan:
   cron: "0 0 3 * * *"         # seconds first
 ```
 
-An older file still loads: `claude:` folds into `review:`, and the keys retired with the
-updater shipshape used to run beside (`prs.enabled`, `prs.scope`, `sync.blackout`,
-`model_tier`) parse at the values that changed nothing and are refused at any value that
-would have restricted shipshape — dropping a restriction silently is the one thing a
-schema change must never do.
+An older file still loads. `claude:` folds into `review:`, `merge.cooldown_days` and
+`merge.max_per_run` fill `ship:`, and `notify.incidents` / `notify.email` become sinks. The
+keys v2 no longer reads (`merge_method`, `merge`, `prs`, `revise`, `defaults`,
+`notify.routine`, `notify.cron`, `model_tier`, `sync.blackout`) load without error at any
+value and are named once per scan in the Activity log, so they get removed rather than
+believed.
 
 Prompt overrides are files beside `policy.yaml`: `prompts/verdict.md`,
-`prompts/proposal.md`, `prompts/revision.md`. Absent means the shipped default.
+`prompts/proposal.md`, `prompts/rule.md`. Absent means the shipped default.
 
 ### Notifications
 
-Two kinds of message, and which is which is **not** configurable:
+Shipshape emits messages; `notify.sinks` says where they go. Each sink may list the
+`events` it wants (`decision`, `broken`, `security`, `system`; none listed means all):
 
-- **Alerts** — a deploy failed, a service came up unhealthy, sync is stuck on a conflict.
-  Something is wrong now. These always send immediately.
-- **Routine** — a pull request opened, one merged, a deploy succeeded or left a stopped
-  service stopped, a verdict held something back. These batch into one digest per
-  schedule.
+| Sink | What it is |
+|---|---|
+| `webhook` | The homelab's notification router: `{key, source, title, message, priority, status, click, actions}` to `NOTIFY_URL` with a bearer (`url_env` / `token_env` name other variables). The router keeps one live card per `key`, edits it in place, and turns `actions` into one-tap reactions that call back through the MCP. |
+| `email` | One mail on a first fire and on an escalation; never on edits or resolves. Actions become signed links. Needs `SMTP_URL` and `MAIL_TO`. |
+| `ntfy` | One JSON publish per first fire or escalation, with the card's actions as view buttons on signed links (`url`, `topic`, optional `token_env`). |
 
-So turning digests on can delay a success and can never hide a failure. That guarantee is
-worth more than the flexibility of batching everything, which is why there is no setting
-for it.
+Silence means healthy. Nothing is announced on success, completion or recovery; what is
+announced is something that needs you:
 
-Each channel then says what it wants — `all`, `alerts`, `routine`, or `off` — so the
-useful split is one line each:
+- **A decision** (`decision`): one card per image and target, P3, re-sent once at P4 after
+  `notify.escalate_after_days`. Key `shipshape:decision:<repository>`; it resolves when the
+  update ships, is skipped, snoozed or superseded.
+- **Something broke** (`broken`): key `shipshape:deploy:<stack>`. A deploy that failed
+  verification and was **rolled back cleanly** is a quiet card (P3) with the reason, the
+  restore point if one was taken, and the rule it shipped under -- worth knowing, nothing
+  to do. A rollback that left something down, or failed, is louder (P4, P5). A later
+  verified deploy of the stack resolves it.
+- **An exposure** (`security`): `shipshape:security:<slug>`, loudness by severity.
+- **Shipshape itself** (`system`): sync stuck, credentials refused, budget spent.
 
-```yaml
-notify:
-  incidents: alerts   # only what broke, as incidents
-  email: routine      # the summary arrives in the inbox
-```
+The links in email and ntfy point at `/act/<token>`: a signed, expiring token naming one
+verb on one update, which shows a confirmation page and only then acts, behind the same web
+authentication as everything else. A leaked link alone does nothing.
 
-The incident channel posts `{key, source, title, message, priority, status, click}` to
-`NOTIFY_URL`. Every alert about one condition carries the same key
-(`shipshape:deploy:<stack>`, `shipshape:sync`, `shipshape:github-auth`,
-`shipshape:budget`), so the router keeps one message per problem and edits it; when the
-condition clears (a later deploy of that stack verifies, a sync succeeds, the credentials
-or budget come back) shipshape sends `status: resolved` for the key and nothing else --
-recovery is never a message of its own. A clean automatic rollback needs nothing from
-anyone and sends nothing. A send the router cannot take is kept in the database and
-retried every tick.
-
-Each line also says what its update carries beyond the version, when it carries anything —
-one of `carries edits` (you pushed to the branch), `changes you asked for` (shipshape wrote
-what you asked for in a comment), `config changes drafted` (shipshape drafted required
-changes of its own), `manual steps noted` (a proposal ran, changed no file, and left you
-steps) or `required steps in the review` (nothing is on the branch, but the review named
-work). A plain version bump says none of them; that is most of what gets opened, and a
-badge on every line is how a reader learns to stop reading them.
-
-Joined to that with a semicolon, `new features` says the release adds something you could
-choose to turn on: `config changes drafted; new features`. It is a separate axis, because
-what a pull request carries is a fact about a diff that exists and what a release offers is
-an assertion read off upstream prose.
-
-An emailed digest carries a link per item, which a push cannot: a push has one click target
-for the whole message. A channel with no credentials is skipped whatever policy says, and
-the Settings page shows where messages actually land plus a button that sends a test
-email and reports the server's own error.
+A send the router cannot take is kept in the database and retried every tick.
 
 ### One-time repository settings
 
-Allow the merge method you configured, and enable auto-delete of head branches.
-shipshape pushes `main` as part of its loop: a branch cut from a stale `origin/main`
-silently reverts unpushed local commits when it merges, so publishing is a
-precondition, not a preference. `sync.push_main: false` disables it, which also
-disables pull requests.
-
+Shipshape pushes `main` as part of its loop: a branch cut from a stale `origin/main`
+silently reverts unpushed local commits when it merges, so publishing is a precondition,
+not a preference. `sync.push_main: false` disables it, which also stops shipping. The
+token needs **Contents** read+write only. Nothing is opened or merged on GitHub any more;
+the first start after upgrading from v1 closes the pull requests v1 left open, with a note
+saying where each update went.
 
 ## Status
 
-Working today: detection across every registry, digest watching, grouped pull requests,
-changelog analysis with merge/hold verdicts, drafted config changes, a deploy engine
-with verification, soak and rollback, an auto-merge engine, and a web UI you can run the
-whole thing from -- including the phone.
+Working today: detection across every registry, digest watching, changelog analysis with
+evidence-based holds, local merge-commit shipping, restore points, standing rules, one
+decision card per image, drafted config changes, a deploy engine with verification, soak
+and rollback, configurable notification sinks, and a web UI you can run the whole thing
+from -- including the phone.
 
 `paused: true` ships on, because turning the unattended path on should be a decision
-rather than a consequence of upgrading. Paused, shipshape still scans, opens pull
-requests and reads changelogs; what waits for you is every step that would change the
-host. `merge.auto` and `deploy.mode` are still read and fold into it.
+rather than a consequence of upgrading. Paused, shipshape still scans and reads
+changelogs; what waits for you is every step that would change the host. A ship you press
+still deploys. `merge.auto` and `deploy.mode` are still read and fold into it.
 
 ## License
 

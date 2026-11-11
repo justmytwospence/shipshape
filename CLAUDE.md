@@ -1,8 +1,9 @@
 # shipshape — working notes for agents
 
 A Docker image update bot for a single-operator compose homelab: it polls registries,
-opens real GitHub pull requests bumping `image:`, has Claude find and read the upstream
-changelog, merges what policy allows, and deploys with a true `docker compose up -d`,
+has Claude find and read the upstream changelog, ships what no hold stops (a merge commit
+on `main`, built in its own work clone -- there are no pull requests), and deploys with a
+true `docker compose up -d`,
 verifying and rolling back. Server-rendered Hono JSX + htmx, SQLite, no client framework.
 
 `README.md` is the product; this file is how to work on it. The domain vocabulary lives
@@ -150,8 +151,8 @@ before touching views. The load-bearing ones:
 ## Upstream links and release notes
 
 Which repository an image comes from, and what its release notes say, feed detection (the
-prerelease stream), the review and the screen, pull request bodies and
-three pages. It went wrong in every one of those places separately before it was pulled
+prerelease stream), the review and the screen, merge commit
+bodies and three pages. It went wrong in every one of those places separately before it was pulled
 into one place, so keep it there:
 
 - **One accessor.** `sourceFor` / `sourceForSync` in `src/resolver/index.ts` apply labels

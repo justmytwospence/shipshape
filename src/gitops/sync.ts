@@ -185,7 +185,7 @@ async function fastForward(): Promise<{ status: 'ok' } | { status: 'failed'; rea
       key: 'shipshape:sync',
       title: 'shipshape: sync blocked',
       body:
-        `A pull request merged, but these files have conflicting local edits:\n` +
+        `A change landed on main, but these files have conflicting local edits:\n` +
         `${conflicting.join('\n')}\n\nCommit or discard them and shipshape will resume.`,
       priority: 4,
       tags: ['warning'],

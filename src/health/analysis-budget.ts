@@ -79,7 +79,7 @@ export function resumesOn(now = new Date()): string {
 export function mergedUnreviewedSince(since: string): number {
   const row = getDb()
     .prepare(
-      `SELECT COUNT(DISTINCT p.number) AS n
+      `SELECT COUNT(DISTINCT p.id) AS n
          FROM prs p
          JOIN pr_updates pu ON pu.pr_id = p.id
          JOIN updates u ON u.id = pu.update_id
@@ -130,15 +130,15 @@ export async function noteBudgetSpent(reading: BudgetReading): Promise<void> {
     body: [
       `$${reading.spent.toFixed(2)} of $${reading.budget} used this month.`,
       '',
-      'Changelog reviews, drafted config changes and replies to your comments are all',
-      'suspended. Scanning and pull requests carry on -- and so does auto-merge, so',
-      'anything it merges while this lasts is merged without the changelog being read.',
+      'Changelog reviews and drafted config changes are suspended. Scanning carries on --',
+      'and so does shipping, so anything that ships while this lasts goes out without the',
+      'changelog being read (no reading counts as no evidence: majors and stateful services ask).',
       unreviewed > 0
-        ? `${unreviewed} pull request${unreviewed === 1 ? ' has' : 's have'} merged unread since ${since.slice(0, 10)}.`
+        ? `${unreviewed} change${unreviewed === 1 ? ' has' : 's have'} shipped unread since ${since.slice(0, 10)}.`
         : '',
       '',
       `It resumes on its own on ${resumesOn()}. To restart it now, raise`,
-      '`claude.monthly_budget_usd` in shipshape/config/policy.yaml, or on the Settings page.',
+      '`review.monthly_budget_usd` in shipshape/config/policy.yaml, or on the Settings page.',
       fresh ? '' : `Still spent since ${since.slice(0, 10)}.`,
     ]
       .filter(Boolean)
@@ -158,7 +158,7 @@ export async function noteBudgetAvailable(): Promise<void> {
     level: 'info',
     kind: 'analysis',
     message: 'analysis budget is available again',
-    detail: unreviewed > 0 ? `${unreviewed} pull request(s) merged unread since ${since.slice(0, 10)}` : undefined,
+    detail: unreviewed > 0 ? `${unreviewed} change(s) shipped unread since ${since.slice(0, 10)}` : undefined,
   })
   await resolveIncident('shipshape:budget')
 }

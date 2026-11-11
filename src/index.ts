@@ -29,7 +29,7 @@ function main(): void {
       level: 'info',
       kind: 'system',
       message: 'UI dev mode: scheduler not started',
-      detail: 'no scanning, no pull requests, no deploys',
+      detail: 'no scanning, no shipping, no deploys',
     })
   } else {
     startScheduler()

@@ -609,7 +609,7 @@ export function createApp(): Hono {
         changes.push({ key, value: value === '' ? null : value })
       }
     } else {
-      const key = String(body.key ?? 'policy')
+      const key = String(body.key ?? 'class')
       if (!(LABEL_KEYS as readonly string[]).includes(key)) {
         toastHeader(c, 'warn', `shipshape does not write a "${key}" label.`)
         if (!c.req.header('HX-Request')) return c.redirect(`/services/${stack}/${service}`, 303)

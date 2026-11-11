@@ -42,7 +42,10 @@ export interface Retired {
   byPrNumber: number
 }
 
-/** Say what was retired, once each, where the rest of the pull request story is told. */
+/** `#79` for a v1 pull request, `a later change` for a local one (number 0). */
+const by = (n: number): string => (n ? `#${n}` : 'a later change')
+
+/** Say what was retired, once each, where the rest of the change story is told. */
 export function logRetired(retired: Retired[]): void {
   for (const r of retired) {
     logEvent({
@@ -50,8 +53,8 @@ export function logRetired(retired: Retired[]): void {
       kind: 'pr',
       stack: r.stack,
       service: r.service,
-      message: `${r.prNumber ? `#${r.prNumber}` : `${r.stack}/${r.service} ${r.toTag}`} retired: overtaken by #${r.byPrNumber}`,
-      detail: `${r.toTag} can no longer deploy on its own; #${r.byPrNumber} carries the service past it`,
+      message: `${r.prNumber ? `#${r.prNumber}` : `${r.stack}/${r.service} ${r.toTag}`} retired: overtaken by ${by(r.byPrNumber)}`,
+      detail: `${r.toTag} can no longer deploy on its own; ${by(r.byPrNumber)} carries the service past it`,
     })
   }
 }
@@ -106,7 +109,7 @@ export function retireOvertaken(now = new Date().toISOString()): Retired[] {
       if (!c.merged_at) continue
       const by = overtaker.get(c.stack, c.service, c.id, c.merged_at) as { number: number } | undefined
       if (!by) continue
-      if (retire.run(`overtaken by #${by.number}`, now, c.id).changes === 0) continue
+      if (retire.run(`overtaken by ${by.number ? `#${by.number}` : 'a later change'}`, now, c.id).changes === 0) continue
       out.push({
         updateId: c.id,
         stack: c.stack,

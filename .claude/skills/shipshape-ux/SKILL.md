@@ -1,6 +1,6 @@
 ---
 name: shipshape-ux
-description: The shipshape product model and the exact words the interface uses — lifecycle stages, verdict labels, policy rungs, the Pause switch, and which action each state offers. Read before writing or changing any user-facing copy, badge, filter, notification or page, so the vocabulary stays one vocabulary instead of being re-derived from config.ts.
+description: The shipshape product model and the exact words the interface uses — lifecycle stages, verdict labels, service classes, holds, rules, the Pause switch, and which action each state offers. Read before writing or changing any user-facing copy, badge, filter, notification or page, so the vocabulary stays one vocabulary instead of being re-derived from config.ts.
 ---
 
 # What shipshape is, in the words the UI uses
@@ -11,22 +11,30 @@ here, one of the two is wrong.
 
 ## The one axis
 
-**How much happens without you**, chosen per image, defaulting per version magnitude:
+**An update ships on its own unless a hold says a person is needed.** Two ideas carry it:
+the service's **class**, and the **holds**.
 
-| Rung | What happens |
+| Class | What it means |
 |---|---|
-| `auto` | A pull request opens and shipshape merges it, unless the changelog review objects. |
-| `manual` | A pull request opens. You merge it, and the deploy follows. |
-| `attended` | A pull request opens. You merge it, and **you** deploy it. |
-| `on-request` | Nothing opens. The update is listed until you ask. You deploy it. |
+| `normal` | Ships on its own once the review finds nothing to do and the release has aged. |
+| `stateful` | Ships on its own after a restore point; a one-way migration or a jump with no evidence asks. |
+| `ask` | Always asks. |
+| `lifeline` | Always asks; no rule can waive it. |
+| `frozen` | Tracked; nothing happens until you ask. |
 | `skip` | Not tracked at all. |
 
-Majors and digest moves are **always** manual, and that is not configurable -- except for
-a **verified security fix** under `security.mode: on` with `security.auto_merge`, which may
-merge past the manual rung, a major or digest move and a **Read first** review (never past
-a hold, **Breaking changes**, **Review pending**, attended, on-request, skip, or Pause). A
-`shipshape.policy` label on a service overrides the default for that service and always
-wins; anything unrecognised narrows to `manual` rather than widening.
+A hold is a reason a person is needed, and the words are these: **lifeline**, **ask**,
+**unsafe** (the review says block, naming what breaks), **needs action** (the review lists
+steps), **no evidence** (no release notes were read, on a major, a stateful service or a
+fail-closed one), **irreversible** (a one-way migration) and **no restore point**. Only
+`ask`, `no evidence`, `irreversible` and `no restore point` can be waived by a rule. Never
+say an update is "risky" or "low risk": nothing here predicts risk. Say what is holding it.
+
+**Caution does not hold.** "Read first" is a label on a review, not a state of the update:
+what holds is listed work, an unsafe verdict, or missing evidence where it matters.
+
+A `shipshape.class` label sets the class. The v1 labels (`shipshape.policy`,
+`shipshape.pr`) are still read and mapped; anything unrecognised narrows to `ask`.
 
 ## Security incidents
 
@@ -41,48 +49,51 @@ destination. Cards are keyed `shipshape:security:<slug>`, one per incident.
 ## Our own builds
 
 A watched `build:` service is watched through its **base image**: the published image its
-Dockerfile's final stage is built `FROM`. Its update names the base, its pull request is
+Dockerfile's final stage is built `FROM`. Its update names the base, its merge commit is
 titled "rebuild <service> on <base> <from> -> <to>" and edits only the `FROM` lines, and
 the Services pane shows it as the **base** line ("built here from <Dockerfile>"). Say
 **rebuild**, never "bump <service>": the version moving is the base's, not a release of
-the service. It is otherwise an ordinary update -- same rungs, same review, same deploy,
+the service. It is otherwise an ordinary update -- same class, same review, same deploy,
 which builds before `up`, and a rollback rebuilds on the old base.
 
-**Pause** is the one global switch: while it is on, shipshape merges nothing on its own.
-Scanning, pull requests and changelog reviews continue. A merge *you* press still deploys —
-you are present, and that is the point: merging is the decision and deploying is carrying
-it out, so the two are not negotiated separately.
+**Pause** is the one global switch: while it is on, shipshape ships nothing on its own.
+Scanning and changelog reviews continue. A ship *you* press still deploys — you are
+present, and that is the point: shipping is the decision and deploying is carrying it out,
+so the two are not negotiated separately.
 
-**A merge always leads to a deploy shipshape watches** — of the services that are
-running — so a failure is caught by the health check and rolled back inside the soak
-window. Withholding the deploy never avoided that risk, it only moved it — the merged
-version reaches the host anyway the next time anything recreates the stack, and it
-arrives then with nothing watching. The exception is named per service, on the
-`attended` and `on-request` rungs, rather than taken globally: infrastructure that
-carries the way back in, datastores, anything a rollback could not put back.
+**A ship always leads to a deploy shipshape watches** — of the services that are running —
+so a failure is caught by the health check and rolled back inside the soak window.
+Withholding the deploy never avoided that risk, it only moved it: the shipped version
+reaches the host anyway the next time anything recreates the stack, and it arrives then
+with nothing watching.
+
+**Shipping is a merge commit on main.** There are no pull requests. Say "ship" and "change",
+never "merge" or "PR", except for the v1 pull requests that the first start closes. The
+merge commit is `chore(deps): <stack>: bump <services> <from> -> <to>`, with the review
+and any rule that waived a hold in its body.
 
 ## The stages
 
-`Detected · Held on request · Waiting on you · Auto-merging · Ready to deploy ·
-Deploying · Verifying · Verified · Left stopped · Failed · Rolled back · Skipped ·
-Superseded`
+`Detected · Waiting on you · Waiting · Shipping · Ready to deploy · Deploying · Verifying ·
+Verified · Left stopped · Failed · Rolled back · Skipped · Superseded · Frozen`
 
-**Superseded** is a stage of the *update*, not of its pull request. When a newer version
-appears the pull request is **retargeted** onto it -- same number, rebuilt branch, one
-comment saying the target moved -- and is only closed when it cannot be moved, which is
-when nothing live is left to move it onto or you have pushed to the branch yourself.
-"Retargeted" is the word everywhere that event appears: the comment, the activity log and
-the digest. Never say a pull request was "superseded"; its update was.
+**Waiting on you** is a decision (a card). **Waiting** is an update that ships on its own
+but not yet, and says why on its page: the cooldown, a review still coming, a snooze, pause.
+**Snoozed** and **Frozen** updates are parked, not in the Inbox.
 
-Merging always leads to a deploy: `compose up -d` → verify (health check, HTTP probe
+**Superseded** is a stage of the *update*: a newer version appeared, and the card for that
+image edits itself onto the newer target rather than adding a second one.
+
+Shipping always leads to a deploy: `compose up -d` → verify (health check, HTTP probe
 where a port is declared, crash watch) → soak → **Verified**. A hard failure inside the
-verify window rolls back automatically, once. After the soak nothing is rolled back
-automatically: a database may have migrated by then, and undoing that is a person's call.
+verify window rolls back automatically, once, by reverting the merge commit
+(`git revert -m 1`). After the soak nothing is rolled back automatically: a database may
+have migrated by then, and undoing that is a person's call.
 
 **A deploy never changes whether a service is running.** shipshape reads each service from
 docker just before acting. One that is running is brought up and verified; one that is
 stopped, paused or has no container is left exactly as it was and reads **Left stopped** —
-the merge stands, the compose file carries the new version, and compose brings it up on
+the change stands, the compose file carries the new version, and compose brings it up on
 that version the next time anything runs it, while `docker start` on the old container
 resumes the old one, and the outcome says so. In a group the running members deploy and
 the rest are left, and both halves are reported. The one exception is a service
@@ -100,9 +111,9 @@ recommendation with a confidence. The UI never shows the raw enum:
 | Verdict | Say | Colour |
 |---|---|---|
 | `approve` | **Safe to apply** | success |
-| `caution` | **Read first** | warning |
+| `caution` | **Read first** | warning (informational: it holds nothing by itself) |
 | `block` | **Breaking changes** | error |
-| none yet, pull request open | **Review pending** | neutral -- never "Reading…" unless a reading is running |
+| none yet, update waiting | **Review pending** | neutral -- never "Reading…" unless a reading is running |
 | failed | **Review failed** | error, with the attempt count |
 | off / unavailable | **No review** | neutral |
 
@@ -123,7 +134,7 @@ block is folded under **Screen (shadow)** and says *shown, not acted on*.
 
 Most applied releases now carry the screen's lines rather than a reading: a screen costs a
 twentieth of a cent, a reading does not. **Read the changelog** is the verb that asks for a
-reading -- on a pull request, a running version nothing has read, or a release in the feed.
+reading -- on a waiting update, a running version nothing has read, or a release in the feed.
 A release with no review still links to its changelog -- those links come from the image
 reference, not from any analysis.
 
@@ -138,104 +149,74 @@ It sits below the other two everywhere it appears, because it is the one that de
 nothing — and it is empty for most releases, which the interface renders as nothing rather
 than as a gap. Never let it read as work.
 
-**The review can only ever hold an update back, never cause one to happen.** Release
+**The review can only ever hold an update for you, never cause one to ship.** Release
 notes are untrusted text from the internet; the worst a hostile changelog can achieve is
-a stopped update. Never write copy that implies the model approved, decided, or released
+a card asking you. Never write copy that implies the model approved, decided, or released
 anything.
 
-## What a digest line says an update carries
+## What a decision card says
 
-Orthogonal to the stage, and deliberately not a section of its own: a pull request that
-carried configuration changes and then merged belongs under "merged", and still has to say
-that it carried them. Four possibilities, and the first is rendered as nothing at all.
+There is no digest and no routine message: silence means healthy. What is announced is a
+decision, a failure, an exposure, or shipshape's own health.
 
-| What it carries beyond the version | The words |
-|---|---|
-| nothing — the image line and no more | *(nothing; the absence is the class)* |
-| a person pushed to the branch | `carries edits` |
-| shipshape wrote a change you asked for in a comment | `changes you asked for` |
-| shipshape drafted required config changes of its own | `config changes drafted` |
-| a proposal ran, changed no file, and left you steps | `manual steps noted` |
-| nothing is on the branch, but the review named work | `required steps in the review` |
+A decision card (`shipshape:decision:<repository>`, one per image and target) is built the
+same way every time:
 
-**Exactly one of these**, most consequential first, because they answer the same question
-and only the strongest is acted on. `carries edits` leads: a person pushing is both the
-later fact and the one nothing else accounts for. The three in the middle are the easy ones
-to get wrong — `manual steps noted` writes no commit, so calling it "drafted" would promise
-a diff that does not exist, and `changes you asked for` is your own instruction, which must
-never be read back to you as shipshape's idea.
+1. **Title** — `agentgateway v1.6.0 → v1.7.0 · 19 services`, or the service by name when it
+   is one.
+2. **The question** — `Ship? ` and the first hold in its own words, so a tap is a five-second
+   call. Other holds follow as a list.
+3. **The review** in at most 300 characters, then `Drafted: …` when a config change was
+   drafted.
+4. **Four taps**, always in this order: 🚀 ship · 💤 snooze 1w · ♾️ always ship · ⏭️ skip.
+   Always ship is absent when any hold cannot be waived.
 
-A plain version bump says none of them. That is the overwhelming majority of what shipshape
-opens, and a badge on every line is how a reader learns to stop seeing badges.
+A decision still waiting after `notify.escalate_after_days` is announced once more, louder
+(P4). A rolled-back deploy is a quiet card (P3) with the reason, the restore point if one
+was taken, and the rule it shipped under. **Rollbacks are never silent.**
 
-Separately, and joined with a semicolon, `new features` says the release adds something you
-could choose to turn on — `config changes drafted; new features`. It is a different axis
-and never replaces the mark beside it: what a pull request *carries* is a fact about a diff
-that exists, what a release *offers* is an assertion read off upstream prose.
-
-A mark the heading above has already said is dropped, exactly as a verb is.
-
-Read from the `proposals` table and the review, **never from `prs.scope` alone**. Scope is
-decided by reading the branch diff, and a drafted change whose only operation is
-`set_image` produces a patch containing nothing but an image line — correctly classified
-`tag-only`. #32 merged an Arcane v2 image rename exactly that way, and every message
-shipshape sent about it called it a plain version bump.
-
-Read from the `proposals` table and the review, **never from `prs.scope`**. Scope is
-decided by reading the branch diff, and a drafted change whose only operation is
-`set_image` produces a patch containing nothing but an image line — which is correctly
-classified `tag-only`. #32 merged an Arcane v2 image rename exactly that way, and every
-message shipshape sent about it called it a plain version bump.
+Read the drafted change from the `proposals` table, **never from `prs.scope` alone**: scope
+is decided by reading the branch diff, and a drafted change whose only operation is
+`set_image` produces a patch containing nothing but an image line.
 
 ## One primary action per state
 
 | State | Primary | Also available |
 |---|---|---|
-| Waiting on you | **Merge & deploy**, or **Merge** where the deploy waits for you (confirm step) | Skip · Draft config changes · Read the changelog · Release hold · Open on GitHub |
-| Held on request | **Open PR** | Skip |
+| Waiting on you | **Ship** (confirm step) | Snooze 1 week · Always ship · Draft config changes · Read the changelog · Skip |
+| Waiting (cooldown, review, pause) | **Ship** (it overrides all of those) | Skip |
+| Frozen | **Ship** | Skip |
 | Ready to deploy | **Deploy** | Copy compose command |
 | Rolling tag moved | **Redeploy** | Dismiss |
 | Failed / Rolled back | **Try again** | Skip · Acknowledge |
 | Verified / Degraded | **Roll back** | Acknowledge · Read the changelog (nothing has read it) |
 | Left stopped | **Roll back** (a rolling tag: **Redeploy**) | — |
-| Review failed | **Read the changelog** | Skip |
 
 A verb keeps its name through the whole flow: the button that says "Deploy" produces
-"Deploying" and then "Deployed". Destructive-ish verbs (Merge & deploy, Roll back) are
+"Deploying" and then "Deployed". Destructive-ish verbs (Ship, Always ship, Roll back) are
 only offered where the analysis is on screen, never as a bare row button, and ask first
 wherever they appear -- the overflow menu included. **The confirmation is written from
-policy.yaml and the pull request**, never from constants: merge method, how long it is
-watched and soaked, whether it is put back on failure, which other services it carries. A
-pull request carrying more than an image tag is never promised a rollback.
+policy.yaml and the change**, never from constants: how long it is watched and soaked,
+whether it is put back on failure, which other services it carries, whether a restore point
+is taken first. A change carrying drafted edits is never promised a rollback.
 
-Outcomes are named once, in `src/updates/vocabulary.ts`: a row's badge, the Inbox's recent
-list and the merge preview read the same word. A merge the engine would not make
-**waits** -- never "held", which is the on-request rung's word.
+**Always ship** says what it will do before it does it: "write a standing rule to
+policy.yaml, as a commit". Afterwards the answer names the rule, its scope in words, what
+it waives, and the commit.
 
-## Your comments
+Outcomes are named once, in `src/updates/vocabulary.ts`: a row's badge and the Inbox's
+recent list read the same word.
 
-Comment on an open pull request and shipshape reads it as an instruction. Any comment
-counts -- there is no prefix -- and it replies to every one, including the ones it decides
-need no change. `revise.mode` says how far it may go: `off`, `reply` (it answers, and may
-hold, skip or re-read the changelog), or `act` (it may also write the change onto the
-branch, as a second commit, which permanently disqualifies the pull request from
-auto-merge like any other drafted change).
+## Rules
 
-**It can never merge and never deploy from a comment, at any setting.** Never write copy
-that suggests otherwise. A merge reaches the host through a real `compose up`, and that is
-not something a reading of prose may start. Skipping is the other thing it will not infer:
-that leaves a tombstone the scan never offers again, so it needs the literal `/skip` typed
-in the comment. Everything reversible -- answering, editing, holding, re-reading -- is
-prose-driven.
+A rule waives a **reason**, not a service. It is written to `policy.yaml` by Always ship:
+the narrowest scope that explains the card (an image across stacks, or one service, or our
+own builds), and only the holds that were on it. It is an ordinary commit, listed read-only
+under Settings → Rules, and editable by hand. A rule never waives a lifeline, an unsafe
+verdict or a list of work, and the interface never offers it where it could not.
 
-**Hold** and **Release hold** are the verbs. The sentence is "You asked shipshape to hold
-this -- it will not merge on its own." Hold is not a button: somebody who does not want a
-merge simply does not press Merge, so only the release half is offered.
-
-**Hold is not Held.** `Held on request` is the `on-request` rung and means no pull request
-has been opened yet. A hold is a pull request that exists and has been asked to wait. Same
-English word, different stage, different button -- the badge word stays reserved for the
-rung.
+**Waived** is the word: a hold a rule removed is struck through on the page with "waived by
+rule r12". Never "ignored" or "overridden".
 
 ## Where things live
 
@@ -258,12 +239,12 @@ rung.
 - **Settings** — one page, sections in the order an update moves through them. Each shows
   the decisions that change what shipshape may do; tuning, and the section's longer
   explanation, fold under **More**. Enum options say what they do, a cron says when. The
-  next digest, **Send the digest now** and **Send a test email** live under Notifications.
+  sinks and **Send a test email** live under Notifications; the standing rules are listed
+  read-only under Rules.
   Prompt overrides are files in the repository, not a textarea.
 - **Status** — the machine's own state: its clocks, what it is wired to (including the
   screen, and why the gateway refused it), and what it has spent, by model and stage.
-  While paused, the Inbox -- not Status -- says how many pull requests would merge on their
-  own when unpaused. Nothing on Status is a decision,
+  While paused, the Inbox -- not Status -- is where waiting work shows. Nothing on Status is a decision,
   which is the line between it and Settings: Settings is where you change what shipshape
   may do, Status is where you find out what it did.
 
@@ -284,4 +265,4 @@ containers — a label edit takes effect on the next scan with nothing recreated
 **Policy semantics live once, centrally**, in `policy.yaml`. This repo previously
 copy-pasted a six-clause trigger string onto 94 services, and a deliberate carve-out got
 silently reverted in a refactor because nobody could see the policy in one place. Do not
-reintroduce per-service policy knobs beyond the one rung.
+reintroduce per-service policy knobs beyond the class.

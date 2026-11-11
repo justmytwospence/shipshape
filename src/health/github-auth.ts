@@ -106,7 +106,7 @@ export async function noteAuthFailure(reason: string): Promise<void> {
     body: [
       reason,
       '',
-      'Nothing can open, merge, deploy or push while this lasts. Scanning carries on, so',
+      'Nothing can ship or push main while this lasts. Scanning carries on, so',
       'the backlog will keep growing until it is fixed.',
       '',
       `Set GITHUB_TOKEN in shipshape/.env, then: docker compose -f shipshape/docker-compose.yaml up -d`,

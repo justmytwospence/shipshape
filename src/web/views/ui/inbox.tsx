@@ -118,9 +118,9 @@ export const InboxList: FC<{ data: InboxData; selectedId?: number }> = ({ data, 
         <details class="group/parked">
           <summary class="border-base-300 hover:bg-base-200/60 flex min-h-11 cursor-pointer items-center gap-2 border-y px-3 text-xs opacity-70 lg:min-h-8 [&::-webkit-details-marker]:hidden">
             <Icon name="chevron-right" class="size-3.5 transition-transform group-open/parked:rotate-90" />
-            {data.parked.length} tracked, not opening a pull request
+            {data.parked.length} parked
             <span class="hidden truncate normal-case lg:inline">
-              · another updater applies these; shipshape coexists with it
+              · frozen services and snoozed decisions; ship one when you want it
             </span>
           </summary>
           <div class="divide-base-300 divide-y">
@@ -179,16 +179,6 @@ const RecentList: FC<{ recent: RecentItem[]; hint?: string }> = ({ recent, hint 
 /** What the pane shows when nothing is selected: the night's history and the clocks. */
 export const InboxAside: FC<{ data: InboxData; paused?: boolean }> = ({ data, paused }) => (
   <div class="lg:max-w-4xl">
-    {/* While paused, the question worth answering is what unpausing would set moving.
-        Asked of the merge engine itself, so it is the same answer the next tick would
-        give; loaded on its own because it reads GitHub's checks. */}
-    {paused ? (
-      <section class="border-base-300 border-b px-4 py-3">
-        <div hx-get="/merge/preview" hx-trigger="load" hx-swap="innerHTML">
-          <p class="text-xs opacity-60">Checking what would merge on its own…</p>
-        </div>
-      </section>
-    ) : null}
     <RecentList recent={data.recent} hint="what happened without you, last 24 hours" />
   </div>
 )

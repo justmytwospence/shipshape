@@ -183,8 +183,8 @@ function reclaimStale(): void {
       logEvent({
         level: 'error',
         kind: 'deploy',
-        message: `deploy for #${row.pr_number} was interrupted twice and will not be retried`,
-        detail: 'run it by hand -- the command is on the pull request',
+        message: `deploy #${row.id} was interrupted twice and will not be retried`,
+        detail: 'Try again from the update page, or run it by hand',
       })
     } else {
       db.prepare(`UPDATE deploys SET status = 'pending' WHERE id = ?`).run(row.id)
@@ -379,7 +379,7 @@ export async function runDeployJob(
           eventClass: 'broken',
           key: `shipshape:deploy:${job.stack}`,
           title: `shipshape: deploy of ${job.stack} could not be run`,
-          body: `#${job.pr_number}: ${(err as Error).message.slice(0, 300)}\n\nThe merge stands; deploy by hand. The command is on the pull request.`,
+          body: `${(err as Error).message.slice(0, 300)}\n\nThe change stands on main. Try again from the update page, or deploy by hand.`,
           priority: 5,
           tags: ['rotating_light'],
         })

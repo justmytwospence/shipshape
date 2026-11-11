@@ -883,7 +883,7 @@ export async function deployForPr(
       level: 'error',
       kind: 'deploy',
       stack: target.stack,
-      message: `deploy of ${target.stack} failed after #${prNumber} merged`,
+      message: `deploy of ${target.stack} failed after ${prNumber ? `#${prNumber}` : 'the change'} shipped`,
       detail: `${outcome.reason}${outcome.stderr ? `\n${outcome.stderr}` : ''}`,
     })
     const down = downAfter(outcome, target.strategy)
@@ -899,7 +899,7 @@ export async function deployForPr(
       title: down
         ? `shipshape: ${target.stack} is DOWN — deploy failed`
         : `shipshape: deploy failed — ${target.stack}`,
-      body: `#${prNumber} merged but ${named.join(', ')} did not deploy.\n\n${outcome.reason}\n\n${failureState(outcome, target.strategy)}\n\n${next}`,
+      body: `${prNumber ? `#${prNumber}` : 'The change'} shipped but ${named.join(', ')} did not deploy.\n\n${outcome.reason}\n\n${failureState(outcome, target.strategy)}\n\n${next}`,
       priority: down ? 5 : 4,
       tags: ['rotating_light'],
     })

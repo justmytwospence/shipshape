@@ -24,7 +24,7 @@ export function serviceRows(): ServiceRowData[] {
     getDb()
       .prepare(
         `SELECT stack, service, registry, repository, current_tag, watched, unwatchable,
-                last_status, last_detail, constrained_from, last_seen_at, policy_label,
+                last_status, last_detail, constrained_from, last_seen_at, policy_label, class_label,
                 fork_upstream
            FROM images ORDER BY stack, service`,
       )
@@ -41,6 +41,7 @@ export function serviceRows(): ServiceRowData[] {
       constrained_from: string | null
       last_seen_at: string | null
       policy_label: string | null
+      class_label: string | null
       fork_upstream: string | null
     }[]
   ).map((r) => ({
@@ -54,7 +55,7 @@ export function serviceRows(): ServiceRowData[] {
     lastDetail: r.last_detail,
     constrainedFrom: r.constrained_from,
     lastSeenAt: r.last_seen_at,
-    policy: r.policy_label,
+    policy: ((c) => (c === 'normal' ? null : c))(classFor({ classLabel: r.class_label, policyLabel: r.policy_label, prLabel: null })),
     upstream: upstreamState(r),
     fork: !!r.fork_upstream,
   }))

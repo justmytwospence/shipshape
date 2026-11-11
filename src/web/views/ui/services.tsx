@@ -25,7 +25,7 @@ export interface ServiceRowData {
   lastDetail: string | null
   constrainedFrom: string | null
   lastSeenAt?: string | null
-  /** The `shipshape.policy` label, when one is set. */
+  /** The service's class, when it is not the default `normal`. */
   policy?: string | null
   /** Whether the repository its release notes come from is certain, only likely, or unknown. */
   upstream?: 'linked' | 'likely' | 'none'
@@ -280,26 +280,18 @@ const SOURCE_CLS: Record<Provenance, string> = {
   none: 'badge-ghost',
 }
 
-/**
- * Following the defaults first, then the exceptions, narrowest last.
- *
- * `auto` is not offered: a `shipshape.policy: auto` label has no branch of its own in the
- * engine -- it falls through to the magnitude defaults -- so offering it beside "follow
- * the defaults" was two buttons for one behaviour, and the one called auto read as if it
- * could put a major on the auto rung. A service already carrying it shows as following.
- */
+/** The five classes, in the order a service usually moves between them. */
 const RUNGS = [
-  { value: '', label: 'Follow the defaults', what: 'by version jump, as Settings says; majors always wait for you' },
-  { value: 'manual', label: 'manual', what: 'a pull request opens; you merge it, and the deploy follows' },
-  { value: 'attended', label: 'attended', what: 'you merge it, and you deploy it — nothing touches this without you' },
-  { value: 'on-request', label: 'on-request', what: 'nothing opens until you ask; you deploy it' },
-  { value: 'skip', label: 'skip', what: 'not tracked at all' },
+  { value: 'normal', label: 'normal', what: 'ships on its own once the review finds nothing to do and the release has aged' },
+  { value: 'stateful', label: 'stateful', what: 'ships on its own after a restore point; a one-way migration or a jump with no evidence asks' },
+  { value: 'ask', label: 'ask', what: 'always asks before shipping' },
+  { value: 'lifeline', label: 'lifeline', what: 'always asks, and no rule can waive it — the way back in' },
+  { value: 'frozen', label: 'frozen', what: 'tracked; nothing happens until you ask' },
 ]
 
-/** What the radio should show as chosen: an `auto` label is following the defaults. */
-function currentRung(policy: string | null | undefined): string {
-  const p = (policy ?? '').trim().toLowerCase()
-  return p === 'auto' ? '' : p
+/** What the radio should show as chosen: no class at all is a normal service. */
+function currentRung(cls: string | null | undefined): string {
+  return (cls ?? '').trim().toLowerCase() || 'normal'
 }
 
 /**
@@ -374,7 +366,7 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
             class="btn btn-sm btn-ghost tap"
             data-open={`#rung-${svc.stack}-${svc.service}`}
           >
-            Change policy
+            Change class
           </button>
         ) : null}
       </div>
@@ -386,7 +378,7 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
         <div class="divide-base-300 border-base-300 divide-y border-y text-xs">
           {data.config.map((line) => {
             const actions = [
-              line.key === 'policy' && data.canEdit ? (
+              line.key === 'class' && data.canEdit ? (
                 <button
                   type="button"
                   class="btn btn-ghost btn-xs tap"
@@ -540,10 +532,9 @@ const ForkSection: FC<{ fork: NonNullable<ServiceDetailData['fork']> }> = ({ for
 const RungDialog: FC<{ svc: ServiceRowData; ctx?: string }> = ({ svc, ctx }) => (
   <dialog id={`rung-${svc.stack}-${svc.service}`} class="modal modal-bottom sm:modal-middle">
     <div class="modal-box pb-safe">
-      <h3 class="text-base font-semibold">How much happens without you</h3>
+      <h3 class="text-base font-semibold">How much this service asks of you</h3>
       <p class="mt-1 text-xs opacity-70">
-        {svc.stack}/{svc.service}. Majors and digest moves always wait for a person,
-        whatever this says.
+        {svc.stack}/{svc.service}. Writes shipshape.class, and removes the v1 policy labels it replaces.
       </p>
       <form
         class="mt-3 flex flex-col gap-1.5"
@@ -554,7 +545,7 @@ const RungDialog: FC<{ svc: ServiceRowData; ctx?: string }> = ({ svc, ctx }) => 
         hx-indicator="#busy"
         onsubmit="this.closest('dialog').close()"
       >
-        <input type="hidden" name="key" value="policy" />
+        <input type="hidden" name="key" value="class" />
         {RUNGS.map((r) => (
           <label class="border-base-300 hover:bg-base-200 flex cursor-pointer items-start gap-3 rounded border p-2">
             <input

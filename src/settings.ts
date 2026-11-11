@@ -102,62 +102,32 @@ export interface SettingDef {
  * and applySettings iterates SETTINGS rather than this, so policy.yaml is untouched.
  */
 export const SECTIONS = [
-  // First, because it is the switch the whole model hangs on. It lived under "Merging"
-  // for a while, which was wrong twice over: it governs deploys as well, and it sat
-  // halfway down a long page, so the banner that says "Paused -- Change" landed you at
-  // the top of Settings with no sign of where to go.
-  ['Pause', 'The one switch: whether anything happens without you.'],
+  // First, because it is the switch the whole model hangs on.
+  ['Pause', 'The one switch: whether anything ships on its own.'],
   ['Scanning', 'When shipshape asks the registries what exists.'],
   [
-    'Update policy',
-    'How much happens without you, by how large the version jump is. A per-service `shipshape.policy` label overrides it. Majors are never on the auto rung.',
+    'Shipping',
+    'An update ships on its own unless something concrete says a person is needed: the service always asks, the review found work or something unsafe, there is no evidence on a risky jump, or a one-way migration has no restore point. Which services ask is their `shipshape.class` label, not a setting here.',
   ],
   [
     'Changelog review',
-    'A screen looks at every update; a reader reads the ones a person will. Either can hold a merge back — never cause one.',
+    'A screen looks at every update; a reader reads the ones a person will. Either can hold an update for you — never cause one to ship.',
   ],
   [
     'Config proposals',
-    'When an update needs more than its tag, a model can write the rest. A pull request carrying drafted changes can never merge automatically.',
+    'When an update needs more than its tag, a model can write the rest onto a local branch. A change carrying drafted edits never ships on its own.',
   ],
-  [
-    'Your comments',
-    'Comment on an open pull request and shipshape does what you asked — answer, hold it, re-read the changelog, or write the change. It can never merge and never deploy from a comment.',
-  ],
-  [
-    'Merging',
-    'Every change goes through a pull request. Merging one without you is the only place shipshape changes the repository with nobody watching.',
-  ],
-  ['Deploys', 'A change is done when it is running, not when it is merged.'],
+  ['Restore points', 'A dump taken before a stateful service is updated, so a one-way migration can be undone by hand.'],
+  ['Deploys', 'A change is done when it is running, not when it is shipped.'],
   [
     'Notifications',
-    'Routine outcomes only — opened, merged, deployed, drafted, held. Failures and anything that leaves shipshape stuck always send immediately and are not configurable here, so a digest can never cause you to miss one.',
+    'Where decisions and failures go. Silence means healthy: nothing is announced on success.',
   ],
+  ['Rules', 'Standing always-ship decisions, written by the Always ship button and kept in policy.yaml.'],
   ['Git sync', 'Publishing main, and staying out of the way while you work.'],
 ] as const satisfies readonly (readonly [string, string])[]
 
 export type SectionName = (typeof SECTIONS)[number][0]
-
-/**
- * What a delivery channel receives. Stated per channel rather than as two lists of
- * channels, because the question an operator actually has is "what does my phone buzz
- * for" -- and the useful answer is often not the same for both.
- */
-const CHANNEL_HELP: Record<string, string> = {
-  all: 'everything: failures as they happen, and the routine digest',
-  alerts: 'only what went wrong — a failed deploy, an unhealthy service, a stuck sync',
-  routine: 'only the digest of what shipshape did as intended',
-  off: 'nothing at all',
-}
-
-/** Plain-language gloss for the one enum that carries the whole model. */
-const TIER_HELP: Record<string, string> = {
-  auto: 'shipshape opens a pull request and merges it, unless the changelog review says otherwise',
-  manual: 'shipshape opens a pull request; you merge it',
-  attended: 'shipshape opens a pull request; you merge it, and you press Deploy',
-  'on-request': 'nothing is opened — the update is listed on the dashboard until you ask for a pull request',
-  skip: 'not tracked at all',
-}
 
 export const SETTINGS: SettingDef[] = [
   // ------------------------------------------------------------ Finding updates
@@ -174,51 +144,26 @@ export const SETTINGS: SettingDef[] = [
 
   // ------------------------------------------------- What may happen without you
   {
-    section: 'Update policy',
-    path: 'defaults.patch',
-    kind: 'enum',
-    options: ['auto', 'manual', 'attended', 'on-request', 'skip'],
-    optionHelp: TIER_HELP,
-    defaultValue: 'auto',
-    label: 'Patch',
-    help: 'x.y.Z',
+    section: 'Shipping',
+    path: 'ship.cooldown_days',
+    kind: 'number',
+    min: 0,
+    defaultValue: '7',
+    label: 'Cooldown',
+    help: 'days a release must age',
     about:
-      'The smallest jump upstream offers.',
+      'Nothing ships on its own until its release is this old, so a broken or hijacked release has time to be noticed and pulled. A verified security fix waits `security.fix_cooldown_days` instead, and one you ship yourself does not wait.',
   },
   {
-    section: 'Update policy',
-    path: 'defaults.minor',
-    kind: 'enum',
-    options: ['auto', 'manual', 'attended', 'on-request', 'skip'],
-    optionHelp: TIER_HELP,
-    defaultValue: 'auto',
-    label: 'Minor',
-    help: 'x.Y.z',
-    about:
-      'New features, no promised breakage.',
-  },
-  {
-    section: 'Update policy',
-    path: 'defaults.major',
-    kind: 'enum',
-    options: ['manual'],
-    defaultValue: 'manual',
-    label: 'Major',
-    help: 'X.y.z',
-    about: 'Always a pull request you merge yourself.',
-    locked: 'X.y.z — not configurable, a major always needs a human',
-  },
-  {
-    section: 'Update policy',
-    path: 'defaults.digest',
-    kind: 'enum',
-    options: ['auto', 'manual', 'attended', 'on-request', 'skip'],
-    optionHelp: TIER_HELP,
-    defaultValue: 'manual',
-    label: 'Digest',
-    help: 'same tag, rebuilt',
-    about:
-      'A pinned sha256 moved. There is no changelog to read for one.',
+    section: 'Shipping',
+    path: 'ship.max_per_run',
+    advanced: true,
+    kind: 'int',
+    min: 1,
+    defaultValue: '3',
+    label: 'Max ships per run',
+    help: '',
+    about: 'A ceiling so a misconfiguration ships a couple of things rather than the backlog.',
   },
 
   // -------------------------------------------------------- Reading the changelog
@@ -278,62 +223,6 @@ export const SETTINGS: SettingDef[] = [
     about:
       'A drafted pull request always needs a human, whatever else is set.',
   },
-  // ------------------------------------------------------------- Reading your comments
-  {
-    section: 'Your comments',
-    path: 'revise.mode',
-    // Not advanced: this decides what shipshape may do, and that is the line this file
-    // draws. Getting it wrong changes whether a sentence you typed writes a commit.
-    advanced: false,
-    kind: 'enum',
-    options: ['off', 'reply', 'act'],
-    optionHelp: {
-      off: 'comments are read by nobody',
-      reply: 'it answers, and can hold, skip or re-read the changelog',
-      act: 'it can also write the change onto the branch',
-    },
-    defaultValue: 'off',
-    label: 'Act on comments',
-    help: '',
-    about:
-      'A pull request it has written to can never merge on its own, whatever else is set. ' +
-      'Skipping needs the literal `/skip` in your comment — it is never inferred from prose.',
-  },
-  {
-    section: 'Your comments',
-    path: 'revise.scope',
-    advanced: true,
-    kind: 'enum',
-    options: ['none', 'service', 'compose-file', 'compose-dir', 'repo'],
-    optionHelp: {
-      none: 'nothing — answer only',
-      service: "this service's block in its compose file",
-      'compose-file': 'any service in that compose file',
-      'compose-dir': "any config file in the stack's directory",
-      repo: 'any config file in the repository',
-    },
-    defaultValue: 'compose-dir',
-    label: 'How far a comment may reach',
-    help: 'where the service itself says nothing',
-    about:
-      'A `shipshape.propose` label on the service wins over this, in both directions. ' +
-      "No rung reaches shipshape's own configuration, CI workflows, bin/ or scripts/ at " +
-      'any depth, credentials, .env files, or anything that is not configuration — ' +
-      'scripts, Dockerfiles and unit files are described rather than edited.',
-  },
-  {
-    section: 'Your comments',
-    path: 'revise.web',
-    advanced: true,
-    kind: 'bool',
-    defaultValue: 'false',
-    label: 'Let it read the web',
-    help: '',
-    about:
-      'Off by default because your comment is the specification, and fetching pages is ' +
-      'what a call actually costs. Turn it on if you want it to go and check upstream ' +
-      'documentation before answering.',
-  },
   {
     section: 'Config proposals',
     path: 'review.code_model',
@@ -346,56 +235,29 @@ export const SETTINGS: SettingDef[] = [
       'Rare, high-stakes work: a draft is a change nothing else has checked.',
   },
 
-  // ------------------------------------------------------------------ Merging
   {
     section: 'Pause',
     path: 'paused',
     kind: 'bool',
     defaultValue: 'true',
     label: 'Pause',
-    help: 'nothing merges on its own',
+    help: 'nothing ships on its own',
     // The section's prose says the rest; this is the one line that changes with the switch.
     about:
-      'Unpausing is how an update goes from detected to running without you -- on the auto rung only, tag-only, patch or minor, with no verdict withholding it.',
+      'Unpausing is how an update goes from detected to running without you -- when nothing holds it and its release has aged. Shipping one yourself still works while paused.',
   },
+  // ------------------------------------------------------------- Restore points
   {
-    section: 'Merging',
-    path: 'merge.max_per_run',
+    section: 'Restore points',
+    path: 'restore_points.keep',
     advanced: true,
     kind: 'int',
     min: 1,
     defaultValue: '3',
-    label: 'Max merges per run',
-    help: '',
+    label: 'Keep per service',
+    help: 'dumps',
     about:
-      'A ceiling so a misconfiguration merges a couple of things rather than the backlog.',
-  },
-
-  {
-    section: 'Merging',
-    path: 'prs.max_open',
-    advanced: true,
-    kind: 'int',
-    min: 1,
-    optional: true,
-    defaultValue: '',
-    defaultLabel: 'unlimited',
-    label: 'Max open at once',
-    help: 'blank for no limit',
-    about:
-      'Blank opens everything eligible at once. A number holds the rest back until an open one merges or closes -- which keeps the list short, at the cost of a full queue being silent: five stale pull requests once held fifteen updates shut for six days.',
-  },
-  {
-    section: 'Merging',
-    path: 'merge_method',
-    kind: 'enum',
-    options: ['squash', 'merge', 'rebase'],
-    defaultValue: 'squash',
-    label: 'Merge method',
-    help: '',
-    about:
-      'Must be one the GitHub repository actually allows, or merging fails with a 405.',
-    advanced: true,
+      'The newest few are kept under the data directory. The dump command is the service\'s own `shipshape.snapshot` label; an offsite copy is `restore_points.offsite` in policy.yaml.',
   },
 
   // ---------------------------------------------------------------- Deploying
@@ -460,53 +322,14 @@ export const SETTINGS: SettingDef[] = [
   // ------------------------------------------------------- Telling you about it
   {
     section: 'Notifications',
-    path: 'notify.routine',
-    kind: 'enum',
-    options: ['digest', 'immediate', 'off'],
-    optionHelp: {
-      digest: 'collect them and send one message per batch',
-      immediate: 'one push the moment each thing happens',
-      off: 'record them in the activity log and push nothing',
-    },
-    defaultValue: 'digest',
-    label: 'Routine outcomes',
-    help: '',
+    path: 'notify.escalate_after_days',
+    kind: 'int',
+    min: 1,
+    defaultValue: '7',
+    label: 'Escalate a waiting decision after',
+    help: 'days',
     about:
-      'A dozen separate pushes is a stream nobody reads; the same dozen in one message is a summary.',
-  },
-  {
-    section: 'Notifications',
-    path: 'notify.cron',
-    kind: 'cron',
-    defaultValue: '0 0 8 * * *',
-    label: 'Digest schedule',
-    help: 'Cron, seconds first',
-    about:
-      'Nothing is sent when nothing happened. Applies immediately.',
-  },
-  {
-    section: 'Notifications',
-    path: 'notify.incidents',
-    kind: 'enum',
-    options: ['all', 'alerts', 'routine', 'off'],
-    optionHelp: CHANNEL_HELP,
-    defaultValue: 'alerts',
-    label: 'Homelab alerting',
-    help: 'needs NOTIFY_URL, NOTIFY_TOKEN',
-    about:
-      'Nothing reaches a channel that is not configured, whatever this says.',
-  },
-  {
-    section: 'Notifications',
-    path: 'notify.email',
-    kind: 'enum',
-    options: ['all', 'alerts', 'routine', 'off'],
-    optionHelp: CHANNEL_HELP,
-    defaultValue: 'off',
-    label: 'Email',
-    help: 'needs SMTP_URL, MAIL_TO',
-    about:
-      'Emailed digests carry a link per item, which a push cannot.',
+      'A decision card still open this long is announced once more, louder. Where cards go is `notify.sinks` in policy.yaml (webhook, email, ntfy).',
   },
 
   // -------------------------------------------------------- Keeping git in step
@@ -519,7 +342,7 @@ export const SETTINGS: SettingDef[] = [
     label: 'Publish main',
     help: '',
     about:
-      'Required for pull requests: a branch cut from a stale origin reverts unpushed work when merged. Off degrades shipshape to alert-only.',
+      'Required for shipping: a branch cut from a stale origin reverts unpushed work when merged. Off degrades shipshape to alert-only.',
   },
   {
     section: 'Git sync',
@@ -527,10 +350,10 @@ export const SETTINGS: SettingDef[] = [
     kind: 'int',
     min: 15,
     defaultValue: '60',
-    label: 'Poll, PRs open',
+    label: 'Poll, work in flight',
     help: 'seconds',
     about:
-      'How often GitHub is checked while something is awaiting merge.',
+      'How often the loop runs while something is detected, shipping or deploying.',
     advanced: true,
   },
   {

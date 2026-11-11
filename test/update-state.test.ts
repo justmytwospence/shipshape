@@ -11,7 +11,7 @@ import { nextAttemptAt } from '../src/analyze/run.ts'
 
 test('the live set is the one the worklist and the scan already used', () => {
   // The string this replaced, verbatim, so the refactor cannot have widened it.
-  assert.equal(sqlIn(LIVE_STATES), `('detected', 'pr_open', 'held')`)
+  assert.equal(sqlIn(LIVE_STATES), `('detected', 'pr_open', 'frozen')`)
 })
 
 test('every named subset is drawn from the union', () => {

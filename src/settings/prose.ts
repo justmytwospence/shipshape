@@ -21,32 +21,28 @@ import type { SectionName } from '../settings.ts'
  */
 export const SECTION_PROSE: Record<SectionName, string[]> = {
   Pause: [
-    'While this is on, shipshape merges and deploys nothing on its own. It still scans, opens pull requests and reads changelogs; what waits is every step that would change this host with nobody watching.',
-    'A merge you press still deploys, because you are there to watch it. That is the whole distinction: not a switch between safe and unsafe, but one between the machine choosing the moment and you choosing it.',
+    'While this is on, shipshape ships and deploys nothing on its own. It still scans and reads changelogs; what waits is every step that would change this host with nobody watching.',
+    'A ship you press still deploys, because you are there to watch it. That is the whole distinction: not a switch between safe and unsafe, but one between the machine choosing the moment and you choosing it.',
   ],
   Scanning: [
     'Everything starts with a sweep of the compose files, asking each registry which tags exist that you are not running. Only services carrying `shipshape.watch` are asked about, and comparing tags at all means knowing their shape, which is inferred from the pinned tag unless a label says otherwise.',
     'The files in git are the source, never the running containers. A label edit lands on the next scan with nothing recreated, and a container whose labels were baked months ago cannot disagree with the file that describes it.',
   ],
-  'Update policy': [
-    'One axis — how much happens without you — answered by default from how large the version jump is, and overridden for one service by a `shipshape.policy` label. `auto` opens a pull request and merges it; `manual` opens one and leaves it to you; `attended` also leaves the deploy to you; `on-request` opens nothing until you ask; `skip` stops tracking it.',
-    'Majors and digest moves always wait for a person, whatever these say, and a label nobody recognises narrows to `manual` rather than widening. A typo must never grant reach.',
-  ],
-  'Your comments': [
-    'Comment on an open pull request and shipshape reads it as an instruction. It can answer a question, write the change you asked for as a second commit, hold the pull request so it will not merge on its own, or read the changelog again. Any comment counts — there is no prefix to remember — and it replies to every one, including the ones it decides need no change.',
-    'It can never merge and never deploy from a comment, at any setting. A merge reaches this host through a real `compose up`, and that is not something a reading of prose should be able to start. Skipping is the one thing it will not infer either: that leaves a tombstone the scan never offers again, so it needs the literal `/skip` in your comment rather than a sentence it interpreted.',
+  Shipping: [
+    'An update ships on its own unless a hold says a person is needed. The holds are few and concrete: the service always asks (`shipshape.class: ask` or `lifeline`), the review found something to do or something unsafe, there is no release note behind a major jump or a stateful service, or a one-way migration has no restore point to fall back on. Nothing here predicts how risky a version looks; the verify window, the soak and the automatic rollback carry the rest.',
+    'Shipping is a merge commit on main, built on a branch in shipshape\'s own clone and never pushed, so `git log` keeps the shape of the change and `git revert -m 1` undoes it. A decision that needs you is one card per image and target, with four answers: ship it, snooze a week, always ship (which writes a rule), or skip the version.',
   ],
   'Changelog review': [
     'Two stages. The screen -- Jev, a fraction of a cent a look -- reads the release notes shipshape already fetched and answers narrow questions: does a setting change, is there a manual step, does it touch anything this service uses. It picks the lines worth reading rather than writing a summary. The reader -- Opus -- reads the changelog properly, and only where a person will read what it writes.',
-    'Either can withhold a merge and neither can cause one. Release notes are untrusted text from the internet, so the worst a hostile changelog can achieve is a stopped update. Reaching the monthly budget pauses the reader and drafting; it never stops a pull request opening, because an unreviewed update you can see beats an invisible one.',
+    'Either can hold an update for you and neither can cause one to ship. Release notes are untrusted text from the internet, so the worst a hostile changelog can achieve is a stopped update. Reaching the monthly budget pauses the reader and drafting; updates keep shipping on the evidence that is left, because an unreviewed update you can see beats an invisible one.',
   ],
   'Config proposals': [
-    'Sometimes an update needs more than its tag: a renamed environment variable, a moved volume. A stronger model can draft the rest of the change onto the same pull request, within the boundary a service sets with `shipshape.propose`.',
-    'A pull request carrying drafted changes can never merge automatically, whatever the rung says.',
+    'Sometimes an update needs more than its tag: a renamed environment variable, a moved volume. A stronger model can draft the rest of the change onto the same local branch, within the boundary a service sets with `shipshape.propose`.',
+    'A change carrying drafted edits never ships on its own: you read it on the card and ship it.',
   ],
-  Merging: [
-    'Every change goes through a pull request, because it is the review surface: a branch off main, nothing in the diff but the image line, services that must move together sharing one. Push to one of those branches and it is yours; shipshape stops rewriting it.',
-    'Merging is where the repository changes, and a merge leads to a deploy. Paused, only you merge, and a merge you press still deploys -- you are there to watch it. Unpaused, shipshape merges tag-only pull requests on the auto rung, at patch or minor, once every update in them has a review that does not hold it, and nothing else.',
+  'Restore points': [
+    'Before a stateful service is updated, shipshape runs the service\'s own `shipshape.snapshot` command inside its container (`pg_dump -U app app`) and keeps the gzipped output. An offsite copy can be requested through any MCP tool; it never blocks a ship.',
+    'Restoring is deliberately manual. Putting data back blindly loses whatever was written after the dump, so a card that mentions a restore point names the file and leaves the decision to you.',
   ],
   Deploys: [
     'The checkout is fast-forwarded and the stack is brought up with a real `docker compose up -d`, which re-reads the whole file — labels, environment, networks — rather than cloning a running container and swapping its image. That difference is why this tool exists.',
@@ -54,11 +50,15 @@ export const SECTION_PROSE: Record<SectionName, string[]> = {
     'A deploy never changes whether a service is running. One that is running is brought up on the new version and verified; one that is stopped, paused or removed is left exactly as it was and reads Left stopped — the compose file carries the new version, so compose brings it up on it, while docker start on the old container would resume the old one. If shipshape cannot ask Docker, the deploy fails and touches nothing.',
   ],
   Notifications: [
-    'Two kinds of message, and which is which is not configurable. Alerts — a deploy failed, a service came up unhealthy, sync is stuck — always send immediately. Routine outcomes — opened, merged, deployed, drafted, held — batch into one digest.',
-    'So turning digests on can delay a success and can never hide a failure. Each channel then says what it wants, which is why the useful split is usually one line each: the phone buzzes for what broke, the mail carries the morning summary.',
+    'Shipshape emits messages and `notify.sinks` says where they go: a webhook (the homelab router, which keeps one live card per condition and is what Hermes replies to), email or ntfy. Each sink can list which events it wants: decision, broken, security, system.',
+    'Silence means healthy. Nothing is announced on success; a condition that clears is a resolve, which only the webhook acts on. A decision still waiting after the escalation delay is announced once more, louder.',
+  ],
+  Rules: [
+    'Every card exists because of one specific reason it was held, so a rule waives the reason, not the service. Pressing Always ship infers the narrowest scope that explains the card (one image across many stacks, or one service) and writes it here as a commit.',
+    'A rule can never waive a lifeline service, an unsafe review or a list of work to do. Edit or delete a rule in policy.yaml like anything else; the commit is the record.',
   ],
   'Git sync': [
-    'shipshape publishes main as part of its loop. A pull request branch has to be based on the true tip of main, or merging it silently reverts whatever unpushed local commits touched the same file. There is no safe alternative base, which is why turning publishing off also turns pull requests off.',
+    'shipshape publishes main as part of its loop. A branch has to be based on the true tip of main, or merging it silently reverts whatever unpushed local commits touched the same file. There is no safe alternative base, which is why turning publishing off also stops shipping.',
     'It never fights you for the working tree: while the checkout is on another branch, or a git operation is in progress, the sync loop stands down.',
   ],
 }

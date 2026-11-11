@@ -1,11 +1,9 @@
-import { Octokit } from 'octokit'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { env, loadPolicy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
-import { routine } from '../notify/digest.ts'
 import { analyze, budgetExhausted, type ReviewedVerdict, type Verdict } from './claude.ts'
-import { MIN_CONFIDENCE, readerOn, verdictHolds, type Confidence } from '../policy.ts'
+import { readerOn } from '../policy.ts'
 import { notify } from '../notify/index.ts'
 import { jevConfigured } from './jev.ts'
 import { deploymentOf, type DeploymentEntry } from './screen/state.ts'
@@ -20,21 +18,13 @@ import { backoffUntil } from '../backoff.ts'
 import { llmConfigured } from './client.ts'
 
 /**
- * Analysing open pull requests and folding the result back into them.
+ * Reading the changelog of every update that wants a verdict.
  *
- * Analysis is decoupled from PR creation on purpose: a pull request must appear whether
- * or not the model is reachable. When a verdict arrives later it is written into the
- * body between markers, and the labels change to match.
+ * Analysis is decoupled from shipping on purpose: an update waits (briefly, see
+ * REVIEW_WAIT_MS) for its review but never depends on the model being reachable. The
+ * verdict is stored, keyed by (image, from, to), and read by the hold logic (src/policy.ts)
+ * wherever it is needed; nothing is written anywhere else.
  */
-
-let octokit: Octokit | null = null
-function gh(): Octokit {
-  octokit ??= new Octokit({ auth: env.githubToken })
-  return octokit
-}
-
-const START = '<!-- shipshape:verdict:start -->'
-const END = '<!-- shipshape:verdict:end -->'
 
 export interface AnalysisRun {
   analysed: number
@@ -62,7 +52,7 @@ export interface PendingAnalysis {
   to_tag: string
   stack: string
   service: string
-  /** 1 when an open pull request is waiting on this verdict. */
+  /** 1 when something is waiting on this verdict: an update about to ship, or a legacy open PR. */
   has_pr: number
   /** 1 when someone asked for the existing verdict to be read again. */
   rerun: number
@@ -103,7 +93,8 @@ export function pendingAnalysis(limit: number): PendingAnalysis[] {
     .prepare(
       `SELECT DISTINCT u.id AS update_id, u.image, u.from_tag, u.to_tag, u.stack, u.service,
               u.detected_at, u.magnitude,
-              CASE WHEN EXISTS (
+              CASE WHEN u.state = 'detected' AND COALESCE(u.detail, '') != 'rolling' THEN 1
+                   WHEN EXISTS (
                 SELECT 1 FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
                 WHERE pu.update_id = u.id AND p.state = 'open'
               ) THEN 1 ELSE 0 END AS has_pr,
@@ -116,6 +107,8 @@ export function pendingAnalysis(limit: number): PendingAnalysis[] {
        WHERE (
          -- Somebody pressed Read the changelog: whatever the update is, it is read.
          u.review_requested_at IS NOT NULL
+         -- v2: an update about to ship, or waiting on a decision, wants its reading first.
+         OR (u.state = 'detected' AND COALESCE(u.detail, '') != 'rolling')
          OR EXISTS (
            SELECT 1 FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
            WHERE pu.update_id = u.id AND p.state = 'open'
@@ -236,7 +229,6 @@ const INCOMPLETE_REREADS = 3
  */
 export async function runReviewPass(): Promise<{ screen: ScreenRun; reader: AnalysisRun }> {
   const screen = await runScreenPass()
-  for (const a of screen.applied) await applyCachedVerdict(a, undefined, { quiet: true })
   const reader = await runAnalysisPass()
   return { screen, reader }
 }
@@ -324,7 +316,6 @@ export async function runAnalysisPass(limit = 3): Promise<AnalysisRun> {
       }
       const screened = screenFor(row.image, row.from_tag, row.to_tag)
       recordVerdict(row, result)
-      await applyToPrs(row, result)
       await auditScreen(row, screened, result)
       // applyToPrs writes the log line per pull request it edits. An update that applied
       // without one edits nothing, so say it here instead -- otherwise the only evidence
@@ -400,7 +391,6 @@ async function auditScreen(
       'If this is not a one-off, set review.screen back to shadow in policy.yaml.',
     priority: 4,
     tags: ['warning'],
-    kind: 'alert',
   })
 }
 
@@ -434,8 +424,8 @@ export function recordVerdict(
   db.prepare(
     `INSERT INTO verdicts (image, from_tag, to_tag, summary, severity, breaking_changes,
                            migration_steps, new_features, recommendation, confidence, sources, model,
-                           cost_usd, error, created_at, evidence, source, provisional)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, 'reader', 0)
+                           cost_usd, error, created_at, evidence, source, provisional, irreversible)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, 'reader', 0, ?)
      ON CONFLICT(image, from_tag, to_tag) DO UPDATE SET
        source = 'reader', provisional = 0,
        summary = excluded.summary, severity = excluded.severity,
@@ -445,7 +435,8 @@ export function recordVerdict(
        recommendation = excluded.recommendation, confidence = excluded.confidence,
        sources = excluded.sources, model = excluded.model, error = NULL,
        next_attempt_at = NULL, rerun_requested_at = NULL,
-       created_at = excluded.created_at, evidence = excluded.evidence`,
+       created_at = excluded.created_at, evidence = excluded.evidence,
+       irreversible = excluded.irreversible`,
   ).run(
     row.image,
     row.from_tag,
@@ -461,6 +452,7 @@ export function recordVerdict(
     policy.review.model,
     now,
     evidence,
+    v.irreversible ? 1 : 0,
   )
 }
 
@@ -559,234 +551,4 @@ export function recordFailure(
     message: 'changelog analysis failed',
     detail: `${row.image} ${row.from_tag} -> ${row.to_tag} (attempt ${attempts}): ${error.slice(0, 140)}`,
   })
-}
-
-/**
- * Splice an already-judged verdict into whatever open pull requests now carry this bump.
- *
- * The pass above only visits pairs with no verdict at all, and only a fresh analysis
- * writes one into a pull request. So a pull request that has just been retargeted onto a
- * bump some other stack already had judged would otherwise keep "analysis has not run
- * yet" in its body for as long as it stayed open. Reusing the cache like this is the
- * point of keying verdicts by (image, from, to) rather than by pull request.
- *
- * Returns whether there was one to apply. `only` narrows it to a single pull request --
- * a retarget knows exactly which one just started carrying this bump, and applying it to
- * every pull request that shares the bump would re-announce siblings that were told about
- * it when their own verdict landed.
- */
-export async function applyCachedVerdict(
-  row: { image: string; from_tag: string; to_tag: string },
-  only?: number,
-  opts: { quiet?: boolean } = {},
-): Promise<boolean> {
-  const v = getDb()
-    .prepare(
-      `SELECT summary, severity, breaking_changes, migration_steps, new_features,
-              recommendation, confidence, sources, model, source, provisional
-         FROM verdicts
-        WHERE image = ? AND from_tag = ? AND to_tag = ? AND error IS NULL`,
-    )
-    .get(row.image, row.from_tag, row.to_tag) as
-    | {
-        summary: string | null
-        severity: string | null
-        breaking_changes: string | null
-        migration_steps: string | null
-        new_features: string | null
-        recommendation: string | null
-        confidence: string | null
-        sources: string | null
-        model: string | null
-        source: string | null
-        provisional: number | null
-      }
-    | undefined
-  if (!v?.recommendation) return false
-
-  const list = (s: string | null): string[] => {
-    try {
-      const parsed = JSON.parse(s ?? '[]')
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
-    }
-  }
-  await applyToPrs(
-    row,
-    {
-      summary: v.summary ?? '',
-      severity: (v.severity ?? 'none') as Verdict['severity'],
-      breaking_changes: list(v.breaking_changes),
-      migration_steps: list(v.migration_steps),
-      new_features: list(v.new_features),
-      recommendation: v.recommendation as Verdict['recommendation'],
-      confidence: (v.confidence ?? 'low') as Verdict['confidence'],
-      sources: list(v.sources),
-    },
-    only,
-    {
-      // A provisional hold is the screen asking for a reading, not news: the reader's
-      // verdict, when it lands, is what the digest reports.
-      quiet: opts.quiet || v.provisional === 1,
-      by: v.source === 'screen' ? `screened by ${v.model ?? 'Jev'}` : `written by ${v.model ?? 'the reader'}`,
-      screen: v.source === 'screen' ? (screenFor(row.image, row.from_tag, row.to_tag) ?? undefined) : undefined,
-    },
-  )
-  return true
-}
-
-/** Write the verdict into every open PR carrying this update, and adjust its labels. */
-async function applyToPrs(
-  row: { image: string; from_tag: string; to_tag: string },
-  v: Verdict,
-  only?: number,
-  opts: { quiet?: boolean; by?: string; screen?: ReturnType<typeof screenFor> } = {},
-): Promise<void> {
-  const prs = (
-    getDb()
-      .prepare(
-        // Ordered so the pull request named in the digest below is a stable choice rather
-        // than whichever row the query planner happened to return first.
-        `SELECT DISTINCT p.number FROM prs p
-       JOIN pr_updates pu ON pu.pr_id = p.id
-       JOIN updates u ON u.id = pu.update_id
-       WHERE p.state = 'open' AND u.image = ? AND u.from_tag = ? AND u.to_tag = ?
-       ORDER BY p.number`,
-      )
-      .all(row.image, row.from_tag, row.to_tag) as { number: number }[]
-  ).filter((p) => only === undefined || p.number === only)
-
-  const [owner, repo] = env.githubRepo.split('/') as [string, string]
-  const { policy } = loadPolicy()
-  // The same question the merge gate asks, so the label on GitHub cannot disagree with it.
-  const demoted = verdictHolds(v.recommendation, v.confidence, MIN_CONFIDENCE)
-  // Labels this verdict does not earn. A re-read that changed its mind used to leave the
-  // old block label on the pull request forever, contradicting the body right below it.
-  // The labels were renamed from claude-* to review-*; the old names are always swept.
-  const stale = [
-    'claude-block',
-    'claude-hold',
-    ...(v.recommendation === 'block' ? [] : ['review-block']),
-    ...(demoted && v.recommendation !== 'block' ? [] : ['review-hold']),
-  ]
-
-  for (const pr of prs) {
-    try {
-      const current = (await gh().rest.pulls.get({ owner, repo, pull_number: pr.number })).data.body ?? ''
-      const rendered = render(v, opts.by ?? `written by ${loadPolicy().policy.review.model}`, opts.screen ?? null)
-      const body =
-        current.includes(START) && current.includes(END)
-          ? current.slice(0, current.indexOf(START) + START.length) +
-            `\n${rendered}\n` +
-            current.slice(current.indexOf(END))
-          : `${current}\n\n${START}\n${rendered}\n${END}`
-
-      await gh().rest.pulls.update({ owner, repo, pull_number: pr.number, body })
-      for (const name of ['needs-analysis', 'needs-review', ...stale]) {
-        await gh().rest.issues.removeLabel({ owner, repo, issue_number: pr.number, name }).catch(() => {})
-      }
-      if (v.recommendation === 'block') {
-        await gh().rest.issues.addLabels({ owner, repo, issue_number: pr.number, labels: ['review-block'] })
-      } else if (demoted) {
-        await gh().rest.issues.addLabels({ owner, repo, issue_number: pr.number, labels: ['review-hold'] })
-      }
-
-      logEvent({
-        level: v.recommendation === 'block' ? 'warn' : 'info',
-        kind: 'analysis',
-        message: `#${pr.number} analysed: ${v.recommendation} (${v.confidence} confidence)`,
-        detail: v.summary.slice(0, 160),
-      })
-    } catch (err) {
-      logEvent({
-        level: 'warn',
-        kind: 'analysis',
-        message: `could not update #${pr.number} with its verdict`,
-        detail: (err as Error).message.slice(0, 160),
-      })
-    }
-  }
-
-  // Routine, not an alert: a hold means an update is *not* being applied, so nothing is
-  // broken and nothing is waiting on a fast reaction. It belongs in the summary of what
-  // shipshape decided, alongside what it opened and merged.
-  const held = prs.length > 0 && !opts.quiet ? heldSummary(prs[0]!.number, row.to_tag, v, MIN_CONFIDENCE) : null
-  if (held) {
-    await routine({
-      category: 'held',
-      summary: held,
-      detail: `${row.image} ${row.from_tag} -> ${row.to_tag}\n\n${v.summary}`,
-      url: `https://github.com/${env.githubRepo}/pull/${prs[0]!.number}`,
-    })
-  }
-}
-
-/**
- * The digest line for a verdict that holds a merge, or null when it does not hold one.
- *
- * It used to fire for `block` only, and always say "breaking changes" -- so a block that
- * listed none was announced as breaking, and a `caution`, which holds a merge exactly as
- * firmly, never reached "waiting on you" at all. Which verdicts hold is asked of the gate.
- */
-export function heldSummary(
-  prNumber: number,
-  toTag: string,
-  v: Pick<Verdict, 'recommendation' | 'confidence'>,
-  minConfidence: Confidence,
-): string | null {
-  if (!verdictHolds(v.recommendation, v.confidence, minConfidence)) return null
-  switch (v.recommendation) {
-    case 'block':
-      return `#${prNumber} held — breaking changes in ${toTag}`
-    case 'caution':
-      return `#${prNumber} held — worth a read before ${toTag}`
-    default:
-      return `#${prNumber} held — approved, but only at ${v.confidence} confidence`
-  }
-}
-
-function rank(c: string): number {
-  return c === 'high' ? 2 : c === 'medium' ? 1 : 0
-}
-
-const ICON: Record<string, string> = { approve: '✅', caution: '⚠️', block: '⛔' }
-
-function render(v: Verdict, by: string, screen: ReturnType<typeof screenFor> = null): string {
-  const lines = [
-    `### Changelog analysis`,
-    ``,
-    `${ICON[v.recommendation] ?? ''} **${v.recommendation}** · severity \`${v.severity}\` · confidence \`${v.confidence}\``,
-    ``,
-    v.summary,
-  ]
-  if (v.breaking_changes.length > 0) {
-    lines.push('', '**Breaking changes**', ...v.breaking_changes.map((b) => `- ${b}`))
-  }
-  if (v.migration_steps.length > 0) {
-    lines.push('', '**Required steps**', ...v.migration_steps.map((s) => `- ${s}`))
-  }
-  // Last of the three lists, and deliberately so: what breaks and what must be done come
-  // first because they decide whether to merge. This is the only one that does not, so it
-  // reads as the footnote it is rather than competing with them.
-  if (v.new_features.length > 0) {
-    lines.push('', '**New in this release, if you want it**', ...v.new_features.map((f) => `- ${f}`))
-  }
-  // A screened verdict has no prose of its own: it quotes the notes instead. Selected,
-  // never paraphrased, each line linked to where it came from.
-  if (screen) {
-    const quote = (i: number) => {
-      const l = screen.lines[i]
-      return l ? `- ${l.text}${l.url ? ` ([${l.version}](${l.url}))` : ` (${l.version})`}` : null
-    }
-    const action = screen.actionable.map(quote).filter((x): x is string => !!x)
-    const notable = screen.notable.slice(0, 5).map(quote).filter((x): x is string => !!x)
-    if (action.length > 0) lines.push('', '**Needs action, in the notes\' own words**', ...action)
-    if (notable.length > 0) lines.push('', '**Notable**', ...notable)
-  }
-  if (v.sources.length > 0) {
-    lines.push('', '<details><summary>Sources</summary>', '', ...v.sources.map((s) => `- ${s}`), '</details>')
-  }
-  lines.push('', `<sub>${by.charAt(0).toUpperCase()}${by.slice(1)}. Release notes are untrusted input; this verdict can withhold a merge but never cause one.</sub>`)
-  return lines.join('\n')
 }

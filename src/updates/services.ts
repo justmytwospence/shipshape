@@ -3,7 +3,7 @@ import { loadPolicy } from '../config.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'
 import { env } from '../config.ts'
 import { patternFor } from '../detect.ts'
-import { tierFor, deployNeedsYou } from '../policy.ts'
+import { classFor, type ServiceClass } from '../policy.ts'
 import { updatesForService } from './queries.ts'
 import { sourceForSync, type SourceInfo } from '../resolver/index.ts'
 import { describeState, forkConflictFor, forkRefs } from '../forks.ts'
@@ -145,47 +145,34 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
   }
 
   const policyLabel = live?.policyLabel ?? image?.policy_label ?? null
+  const classLabel = live?.classLabel ?? null
   const prLabel = live?.prLabel ?? null
   const isFork = live ? !!live.fork : !!image?.fork_upstream
   const config: ConfigLine[] = []
 
-  const rung = (magnitude: 'patch' | 'minor' | 'major' | 'digest') =>
-    tierFor({
-      magnitude,
-      policyLabel,
-      prLabel,
-      dormant: live?.dormant ?? false,
-      fork: isFork,
-      defaults: policy.defaults,
-    })
-
+  const cls = classFor({ classLabel, policyLabel, prLabel, dormant: live?.dormant ?? false })
+  const CLASS_NOTE: Record<ServiceClass, string> = {
+    normal: 'ships on its own once the review finds nothing to do and the release has aged',
+    stateful: 'ships on its own after a restore point; a one-way migration or a jump with no evidence asks',
+    ask: 'always asks before shipping',
+    lifeline: 'always asks, and no rule can waive it: this is the way back in',
+    frozen: 'tracked, nothing happens until you ask',
+    skip: 'not tracked',
+  }
   config.push({
-    key: 'policy',
-    value: policyLabel ?? '(none)',
-    source: policyLabel ? 'label' : 'none',
-    note: isFork
-      ? 'a fork: the pull request replays our fixes onto the new release, or retires the fork -- FORKS.md'
-      : prLabel
-        ? `also shipshape.pr: ${prLabel}, the old spelling of on-request`
-        : undefined,
+    key: 'class',
+    value: cls,
+    source: live?.dormant ? 'locked' : classLabel ? 'label' : policyLabel || prLabel ? 'label' : 'default',
+    note: live?.dormant
+      ? 'the stack is disabled, so nothing moves on its own'
+      : isFork
+        ? 'a fork: shipping replays our fixes onto the new release, or retires the fork -- FORKS.md'
+        : !classLabel && (policyLabel || prLabel)
+          ? `read from the v1 label ${policyLabel ? `shipshape.policy: ${policyLabel}` : `shipshape.pr: ${prLabel}`}; set shipshape.class to replace it`
+          : CLASS_NOTE[cls],
   })
-  for (const m of ['patch', 'minor', 'major', 'digest'] as const) {
-    const t = rung(m)
-    config.push({
-      key: m,
-      // The rung as it is written, not as the engine names it internally.
-      value: t === 'held' ? 'on-request' : t,
-      // A major is not a default anyone chose: it is a floor nothing overrides.
-      source: m === 'major' ? 'locked' : policyLabel || prLabel ? 'label' : 'default',
-      note:
-        t === 'skip'
-          ? undefined
-          : t === 'auto'
-            ? 'merges itself and deploys, unless the review holds it'
-            : deployNeedsYou(t)
-              ? 'you merge it, and you press Deploy'
-              : 'you merge it; the deploy follows',
-    })
+  if (image && live?.snapshotLabel) {
+    config.push({ key: 'snapshot', value: live.snapshotLabel.slice(0, 80), source: 'label', note: 'dumped before this service is updated' })
   }
   config.push({ key: 'watch', value: svc.watched ? 'on' : 'off', source: 'label' })
   // Our own build, watched through the image its Dockerfile's final stage is built on: the

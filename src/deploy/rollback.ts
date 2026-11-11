@@ -1,7 +1,10 @@
 import { authorArgs, git, withGitLock } from '../gitops/repo.ts'
 import { env, loadPolicy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
-import { notify, resolveIncident } from '../notify/index.ts'
+import { notify } from '../notify/index.ts'
+import { changeLabel, changeUrl, mergeMethodFor } from '../gitops/change.ts'
+import { changeText } from '../gitops/body.ts'
+import { restorePointsFor } from '../restore/index.ts'
 import { deploy, manualCommand, realIo, type DeployIo, type DeployTarget } from './run.ts'
 import type { LeftService, RecordedPlan } from './runstate.ts'
 import type { Verdict } from './verify.ts'
@@ -194,25 +197,27 @@ export async function handleFailure(opts: {
     mode: policy.deploy.rollback,
     scope: row?.scope ?? 'tag-only',
     mergeSha: row?.merge_commit_sha ?? null,
-    mergeMethod: policy.merge_method,
+    mergeMethod: mergeMethodFor(opts.prId),
     verdict: opts.verdict,
   })
 
   const tail = opts.logs ? `\n\n${opts.target.stack} log:\n${opts.logs.split('\n').slice(-15).join('\n')}` : ''
-  const url = `https://github.com/${env.githubRepo}/pull/${opts.prNumber}`
+  const url = changeUrl(opts.prId)
+  const what = changeLabel(opts.prId, opts.prNumber)
 
   if (!plan || plan.action === 'suggest') {
     await notify({
       key: `shipshape:deploy:${opts.target.stack}`,
       title: `shipshape: ${opts.target.stack} failed verification`,
       body:
-        `#${opts.prNumber}: ${opts.verdict.detail}\n\n` +
+        `${what}: ${opts.verdict.detail}\n\n` +
         (plan ? `Not rolled back automatically — ${plan.reason}.\n\n` : '') +
         `Roll back by hand:\n  git revert ${row?.merge_commit_sha?.slice(0, 8) ?? '<merge>'}\n  ${manualCommand(opts.target).split('\n').join('\n  ')}` +
         tail,
       priority: 5,
       tags: ['rotating_light'],
       click: url,
+      eventClass: 'broken',
     })
     return { rolledBack: false }
   }
@@ -220,7 +225,7 @@ export async function handleFailure(opts: {
   const result = await performRollback(
     opts.target,
     row!.merge_commit_sha!,
-    policy.merge_method,
+    mergeMethodFor(opts.prId),
     { carried: opts.carry },
   )
 
@@ -232,25 +237,37 @@ export async function handleFailure(opts: {
       message: `${opts.target.stack} failed verification and was rolled back`,
       detail: `${opts.verdict.detail} — revert ${result.revertSha}`,
     })
-    // A clean rollback needs nothing from anyone: the lab put itself back, the version will
-    // not be offered again, and the Activity page has the story. Silence, and the stack's
-    // incident (if an earlier failure opened one) closes. Only a rollback that left
-    // something down is still a problem.
+    // A clean rollback is still news. The lab put itself back and the version will not be
+    // offered again, but somebody should know it was tried -- silence here is how a
+    // failing update stays a mystery. A quiet card (P3), closed by the next verified deploy.
     if (!result.left?.length) {
-      await resolveIncident(`shipshape:deploy:${opts.target.stack}`)
+      const extra = rolledBackFacts(opts.prId)
+      await notify({
+        key: `shipshape:deploy:${opts.target.stack}`,
+        title: `${opts.target.stack}: rolled back ${changeSummary(opts.prId)}`,
+        body:
+          `${opts.verdict.detail}\n\n` +
+          `Rolled back cleanly (revert ${result.revertSha}); this version will not be offered again.` +
+          (extra ? `\n\n${extra}` : '') +
+          tail,
+        priority: 3,
+        click: url,
+        eventClass: 'broken',
+      })
       return { rolledBack: true }
     }
     await notify({
       key: `shipshape:deploy:${opts.target.stack}`,
       title: `shipshape: ${opts.target.stack} rolled back, not fully up`,
       body:
-        `#${opts.prNumber}: ${opts.verdict.detail}\n\n` +
+        `${what}: ${opts.verdict.detail}\n\n` +
         `Rolled back. main carries revert ${result.revertSha}. ${result.notes!.join('; ')}.\n\n` +
         `This version will not be offered again. Use Try again on the update page to re-land it.` +
         tail,
       priority: 4,
       tags: ['rotating_light'],
       click: url,
+      eventClass: 'broken',
     })
     return { rolledBack: true }
   }
@@ -266,12 +283,41 @@ export async function handleFailure(opts: {
     key: `shipshape:deploy:${opts.target.stack}`,
     title: `shipshape: ${opts.target.stack} is DOWN — rollback failed`,
     body:
-      `#${opts.prNumber} failed verification (${opts.verdict.detail}) and the previous ` +
+      `${what} failed verification (${opts.verdict.detail}) and the previous ` +
       `version would not come back.\n\n${result.detail}\n\nRecover by hand:\n  cd ${env.repoDir}\n  ${manualCommand(opts.target).split('\n').join('\n  ')}` +
       tail,
     priority: 5,
     tags: ['rotating_light'],
     click: url,
+    eventClass: 'broken',
   })
   return { rolledBack: result.detail.includes('reverted') }
+}
+
+/** `bump a 1 -> 2` for the card's title: what was rolled back. */
+function changeSummary(prId: number): string {
+  const members = getDb()
+    .prepare(
+      `SELECT u.service, u.from_tag, u.to_tag FROM updates u
+         JOIN pr_updates pu ON pu.update_id = u.id WHERE pu.pr_id = ?`,
+    )
+    .all(prId) as { service: string; from_tag: string; to_tag: string }[]
+  return changeText(members, { named: true }) ?? 'the change'
+}
+
+/** What a rolled-back card adds beyond the failure: where the restore point is, which rule shipped it. */
+function rolledBackFacts(prId: number): string {
+  const lines: string[] = []
+  const points = restorePointsFor(prId)
+  if (points.length > 0) {
+    lines.push(`Restore point${points.length > 1 ? 's' : ''}: ${points.map((p) => p.path).join(', ')}`)
+  }
+  const rules = getDb()
+    .prepare(
+      `SELECT DISTINCT u.waived_by FROM updates u JOIN pr_updates pu ON pu.update_id = u.id
+        WHERE pu.pr_id = ? AND u.waived_by IS NOT NULL`,
+    )
+    .all(prId) as { waived_by: string }[]
+  if (rules.length > 0) lines.push(`Shipped under rule ${[...new Set(rules.flatMap((r) => r.waived_by.split(',')))].join(', ')} -- worth a look at whether it still earns its keep.`)
+  return lines.join('\n')
 }

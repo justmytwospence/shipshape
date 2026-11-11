@@ -1,113 +1,75 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  tierFor,
-  foldGroupTier,
-  foldGroupMagnitude,
-  canAutoMerge,
-  shouldOpenPr,
-  type EffectiveTier,
-} from '../src/policy.ts'
-import type { Magnitude } from '../src/versions/patterns.ts'
+import { classFor, foldGroupClass, foldGroupMagnitude, normaliseClass, repositoryOf, shortRepository } from '../src/policy.ts'
 
-const DEFAULTS = {
-  patch: 'auto',
-  minor: 'auto',
-  major: 'manual',
-  digest: 'manual',
-} as const
+/**
+ * Classes replace the v1 ladder. The label is `shipshape.class`; the v1 labels are still
+ * read and mapped, so no compose file breaks on the day the model changes, and an
+ * unrecognised value narrows to `ask`: a typo must never grant reach.
+ */
 
-const t = (
-  magnitude: Magnitude,
+const c = (
+  classLabel: string | null = null,
   policyLabel: string | null = null,
   prLabel: string | null = null,
-): EffectiveTier => tierFor({ magnitude, policyLabel, prLabel, defaults: { ...DEFAULTS } })
+  dormant = false,
+) => classFor({ classLabel, policyLabel, prLabel, dormant })
 
-test('tierFor: label precedence, first match wins', () => {
-  // skip beats everything
-  assert.equal(t('patch', 'skip', 'on-request'), 'skip')
-  // on-request beats the remaining labels -- this is what makes datastores dashboard-only
-  assert.equal(t('patch', 'manual', 'on-request'), 'held')
-  assert.equal(t('major', 'manual', 'on-request'), 'held')
-  assert.equal(t('patch', 'manual'), 'manual')
+test('classFor: no label is a normal service', () => {
+  assert.equal(c(), 'normal')
 })
 
-test('tierFor: on-request is reachable from either label', () => {
-  // The original spelling lives on shipshape.pr; the ladder now also accepts it on
-  // shipshape.policy, so one label can express every rung.
-  assert.equal(t('patch', null, 'on-request'), 'held')
-  assert.equal(t('patch', 'on-request', null), 'held')
+test('classFor: every v2 class reads as itself', () => {
+  for (const cls of ['normal', 'stateful', 'ask', 'lifeline', 'frozen'] as const) assert.equal(c(cls), cls)
+  assert.equal(c(' Stateful '), 'stateful', 'spelled loosely')
 })
 
-test('tierFor: "gated" is an accepted spelling of manual, never its own rung', () => {
-  // It behaved identically to manual in every decision; keeping both was a coin flip
-  // the operator had to remember the result of. Old labels keep working.
-  assert.equal(t('patch', 'gated'), 'manual')
-  assert.equal(t('minor', 'gated'), 'manual')
-  assert.equal(t('patch', 'gated', 'on-request'), 'held')
-  assert.equal(
-    tierFor({
-      magnitude: 'minor',
-      policyLabel: null,
-      prLabel: null,
-      defaults: { ...DEFAULTS, minor: 'gated' as never },
-    }),
-    'manual',
-  )
+test('classFor: an unrecognised class narrows to ask', () => {
+  assert.equal(c('statefull'), 'ask')
+  assert.equal(c('auto'), 'ask', 'the v1 word is not a v2 class')
 })
 
-test('tierFor: an unrecognised label narrows to manual rather than widening', () => {
-  assert.equal(t('patch', 'atuo'), 'manual')
-  assert.equal(t('patch', 'yes-please'), 'manual')
+test('classFor: the v1 policy labels are mapped', () => {
+  assert.equal(c(null, 'auto'), 'normal')
+  assert.equal(c(null, 'manual'), 'ask')
+  assert.equal(c(null, 'gated'), 'ask')
+  assert.equal(c(null, 'model'), 'ask')
+  assert.equal(c(null, 'attended'), 'lifeline')
+  assert.equal(c(null, 'on-request'), 'frozen')
+  assert.equal(c(null, 'manaul'), 'ask', 'a typo narrows')
 })
 
-test('tierFor: an explicit auto label cannot talk a major past the line', () => {
-  // `auto` means "no exception here, follow the defaults" -- it is not an override, so
-  // it falls through to the rule that majors always need a human.
-  assert.equal(t('major', 'auto'), 'manual')
-  assert.equal(t('patch', 'auto'), 'auto')
+test('classFor: the v1 pr label still freezes a service', () => {
+  assert.equal(c(null, null, 'on-request'), 'frozen')
+  assert.equal(c(null, 'manual', 'on-request'), 'ask', 'a policy label is read before the pr label')
 })
 
-test('tierFor: majors are always manual regardless of defaults', () => {
-  assert.equal(t('major'), 'manual')
-  // even if someone writes major: auto in policy.yaml
-  assert.equal(
-    tierFor({
-      magnitude: 'major',
-      policyLabel: null,
-      prLabel: null,
-      defaults: { ...DEFAULTS, major: 'auto' },
-    }),
-    'manual',
-  )
+test('classFor: the class wins over the v1 labels it replaces', () => {
+  assert.equal(c('normal', 'attended', 'on-request'), 'normal')
 })
 
-test('tierFor: patch and minor follow the defaults; digest has its own default', () => {
-  assert.equal(t('patch'), 'auto')
-  assert.equal(t('minor'), 'auto')
-  assert.equal(t('digest'), 'manual')
-  assert.equal(
-    tierFor({
-      magnitude: 'minor',
-      policyLabel: null,
-      prLabel: null,
-      defaults: { ...DEFAULTS, minor: 'on-request' },
-    }),
-    'held',
-  )
+test('classFor: skip beats everything, and a dormant stack is frozen whatever else applies', () => {
+  assert.equal(c('lifeline', 'skip'), 'skip')
+  assert.equal(c('normal', null, null, true), 'frozen')
+  assert.equal(c(null, 'skip', null, true), 'skip')
 })
 
-test('foldGroupTier: the most conservative member wins', () => {
-  assert.equal(foldGroupTier(['auto', 'auto']), 'auto')
-  // rows written before the collapse still say 'gated'; they normalise on the way in
-  assert.equal(foldGroupTier(['auto', 'gated']), 'manual')
-  assert.equal(foldGroupTier(['auto', 'manual']), 'manual')
-  // one held member holds the whole group
-  assert.equal(foldGroupTier(['auto', 'held']), 'held')
-  assert.equal(foldGroupTier(['manual', 'held', 'auto']), 'held')
-  // skip members never drag a group down -- they produce no update row at all
-  assert.equal(foldGroupTier(['skip', 'auto']), 'auto')
-  assert.equal(foldGroupTier(['skip']), 'skip')
+test('normaliseClass: rows written before v2 are read in the new words', () => {
+  assert.equal(normaliseClass('auto'), 'normal')
+  assert.equal(normaliseClass('manual'), 'ask')
+  assert.equal(normaliseClass('attended'), 'lifeline')
+  assert.equal(normaliseClass('held'), 'frozen')
+  assert.equal(normaliseClass('stateful'), 'stateful')
+  assert.equal(normaliseClass(null), 'ask')
+})
+
+test('foldGroupClass: a group is as careful as its most careful member', () => {
+  assert.equal(foldGroupClass(['normal', 'normal']), 'normal')
+  assert.equal(foldGroupClass(['normal', 'stateful']), 'stateful')
+  assert.equal(foldGroupClass(['stateful', 'ask']), 'ask')
+  assert.equal(foldGroupClass(['ask', 'lifeline', 'normal']), 'lifeline')
+  assert.equal(foldGroupClass(['normal', 'frozen']), 'frozen')
+  assert.equal(foldGroupClass(['skip', 'normal']), 'normal', 'skip members never drag a group down')
 })
 
 test('foldGroupMagnitude: a group is labelled with its largest jump', () => {
@@ -116,141 +78,9 @@ test('foldGroupMagnitude: a group is labelled with its largest jump', () => {
   assert.equal(foldGroupMagnitude(['digest', 'patch']), 'patch')
 })
 
-const merge = (over: Partial<Parameters<typeof canAutoMerge>[0]> = {}) =>
-  canAutoMerge({
-    tier: 'auto',
-    magnitude: 'patch',
-    verdict: 'approve',
-    confidence: 'high',
-    claudeRequired: false,
-    claudeMode: 'advisory',
-    minConfidence: 'medium',
-    ...over,
-  })
-
-test('canAutoMerge: only the auto tier, only patch/minor', () => {
-  assert.equal(merge().merge, true)
-  assert.equal(merge({ magnitude: 'minor' }).merge, true)
-  for (const tier of ['manual', 'held', 'skip'] as const) {
-    assert.equal(merge({ tier }).merge, false, tier)
-  }
-  assert.equal(merge({ magnitude: 'major' }).merge, false)
-  assert.equal(merge({ magnitude: 'digest' }).merge, false)
-})
-
-test('canAutoMerge: Claude can demote but never promote', () => {
-  // demote
-  assert.equal(merge({ verdict: 'block' }).merge, false)
-  assert.equal(merge({ verdict: 'caution' }).merge, false)
-  assert.equal(merge({ verdict: 'approve', confidence: 'low' }).merge, false)
-  // and cannot promote: a confident approval does NOT rescue a major or a review-only service
-  assert.equal(merge({ magnitude: 'major', verdict: 'approve', confidence: 'high' }).merge, false)
-  assert.equal(merge({ tier: 'manual', verdict: 'approve', confidence: 'high' }).merge, false)
-})
-
-test('canAutoMerge: labels identify why a merge was withheld', () => {
-  assert.equal(merge({ verdict: 'block' }).merge === false && merge({ verdict: 'block' }).label, 'review-block')
-  const caution = merge({ verdict: 'caution' })
-  assert.equal(caution.merge === false && caution.label, 'review-hold')
-})
-
-test('canAutoMerge: absent analysis fails OPEN by default, CLOSED when required', () => {
-  // The static policy is what runs today under WUD; an API outage must not freeze the
-  // whole homelab.
-  assert.equal(merge({ verdict: 'unavailable' }).merge, true)
-  // ...unless the service opted into fail-closed.
-  const required = merge({ verdict: 'unavailable', claudeRequired: true })
-  assert.equal(required.merge, false)
-  assert.equal(required.merge === false && required.label, 'needs-review')
-})
-
-test('canAutoMerge: claude off skips the damper entirely', () => {
-  assert.equal(merge({ claudeMode: 'off', verdict: 'unavailable' }).merge, true)
-  // but the hard rules still bind
-  assert.equal(merge({ claudeMode: 'off', magnitude: 'major' }).merge, false)
-})
-
-test('canAutoMerge: confidence threshold is inclusive', () => {
-  assert.equal(merge({ confidence: 'medium', minConfidence: 'medium' }).merge, true)
-  assert.equal(merge({ confidence: 'low', minConfidence: 'medium' }).merge, false)
-  assert.equal(merge({ confidence: 'medium', minConfidence: 'high' }).merge, false)
-})
-
-test('shouldOpenPr: every rung but held and skip opens one, and rolling never does', () => {
-  // There was a `coexist` scope for running beside WUD. WUD is retired; shipshape owns
-  // every update, so the only refusals left are the rungs that say "not without me".
-  const s = (over: Partial<Parameters<typeof shouldOpenPr>[0]>) =>
-    shouldOpenPr({ tier: 'auto', magnitude: 'patch', rolling: false, ...over })
-  assert.equal(s({}), true)
-  assert.equal(s({ magnitude: 'major', tier: 'manual' }), true)
-  assert.equal(s({ tier: 'attended' }), true)
-  assert.equal(s({ tier: 'held', magnitude: 'major' }), false)
-  assert.equal(s({ tier: 'skip' }), false)
-  assert.equal(s({ rolling: true, magnitude: 'major' }), false)
-})
-
-test('canAutoMerge refuses any pull request carrying unverified changes', () => {
-  // The whole point of a drafted or hand-edited PR is that something in it has not been
-  // checked by policy or by a changelog verdict. Neither may ever merge unattended.
-  assert.equal(merge({ prScope: 'tag-only' }).merge, true)
-
-  const proposed = merge({ prScope: 'proposed' })
-  assert.equal(proposed.merge, false)
-  assert.match(proposed.merge === false ? proposed.reason : '', /drafted config changes/)
-
-  const edited = merge({ prScope: 'modified' })
-  assert.equal(edited.merge, false)
-  assert.match(edited.merge === false ? edited.reason : '', /has been edited/)
-
-  // A confident approval does not rescue either of them.
-  assert.equal(merge({ prScope: 'proposed', verdict: 'approve', confidence: 'high' }).merge, false)
-  // Absent scope information behaves as before, so existing callers are unaffected.
-  assert.equal(merge({}).merge, true)
-})
-
-test('tierFor: a dormant (disabled/standby) service is held, whatever else applies', () => {
-  const d = (magnitude: Magnitude, policyLabel: string | null = null) =>
-    tierFor({ magnitude, policyLabel, prLabel: null, dormant: true, defaults: { ...DEFAULTS } })
-  assert.equal(d('patch'), 'held') // defaults would say auto
-  assert.equal(d('minor', 'auto'), 'held')
-  assert.equal(d('major', 'manual'), 'held')
-  assert.equal(d('digest', 'attended'), 'held')
-  assert.equal(d('patch', 'skip'), 'skip') // an explicit skip still stops tracking entirely
-})
-
-test('canAutoMerge: a verified security fix lifts exactly the manual rung, majors, digests and caution', () => {
-  const fix = (over: Partial<Parameters<typeof canAutoMerge>[0]> = {}) => merge({ securityFix: true, ...over })
-  // What it lifts.
-  assert.equal(fix({ tier: 'manual' }).merge, true)
-  assert.equal(fix({ magnitude: 'major' }).merge, true)
-  assert.equal(fix({ magnitude: 'digest', tier: 'manual' }).merge, true)
-  assert.equal(fix({ verdict: 'caution' }).merge, true)
-  assert.equal(fix({ verdict: 'approve', confidence: 'low' }).merge, true)
-  assert.equal(fix({ verdict: 'unavailable' }).merge, true)
-
-  // What it never lifts.
-  for (const tier of ['attended', 'held', 'skip'] as const) {
-    assert.equal(fix({ tier }).merge, false, tier)
-  }
-  assert.equal(fix({ hold: 'do not merge yet' }).merge, false)
-  assert.equal(fix({ verdict: 'block' }).merge, false)
-  assert.equal(fix({ verdict: 'pending' }).merge, false)
-  assert.equal(fix({ verdict: 'unavailable', claudeRequired: true }).merge, false)
-  assert.equal(fix({ prScope: 'proposed' }).merge, false)
-  assert.equal(fix({ prScope: 'modified' }).merge, false)
-
-  // And without it, nothing changed.
-  assert.equal(merge({ tier: 'manual' }).merge, false)
-  assert.equal(merge({ magnitude: 'major' }).merge, false)
-  assert.equal(merge({ verdict: 'caution' }).merge, false)
-  assert.equal(merge({ securityFix: false, verdict: 'caution' }).merge, false)
-})
-
-test('canAutoMerge: the cooldown holds a young release, and nothing else changes', () => {
-  const day = 24 * 60 * 60_000
-  assert.equal(merge({ cooldown: { ageMs: 2 * day, requiredMs: 7 * day } }).merge, false)
-  assert.equal(merge({ cooldown: { ageMs: 8 * day, requiredMs: 7 * day } }).merge, true)
-  assert.equal(merge({ cooldown: { ageMs: 0, requiredMs: 0 } }).merge, true)
-  // A security fix does not skip it by itself: the caller decides how long it is.
-  assert.equal(merge({ securityFix: true, cooldown: { ageMs: day, requiredMs: 2 * day } }).merge, false)
+test('repositoryOf names the registry and repository, never the tag or digest', () => {
+  assert.equal(repositoryOf('ghcr.io/agentgateway/agentgateway:v1.6.0'), 'ghcr.io/agentgateway/agentgateway')
+  assert.equal(repositoryOf('postgres:17'), 'docker.io/library/postgres')
+  assert.equal(repositoryOf('python:3.13-slim@sha256:' + 'a'.repeat(64)), 'docker.io/library/python')
+  assert.equal(shortRepository('ghcr.io/agentgateway/agentgateway:v1.6.0'), 'agentgateway')
 })

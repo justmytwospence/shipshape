@@ -225,6 +225,8 @@ test('every setting belongs to a declared section, and every section is used', (
     assert.ok(declared.includes(def.section), `${def.path}: unknown section ${def.section}`)
   }
   for (const name of declared) {
+    // Rules has no fields: it is a read-only list written by the Always ship verb.
+    if (name === 'Rules') continue
     assert.ok(
       SETTINGS.some((s) => s.section === name),
       `section "${name}" has no settings`,

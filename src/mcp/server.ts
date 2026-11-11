@@ -31,7 +31,7 @@ import { apiUsage, registerContext, USAGE } from './context.ts'
  * Authority is not decided here. Every write goes through the same dispatcher as the
  * dashboard and the alert cards (`runOperatorVerb`, `runStackVerb`), which checks
  * `actionsFor` first, so an agent can do exactly what a button would let you do at that
- * moment and nothing else. Settings, labels, pause and force-merge are not offered.
+ * moment and nothing else. Settings, labels and pause are not offered.
  * The gate in front of it is the OAuth sidecar; this listener has no auth of its own and
  * must only be reachable from that sidecar.
  */
@@ -57,8 +57,8 @@ export function createServer(): McpServer {
     { name: 'shipshape', version: version() },
     {
       instructions:
-        'Shipshape keeps the homelab\'s container images up to date: it scans registries, opens a pull ' +
-        'request per update, has the changelog reviewed, merges what policy allows, deploys, verifies and ' +
+        'Shipshape keeps the homelab\'s container images up to date: it scans registries, has the changelog ' +
+        'reviewed, ships what nothing holds back (a merge commit on main) after a cooldown, deploys, verifies and ' +
         'rolls back. Start with `inbox` for what is waiting on a decision. `get_update` lists the verbs ' +
         'allowed on an update right now (`allowed_verbs`); `update_action` accepts only those. Deploys run ' +
         'in the background: an action returns once started, and `get_update` shows how it went. ' + USAGE,
@@ -77,12 +77,20 @@ export function createServer(): McpServer {
     {
       title: 'Inbox',
       description:
-        'What is waiting on a decision (needs_you), what is parked on request (parked), and what happened recently (recent).',
+        'What is waiting on you (needs_you: decisions, with the question and the holds), what is broken (broken: failed or rolled-back deploys), what is parked (parked: frozen services and snoozed decisions), and what happened recently (recent).',
       inputSchema: z.object({ recent_hours: z.number().int().min(1).max(24 * 14).optional() }),
       annotations: READ,
     },
     async ({ recent_hours }) =>
-      json({ needs_you: inboxNeedsYou(), parked: inboxParked(), recent: inboxRecent(recent_hours ?? 24) }),
+      {
+      const items = inboxNeedsYou()
+      return json({
+        needs_you: items.filter((i) => i.kind !== 'broken'),
+        broken: items.filter((i) => i.kind === 'broken'),
+        parked: inboxParked(),
+        recent: inboxRecent(recent_hours ?? 24),
+      })
+    },
   )
 
   server.registerTool(
@@ -90,7 +98,7 @@ export function createServer(): McpServer {
     {
       title: 'List updates',
       description:
-        'Updates by stage: open (detected, held, PR open, merged), rolling (deploying, deployed), done, closed, all, or releases (newest first).',
+        'Updates by stage: open (detected, frozen, merged), rolling (deploying, deployed), done, closed, all, or releases (newest first).',
       inputSchema: z.object({
         stage: z.enum([...(Object.keys(STAGE_FILTERS) as (keyof typeof STAGE_FILTERS)[]), 'all', 'releases']).optional(),
         q: z.string().optional().describe('Matches stack, service or image.'),
@@ -107,7 +115,7 @@ export function createServer(): McpServer {
     {
       title: 'Get update',
       description:
-        'One update: its state, review verdict, pull request, timeline, the compose diff it makes, and allowed_verbs -- what update_action may do to it right now.',
+        'One update: its state, holds (why it waits for you), review verdict, change, timeline, the compose diff it makes, and allowed_verbs -- what update_action may do to it right now.',
       inputSchema: z.object({ id: z.number().int().positive() }),
       annotations: READ,
     },
@@ -215,9 +223,10 @@ export function createServer(): McpServer {
       title: 'Act on an update',
       description:
         'Apply an operator verb to one update, exactly as the dashboard button would; refused (with the reason) when the verb is not in its allowed_verbs. ' +
-        'merge-deploy squash-merges its pull request and the deploy follows; open-pr asks for a pull request for a held update; deploy brings up a merge waiting to be deployed; ' +
-        'redeploy pulls a moved rolling tag; retry goes round again after a failure; rollback puts the previous version back; rerun-review reads the changelog again; ' +
-        'propose drafts the config changes the update needs onto its pull request; skip dismisses this version for good; release-hold lets a held pull request go; ack marks it seen. ' +
+        'ship merges the update into main now (a merge commit) and the deploy follows, whatever is holding it; snooze puts a decision off a week; ' +
+        'always-ship does what ship does and also writes a standing rule that stops this kind of question coming back (never for a lifeline service, an unsafe review or a list of work); ' +
+        'skip dismisses this version for good; deploy brings up a change waiting to be deployed; redeploy pulls a moved rolling tag; retry goes round again after a failure; ' +
+        'rollback puts the previous version back; rerun-review reads the changelog again; propose drafts the config changes the update needs onto a local branch that shipping merges; ack marks it seen. ' +
         'Deploys run in the background: follow up with get_update.',
       inputSchema: z.object({ id: z.number().int().positive(), verb: z.enum(OPERATOR_VERBS) }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },

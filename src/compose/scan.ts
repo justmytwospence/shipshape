@@ -90,6 +90,15 @@ export interface ScannedService {
   pattern: string | null
   tagInclude: string | null
   policyLabel: string | null
+  /** `shipshape.class`: normal | stateful | ask | lifeline | frozen. Wins over `policy`. */
+  classLabel: string | null
+  /**
+   * `shipshape.snapshot`: a command that prints a dump of this service's data to stdout,
+   * run inside the container before a stateful update (src/restore).
+   */
+  snapshotLabel: string | null
+  /** `shipshape.backup-job`: the offsite backup job to trigger alongside the dump. */
+  backupJobLabel: string | null
   sourceLabel: string | null
   /** `shipshape.changelog`: where the release notes are when GitHub releases do not have them. */
   changelogLabel: string | null
@@ -181,6 +190,9 @@ export const KNOWN_LABELS = new Set([
   'pattern',
   'tag.include',
   'policy',
+  'class',
+  'snapshot',
+  'backup-job',
   'source',
   'changelog',
   'review',
@@ -295,6 +307,11 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
     const pattern = label('pattern')
     const tagInclude = label('tag.include')
     const policyLabel = label('policy')
+    const classLabel = label('class')
+    // The file is read raw, so compose's `$$` escape is undone here: the command runs
+    // inside the container, where the shell must see a single `$`.
+    const snapshotLabel = label('snapshot')?.replace(/\$\$/g, '$') ?? null
+    const backupJobLabel = label('backup-job')
     const sourceLabel = label('source')
     const changelogLabel = label('changelog')
     const claudeLabel = label('review') ?? label('claude')
@@ -381,6 +398,9 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
       pattern,
       tagInclude,
       policyLabel,
+      classLabel,
+      snapshotLabel,
+      backupJobLabel,
       sourceLabel,
       changelogLabel,
       claudeLabel,

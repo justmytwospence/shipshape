@@ -133,11 +133,6 @@ const deployRow = (id: number) =>
 const stateOf = (updateId: number) =>
   (db().prepare(`SELECT state FROM updates WHERE id = ?`).get(updateId) as { state: string }).state
 
-const digestItems = () =>
-  db()
-    .prepare(`SELECT category, stack, service, summary, detail, url FROM digest_items ORDER BY id`)
-    .all() as { category: string; stack: string; service: string | null; summary: string; detail: string | null; url: string | null }[]
-
 const lastEvent = () =>
   db().prepare(`SELECT level, message, detail FROM events WHERE kind = 'deploy' ORDER BY id DESC LIMIT 1`).get() as {
     level: string
@@ -168,17 +163,6 @@ test('a deploy that brought nothing up reads left stopped, not verified', async 
 
   assert.equal(stateOf(ids[0]!), 'left-stopped')
 
-  const items = digestItems()
-  assert.deepEqual(items.at(-1), {
-    category: 'left-stopped',
-    stack: 'bitwarden',
-    service: 'bitwarden',
-    summary: '#101 merged — 1.37.2 -> 1.37.3, left stopped (not running)',
-    detail: sentence,
-    url: 'https://github.com/you/repo/pull/101',
-  })
-  assert.ok(!items.some((i) => /up in/.test(i.summary)))
-
   assert.deepEqual(lastEvent(), { level: 'info', message: 'bitwarden left stopped', detail: sentence })
 })
 
@@ -196,10 +180,6 @@ test('a clean deploy names the versions it moved between', async () => {
   assert.ok(row.recheck_at, 'soaking')
   assert.equal(stateOf(ids[0]!), 'deployed')
 
-  const item = digestItems().at(-1)!
-  assert.equal(item.summary, '#102 deployed — v0.24.2572-ls26 -> v0.24.2586-ls28')
-  assert.equal(item.service, 'jackett')
-  assert.equal(item.detail, null)
   assert.equal(lastEvent().message, 'servarr deployed')
 })
 
@@ -241,11 +221,6 @@ test('a partial group deploys the running half and leaves the other', async () =
   assert.equal(stateOf(n8nId), 'deployed')
   assert.equal(stateOf(importId), 'left-stopped')
 
-  const item = digestItems().at(-1)!
-  assert.equal(item.category, 'deployed')
-  assert.equal(item.summary, '#91 deployed — n8n-import, n8n 2.38.5 -> 2.38.7; n8n-import left stopped (not running)')
-  assert.equal(item.service, null)
-  assert.equal(item.detail, clause)
 })
 
 test('the soak only looks at what came up', async () => {
@@ -358,7 +333,7 @@ function redeployClaimed(): { job: DeployJob; id: number; updateId: number } {
   return { job: claimJob(id)!, id, updateId }
 }
 
-test('a redeploy that deployed names no pull request', async () => {
+test('a redeploy that deployed needs no change record', async () => {
   const { job, updateId } = redeployClaimed()
   const io = fakeIo({ actual: 'running' })
   await runDeployJob(job, { pull: true, io })
@@ -367,9 +342,6 @@ test('a redeploy that deployed names no pull request', async () => {
     'compose -f actual/docker-compose.yaml pull actual',
     'compose -f actual/docker-compose.yaml up -d --no-deps actual',
   ])
-  const item = digestItems().at(-1)!
-  assert.equal(item.summary, 'redeployed — latest@cb4826a1b2c3 -> latest@09fb11d4e5f6')
-  assert.equal(item.url, null)
   assert.equal(stateOf(updateId), 'deployed')
 })
 
@@ -381,7 +353,6 @@ test('a redeploy of a stopped rolling service does nothing and says nothing', as
   assert.deepEqual(composeCalls(io.calls), [], 'not even a pull')
   assert.equal(deployRow(id).status, 'left-stopped')
   assert.equal(stateOf(updateId), 'left-stopped')
-  assert.deepEqual(digestItems(), [])
   // Nothing was pulled, so compose would start the image already here, not the move.
   assert.equal(
     deployRow(id).detail,
@@ -411,5 +382,4 @@ test('a docker that cannot be asked records a failure, and no plan', async () =>
   assert.match(row.detail, /^could not ask docker whether bitwarden is running: permission denied/)
   assert.equal(stateOf(ids[0]!), 'merged', 'still merged, so Try again is offered')
   assert.deepEqual(lastEvent().message, 'deploy of bitwarden failed after #101 merged')
-  assert.deepEqual(digestItems(), [])
 })

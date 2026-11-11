@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 /**
- * A changelog review that holds a merge has to say why, truthfully, and has to be
+ * A changelog review that holds an update has to say why, truthfully, and has to be
  * answerable when it is wrong.
  *
  * On 2026-09-11 #92 (code-server) and #96 (jackett) were held on `block` verdicts with
@@ -23,8 +23,7 @@ delete process.env.ANTHROPIC_API_KEY
 
 const { getDb } = await import('../src/db.ts')
 const { normalise, renderPrompt } = await import('../src/analyze/claude.ts')
-const { pendingAnalysis, recordFailure, recordVerdict, heldSummary } = await import('../src/analyze/run.ts')
-const { canAutoMerge, verdictHolds } = await import('../src/policy.ts')
+const { pendingAnalysis, recordFailure, recordVerdict } = await import('../src/analyze/run.ts')
 const { contextFor, runVerb } = await import('../src/updates/verbs.ts')
 const { actionsFor } = await import('../src/updates/actions.ts')
 const { updateView } = await import('../src/updates/queries.ts')
@@ -62,12 +61,6 @@ test('the backstop only ever moves toward caution, never to approve', () => {
       const after = normalise({ recommendation: rec as never, breaking_changes: breaking as never }).recommendation
       if (before !== 'approve') assert.notEqual(after, 'approve', `${rec} with ${JSON.stringify(breaking)}`)
     }
-  }
-})
-
-test('caution holds a merge exactly as block does, so the backstop changes the label only', () => {
-  for (const conf of ['low', 'medium', 'high'] as const) {
-    assert.equal(verdictHolds('block', conf, 'medium'), verdictHolds('caution', conf, 'medium'))
   }
 })
 
@@ -161,31 +154,6 @@ test('the system prompt forbids blocking on notes that could not be matched', ()
 })
 
 // ---------------------------------------------------------------------------------------
-// Which verdicts hold, asked of the gate
-// ---------------------------------------------------------------------------------------
-
-test('verdictHolds agrees with the merge gate for every verdict and confidence', () => {
-  for (const verdict of ['approve', 'caution', 'block', 'unavailable'] as const) {
-    for (const confidence of ['low', 'medium', 'high', null] as const) {
-      for (const minConfidence of ['low', 'medium', 'high'] as const) {
-        const gate = canAutoMerge({
-          tier: 'auto', magnitude: 'minor', prScope: 'tag-only', verdict, confidence,
-          claudeRequired: false, claudeMode: 'advisory', minConfidence,
-        })
-        assert.equal(verdictHolds(verdict, confidence, minConfidence), !gate.merge, `${verdict}/${confidence}/${minConfidence}`)
-      }
-    }
-  }
-})
-
-test('the digest says what kind of hold it is, and nothing for a verdict that merges', () => {
-  assert.equal(heldSummary(96, 'v0.24.2554-ls24', { recommendation: 'block', confidence: 'high' }, 'medium'), '#96 held — breaking changes in v0.24.2554-ls24')
-  assert.equal(heldSummary(92, '4.137.0', { recommendation: 'caution', confidence: 'low' }, 'medium'), '#92 held — worth a read before 4.137.0')
-  assert.equal(heldSummary(5, '1.2.3', { recommendation: 'approve', confidence: 'low' }, 'medium'), '#5 held — approved, but only at low confidence')
-  assert.equal(heldSummary(5, '1.2.3', { recommendation: 'approve', confidence: 'medium' }, 'medium'), null)
-})
-
-// ---------------------------------------------------------------------------------------
 // Reading again, without ever loosening a hold
 // ---------------------------------------------------------------------------------------
 
@@ -197,20 +165,14 @@ beforeEach(() => {
   for (const t of ['pr_updates', 'prs', 'updates', 'verdicts']) db.prepare(`DELETE FROM ${t}`).run()
 })
 
-function seedHeldPr(): number {
+function seedWaiting(): number {
   const db = getDb()
   const u = Number(
     db.prepare(
       `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detail, detected_at, updated_at)
-       VALUES ('servarr', 'jackett', ?, ?, ?, 'patch', 'auto', 'pr_open', NULL, ?, ?)`,
+       VALUES ('servarr', 'jackett', ?, ?, ?, 'patch', 'normal', 'detected', NULL, ?, ?)`,
     ).run(pair.image, pair.from_tag, pair.to_tag, now(), now()).lastInsertRowid,
   )
-  const p = Number(
-    db.prepare(
-      `INSERT INTO prs (number, branch, head_sha_pushed, state, scope, created_at) VALUES (96, 'b', 'sha', 'open', 'tag-only', ?)`,
-    ).run(now()).lastInsertRowid,
-  )
-  db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(p, u)
   return u
 }
 
@@ -222,13 +184,13 @@ function stored() {
     .get(pair.image, pair.from_tag, pair.to_tag) as { recommendation: string | null; error: string | null; rerun_requested_at: string | null }
 }
 
-test('a held pull request offers a second reading, and asking for one flags rather than deletes', async () => {
-  const id = seedHeldPr()
+test('an update held as unsafe offers a second reading, and asking for one flags rather than deletes', async () => {
+  const id = seedWaiting()
   recordVerdict(pair, blockVerdict as never)
 
   const ctx = contextFor(id)!.ctx
-  assert.equal(ctx.verdictHolds, true)
-  assert.ok(actionsFor(ctx).includes('rerun-review'))
+  assert.deepEqual(ctx.holds!.map((h) => h.kind), ['unsafe'])
+  assert.ok(actionsFor(ctx).includes('rerun-review'), 'a verdict that is in the way is the one worth disputing')
 
   const r = await runVerb(id, 'rerun-review')
   assert.equal(r.ok, true, r.message)
@@ -239,20 +201,19 @@ test('a held pull request offers a second reading, and asking for one flags rath
 
 test('the page offers the re-read the route accepts', () => {
   // Two builders make an action context: `contextFor` guards the route, `updateView`
-  // decides which buttons render. The first shipped with `verdictHolds` and the second
-  // without it, so a re-read worked from a pull request comment and never appeared on
-  // the page -- caught by the screenshot pass, not by a test. Now it is a test.
-  const id = seedHeldPr()
+  // decides which buttons render. They have disagreed before, and the disagreement is
+  // invisible to the type checker: a button that renders and a route that refuses.
+  const id = seedWaiting()
   recordVerdict(pair, blockVerdict as never)
 
   const route = actionsFor(contextFor(id)!.ctx)
   const page = updateView(id)!.actions
-  assert.ok(page.includes('rerun-review'), `page offers: ${page.join(', ')}`)
   assert.deepEqual([...page].sort(), [...route].sort(), 'the page and the route agree')
+  assert.ok(page.includes('ship') && page.includes('skip'), `page offers: ${page.join(', ')}`)
 })
 
 test('a flagged verdict is analysed again, ahead of everything else', () => {
-  seedHeldPr()
+  seedWaiting()
   recordVerdict(pair, blockVerdict as never)
   assert.equal(pendingAnalysis(10).length, 0, 'a verdict that arrived is not pending')
 
@@ -266,7 +227,7 @@ test('a flagged verdict is analysed again, ahead of everything else', () => {
 test('a re-read that fails leaves the verdict it was replacing exactly where it was', () => {
   // The failure this exists to prevent: writing the error over the block would make the
   // gate see "no verdict", fall back to static policy, and merge an auto-rung update.
-  seedHeldPr()
+  seedWaiting()
   recordVerdict(pair, blockVerdict as never)
   getDb().prepare(`UPDATE verdicts SET rerun_requested_at = ?`).run(now())
 
@@ -278,7 +239,7 @@ test('a re-read that fails leaves the verdict it was replacing exactly where it 
 })
 
 test('a re-read that succeeds replaces the verdict and clears the request', () => {
-  seedHeldPr()
+  seedWaiting()
   recordVerdict(pair, blockVerdict as never)
   getDb().prepare(`UPDATE verdicts SET rerun_requested_at = ?`).run(now())
 
@@ -289,7 +250,7 @@ test('a re-read that succeeds replaces the verdict and clears the request', () =
 })
 
 test('a first reading that fails is still recorded as an error, as before', () => {
-  seedHeldPr()
+  seedWaiting()
   recordFailure(pair, 'overloaded')
   const v = stored()
   assert.equal(v.recommendation, null)

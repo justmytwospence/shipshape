@@ -2,7 +2,10 @@ import { getDb } from '../db.ts'
 import { verifiedFix, type SecurityFix } from '../security/act.ts'
 import { forkConflictFor } from '../forks.ts'
 import { loadPolicy } from '../config.ts'
-import { MIN_CONFIDENCE, normaliseTier, shouldOpenPr, verdictHolds, type EffectiveTier } from '../policy.ts'
+import { normaliseClass, type Hold, type ServiceClass } from '../policy.ts'
+import { holdsForRow, type HoldRow } from './holds.ts'
+import { changeUrl } from '../gitops/change.ts'
+import { restorePointsFor } from '../restore/index.ts'
 import { present, type Presentation } from './present.ts'
 import { screenFor } from '../analyze/screen/run.ts'
 import type { Outcome } from './vocabulary.ts'
@@ -33,7 +36,8 @@ export interface UpdateView {
   fromTag: string
   toTag: string
   magnitude: Magnitude
-  tier: EffectiveTier
+  /** The service's class (`updates.tier` stores it; the column kept its name). */
+  cls: ServiceClass
   state: UpdateState
   detail: string | null
   rolling: boolean
@@ -44,16 +48,30 @@ export interface UpdateView {
   detectedAt: string
   updatedAt: string
   ackedAt: string | null
-  pr: {
+  /** What landed (or will land) on main for this update: a merge commit, or a v1 pull request. */
+  change: {
+    id: number
+    kind: 'github' | 'local'
+    /** The pull request number; 0 for a local change. */
     number: number
     state: string
     scope: 'tag-only' | 'proposed' | 'modified'
-    userOwned: boolean
+    branch: string
     mergeCommitSha: string | null
-    /** Why this is being held, when somebody asked shipshape to hold it. */
-    held: string | null
-    url: string
+    /** The merge commit or pull request page, when there is one to point at. */
+    url: string | null
   } | null
+  /** Why a person is needed: holds nothing has waived. Empty when it ships on its own. */
+  holds: Hold[]
+  /** Holds a standing rule waived, so the page can say so. */
+  waived: Hold[]
+  /** Where it stands on its way out: ready, waiting (with why), or a decision. */
+  shipStatus: 'ready' | 'waiting' | 'decision' | null
+  shipWhy: string | null
+  snoozedUntil: string | null
+  approvedAt: string | null
+  /** Restore points taken for the change that carried it. */
+  restorePoints: { service: string; path: string; createdAt: string }[]
   verdict: {
     recommendation: 'approve' | 'caution' | 'block' | null
     confidence: 'low' | 'medium' | 'high' | null
@@ -70,6 +88,8 @@ export interface UpdateView {
     nextAttemptAt: string | null
     /** How many notes the review had for its range; null for a review from before that was kept. */
     notesInRange: number | null
+    /** Applying it changes stored data in a way a rollback cannot undo. */
+    irreversible: boolean
     /** `screen` when only the screen has judged it; its finding is provisional until read. */
     source: 'reader' | 'screen'
     provisional: boolean
@@ -154,7 +174,8 @@ export function screenView(image: string, fromTag: string, toTag: string): Scree
 
 const SELECT_UPDATE = `
   SELECT u.id, u.stack, u.service, u.image, u.from_tag, u.to_tag, u.magnitude, u.tier,
-         u.state, u.detail, u.detected_at, u.updated_at, u.acked_at
+         u.state, u.detail, u.detected_at, u.updated_at, u.acked_at,
+         u.approved_at, u.snoozed_until, u.decision_since, u.restore_error
     FROM updates u`
 
 interface RawUpdate {
@@ -171,41 +192,39 @@ interface RawUpdate {
   detected_at: string
   updated_at: string
   acked_at: string | null
+  approved_at: string | null
+  snoozed_until: string | null
+  decision_since: string | null
+  restore_error: string | null
 }
 
 /**
- * The newest pull request for an update, not an open one.
+ * The newest change record for an update, not an open one.
  *
- * An update that has been round twice has two, and the dashboard's `LEFT JOIN … AND
- * p.state = 'open'` returns a duplicated row while both are open and none once both are
- * closed -- taking the merge commit with it, which is what a rollback needs.
+ * An update that has been round twice has two, and joining on open returns a duplicated
+ * row while both are open and none once both are closed -- taking the merge commit with
+ * it, which is what a rollback needs.
  */
-function prFor(updateId: number, repo: string) {
+function changeFor(updateId: number): UpdateView['change'] {
   const row = getDb()
     .prepare(
-      `SELECT p.number, p.state, p.scope, p.user_owned, p.merge_commit_sha, p.hold_reason
+      `SELECT p.id, p.kind, p.number, p.state, p.scope, p.branch, p.merge_commit_sha
          FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id
         WHERE pu.update_id = ? ORDER BY p.id DESC LIMIT 1`,
     )
     .get(updateId) as
-    | {
-        number: number
-        state: string
-        scope: string
-        user_owned: number
-        merge_commit_sha: string | null
-        hold_reason: string | null
-      }
+    | { id: number; kind: string; number: number; state: string; scope: string; branch: string; merge_commit_sha: string | null }
     | undefined
   if (!row) return null
   return {
+    id: row.id,
+    kind: row.kind === 'local' ? 'local' : 'github',
     number: row.number,
     state: row.state,
     scope: (row.scope ?? 'tag-only') as 'tag-only' | 'proposed' | 'modified',
-    userOwned: row.user_owned === 1,
+    branch: row.branch,
     mergeCommitSha: row.merge_commit_sha,
-    held: row.hold_reason,
-    url: `https://github.com/${repo}/pull/${row.number}`,
+    url: changeUrl(row.id) ?? null,
   }
 }
 
@@ -214,7 +233,7 @@ function verdictFor(u: RawUpdate): UpdateView['verdict'] {
     .prepare(
       `SELECT recommendation, confidence, severity, summary, breaking_changes, migration_steps,
               new_features, sources, model, created_at, error, attempts, next_attempt_at, evidence,
-              source, provisional
+              source, provisional, irreversible
          FROM verdicts WHERE image = ? AND from_tag = ? AND to_tag = ?`,
     )
     .get(u.image, u.from_tag, u.to_tag) as
@@ -235,6 +254,7 @@ function verdictFor(u: RawUpdate): UpdateView['verdict'] {
         next_attempt_at: string | null
         source: string | null
         provisional: number | null
+        irreversible: number | null
       }
     | undefined
   if (!v) return null
@@ -262,6 +282,7 @@ function verdictFor(u: RawUpdate): UpdateView['verdict'] {
     attempts: v.attempts ?? 0,
     nextAttemptAt: v.next_attempt_at,
     notesInRange: notesOf(v.evidence),
+    irreversible: v.irreversible === 1,
     source: v.source === 'screen' ? 'screen' : 'reader',
     provisional: v.provisional === 1,
   }
@@ -308,8 +329,8 @@ function deployFor(updateId: number): UpdateView['deploy'] {
   }
 }
 
-function toView(u: RawUpdate, repo: string): UpdateView {
-  const pr = prFor(u.id, repo)
+function toView(u: RawUpdate, _repo?: string): UpdateView {
+  const change = changeFor(u.id)
   const verdict = verdictFor(u)
   const deploy = deployFor(u.id)
   const image = getDb()
@@ -318,40 +339,35 @@ function toView(u: RawUpdate, repo: string): UpdateView {
   const fork = !!image?.fork_upstream || u.detail === 'fork'
   const conflict = fork ? forkConflictFor(u.stack, u.service) : null
   const forkConflict = conflict && conflict.toTag === u.to_tag.split('@')[0] ? conflict.detail : null
-  const hasProposal = pr
-    ? !!getDb()
-        .prepare(
-          `SELECT 1 FROM proposals p JOIN prs r ON r.id = p.pr_id WHERE r.number = ? AND p.retryable = 0 LIMIT 1`,
-        )
-        .get(pr.number)
-    : false
+  const hasProposal = !!getDb()
+    .prepare(`SELECT 1 FROM proposals WHERE update_id = ? AND retryable = 0 AND error IS NULL LIMIT 1`)
+    .get(u.id)
+
+  // Only an update still on its way out has holds; a shipped one has nothing left to ask.
+  const waiting = u.state === 'detected' && u.detail !== 'rolling'
+  const held = waiting ? holdsForRow(u as unknown as HoldRow) : null
+  const cls = normaliseClass(u.tier)
+  const snoozed = !!u.snoozed_until && Date.parse(u.snoozed_until) > Date.now()
 
   const ctx: ActionContext = {
     hasReaderVerdict: !!verdict && !verdict.error && verdict.source === 'reader',
     state: u.state as UpdateState,
     detail: u.detail,
-    prNumber: pr?.number ?? null,
-    prState: (pr?.state as ActionContext['prState']) ?? null,
-    prScope: pr?.scope ?? null,
-    userOwned: pr?.userOwned ?? false,
-    mergeCommitSha: pr?.mergeCommitSha ?? null,
+    cls,
+    holds: held?.holds ?? [],
+    snoozed,
+    prScope: change?.scope ?? null,
+    mergeCommitSha: change?.mergeCommitSha ?? null,
     deployStatus: (deploy?.status as ActionContext['deployStatus']) ?? null,
     verdictError: !!verdict?.error,
     hasVerdict: !!verdict && !verdict.error,
-    // The same answer `contextFor` gives the route, or the button and the route disagree:
-    // the route would accept a re-read the page never offers.
-    verdictHolds:
-      !!verdict &&
-      !verdict.error &&
-      !!verdict.recommendation &&
-      verdictHolds(verdict.recommendation, verdict.confidence, MIN_CONFIDENCE),
     hasProposal,
     ackedAt: u.acked_at,
-    held: pr?.held ?? null,
     atFromTag: image ? image.current_tag === u.from_tag.split('@')[0] : undefined,
     fork,
   }
   const actions = actionsFor(ctx)
+  const members = decisionMembersOf(u)
   const presented = present(
     actions,
     {
@@ -359,8 +375,9 @@ function toView(u: RawUpdate, repo: string): UpdateView {
       service: u.service,
       fromTag: u.from_tag,
       toTag: u.to_tag,
-      pr: pr ? { number: pr.number, scope: pr.scope } : null,
-      members: pr ? membersOf(pr.number) : [{ stack: u.stack, service: u.service, tier: u.tier as EffectiveTier }],
+      scope: change?.scope ?? null,
+      members,
+      restorePoint: cls === 'stateful' || !!verdict?.irreversible,
     },
     loadPolicy().policy,
   )
@@ -373,7 +390,7 @@ function toView(u: RawUpdate, repo: string): UpdateView {
     fromTag: u.from_tag,
     toTag: u.to_tag,
     magnitude: u.magnitude as Magnitude,
-    tier: u.tier as EffectiveTier,
+    cls,
     state: u.state as UpdateState,
     detail: u.detail,
     rolling: u.detail === 'rolling',
@@ -383,7 +400,14 @@ function toView(u: RawUpdate, repo: string): UpdateView {
     detectedAt: u.detected_at,
     updatedAt: u.updated_at,
     ackedAt: u.acked_at,
-    pr,
+    change,
+    holds: held?.holds ?? [],
+    waived: held?.waived ?? [],
+    shipStatus: held ? held.status.status : null,
+    shipWhy: held && held.status.status === 'waiting' ? held.status.why : null,
+    snoozedUntil: snoozed ? u.snoozed_until : null,
+    approvedAt: u.approved_at,
+    restorePoints: change ? restorePointsFor(change.id).map((p) => ({ service: p.service, path: p.path, createdAt: p.created_at })) : [],
     verdict,
     deploy,
     actions,
@@ -394,19 +418,16 @@ function toView(u: RawUpdate, repo: string): UpdateView {
   }
 }
 
-/** The live updates a pull request carries, with the rung each is on. */
-function membersOf(prNumber: number): { stack: string; service: string; tier: EffectiveTier }[] {
-  return (
-    getDb()
-      .prepare(
-        `SELECT u.stack, u.service, u.tier FROM updates u
-           JOIN pr_updates pu ON pu.update_id = u.id
-           JOIN prs p ON p.id = pu.pr_id
-          WHERE p.number = ? AND u.state != 'superseded'
-          ORDER BY u.id`,
-      )
-      .all(prNumber) as { stack: string; service: string; tier: string }[]
-  ).map((m) => ({ ...m, tier: normaliseTier(m.tier) }))
+/** The live updates one decision covers, with their classes: what a confirmation lists. */
+function decisionMembersOf(u: RawUpdate): { stack: string; service: string; cls: ServiceClass }[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT stack, service, tier FROM updates
+        WHERE state IN ('detected', 'frozen') AND image = ? AND to_tag = ? ORDER BY id`,
+    )
+    .all(u.image, u.to_tag) as { stack: string; service: string; tier: string }[]
+  const out = rows.map((r) => ({ stack: r.stack, service: r.service, cls: normaliseClass(r.tier) }))
+  return out.length > 0 ? out : [{ stack: u.stack, service: u.service, cls: normaliseClass(u.tier) }]
 }
 
 export function updateView(id: number): UpdateView | null {
@@ -422,14 +443,10 @@ function repoName(): string {
 
 /** Why an update is in the inbox. The order here is the order the page shows them in. */
 export const ATTENTION_KINDS = [
-  'deploy-failed', // it broke, and it is still broken
-  'rolled-back', // it broke and put itself back; you should know why
-  'degraded', // it came up, then stopped looking well
-  'ready-to-deploy', // merged and waiting on the button
-  'pr-waiting', // a pull request wants a decision
-  'on-request', // listed deliberately: datastores, migrations
+  'broken', // a deploy failed, rolled back, or degraded, and nothing newer has replaced it
+  'decision', // an update waiting on you: the question on its card
+  'ready-to-deploy', // v1: merged and waiting on the button
   'rolling-moved', // a rolling tag moved under us
-  'review-failed', // nobody has read the changelog and nobody can
 ] as const
 
 export type AttentionKind = (typeof ATTENTION_KINDS)[number]
@@ -442,13 +459,12 @@ export interface AttentionItem {
 /**
  * What is actually waiting on a person.
  *
- * Deliberately not "everything not finished": an update on the auto rung that will merge
- * itself tonight is not waiting on you, and putting it in the same list as a service that
- * is down is how a list stops being read.
+ * Deliberately not "everything not finished": an update that will ship itself tonight is
+ * not waiting on you, and putting it in the same list as a service that is down is how a
+ * list stops being read.
  */
 export function inboxNeedsYou(): AttentionItem[] {
   const db = getDb()
-  const repo = repoName()
   const rows = db
     .prepare(
       `${SELECT_UPDATE}
@@ -459,12 +475,32 @@ export function inboxNeedsYou(): AttentionItem[] {
 
   const items: AttentionItem[] = []
   for (const raw of rows) {
-    const v = toView(raw, repo)
+    const v = toView(raw)
     const kind = attentionKind(v)
     if (kind) items.push({ kind, update: v })
   }
   const rank = (k: AttentionKind) => ATTENTION_KINDS.indexOf(k)
   return items.sort((a, b) => rank(a.kind) - rank(b.kind) || b.update.updatedAt.localeCompare(a.update.updatedAt))
+}
+
+/** Broken rows leave the inbox on their own after this long. */
+const BROKEN_EXPIRY_MS = 14 * 24 * 60 * 60_000
+
+/**
+ * A failure stops being news once something newer has replaced it: a later update of the
+ * same service that merged, deployed or verified, or a fortnight of nobody caring. Without
+ * this a rollback from September sat in the inbox for as long as nobody pressed Ack, long
+ * after the version it was about had been overtaken.
+ */
+function brokenExpired(v: UpdateView): boolean {
+  if (Date.now() - Date.parse(v.updatedAt) > BROKEN_EXPIRY_MS) return true
+  const newer = getDb()
+    .prepare(
+      `SELECT 1 FROM updates WHERE stack = ? AND service = ? AND id > ?
+          AND state IN ('merged', 'deployed', 'verified') LIMIT 1`,
+    )
+    .get(v.stack, v.service, v.id)
+  return !!newer
 }
 
 function attentionKind(v: UpdateView): AttentionKind | null {
@@ -476,40 +512,32 @@ function attentionKind(v: UpdateView): AttentionKind | null {
   const d = v.deploy?.status
   const seen = !!v.ackedAt
 
-  if (v.state === 'failed' && !seen) {
-    return v.detail?.includes('rolled back') || d === 'rolled-back' ? 'rolled-back' : 'deploy-failed'
-  }
-  if (v.state === 'merged' && (d === 'failed' || d === 'error') && !seen) return 'deploy-failed'
-  if (d === 'degraded' && !seen) return 'degraded'
+  const broken =
+    (v.state === 'failed' && !seen) ||
+    (v.state === 'merged' && (d === 'failed' || d === 'error') && !seen) ||
+    (d === 'degraded' && !seen)
+  if (broken) return brokenExpired(v) ? null : 'broken'
   if (v.state === 'merged' && (d === 'ready' || d === 'pending')) return 'ready-to-deploy'
-  if (v.state === 'pr_open') return v.verdict?.error ? 'review-failed' : 'pr-waiting'
-  if (v.state === 'held') return 'on-request'
   if (v.state === 'detected' && v.rolling) return 'rolling-moved'
+  if (v.state === 'detected' && v.shipStatus === 'decision' && !v.snoozedUntil) return 'decision'
   return null
 }
 
 /**
- * Updates that are tracked but parked: detected, not rolling, and nothing will open a
- * pull request for them under the current scope. Informational -- they are the answer to
- * "why is this not in the list", which is otherwise unanswerable from the interface.
+ * Updates that are tracked but parked: frozen services, and decisions that were snoozed.
+ * Informational -- they are the answer to "why is this not in the list", which is
+ * otherwise unanswerable from the interface.
  */
 export function inboxParked(): UpdateView[] {
-  const { policy } = loadPolicy()
-  const repo = repoName()
   const rows = getDb()
-    .prepare(`${SELECT_UPDATE} WHERE u.state = 'detected' ORDER BY u.stack, u.service`)
-    .all() as RawUpdate[]
-  return rows
-    .filter(
-      (r) =>
-        r.detail !== 'rolling' &&
-        !shouldOpenPr({
-          tier: r.tier as EffectiveTier,
-          magnitude: r.magnitude as Magnitude,
-          rolling: false,
-        }),
+    .prepare(
+      `${SELECT_UPDATE}
+        WHERE u.state = 'frozen'
+           OR (u.state = 'detected' AND u.snoozed_until > ? AND COALESCE(u.detail, '') != 'rolling')
+        ORDER BY u.stack, u.service`,
     )
-    .map((r) => toView(r, repo))
+    .all(new Date().toISOString()) as RawUpdate[]
+  return rows.map((r) => toView(r))
 }
 
 export interface RecentItem {
@@ -532,7 +560,7 @@ export function inboxRecent(hours = 24, limit = 20): RecentItem[] {
   const opened = db
     .prepare(
       `SELECT p.created_at AS at, 'opened' AS kind, u.stack, u.service, u.from_tag AS fromTag, u.to_tag AS toTag,
-              u.id AS updateId, p.number AS prNumber, NULL AS detail
+              u.id AS updateId, NULLIF(p.number, 0) AS prNumber, NULL AS detail
          FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id JOIN updates u ON u.id = pu.update_id
         WHERE p.created_at >= ?`,
     )
@@ -541,7 +569,7 @@ export function inboxRecent(hours = 24, limit = 20): RecentItem[] {
   const merged = db
     .prepare(
       `SELECT p.merged_at AS at, 'merged' AS kind, u.stack, u.service, u.from_tag AS fromTag, u.to_tag AS toTag,
-              u.id AS updateId, p.number AS prNumber, NULL AS detail
+              u.id AS updateId, NULLIF(p.number, 0) AS prNumber, NULL AS detail
          FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id JOIN updates u ON u.id = pu.update_id
         WHERE p.merged_at >= ?`,
     )
@@ -574,7 +602,7 @@ export function inboxRecent(hours = 24, limit = 20): RecentItem[] {
                    WHEN d.status = 'rolled-back' THEN 'rolled-back' WHEN d.status = 'deployed' THEN 'deployed'
                    ELSE 'failed' END AS kind,
               u.stack, u.service, u.from_tag AS fromTag, u.to_tag AS toTag,
-              u.id AS updateId, d.pr_number AS prNumber, d.detail
+              u.id AS updateId, NULLIF(d.pr_number, 0) AS prNumber, d.detail
          FROM deploys d JOIN deploy_updates du ON du.deploy_id = d.id
          JOIN updates u ON u.id = du.update_id
         WHERE d.finished_at >= ? AND d.status NOT IN ('pending','ready','running','superseded')`,
@@ -629,39 +657,57 @@ export function updateTimeline(id: number): Milestone[] {
     detail: `${v.fromTag} → ${v.toTag}`,
   })
 
-  if (v.pr) {
-    const pr = getDb()
-      .prepare(`SELECT created_at, merged_at, state FROM prs WHERE number = ?`)
-      .get(v.pr.number) as { created_at: string; merged_at: string | null; state: string } | undefined
-    out.push({
-      at: pr?.created_at ?? null,
-      kind: 'pr',
-      label: `pull request #${v.pr.number} opened`,
-      detail: v.pr.scope === 'tag-only' ? null : `carries ${v.pr.scope === 'proposed' ? 'drafted config changes' : 'edits'}`,
-    })
-
-    if (v.verdict?.error) {
+  if (v.change) {
+    const c = getDb()
+      .prepare(`SELECT created_at, merged_at, state FROM prs WHERE id = ?`)
+      .get(v.change.id) as { created_at: string; merged_at: string | null; state: string } | undefined
+    const proposed = v.change.scope === 'proposed'
+    if (v.change.kind === 'github') {
       out.push({
-        at: v.verdict.createdAt,
-        kind: 'review',
-        label: `changelog review failed (attempt ${v.verdict.attempts})`,
-        detail: v.verdict.error,
-        level: 'warn',
+        at: c?.created_at ?? null,
+        kind: 'pr',
+        label: `pull request #${v.change.number} opened`,
+        detail: v.change.scope === 'tag-only' ? null : `carries ${proposed ? 'drafted config changes' : 'edits'}`,
       })
-    } else if (v.verdict) {
-      out.push({
-        at: v.verdict.createdAt,
-        kind: 'review',
-        label: `reviewed: ${v.verdict.recommendation} at ${v.verdict.confidence} confidence`,
-        detail: v.verdict.summary,
-        level: v.verdict.recommendation === 'block' ? 'warn' : 'info',
-      })
+    } else if (proposed) {
+      out.push({ at: c?.created_at ?? null, kind: 'pr', label: 'config changes drafted', detail: 'shipping it merges them too' })
     }
+  }
 
-    if (pr?.merged_at) {
-      out.push({ at: pr.merged_at, kind: 'merged', label: `merged into main` })
-    } else if (pr?.state === 'closed') {
-      out.push({ at: null, kind: 'closed', label: 'pull request closed without merging' })
+  if (v.verdict?.error) {
+    out.push({
+      at: v.verdict.createdAt,
+      kind: 'review',
+      label: `changelog review failed (attempt ${v.verdict.attempts})`,
+      detail: v.verdict.error,
+      level: 'warn',
+    })
+  } else if (v.verdict) {
+    out.push({
+      at: v.verdict.createdAt,
+      kind: 'review',
+      label: `reviewed: ${v.verdict.recommendation} at ${v.verdict.confidence} confidence`,
+      detail: v.verdict.summary,
+      level: v.verdict.recommendation === 'block' ? 'warn' : 'info',
+    })
+  }
+
+  if (v.holds.length > 0 && v.state === 'detected') {
+    out.push({ at: null, kind: 'decision', label: 'waiting on you', detail: v.holds.map((h) => h.text).join('; '), level: 'warn' })
+  }
+  if (v.snoozedUntil) out.push({ at: null, kind: 'snoozed', label: `snoozed until ${v.snoozedUntil.slice(0, 10)}` })
+  if (v.approvedAt) out.push({ at: v.approvedAt, kind: 'approved', label: 'you said ship' })
+  for (const h of v.waived) out.push({ at: null, kind: 'waived', label: `rule ${h.waivedBy} waived a hold`, detail: h.text })
+
+  if (v.change) {
+    const c = getDb()
+      .prepare(`SELECT merged_at, state FROM prs WHERE id = ?`)
+      .get(v.change.id) as { merged_at: string | null; state: string } | undefined
+    for (const p of v.restorePoints) out.push({ at: p.createdAt, kind: 'restore', label: `restore point: ${p.service}`, detail: p.path })
+    if (c?.merged_at) {
+      out.push({ at: c.merged_at, kind: 'merged', label: v.change.kind === 'local' ? 'shipped: merged into main' : 'merged into main' })
+    } else if (c?.state === 'closed') {
+      out.push({ at: null, kind: 'closed', label: v.change.kind === 'github' ? 'pull request closed without merging' : 'drafted change closed' })
     }
   }
 
@@ -758,7 +804,7 @@ function verifyDetail(json: string | null | undefined): string | null {
 
 /** The stages the Updates page filters by, and which states each covers. */
 export const STAGE_FILTERS = {
-  open: ['detected', 'held', 'pr_open', 'merged'],
+  open: ['detected', 'frozen', 'pr_open', 'merged'],
   rolling: ['deploying', 'deployed'],
   // Left stopped is merged with nothing more owed by shipshape, so it is finished rather
   // than open -- in Open it would sit in the list and the nav count forever.

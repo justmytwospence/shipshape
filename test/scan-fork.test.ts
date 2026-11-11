@@ -4,7 +4,6 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { KNOWN_LABELS, parseWaitsOn, scanRepo } from '../src/compose/scan.ts'
-import { tierFor } from '../src/policy.ts'
 import { actionsFor, refusalFor } from '../src/updates/actions.ts'
 
 /**
@@ -101,36 +100,8 @@ test('waits-on without an upstream is said out loud and changes nothing', () => 
   assert.deepEqual(o.labelProblems, ['shipshape.fork.waits-on without shipshape.fork.upstream does nothing'])
 })
 
-const DEFAULTS = { patch: 'auto', minor: 'auto', major: 'manual', digest: 'manual' } as const
 
-test('a fork follows the same ladder as every service', () => {
-  // Being a fork changes nothing about the rung: shipshape rebases the fork itself, so the
-  // upstream magnitude and the labels decide, exactly as for a plain image.
-  for (const magnitude of ['patch', 'minor', 'major', 'digest'] as const) {
-    for (const policyLabel of [null, 'auto', 'manual', 'attended', 'on-request', 'skip', 'typo']) {
-      for (const dormant of [false, true]) {
-        assert.equal(
-          tierFor({ magnitude, policyLabel, prLabel: null, fork: true, dormant, defaults: DEFAULTS }),
-          tierFor({ magnitude, policyLabel, prLabel: null, fork: false, dormant, defaults: DEFAULTS }),
-          `${magnitude} with policy ${policyLabel}${dormant ? ', dormant' : ''}`,
-        )
-      }
-    }
-  }
-  const fork = (magnitude: 'patch' | 'minor' | 'major' | 'digest', policyLabel: string | null = null, dormant = false) =>
-    tierFor({ magnitude, policyLabel, prLabel: null, fork: true, dormant, defaults: DEFAULTS })
-  assert.equal(fork('patch'), 'auto')
-  assert.equal(fork('minor'), 'auto')
-  assert.equal(fork('major'), 'manual')
-  assert.equal(fork('major', 'auto'), 'manual')
-  assert.equal(fork('patch', 'attended'), 'attended')
-  assert.equal(fork('patch', 'on-request'), 'held')
-  assert.equal(fork('patch', null, true), 'held')
-  assert.equal(fork('patch', 'skip'), 'skip')
-})
-
-test('a held fork update offers a pull request like any other held update', () => {
-  assert.deepEqual(actionsFor({ state: 'held', fork: true }), ['open-pr', 'skip'])
-  assert.deepEqual(actionsFor({ state: 'held' }), ['open-pr', 'skip'])
-  assert.doesNotMatch(refusalFor('open-pr', { state: 'detected', fork: true }), /retire it by hand/)
+test('a frozen fork update offers ship like any other frozen update', () => {
+  assert.deepEqual(actionsFor({ state: 'frozen', fork: true }), ['ship', 'skip'])
+  assert.deepEqual(actionsFor({ state: 'frozen' }), ['ship', 'skip'])
 })

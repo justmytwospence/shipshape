@@ -158,7 +158,7 @@ export function describeCron(expr: string): string | null {
 const Section: FC<{
   group: SettingGroup
   models?: string[]
-  /** Anything a section carries besides its fields: the digest preview, under Notifications. */
+  /** Anything a section carries besides its fields: the sinks under Notifications, the rules under Rules. */
   extra?: unknown
 }> = ({ group, models, extra }) => {
   const more = group.more ?? []
@@ -254,52 +254,62 @@ export const SettingsForm: FC<{
 )
 
 /**
- * What the next digest would say, and the two ways to prove the path works.
- *
- * Both buttons existed and were reachable from nowhere: the preview lived at a URL no page
- * linked to. They sit under Notifications now, beside the settings they test. Their
- * buttons are `type="button"`, so pressing one never submits the settings form around it.
+ * Where notifications go, and the way to prove the mail path works. Sits under
+ * Notifications beside the settings it describes; its button is `type="button"`, so
+ * pressing it never submits the settings form around it.
  */
-export const DigestPreview: FC<{ title: string | null; body: string | null; count: number }> = ({
-  title,
-  body,
-  count,
-}) => (
-  <div id="digest-preview" class="bg-base-200/50 flex flex-col gap-2 rounded p-3">
-    <p class="text-xs font-medium tracking-wide uppercase opacity-60">Next digest</p>
-    {count === 0 ? (
-      <p class="text-xs opacity-60">Nothing is waiting to be sent. An empty digest is never sent.</p>
+export const NotifyTools: FC<{ channels: string[]; sinks: string[] }> = ({ channels, sinks }) => (
+  <div id="notify-tools" class="bg-base-200/50 flex flex-col gap-2 rounded p-3">
+    <p class="text-xs font-medium tracking-wide uppercase opacity-60">Sinks</p>
+    {sinks.length === 0 ? (
+      <p class="text-xs opacity-60">
+        No notification sink is configured in policy.yaml (notify.sinks), so nothing is announced.
+      </p>
     ) : (
-      <>
-        <p class="text-sm font-medium">{title}</p>
-        <pre class="bg-base-100 overflow-x-auto rounded p-2 font-mono text-xs whitespace-pre-wrap">
-          {body}
-        </pre>
-      </>
+      <p class="text-xs">
+        {sinks.join(', ')}
+        <span class="opacity-60">
+          {channels.length > 0 ? ` -- decisions reach ${channels.join(', ')}` : ' -- none of them is reachable for decisions'}
+        </span>
+      </p>
     )}
     <div class="flex flex-wrap items-center gap-2">
       <button
         type="button"
         class="btn btn-ghost btn-sm tap gap-1"
-        hx-post="/settings/digest/send"
-        hx-target="#digest-result"
-        hx-swap="innerHTML"
-        hx-disabled-elt="this"
-      >
-        <Icon name="check" />
-        Send the digest now
-      </button>
-      <button
-        type="button"
-        class="btn btn-ghost btn-sm tap gap-1"
         hx-post="/settings/email/test"
-        hx-target="#digest-result"
+        hx-target="#notify-result"
         hx-swap="innerHTML"
         hx-disabled-elt="this"
       >
         Send a test email
       </button>
-      <span id="digest-result" class="text-xs" aria-live="polite"></span>
+      <span id="notify-result" class="text-xs" aria-live="polite"></span>
     </div>
+  </div>
+)
+
+/** The standing rules, read-only: they are written by Always ship and edited in policy.yaml. */
+export const RulesList: FC<{
+  rules: readonly { id: string; match: Record<string, unknown>; waive: readonly string[]; because: string }[]
+}> = ({ rules }) => (
+  <div id="rules" class="bg-base-200/50 flex flex-col gap-2 rounded p-3">
+    <p class="text-xs font-medium tracking-wide uppercase opacity-60">Rules</p>
+    {rules.length === 0 ? (
+      <p class="text-xs opacity-60">
+        None yet. Pressing Always ship on a decision writes one here, as a commit you can read and revert.
+      </p>
+    ) : (
+      <ul class="flex flex-col gap-1.5">
+        {rules.map((r) => (
+          <li class="text-xs">
+            <span class="font-mono font-medium">{r.id}</span>{' '}
+            <code class="bg-base-100 rounded px-1">{JSON.stringify(r.match)}</code> waives{' '}
+            <span class="font-medium">{r.waive.join(', ')}</span>
+            {r.because ? <span class="opacity-60"> -- {r.because}</span> : null}
+          </li>
+        ))}
+      </ul>
+    )}
   </div>
 )

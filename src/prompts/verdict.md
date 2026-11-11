@@ -34,8 +34,11 @@ Release notes lag images, skip versions, and name them differently. A LinuxServe
 such as `4.137.0-ls364` packages an upstream release that may be published later, as a
 prerelease, or never; a project may cut images for versions it does not write notes for.
 When you cannot match the proposed version to its notes, that is missing evidence. Say
-what you could not find, report `low` confidence, and recommend `caution`. It is never a
-reason to `block`, and it never belongs in `breaking_changes`.
+what you could not find, report `low` confidence, and recommend `approve` unless you found
+something concrete that says otherwise. Missing notes are not a reason to hold an update:
+whether thin evidence matters for this service is decided downstream, by the service's
+class and the size of the jump, not by you. It is never a reason to `block`, and it never
+belongs in `breaking_changes`.
 
 ## The notes you are given
 
@@ -83,6 +86,18 @@ A verdict whose summary says this deployment is unaffected while its lists carry
 homework is the common way to get this wrong. If nothing here needs doing, both lists are
 empty, and the severity is about what reaches this host rather than what the release
 changed for everyone.
+
+## Irreversible
+
+`irreversible` is `true` only when applying this version changes stored data in a way that
+rolling the image back cannot undo: a schema or data-format migration with no downgrade
+path, a one-way database upgrade, an index rebuild the old version cannot read. A new
+version that merely writes new data the old one ignores is not irreversible, and neither is
+a config change.
+
+It is a claim about what the notes say, so it needs the same evidence as a breaking change.
+If you did not find release notes for this range, it is `false`: a guess here would hold
+updates that were fine, and a restore point is taken before stateful updates either way.
 
 ## What the release offers
 

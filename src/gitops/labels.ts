@@ -4,7 +4,7 @@ import { execa } from 'execa'
 import { botIdentity, env } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { setLabel } from '../compose/edit.ts'
-import { TIER_LABELS } from '../policy.ts'
+import { CLASS_LABELS } from '../policy.ts'
 import { parseChangelogLabel, parseSourceLabel } from '../resolver/labels.ts'
 import { git, withGitLock } from './repo.ts'
 import { syncMain } from './sync.ts'
@@ -29,7 +29,7 @@ export interface SetServiceLabelResult {
   sha?: string
 }
 
-export type LabelKey = 'policy' | 'watch' | 'source' | 'changelog'
+export type LabelKey = 'class' | 'watch' | 'source' | 'changelog'
 
 export interface LabelChange {
   key: LabelKey
@@ -65,10 +65,10 @@ export async function setServiceLabels(o: {
 function prepare(c: LabelChange): { ok: true; change: LabelChange } | { ok: false; message: string } {
   if (c.value === null) return { ok: true, change: c }
   switch (c.key) {
-    case 'policy':
-      return (TIER_LABELS as readonly string[]).includes(c.value)
+    case 'class':
+      return (CLASS_LABELS as readonly string[]).includes(c.value)
         ? { ok: true, change: c }
-        : { ok: false, message: `"${c.value}" is not a policy shipshape accepts (${TIER_LABELS.join(', ')}).` }
+        : { ok: false, message: `"${c.value}" is not a class shipshape accepts (${CLASS_LABELS.join(', ')}).` }
     case 'watch':
       return WATCH_VALUES.has(c.value)
         ? { ok: true, change: c }
@@ -158,15 +158,16 @@ async function run(o: { stack: string; service: string; changes: LabelChange[] }
     if (!edited.ok) return { ok: false, message: `${rel}: ${edited.reason}` }
     next = edited.text
 
-    // Writing a policy while `shipshape.pr: on-request` stands would be silently inert:
-    // tierFor lets the pr label win, so the service stays held whatever the new policy
-    // says. Remove it in the same commit. (Removal of the policy itself leaves pr alone
-    // -- that is a return to label-less defaults, not a statement about holds.)
-    if (c.key === 'policy' && c.value !== null) {
-      const second = setLabel(next, service, 'shipshape.pr', null)
-      if (!second.ok) return { ok: false, message: `${rel}: ${second.reason}` }
-      removedPr ||= second.text !== next
-      next = second.text
+    // The v1 labels still stand on some services, and a class would sit beside them
+    // saying something else. The class wins when both are read, but a file that says two
+    // things is a file nobody trusts: remove them in the same commit.
+    if (c.key === 'class' && c.value !== null) {
+      for (const old of ['shipshape.policy', 'shipshape.pr']) {
+        const second = setLabel(next, service, old, null)
+        if (!second.ok) return { ok: false, message: `${rel}: ${second.reason}` }
+        removedPr ||= second.text !== next
+        next = second.text
+      }
     }
   }
 
@@ -213,7 +214,7 @@ async function run(o: { stack: string; service: string; changes: LabelChange[] }
     .split('\n')
     .filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l))
   const offending = changed.filter(
-    (l) => !/^[+-]\s*(shipshape\.(policy|watch|pr|source|changelog):|labels:\s*$)/.test(l),
+    (l) => !/^[+-]\s*(shipshape\.(policy|class|watch|pr|source|changelog):|labels:\s*$)/.test(l),
   )
   if (changed.length === 0 || offending.length > 0) {
     await restore()
@@ -251,7 +252,7 @@ async function run(o: { stack: string; service: string; changes: LabelChange[] }
   }
 
   const prNote = removedPr
-    ? ' Also removed shipshape.pr: on-request, which would otherwise have kept the service held regardless of the new policy.'
+    ? ' Also removed the v1 policy labels, which the class replaces.'
     : ''
   logEvent({
     level: 'info',
@@ -259,7 +260,7 @@ async function run(o: { stack: string; service: string; changes: LabelChange[] }
     stack,
     service,
     message: `${stack}/${service}: ${verb}`,
-    detail: `committed ${sha}${removedPr ? ', removed shipshape.pr' : ''}`,
+    detail: `committed ${sha}${removedPr ? ', removed the v1 policy labels' : ''}`,
   })
   return {
     ok: true,

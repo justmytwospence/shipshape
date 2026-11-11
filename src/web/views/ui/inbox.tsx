@@ -14,45 +14,25 @@ import type { AttentionItem, AttentionKind, RecentItem, UpdateView } from '../..
  */
 
 const GROUPS: Record<AttentionKind, { title: string; hint: string; icon: IconName }> = {
-  'deploy-failed': {
-    title: 'Deploy failed',
-    hint: 'the change is in the tree and the service is not running it',
+  broken: {
+    title: 'Broken',
+    hint: 'a deploy failed, rolled back or went degraded, and nothing newer has replaced it',
     icon: 'alert',
   },
-  'rolled-back': {
-    title: 'Rolled back',
-    hint: 'it failed verification and the previous version was put back',
-    icon: 'undo',
-  },
-  degraded: {
-    title: 'Degraded after the soak',
-    hint: 'it came up, then stopped looking healthy; nothing was reverted',
-    icon: 'alert',
+  decision: {
+    title: 'Waiting for you',
+    hint: 'one question each: ship, snooze, always ship or skip',
+    icon: 'rocket',
   },
   'ready-to-deploy': {
     title: 'Ready to deploy',
-    hint: 'merged, and this service is one you deploy yourself',
+    hint: 'merged by v1, and waiting for the button',
     icon: 'rocket',
-  },
-  'pr-waiting': {
-    title: 'Waiting for you',
-    hint: 'a pull request is open and nothing merges it but you',
-    icon: 'pull-request',
-  },
-  'on-request': {
-    title: 'Held on request',
-    hint: 'datastores and migrations: listed until you ask for the pull request',
-    icon: 'clock',
   },
   'rolling-moved': {
     title: 'Rolling tags moved',
     hint: 'nothing to change in git — redeploy to adopt it',
     icon: 'refresh',
-  },
-  'review-failed': {
-    title: 'Changelog unread',
-    hint: 'the review could not run, so nothing has read these release notes',
-    icon: 'eye',
   },
 }
 

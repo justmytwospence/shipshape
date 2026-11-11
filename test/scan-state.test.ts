@@ -9,9 +9,7 @@ import { join } from 'node:path'
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'shipshape-test-'))
 
 const { getDb } = await import('../src/db.ts')
-const { tierFor } = await import('../src/policy.ts')
-
-const DEFAULTS = { patch: 'auto', minor: 'auto', major: 'manual', digest: 'manual' } as const
+const { classFor } = await import('../src/policy.ts')
 
 /**
  * These exercise the transition rules that scan.ts implements, against the real schema.
@@ -30,7 +28,7 @@ function reset(): void {
   ).run()
 }
 
-const LIVE = `('detected','pr_open','held')`
+const LIVE = `('detected','pr_open','frozen')`
 
 function live(stack = 'miniflux', service = 'miniflux') {
   return getDb()
@@ -122,30 +120,29 @@ test('a vanished target is distinguishable from being caught up', () => {
   assert.equal(row.detail, 'target-vanished')
 })
 
-test('held rows are live but distinguishable from detected ones', () => {
-  insert('16', '18', 'major', 'held', 'held')
+test('frozen rows are live but distinguishable from detected ones', () => {
+  insert('16', '18', 'major', 'frozen', 'frozen')
   const rows = live()
   assert.equal(rows.length, 1)
-  assert.equal(rows[0]!.state, 'held')
-  // The "Open PR" action promotes it without losing the row.
-  getDb().prepare(`UPDATE updates SET state='detected', tier='manual' WHERE id=?`).run(rows[0]!.id)
+  assert.equal(rows[0]!.state, 'frozen')
+  // Shipping it promotes it without losing the row.
+  getDb().prepare(`UPDATE updates SET state='detected', tier='ask' WHERE id=?`).run(rows[0]!.id)
   assert.equal((live()[0] as Record<string, unknown>).state, 'detected')
 })
 
-test('tier assignment matches the policy engine for the real backlog shapes', () => {
-  const t = (magnitude: 'major' | 'minor' | 'patch' | 'digest', policyLabel: string | null, prLabel: string | null) =>
-    tierFor({ magnitude, policyLabel, prLabel, defaults: { ...DEFAULTS } })
+test('class assignment matches the policy engine for the real backlog shapes', () => {
+  const c = (classLabel: string | null, policyLabel: string | null, prLabel: string | null) =>
+    classFor({ classLabel, policyLabel, prLabel })
 
-  // miniflux 2.2.19 -> 2.3.3, ordinary auto service
-  assert.equal(t('minor', null, null), 'auto')
-  // immich v2.7.5 -> v3.1.0, a major
-  assert.equal(t('major', null, null), 'manual')
-  // authelia and friends: infrastructure pinned off the auto rung
-  assert.equal(t('minor', 'gated', null), 'manual')
+  // miniflux 2.2.19 -> 2.3.3, ordinary service: ships on its own, whatever the jump
+  assert.equal(c(null, null, null), 'normal')
+  // authelia and friends: infrastructure the v1 ladder pinned off the auto rung
+  assert.equal(c(null, 'attended', null), 'lifeline')
+  assert.equal(c(null, 'gated', null), 'ask')
   // postgres sidecar, dashboard-only
-  assert.equal(t('major', null, 'on-request'), 'held')
-  // bluesky/pds digest pin
-  assert.equal(t('digest', null, null), 'manual')
+  assert.equal(c(null, null, 'on-request'), 'frozen')
+  // the v2 label wins over the v1 ones
+  assert.equal(c('stateful', 'manual', null), 'stateful')
 })
 
 test('rolling movement is recorded as a digest row that can never become a PR', () => {
@@ -191,28 +188,23 @@ test('digest baselines bootstrap once and then only advance on movement', () => 
 test('a label change retiers an outstanding update on the next scan', () => {
   // The whole point of keeping labels in the compose files is that editing one takes
   // effect without recreating anything. If the tier were frozen at insert time, adding
-  // `shipshape.pr: on-request` to a service with an update already outstanding would
+  // `shipshape.class: frozen` to a service with an update already outstanding would
   // silently do nothing until that update happened to be superseded.
-  insert('16', '18', 'major', 'manual', 'detected')
+  insert('16', '18', 'major', 'ask', 'detected')
   const before = live()[0]!
-  assert.equal(before.tier, 'manual')
+  assert.equal(before.tier, 'ask')
   assert.equal(before.state, 'detected')
 
-  const nowHeld = tierFor({
-    magnitude: 'major',
-    policyLabel: null,
-    prLabel: 'on-request',
-    defaults: { ...DEFAULTS },
-  })
-  assert.equal(nowHeld, 'held')
+  const nowFrozen = classFor({ classLabel: 'frozen', policyLabel: null, prLabel: null })
+  assert.equal(nowFrozen, 'frozen')
 
   getDb()
     .prepare(`UPDATE updates SET tier=?, state=? WHERE id=?`)
-    .run(nowHeld, 'held', before.id)
+    .run(nowFrozen, 'frozen', before.id)
 
   const after = live()[0]!
-  assert.equal(after.tier, 'held')
-  assert.equal(after.state, 'held')
+  assert.equal(after.tier, 'frozen')
+  assert.equal(after.state, 'frozen')
   // The row survived -- retiering must not discard and recreate it.
   assert.equal(after.id, before.id)
 })

@@ -26,7 +26,7 @@ export const USAGE =
   'Context catalog: shipshape://usage and shipshape://status are fixed resources; ' +
   'shipshape://updates/{id} and shipshape://services/{stack}/{service} are bounded URI templates. ' +
   'Use known IDs/names, for example shipshape://updates/123, rather than guessing. The prompt is review-update (id). ' +
-  'Prompt/resource retrieval never authorizes or performs a merge, deploy, rollback, scan or paid reading. ' +
+  'Prompt/resource retrieval never authorizes or performs a ship, deploy, rollback, scan or paid reading. ' +
   'Deploy actions start background work; inspect existing state before retrying ambiguous results.'
 
 export function apiUsage() {
@@ -74,7 +74,7 @@ export function registerContext(server: McpServer) {
     description: 'Zero upstream requests. Includes timestamps and unknown-quota markers; never refreshes a registry or triggers a reading.',
   }, (uri) => resource(uri, { scan: scanInfo(), schedule: scheduleInfo(), usage: apiUsage() }))
   server.registerResource('update', new ResourceTemplate('shipshape://updates/{id}', { list: undefined }), {
-    title: 'Update review context', mimeType: 'application/json', description: 'Local update and current allowed_verbs; no merge/deploy or upstream calls. Maximum 120000 characters.',
+    title: 'Update review context', mimeType: 'application/json', description: 'Local update and current allowed_verbs; no ship/deploy or upstream calls. Maximum 120000 characters.',
   }, (uri, variables) => resource(uri, updateContext(z.coerce.number().int().positive().parse(variables.id))))
   const name = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/)
   server.registerResource('service', new ResourceTemplate('shipshape://services/{stack}/{service}', { list: undefined }), {

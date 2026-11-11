@@ -1,15 +1,15 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { PolicySchema } from '../src/config.ts'
-import { mergeDeploys, present, spoken, type PresentFacts } from '../src/updates/present.ts'
+import { present, spoken, type PresentFacts } from '../src/updates/present.ts'
 
 /**
- * The merge button and its confirmation say what will actually happen.
+ * The ship button and its confirmation say what will actually happen.
  *
- * Both were constants: "Merge & deploy" on services whose deploy waits for a button, and a
- * dialog promising a five-minute watch, a thirty-minute soak and an automatic rollback
- * whatever policy.yaml said -- including for pull requests that are reported, not rolled
- * back, when they fail.
+ * A confirmation that describes some other configuration than the one in force is worse
+ * than none: it is the sentence read right before acting. So it is derived from the same
+ * facts the code that acts reads -- including that a change carrying drafted edits is
+ * reported, not rolled back, when it fails.
  */
 
 const facts = (over: Partial<PresentFacts> = {}): PresentFacts => ({
@@ -17,49 +17,54 @@ const facts = (over: Partial<PresentFacts> = {}): PresentFacts => ({
   service: 'jellyfin',
   fromTag: '1.0.0',
   toTag: '1.1.0',
-  pr: { number: 7, scope: 'tag-only' },
-  members: [{ stack: 'media', service: 'jellyfin', tier: 'manual' }],
+  scope: 'tag-only',
+  members: [{ stack: 'media', service: 'jellyfin', cls: 'normal' }],
+  restorePoint: false,
   ...over,
 })
 
 const policy = PolicySchema.parse({})
 
-test('a service deployed by hand is merged, not merged and deployed', () => {
-  const p = present(['merge-deploy'], facts({ members: [{ stack: 'media', service: 'jellyfin', tier: 'attended' }] }), policy)
-  assert.equal(p['merge-deploy']?.label, 'Merge')
-  assert.ok(p['merge-deploy']?.steps?.some((s) => /press Deploy/.test(s)))
-  assert.ok(!p['merge-deploy']?.steps?.some((s) => /docker compose/.test(s)))
+test('ship says it is a merge commit, and the deploy that follows', () => {
+  const p = present(['ship'], facts(), policy)['ship']!
+  assert.equal(p.label, 'Ship')
+  assert.equal(p.steps![0], 'merge it into main with a merge commit')
+  assert.ok(p.steps!.some((s) => /docker compose/.test(s)))
+  assert.ok(p.steps!.some((s) => /automatically/.test(s)))
 })
 
-test('one member that waits makes the whole group wait', () => {
-  const f = facts({
-    members: [
-      { stack: 'media', service: 'jellyfin', tier: 'manual' },
-      { stack: 'media', service: 'db', tier: 'held' },
-    ],
-  })
-  assert.equal(mergeDeploys(f), false)
-  const steps = present(['merge-deploy'], f, policy)['merge-deploy']!.steps!
-  assert.ok(steps.some((s) => /also updates db/.test(s)))
+test('the other services a decision covers are named, and a long list is cut', () => {
+  const members = [{ stack: 'media', service: 'jellyfin', cls: 'normal' as const }]
+  for (let i = 0; i < 6; i++) members.push({ stack: `s${i}`, service: `side${i}`, cls: 'normal' as const })
+  const steps = present(['ship'], facts({ members }), policy)['ship']!.steps!
+  assert.ok(steps.some((s) => /also updates side0, side1, side2, side3 and 2 more/.test(s)))
+})
+
+test('a restore point is promised only when one will be taken', () => {
+  const withIt = present(['ship'], facts({ restorePoint: true }), policy)['ship']!.steps!
+  const without = present(['ship'], facts(), policy)['ship']!.steps!
+  assert.ok(withIt.some((s) => /restore point/.test(s)))
+  assert.ok(!without.some((s) => /restore point/.test(s)))
 })
 
 test('the confirmation is written from policy.yaml', () => {
-  const tuned = PolicySchema.parse({
-    merge_method: 'rebase',
-    deploy: { verify_window_s: 120, soak_s: 0, rollback: 'suggest' },
-  })
-  const p = present(['merge-deploy'], facts(), tuned)['merge-deploy']!
-  assert.equal(p.label, 'Merge & deploy')
-  assert.equal(p.steps![0], 'rebase #7 onto main')
+  const tuned = PolicySchema.parse({ deploy: { verify_window_s: 120, soak_s: 0, rollback: 'suggest' } })
+  const p = present(['ship'], facts(), tuned)['ship']!
   assert.ok(p.steps!.includes('watch it for up to 2 minutes'))
   assert.ok(!p.steps!.some((s) => /later before calling it verified/.test(s)), 'no soak when soak_s is 0')
   assert.ok(p.steps!.some((s) => /tell you how to put the old version back/.test(s)))
 })
 
-test('a pull request carrying more than a tag is never promised a rollback', () => {
-  const p = present(['merge-deploy'], facts({ pr: { number: 7, scope: 'proposed' } }), policy)['merge-deploy']!
+test('a change carrying more than a tag is never promised a rollback', () => {
+  const p = present(['ship'], facts({ scope: 'proposed' }), policy)['ship']!
   assert.ok(!p.steps!.some((s) => /automatically/.test(s)))
   assert.ok(p.steps!.some((s) => /rather than roll back/.test(s)))
+})
+
+test('always ship says it writes a rule before it ships', () => {
+  const p = present(['always-ship'], facts(), policy)['always-ship']!
+  assert.match(p.steps![0]!, /standing rule to policy.yaml/)
+  assert.equal(present(['snooze'], facts(), policy)['snooze']!.label, 'Snooze 1 week')
 })
 
 test('durations read the way a person says them', () => {

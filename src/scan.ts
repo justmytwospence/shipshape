@@ -1,9 +1,10 @@
-import { configured, env, loadPolicy, type Policy } from './config.ts'
+import { readFileSync } from 'node:fs'
+import { configured, env, loadPolicy, paths, retiredKeys, type Policy } from './config.ts'
 import { getDb, logEvent } from './db.ts'
 import { scanRepo, type ScannedService } from './compose/scan.ts'
 import { detect, type Detection } from './detect.ts'
 import { checkDigest, shortDigest, type DigestCheck } from './digests.ts'
-import { tierFor } from './policy.ts'
+import { classFor } from './policy.ts'
 import type { TagInfo } from './registry/index.ts'
 import { resolveWatched } from './resolver/index.ts'
 import type { Magnitude } from './versions/patterns.ts'
@@ -48,6 +49,7 @@ export async function runScan(trigger: 'cron' | 'manual'): Promise<ScanResult> {
     const services = scanRepo(env.repoDir, policy.exclude_stacks)
     syncInventory(services)
     reportUnknownLabels(services)
+    reportRetiredPolicyKeys()
     // Before detection, so a service that stopped being a fork since the last scan has
     // its incident closed even if everything after this fails.
     await reconcileForks(services)
@@ -136,6 +138,24 @@ export async function scanOne(svc: ScannedService, policy: Policy): Promise<stri
   return outcome
 }
 
+/** policy.yaml keys v2 no longer reads. They load fine; saying so keeps them from being believed. */
+function reportRetiredPolicyKeys(): void {
+  let raw: string
+  try {
+    raw = readFileSync(paths.policy, 'utf8')
+  } catch {
+    return
+  }
+  const keys = retiredKeys(raw)
+  if (keys.length === 0) return
+  logEvent({
+    level: 'warn',
+    kind: 'policy',
+    message: 'policy.yaml carries retired keys that nothing reads',
+    detail: keys.join(', '),
+  })
+}
+
 function summarise(counts: Record<string, number>, durationS: number): string {
   const parts: string[] = []
   const say = (k: string, label: string) => {
@@ -161,12 +181,14 @@ function syncInventory(services: ScannedService[]): void {
   const upsert = db.prepare(
     `INSERT INTO images (stack, service, compose_file, image_ref, registry, repository,
                          current_tag, current_digest, watched, pattern, tag_include,
-                         policy_label, source_label, changelog_label, claude_label, deploy_label,
+                         policy_label, class_label, snapshot_label, backup_job_label,
+                         source_label, changelog_label, claude_label, deploy_label,
                          probe_port, archive_pre, network_mode, unwatchable,
                          fork_upstream, fork_waits_on, base_dockerfile, last_seen_at)
      VALUES (@stack, @service, @compose_file, @image_ref, @registry, @repository,
              @current_tag, @current_digest, @watched, @pattern, @tag_include,
-             @policy_label, @source_label, @changelog_label, @claude_label, @deploy_label,
+             @policy_label, @class_label, @snapshot_label, @backup_job_label,
+             @source_label, @changelog_label, @claude_label, @deploy_label,
              @probe_port, @archive_pre, @network_mode, @unwatchable,
              @fork_upstream, @fork_waits_on, @base_dockerfile, @last_seen_at)
      ON CONFLICT(stack, service) DO UPDATE SET
@@ -175,6 +197,8 @@ function syncInventory(services: ScannedService[]): void {
        current_tag = excluded.current_tag, current_digest = excluded.current_digest,
        watched = excluded.watched, pattern = excluded.pattern,
        tag_include = excluded.tag_include, policy_label = excluded.policy_label,
+       class_label = excluded.class_label, snapshot_label = excluded.snapshot_label,
+       backup_job_label = excluded.backup_job_label,
        source_label = excluded.source_label, changelog_label = excluded.changelog_label,
        claude_label = excluded.claude_label,
        deploy_label = excluded.deploy_label, probe_port = excluded.probe_port,
@@ -200,6 +224,9 @@ function syncInventory(services: ScannedService[]): void {
         pattern: s.pattern,
         tag_include: s.tagInclude,
         policy_label: s.policyLabel,
+        class_label: s.classLabel,
+        snapshot_label: s.snapshotLabel,
+        backup_job_label: s.backupJobLabel,
         source_label: s.sourceLabel,
         changelog_label: s.changelogLabel ?? null,
         claude_label: s.claudeLabel,
@@ -234,13 +261,17 @@ export function refreshServiceLabels(stack: string, service: string): boolean {
   if (!svc) return false
   getDb()
     .prepare(
-      `UPDATE images SET watched = ?, policy_label = ?, source_label = ?, changelog_label = ?,
+      `UPDATE images SET watched = ?, policy_label = ?, class_label = ?, snapshot_label = ?,
+                         backup_job_label = ?, source_label = ?, changelog_label = ?,
                          claude_label = ?, deploy_label = ?
        WHERE stack = ? AND service = ?`,
     )
     .run(
       svc.watched ? 1 : 0,
       svc.policyLabel,
+      svc.classLabel,
+      svc.snapshotLabel,
+      svc.backupJobLabel,
       svc.sourceLabel,
       svc.changelogLabel ?? null,
       svc.claudeLabel,
@@ -359,7 +390,7 @@ function insertUpdate(opts: {
   toTag: string
   magnitude: Magnitude
   tier: string
-  state: 'detected' | 'held'
+  state: 'detected' | 'frozen'
   detail?: string
 }): void {
   const now = new Date().toISOString()
@@ -411,13 +442,11 @@ async function persist(
       const currentTag = svc.ref?.tag ?? ''
       const existing = liveRows(svc.stack, svc.service)
 
-      const tier = tierFor({
-        magnitude: d.magnitude as Magnitude,
+      const tier = classFor({
+        classLabel: svc.classLabel,
         policyLabel: svc.policyLabel,
         prLabel: svc.prLabel,
         dormant: svc.dormant,
-        fork: !!svc.fork,
-        defaults: policy.defaults,
       })
 
       const same = existing.find((r) => r.from_tag === currentTag && r.to_tag === d.tag)
@@ -430,7 +459,7 @@ async function persist(
         // `shipshape.pr: on-request` to a service with an outstanding update would
         // silently do nothing until that update happened to be superseded.
         if (same.tier !== tier) {
-          const nextState = tier === 'held' ? 'held' : same.state === 'held' ? 'detected' : same.state
+          const nextState = tier === 'frozen' ? 'frozen' : same.state === 'frozen' ? 'detected' : same.state
           db.prepare(`UPDATE updates SET tier = ?, state = ?, updated_at = ? WHERE id = ?`)
             .run(tier, nextState, now, same.id)
           logEvent({
@@ -473,7 +502,7 @@ async function persist(
         toTag: d.tag,
         magnitude: d.magnitude as Magnitude,
         tier,
-        state: tier === 'held' ? 'held' : 'detected',
+        state: tier === 'frozen' ? 'frozen' : 'detected',
         detail: svc.fork ? 'fork' : undefined,
       })
       logEvent({
@@ -554,13 +583,11 @@ function persistDigest(svc: ScannedService, c: DigestCheck, policy: Policy): str
       setImageStatus(svc, null, null)
       const fromTag = `${tag}@${c.from}`
       const toTag = `${tag}@${c.to}`
-      const tier = tierFor({
-        magnitude: 'digest',
+      const tier = classFor({
+        classLabel: svc.classLabel,
         policyLabel: svc.policyLabel,
         prLabel: svc.prLabel,
         dormant: svc.dormant,
-        fork: !!svc.fork,
-        defaults: policy.defaults,
       })
       const existing = liveRows(svc.stack, svc.service)
       const same = existing.find((r) => r.from_tag === fromTag && r.to_tag === toTag)
@@ -569,7 +596,7 @@ function persistDigest(svc: ScannedService, c: DigestCheck, policy: Policy): str
         if (same.tier !== tier) {
           getDb()
             .prepare(`UPDATE updates SET tier = ?, state = ?, updated_at = ? WHERE id = ?`)
-            .run(tier, tier === 'held' ? 'held' : 'detected', new Date().toISOString(), same.id)
+            .run(tier, tier === 'frozen' ? 'frozen' : 'detected', new Date().toISOString(), same.id)
           return 'retiered'
         }
         return 'unchanged'
@@ -593,7 +620,7 @@ function persistDigest(svc: ScannedService, c: DigestCheck, policy: Policy): str
         toTag,
         magnitude: 'digest',
         tier,
-        state: tier === 'held' ? 'held' : 'detected',
+        state: tier === 'frozen' ? 'frozen' : 'detected',
         detail: svc.fork ? 'fork' : undefined,
       })
       logEvent({
@@ -628,8 +655,8 @@ function persistDigest(svc: ScannedService, c: DigestCheck, policy: Policy): str
         fromTag,
         toTag,
         magnitude: 'digest',
-        tier: unmovable ? 'held' : 'manual',
-        state: unmovable ? 'held' : 'detected',
+        tier: unmovable ? 'frozen' : 'ask',
+        state: unmovable ? 'frozen' : 'detected',
         detail: svc.fork ? 'fork' : 'rolling',
       })
       logEvent({

@@ -36,11 +36,13 @@ export function stageOf(u: UpdateView): { label: string; cls: string; live?: boo
   const o = (k: Outcome) => ({ label: OUTCOMES[k].badge, cls: OUTCOMES[k].badgeCls })
   switch (u.state) {
     case 'detected':
-      return u.rolling
-        ? { label: 'Rolling tag moved', cls: 'badge-warning' }
-        : { label: 'Detected', cls: 'badge-ghost' }
-    case 'held':
-      return { label: 'Held on request', cls: 'badge-ghost' }
+      if (u.rolling) return { label: 'Rolling tag moved', cls: 'badge-warning' }
+      if (u.snoozedUntil) return { label: 'Snoozed', cls: 'badge-ghost' }
+      if (u.shipStatus === 'decision') return { label: 'Waiting on you', cls: 'badge-warning' }
+      if (u.shipStatus === 'waiting') return { label: 'Waiting', cls: 'badge-ghost' }
+      return { label: 'Shipping', cls: 'badge-info' }
+    case 'frozen':
+      return { label: 'Frozen', cls: 'badge-ghost' }
     case 'pr_open':
       return o('opened')
     case 'merged':
@@ -212,46 +214,6 @@ export const ScanStatus: FC<{ running: boolean; lastAt: string | null }> = ({
   ) : (
     <span class="text-xs opacity-60">{lastAt ? `scanned ${relative(lastAt)}` : 'idle'}</span>
   )
-
-/**
- * What unpausing would set moving, asked of the code that does the merging.
- *
- * On the Inbox while paused. It used to sit at the bottom of Status, where the one
- * question it answers was never being asked, and it called a refusal "held" -- the word
- * the interface reserves for the on-request rung.
- */
-export const MergePreview: FC<{
-  decisions: { number: number; merge: boolean; reason?: string }[]
-  paused: boolean
-}> = ({ decisions, paused }) => {
-  const would = decisions.filter((d) => d.merge)
-  return (
-    <div class="flex flex-col gap-1 text-xs">
-      <p class="text-sm">
-        <span class="font-medium">
-          {would.length} {would.length === 1 ? 'pull request' : 'pull requests'}
-        </span>{' '}
-        would merge on {would.length === 1 ? 'its' : 'their'} own{paused ? ' when unpaused' : ''}.
-      </p>
-      {decisions.length > 0 ? (
-        <details>
-          <summary class="tap inline-flex cursor-pointer items-center text-xs opacity-70">Why, for each</summary>
-          <div class="mt-1 flex flex-col gap-1">
-            {decisions.map((d) => (
-              <div class="flex items-baseline gap-2">
-                <span class="font-mono text-xs">#{d.number}</span>
-                <span class={`badge badge-xs badge-soft ${d.merge ? 'badge-success' : 'badge-neutral'}`}>
-                  {d.merge ? 'would merge' : 'waits'}
-                </span>
-                {d.reason ? <span class="text-xs opacity-60">{d.reason}</span> : null}
-              </div>
-            ))}
-          </div>
-        </details>
-      ) : null}
-    </div>
-  )
-}
 
 export const EmptyState: FC<{ icon: IconName; title: string; hint?: string }> = ({
   icon,

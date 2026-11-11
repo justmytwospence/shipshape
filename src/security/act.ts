@@ -4,7 +4,6 @@ import { scanRepo, type ScannedService } from '../compose/scan.ts'
 import { formatImageRef, parseImageRef } from '../images/ref.ts'
 import { hubRemaining } from '../registry/http.ts'
 import { notify, resolveIncident, type IncidentAction, type Priority } from '../notify/index.ts'
-import { postIssueComment } from '../gitops/comments.ts'
 import { exploited, readIncident } from './feed.ts'
 import { incidentTargets } from './extract.ts'
 import { checkFix, matchPackages, type Hit, type Target } from './match.ts'
@@ -19,7 +18,7 @@ import { hasInventory, inventory, pullCandidate, scanImage, type Exec, type Runn
  */
 
 /** States in which an update could still be the way out of an exposure. */
-const CANDIDATE_STATES = ['detected', 'held', 'pr_open']
+const CANDIDATE_STATES = ['detected', 'frozen', 'pr_open']
 /** Don't pull from Docker Hub below this many remaining pulls; scans need them more. */
 const HUB_FLOOR = 60
 /** A verified fix that has not landed after this long gets a card anyway. */
@@ -318,9 +317,10 @@ export async function syncSecurityCards(policy: Policy): Promise<number> {
       ? all
           .filter((l) => l.fix?.pr)
           .slice(0, 3)
-          .map((l) => ({ emoji: '🚀', label: `merge ${l.service}`, do: { target: 'shipshape' as const, verb: 'merge-deploy', update: l.fix!.id } }))
+          .map((l) => ({ emoji: '🚀', label: `ship ${l.service}`, do: { target: 'shipshape' as const, verb: 'ship', update: l.fix!.id } }))
       : undefined
     await notify({
+      eventClass: 'security',
       key,
       title: `${inc.title.slice(0, 120)} · ${all.length} service${all.length === 1 ? '' : 's'} exposed`,
       body: `${body}\n\n${inc.url ?? ''}`.trim(),
@@ -339,45 +339,6 @@ export async function syncSecurityCards(policy: Policy): Promise<number> {
   return changed
 }
 
-/** Say on each fixing pull request, once, what it fixes and how that was established. */
-export async function commentFixes(policy: Policy): Promise<number> {
-  if (policy.security.mode !== 'on' || !env.githubToken) return 0
-  const db = getDb()
-  const rows = db
-    .prepare(
-      `SELECT f.update_id, f.slug, f.evidence, i.title, i.url, p.number
-         FROM security_fixes f
-         JOIN security_incidents i ON i.slug = f.slug
-         JOIN pr_updates pu ON pu.update_id = f.update_id
-         -- Merged too: a critical fix can merge in the same minute it is verified, before
-         -- this pass runs, and the evidence belongs on its pull request either way.
-         JOIN prs p ON p.id = pu.pr_id AND p.state IN ('open', 'merged')
-        WHERE f.commented = 0`,
-    )
-    .all() as { update_id: number; slug: string; evidence: string; title: string; url: string | null; number: number }[]
-  let n = 0
-  for (const r of rows) {
-    const ev = JSON.parse(r.evidence) as SecurityFix['evidence']
-    const lines = ev.map((e) => `- \`${e.name}\` (${e.type}): ${e.from} → ${e.to.join(', ')}`)
-    const body = [
-      `### Security fix`,
-      `This update removes an exposure to **${r.title}**${r.url ? ` ([advisory](${r.url}))` : ''}.`,
-      '',
-      'Read from both images\' own inventories (syft), not from the advisory:',
-      ...lines,
-      '',
-      policy.security.auto_merge
-        ? 'Security fixes may merge past the manual rung and a `caution` review; a hold, a `block` review or pause still stop it.'
-        : 'Auto-merge for security fixes is off; this needs your merge as usual.',
-    ].join('\n')
-    const id = await postIssueComment(r.number, 'security', body)
-    if (id !== null) {
-      db.prepare(`UPDATE security_fixes SET commented = 1 WHERE update_id = ? AND slug = ?`).run(r.update_id, r.slug)
-      n++
-    }
-  }
-  return n
-}
 
 /** Incident targets, re-exported for the loop. */
 export { incidentTargets }

@@ -12,7 +12,6 @@ import {
   type ServiceObservation,
 } from './probe.ts'
 import type { Verdict } from './verify.ts'
-import { deployLine, routine } from '../notify/digest.ts'
 import { changeText } from '../gitops/body.ts'
 import { withGitLock } from '../gitops/repo.ts'
 import { syncMain } from '../gitops/sync.ts'
@@ -294,18 +293,6 @@ export async function runDeployJob(
       })
       ran = true
 
-      // The versions, not the timing: `deploys.detail` keeps "up in Ns" for the timeline.
-      // The link only when there is a pull request -- a redeploy has none, and used to
-      // record "#null deployed" pointing at /pull/null.
-      const members = carriedUpdates(job.id)
-      const change = changeText(members)
-      const service = members.length === 1 ? members[0]!.service : undefined
-      const url =
-        job.pr_number != null ? `https://github.com/${env.githubRepo}/pull/${job.pr_number}` : undefined
-      const leftList = outcome.ok
-        ? outcome.left.map((l) => ({ service: l.service, absent: l.state === 'absent' || l.state === 'removing' }))
-        : []
-
       // A service the deploy left is finished with, whatever became of the half that came
       // up: the merge stands and nothing more is owed. Marked first, so every branch below
       // moves only the services it actually brought up.
@@ -313,12 +300,7 @@ export async function runDeployJob(
 
       if (outcome.ok && outcome.up.length === 0) {
         // Nothing was running, so nothing was started and there is nothing to soak. The
-        // line says so under its own heading; a redeploy with no pull request says nothing,
-        // since nothing landed and nothing changed.
-        const line = deployLine({ prNumber: job.pr_number, change, broughtUp: 0, left: leftList })
-        if (line) {
-          await routine({ category: line.category, stack: job.stack, service, summary: line.summary, detail: outcome.detail, url })
-        }
+        // Activity page has the story; nothing is announced.
       } else if (outcome.ok && outcome.healthy) {
         markUpdates(job.id, 'deployed', { services: outcome.up })
         // Passing the window is not the same as being fine. The failures a window misses
@@ -332,28 +314,6 @@ export async function runDeployJob(
         } else {
           markUpdates(job.id, 'verified', { services: outcome.up })
           db.prepare(`UPDATE deploys SET status = 'verified' WHERE id = ?`).run(job.id)
-        }
-        const degraded = outcome.verdict?.kind === 'degraded' ? outcome.verdict : null
-        const line = deployLine({
-          prNumber: job.pr_number,
-          change,
-          broughtUp: outcome.up.length,
-          left: leftList,
-          warnings: degraded !== null,
-        })
-        if (line) {
-          await routine({
-            category: line.category,
-            stack: job.stack,
-            service,
-            summary: line.summary,
-            // The warnings, then a sentence per service left or brought back: the summary
-            // names them, and this is where each one says what compose would do.
-            detail:
-              [degraded ? `with warnings — ${degraded.detail}` : null, ...outcome.notes].filter(Boolean).join('\n') ||
-              undefined,
-            url,
-          })
         }
       } else if (outcome.ok && outcome.verdict?.kind === 'failed') {
         // Verification said no. Everything from here is remediation -- of what came up, and
@@ -416,6 +376,7 @@ export async function runDeployJob(
           job.id,
         )
         await notify({
+          eventClass: 'broken',
           key: `shipshape:deploy:${job.stack}`,
           title: `shipshape: deploy of ${job.stack} could not be run`,
           body: `#${job.pr_number}: ${(err as Error).message.slice(0, 300)}\n\nThe merge stands; deploy by hand. The command is on the pull request.`,
@@ -538,6 +499,7 @@ export async function runRechecks(
       detail,
     })
     await notify({
+      eventClass: 'broken',
       key: `shipshape:deploy:${row.stack}`,
       title: `shipshape: ${row.stack} degraded after deploying`,
       body:

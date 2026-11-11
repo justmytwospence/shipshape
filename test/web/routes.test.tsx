@@ -70,9 +70,10 @@ test('settings is one page, and every section explains itself on it', async () =
   }
   assert.match(html, /A deploy never changes whether a service is running\./, 'the long prose is folded in, not dropped')
   assert.match(html, /<summary[^>]*>[\s\S]{0,400}More/, 'behind a More disclosure')
-  // The digest preview and its two buttons used to live at a URL no page linked to.
-  assert.match(html, /hx-post="\/settings\/digest\/send"/)
+  // The sinks, the mail test, and the read-only rules list sit under their own headings.
   assert.match(html, /hx-post="\/settings\/email\/test"/)
+  assert.match(html, /id="rules"/)
+  assert.doesNotMatch(html, /\/settings\/digest\/send/, 'there is no digest to send')
   // No tabs, and no prompt editors: prompts are files in the repository now.
   assert.doesNotMatch(html, /href="\/settings\/advanced"/)
   assert.doesNotMatch(html, /\/settings\/prompt\//)
@@ -220,7 +221,7 @@ test('an operator verb always answers, whether or not it was allowed', async () 
   // htmx swaps nothing on a 4xx: a refusal that returned one would look like a button
   // that did nothing. Every verb replies 200 with a sentence, and says which it was in
   // the toast rather than in the status code.
-  for (const verb of ['dismiss', 'open-pr', 'deploy', 'redeploy', 'retry', 'rollback', 'ack', 'rerun-review']) {
+  for (const verb of ['dismiss', 'ship', 'snooze', 'always-ship', 'deploy', 'redeploy', 'retry', 'rollback', 'ack', 'rerun-review']) {
     const res = await app.request(`/updates/9999/${verb}`, {
       method: 'POST',
       headers: { 'HX-Request': 'true' },
@@ -263,7 +264,7 @@ test('a toast survives the punctuation the messages are written with', async () 
 
 test('every message a verb can produce fits in a header', async () => {
   // The escaping is done once, centrally; this is the check that nothing bypasses it.
-  for (const verb of ['deploy', 'redeploy', 'retry', 'rollback', 'ack', 'dismiss', 'open-pr']) {
+  for (const verb of ['deploy', 'redeploy', 'retry', 'rollback', 'ack', 'dismiss', 'ship', 'snooze', 'always-ship']) {
     const res = await app.request(`/updates/1/${verb}`, {
       method: 'POST',
       headers: { 'HX-Request': 'true' },

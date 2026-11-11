@@ -42,9 +42,10 @@ function compose(service: string, proposeLabel?: string) {
   return `services:\n  ${service}:\n    image: example/${service}:1.0.0\n    labels:\n${labels}\n`
 }
 
-/** One watched service with an open pull request and a verdict, as the query expects it. */
+const idOf: Record<string, number> = {}
+
+/** One watched service with a detected update and a verdict, as the query expects it. */
 function seed(opts: {
-  number: number
   stack: string
   recommendation: string | null
   migrationSteps: string[]
@@ -62,21 +63,11 @@ function seed(opts: {
     .prepare(
       `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state,
                             detected_at, updated_at)
-       VALUES (?, ?, ?, '1.0.0', '1.1.0', 'minor', 'manual', 'pr_open', ?, ?)`,
+       VALUES (?, ?, ?, '1.0.0', '1.1.0', 'minor', 'ask', 'detected', ?, ?)`,
     )
     .run(opts.stack, opts.stack, image, now, now)
+  idOf[opts.stack] = Number(u.lastInsertRowid)
 
-  const p = db
-    .prepare(
-      `INSERT INTO prs (number, branch, head_sha_pushed, state, user_owned, scope, created_at)
-       VALUES (?, ?, 'abc123', 'open', 0, 'tag-only', ?)`,
-    )
-    .run(opts.number, `shipshape/${opts.stack}`, now)
-
-  db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(
-    p.lastInsertRowid,
-    u.lastInsertRowid,
-  )
   db.prepare(
     `INSERT INTO verdicts (image, from_tag, to_tag, summary, severity, breaking_changes,
                            migration_steps, recommendation, confidence, sources, created_at)
@@ -100,32 +91,32 @@ function writeStack(stack: string, proposeLabel?: string) {
 
 // ------------------------------------------------------- work exists, mode says no
 
-test('under off, a pull request the review named work for is declined, not ignored', () => {
+test('under off, an update the review named work for is declined, not ignored', () => {
   writeStack('pihole')
-  seed({ number: 132, stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
+  seed({ stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
 
   const r = pickCandidate('off')
   assert.equal(r.candidate, null, 'off must not draft on its own')
   assert.ok(r.declined, 'but it must say there was something to draft')
-  assert.equal(r.declined?.number, 132)
+  assert.equal(r.declined?.stack, 'pihole')
 })
 
-test('under auto the same pull request is drafted', () => {
+test('under auto the same update is drafted', () => {
   writeStack('pihole')
-  seed({ number: 132, stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
+  seed({ stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
 
   const r = pickCandidate('auto')
-  assert.equal(r.candidate?.number, 132)
+  assert.equal(r.candidate?.stack, 'pihole')
   assert.equal(r.declined, null, 'a picked candidate is not also a declined one')
 })
 
 // ---------------------------------------------------------- nothing to draft at all
 
 test('an approved update with no steps is neither drafted nor declined', () => {
-  // The distinction the operator reads: this pull request genuinely needs no change, and
+  // The distinction the operator reads: this update genuinely needs no change, and
   // must never be reported as one that was held back.
   writeStack('ddclient')
-  seed({ number: 82, stack: 'ddclient', recommendation: 'approve', migrationSteps: [] })
+  seed({ stack: 'ddclient', recommendation: 'approve', migrationSteps: [] })
 
   const r = pickCandidate('off')
   assert.equal(r.candidate, null)
@@ -136,7 +127,7 @@ test('a service that opted out is not reported as declined by mode', () => {
   // `shipshape.propose: none` is the operator's own answer, already given per service.
   // Reporting it every day as work waiting on them would be noise, not news.
   writeStack('pihole', 'none')
-  seed({ number: 132, stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
+  seed({ stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
 
   const r = pickCandidate('off')
   assert.equal(r.candidate, null)
@@ -145,34 +136,34 @@ test('a service that opted out is not reported as declined by mode', () => {
 
 // --------------------------------------------------------------- the button bypass
 
-test('the per-PR button bypasses the mode check and nothing else', () => {
+test('the button bypasses the mode check and nothing else', () => {
   writeStack('pihole')
-  seed({ number: 132, stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
+  seed({ stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
 
-  const r = pickCandidate('off', 132)
-  assert.equal(r.candidate?.number, 132, 'pressing the button drafts whatever the mode says')
+  const r = pickCandidate('off', idOf.pihole)
+  assert.equal(r.candidate?.stack, 'pihole', 'pressing the button drafts whatever the mode says')
   assert.equal(r.declined, null)
 })
 
 test('the button still refuses a service that opted out', () => {
   writeStack('pihole', 'none')
-  seed({ number: 132, stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
+  seed({ stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
 
-  assert.equal(pickCandidate('off', 132).candidate, null)
+  assert.equal(pickCandidate('off', idOf.pihole).candidate, null)
 })
 
 // --------------------------------------------------------- only the first is reported
 
-test('declined names one pull request, not the backlog', () => {
+test('declined names one update, not the backlog', () => {
   // A pass drafts at most one, so it reports at most one. The count is the thing that
   // would have to be kept accurate as the backlog moves, and nothing reads it.
   writeStack('homepage')
   writeStack('n8n')
-  seed({ number: 62, stack: 'homepage', recommendation: 'block', migrationSteps: ['a'] })
-  seed({ number: 91, stack: 'n8n', recommendation: 'block', migrationSteps: ['a', 'b'] })
+  seed({ stack: 'homepage', recommendation: 'block', migrationSteps: ['a'] })
+  seed({ stack: 'n8n', recommendation: 'block', migrationSteps: ['a', 'b'] })
 
   const r = pickCandidate('off')
-  assert.equal(r.declined?.number, 62, 'the one it would have drafted: lowest number first')
+  assert.equal(r.declined?.stack, 'homepage', 'the one it would have drafted: lowest id first')
 })
 
 // ------------------------------------------------------- what counts as work
@@ -182,51 +173,62 @@ test('a caution that names no steps is not drafting work', () => {
   // configuration change. Each of these used to cost a code-model call that came back
   // with nothing to do.
   writeStack('homepage')
-  seed({ number: 62, stack: 'homepage', recommendation: 'caution', migrationSteps: [] })
+  seed({ stack: 'homepage', recommendation: 'caution', migrationSteps: [] })
   assert.equal(pickCandidate('auto').candidate, null)
 })
 
 // ------------------------------------------------------------- failed drafts
 
-function failedDraft(number: number, attempts: number, nextAttemptAt: string | null) {
+function failedDraft(stack: string, attempts: number, nextAttemptAt: string | null) {
   const db = getDb()
-  const pr = db.prepare(`SELECT id FROM prs WHERE number = ?`).get(number) as { id: number }
-  const u = db.prepare(`SELECT update_id FROM pr_updates WHERE pr_id = ?`).get(pr.id) as { update_id: number }
+  const updateId = idOf[stack]!
+  const info = db
+    .prepare(
+      `INSERT INTO prs (number, branch, head_sha_pushed, state, scope, kind, created_at)
+       VALUES (0, ?, '', 'open', 'tag-only', 'local', ?)`,
+    )
+    .run(`shipshape/${stack}--draft`, new Date().toISOString())
+  db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(info.lastInsertRowid, updateId)
   db.prepare(
     `INSERT INTO proposals (pr_id, update_id, ops, notes, changed, error, created_at, retryable, attempts, next_attempt_at)
      VALUES (?, ?, '[]', '[]', '[]', 'rate limited', ?, 1, ?, ?)`,
-  ).run(pr.id, u.update_id, new Date().toISOString(), attempts, nextAttemptAt)
+  ).run(info.lastInsertRowid, updateId, new Date().toISOString(), attempts, nextAttemptAt)
 }
 
 test('a draft that failed waits out its backoff before it is tried again', () => {
   writeStack('pihole')
-  seed({ number: 132, stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
-  failedDraft(132, 1, new Date(Date.now() + 60_000).toISOString())
+  seed({ stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
+  failedDraft('pihole', 1, new Date(Date.now() + 60_000).toISOString())
   assert.equal(pickCandidate('auto').candidate, null, 'not every tick')
 
   getDb().exec(`DELETE FROM proposals`)
-  failedDraft(132, 1, new Date(Date.now() - 60_000).toISOString())
-  assert.equal(pickCandidate('auto').candidate?.number, 132, 'tried again once the wait is over')
+  failedDraft('pihole', 1, new Date(Date.now() - 60_000).toISOString())
+  assert.equal(pickCandidate('auto').candidate?.stack, 'pihole', 'tried again once the wait is over')
 })
 
 test('a draft that gave up is not retried on its own, but the button still works', () => {
   writeStack('pihole')
-  seed({ number: 132, stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
-  failedDraft(132, 3, null)
+  seed({ stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
+  failedDraft('pihole', 3, null)
   assert.equal(pickCandidate('auto').candidate, null)
-  assert.equal(pickCandidate('auto', 132).candidate?.number, 132)
+  assert.equal(pickCandidate('auto', idOf.pihole).candidate?.stack, 'pihole')
 })
 
 test('a refused draft is final, for the button too', () => {
   writeStack('pihole')
-  seed({ number: 132, stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
+  seed({ stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
   const db = getDb()
-  const pr = db.prepare(`SELECT id FROM prs WHERE number = 132`).get() as { id: number }
-  const u = db.prepare(`SELECT update_id FROM pr_updates WHERE pr_id = ?`).get(pr.id) as { update_id: number }
+  const info = db
+    .prepare(
+      `INSERT INTO prs (number, branch, head_sha_pushed, state, scope, kind, created_at)
+       VALUES (0, 'shipshape/pihole--draft', '', 'open', 'tag-only', 'local', ?)`,
+    )
+    .run(new Date().toISOString())
+  db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(info.lastInsertRowid, idOf.pihole)
   db.prepare(
     `INSERT INTO proposals (pr_id, update_id, ops, notes, changed, error, created_at)
      VALUES (?, ?, '[]', '[]', '[]', 'touches a forbidden path', ?)`,
-  ).run(pr.id, u.update_id, new Date().toISOString())
+  ).run(info.lastInsertRowid, idOf.pihole, new Date().toISOString())
   assert.equal(pickCandidate('auto').candidate, null)
-  assert.equal(pickCandidate('auto', 132).candidate, null)
+  assert.equal(pickCandidate('auto', idOf.pihole).candidate, null)
 })

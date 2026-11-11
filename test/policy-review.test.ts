@@ -1,16 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { PolicySchema, validatePolicyText } from '../src/config.ts'
-import { readerOn, reviewMode, tierFor } from '../src/policy.ts'
+import { PolicySchema, retiredKeys, validatePolicyText } from '../src/config.ts'
+import { readerOn, reviewMode } from '../src/policy.ts'
 
 /**
  * The policy file got smaller: `claude:` became `review:`, and keys that only existed for
- * WUD or that nothing enforced went away. An old file must still load -- and a retired
- * key whose old value would have *restricted* shipshape must be refused rather than
- * dropped, because dropping it would quietly widen what shipshape does.
+ * WUD or that nothing enforced went away. An old file must still load. v2 goes further:
+ * it retires the pull-request keys too (`merge`, `prs`, `revise`, `defaults`), and loads
+ * them without error rather than refusing a file that used to be valid.
  */
-
-const defaults = { patch: 'auto', minor: 'auto', major: 'manual', digest: 'manual' } as const
 
 test('review: is the new block, with Opus and a $40 budget by default', () => {
   const p = PolicySchema.parse({})
@@ -52,45 +50,30 @@ test('a screen that decides keeps the gate advisory with the reader off', () => 
   assert.equal(reviewMode(p), 'advisory')
 })
 
-test('retired keys load at the values that changed nothing', () => {
+test('retired keys load, whatever their old values were', () => {
+  // Nothing an old file said is refused any more: v2 ignores what it no longer reads, and
+  // the scan says so once (retiredKeys), rather than failing to load.
   for (const doc of [
     'prs:\n  enabled: true\n  scope: full\n',
+    'prs:\n  enabled: false\n',
+    'prs:\n  scope: coexist\n',
     'sync:\n  blackout: []\n',
+    'sync:\n  blackout: ["01:00-02:00"]\n',
     'model_tier:\n  mode: shadow\n',
     'claude:\n  min_confidence: low\n',
+    'claude:\n  min_confidence: high\n',
+    'merge_method: rebase\ndefaults:\n  patch: attended\nrevise:\n  mode: act\n',
   ]) {
     assert.deepEqual(validatePolicyText(doc), { ok: true }, doc)
   }
 })
 
-test('a retired key whose value restricted shipshape is refused, not dropped', () => {
-  for (const doc of [
-    'prs:\n  enabled: false\n',
-    'prs:\n  scope: coexist\n',
-    'sync:\n  blackout: ["01:00-02:00"]\n',
-    'claude:\n  min_confidence: high\n',
-  ]) {
-    const r = validatePolicyText(doc)
-    assert.equal(r.ok, false, doc)
-  }
-})
-
-test('defaults accept attended', () => {
-  const p = PolicySchema.parse({ defaults: { patch: 'attended' } })
-  assert.equal(p.defaults.patch, 'attended')
-  assert.equal(tierFor({ magnitude: 'patch', policyLabel: null, prLabel: null, defaults: p.defaults }), 'attended')
+test('retiredKeys names what a file still carries that nothing reads', () => {
+  const doc = 'merge_method: squash\nmerge:\n  cooldown_days: 7\nnotify:\n  routine: off\n  sinks: []\nsync:\n  push_main: true\n'
+  assert.deepEqual(retiredKeys(doc), ['merge_method', 'merge', 'notify.routine'])
+  assert.deepEqual(retiredKeys('ship:\n  cooldown_days: 7\n'), [])
 })
 
 test('propose.mode manual reads as off', () => {
   assert.equal(PolicySchema.parse({ propose: { mode: 'manual' } }).propose.mode, 'off')
-})
-
-test('shipshape.policy: model is read as manual, which is what shadow mode returned', () => {
-  assert.equal(tierFor({ magnitude: 'patch', policyLabel: 'model', prLabel: null, defaults }), 'manual')
-})
-
-test('shipshape.pr: on-request still holds a service', () => {
-  // The label is deprecated in favour of shipshape.policy: on-request, and still read:
-  // ignoring a label that restricts a service would widen what shipshape does to it.
-  assert.equal(tierFor({ magnitude: 'patch', policyLabel: 'manual', prLabel: 'on-request', defaults }), 'held')
 })

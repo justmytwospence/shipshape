@@ -47,6 +47,9 @@ export const env = {
   notifyToken: process.env.NOTIFY_TOKEN ?? '',
   // The MCP listener (src/mcp): off unless set, and only ever reached through the OAuth sidecar.
   mcpPort: process.env.MCP_PORT ? Number(process.env.MCP_PORT) : null,
+  /** Signs the action links in email and ntfy notifications (src/notify/links.ts). Unset,
+   *  those sinks send no links. */
+  actionSecret: process.env.SHIPSHAPE_ACTION_SECRET ?? null,
   /** A full SMTP connection string -- `smtps://user:pass@host:465`. Credentials, so it
    *  lives here rather than in the tracked policy file. */
   smtpUrl: process.env.SMTP_URL ?? '',
@@ -132,6 +135,55 @@ export const DEFAULT_MODEL =
 /** "HH:MM-HH:MM", may wrap past midnight. Only still parsed so a retired key can be named. */
 const Window = z.string().regex(/^\d{2}:\d{2}-\d{2}:\d{2}$/)
 
+/**
+ * The holds an operator may waive with a rule ("always ship"). `lifeline`, `unsafe` and
+ * `needs-action` are deliberately not here: no rule can remove a real warning or the
+ * guard on the way back in.
+ */
+export const WAIVABLE = ['ask', 'no-evidence', 'irreversible', 'no-restore-point'] as const
+export type Waivable = (typeof WAIVABLE)[number]
+
+/** One standing "always ship" decision, written by the always-ship verb (src/rules.ts). */
+export const RuleSchema = z.object({
+  id: z.string().regex(/^r\d+$/),
+  match: z
+    .object({
+      /** An image repository, registry included, without tag or digest. */
+      image: z.string().optional(),
+      stack: z.string().optional(),
+      service: z.string().optional(),
+      /** One of our own builds, watched through its base image. */
+      base_build: z.literal(true).optional(),
+    })
+    .refine((m) => Object.values(m).some((v) => v !== undefined), { message: 'a rule must match something' }),
+  waive: z.array(z.enum(WAIVABLE)).min(1),
+  because: z.string().default(''),
+})
+export type Rule = z.infer<typeof RuleSchema>
+
+export const EVENT_CLASSES = ['decision', 'broken', 'security', 'system'] as const
+export type EventClass = (typeof EVENT_CLASSES)[number]
+const Events = z.array(z.enum(EVENT_CLASSES)).optional()
+
+/** Where notifications go. Delivery is a list of sinks; which ones are on is policy. */
+export const SinkSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('webhook'),
+    url_env: z.string().default('NOTIFY_URL'),
+    token_env: z.string().default('NOTIFY_TOKEN'),
+    events: Events,
+  }),
+  z.object({ type: z.literal('email'), events: Events }),
+  z.object({
+    type: z.literal('ntfy'),
+    url: z.string().url(),
+    topic: z.string().min(1),
+    token_env: z.string().optional(),
+    events: Events,
+  }),
+])
+export type Sink = z.infer<typeof SinkSchema>
+
 /** Exported so the defaults themselves can be asserted on; parse through
  *  `validatePolicyText` or `loadPolicy` in application code. */
 export const PolicySchema = z.object({
@@ -161,12 +213,7 @@ export const PolicySchema = z.object({
       // once; WUD is gone. An empty list still loads. A non-empty one is an error rather
       // than ignored, because dropping it silently would let work happen in hours the
       // file still says are quiet.
-      blackout: z
-        .array(Window)
-        .refine((w) => w.length === 0, {
-          message: 'sync.blackout is retired: remove the windows (or the key) from policy.yaml',
-        })
-        .optional(),
+      blackout: z.array(Window).optional(),
       poll_active_s: z.number().int().positive().default(60),
       poll_idle_s: z.number().int().positive().default(600),
     })
@@ -221,12 +268,7 @@ export const PolicySchema = z.object({
       block_on: z.array(z.enum(['block', 'caution'])).optional(),
       // Now a constant, `medium`. `high` would have held more than that does, so it is
       // refused rather than quietly loosened.
-      min_confidence: z
-        .enum(['low', 'medium', 'high'])
-        .refine((v) => v !== 'high', {
-          message: 'claude.min_confidence: high is no longer supported (the floor is fixed at medium); remove it',
-        })
-        .optional(),
+      min_confidence: z.enum(['low', 'medium', 'high']).optional(),
       model: z.string().optional(),
       code_model: z.string().optional(),
       // Constants now (4 searches, 5 pages, 12,000 tokens a page): cost, not reach.
@@ -239,12 +281,7 @@ export const PolicySchema = z.object({
       // Retired: `coexist` handled only what WUD never touched, and WUD is gone. `full`
       // still loads; `coexist` is refused rather than ignored, because ignoring it would
       // start opening pull requests a file says it should not.
-      scope: z
-        .enum(['coexist', 'wud-coexist', 'full'])
-        .refine((v) => v === 'full', {
-          message: 'prs.scope is retired and only `full` is accepted: remove the key from policy.yaml',
-        })
-        .optional(),
+      scope: z.enum(['coexist', 'wud-coexist', 'full']).optional(),
       // Ceiling on simultaneously open pull requests. `null` -- the default -- means no
       // ceiling: everything eligible opens at once.
       //
@@ -257,12 +294,7 @@ export const PolicySchema = z.object({
       max_open: z.number().int().positive().nullable().default(null),
       // Retired: `sync.push_main: false` is the one kill switch for git work. `true`
       // still loads; `false` is refused rather than ignored.
-      enabled: z
-        .boolean()
-        .refine((v) => v === true, {
-          message: 'prs.enabled is retired: use sync.push_main: false to stop shipshape opening pull requests',
-        })
-        .optional(),
+      enabled: z.boolean().optional(),
     })
     .prefault({}),
   propose: z
@@ -369,6 +401,11 @@ export const PolicySchema = z.object({
       // configured is skipped whatever is set here.
       incidents: z.enum(['all', 'alerts', 'routine', 'off']).default('alerts'),
       email: z.enum(['all', 'alerts', 'routine', 'off']).default('off'),
+      // The v2 spelling: a list of sinks. Absent, it is derived from `incidents` and
+      // `email` above, so an old file keeps notifying where it did.
+      sinks: z.array(SinkSchema).optional(),
+      // A decision still waiting after this long is announced once more, louder.
+      escalate_after_days: z.number().int().min(1).max(60).default(7),
     })
     .prefault({}),
   deploy: z
@@ -454,6 +491,38 @@ export const PolicySchema = z.object({
         .default('anchore/syft:v1.54.1@sha256:3eb5379ba7b409c3f4069b686110527af0c47df993fa5c10d13e7cf34f49b1aa'),
     })
     .prefault({}),
+  /** How much happens on its own. Replaces `merge.cooldown_days` and `merge.max_per_run`. */
+  ship: z
+    .object({
+      // Nothing ships on its own until its release is this many days old. A verified
+      // security fix waits `security.fix_cooldown_days` instead; a shipped-by-you update
+      // does not wait.
+      cooldown_days: z.number().min(0).max(90).optional(),
+      // A ceiling so a misconfiguration ships a couple of things and stops.
+      max_per_run: z.number().int().min(1).max(50).optional(),
+    })
+    .optional(),
+  /**
+   * A dump taken before a stateful service is updated (src/restore). The dump command is
+   * the service's own `shipshape.snapshot` label; `offsite` optionally asks any MCP tool
+   * for an offsite copy too (here: backup-mcp's run_backup). Offsite never blocks a ship.
+   */
+  restore_points: z
+    .object({
+      keep: z.number().int().min(1).max(20).default(3),
+      offsite: z
+        .object({
+          type: z.literal('mcp'),
+          url: z.string().url(),
+          tool: z.string().min(1),
+          job: z.string().default('{stack}'),
+        })
+        .nullable()
+        .default(null),
+    })
+    .prefault({}),
+  /** Standing "always ship" decisions. Written by shipshape; readable and editable by you. */
+  rules: z.array(RuleSchema).default([]),
   /** Stacks the tool must never touch. Its own stack is appended unconditionally --
    *  WUD's self-update crash-loop is not a mistake worth repeating. */
   exclude_stacks: z.array(z.string()).default([]),
@@ -466,8 +535,21 @@ export const PolicySchema = z.object({
    * from the output rather than leaving them makes every stale read a type error instead
    * of a behaviour that quietly disagrees with the switch.
    */
-  .transform(({ merge, deploy, claude, review, prs, sync, model_tier: _modelTier, ...rest }) => ({
+  .transform(({ merge, deploy, claude, review, prs, sync, ship, notify, model_tier: _modelTier, ...rest }) => ({
     ...rest,
+    ship: {
+      cooldown_days: ship?.cooldown_days ?? merge.cooldown_days,
+      max_per_run: ship?.max_per_run ?? merge.max_per_run,
+    },
+    notify: {
+      ...notify,
+      sinks:
+        notify.sinks ??
+        ([
+          ...(notify.incidents === 'off' || notify.incidents === 'routine' ? [] : [{ type: 'webhook' as const, url_env: 'NOTIFY_URL', token_env: 'NOTIFY_TOKEN' }]),
+          ...(notify.email === 'alerts' || notify.email === 'all' ? [{ type: 'email' as const }] : []),
+        ] as Sink[]),
+    },
     paused: rest.paused ?? !(merge.auto === true && deploy.mode === 'auto'),
     // `review` wins key by key; `claude` fills what it leaves out. `claude.mode: off`
     // meant no reading at all, so it turns both stages off.
@@ -522,6 +604,46 @@ export function loadPolicy(): { policy: Policy; error?: string } {
       error: `policy.yaml invalid: ${err instanceof Error ? err.message : String(err)}`,
     }
   }
+}
+
+/**
+ * Keys a policy.yaml still carries that v2 no longer reads. They load without error --
+ * nothing an old file said is refused -- and are reported once per scan so they get
+ * removed rather than believed.
+ */
+export const RETIRED_KEYS = [
+  'merge_method',
+  'defaults',
+  'merge',
+  'prs',
+  'revise',
+  'claude',
+  'model_tier',
+  'sync.blackout',
+  'deploy.mode',
+  'deploy.health_window_s',
+  'notify.routine',
+  'notify.cron',
+  'notify.incidents',
+  'notify.email',
+] as const
+
+export function retiredKeys(raw: string): string[] {
+  let doc: unknown
+  try {
+    doc = parseYaml(raw)
+  } catch {
+    return []
+  }
+  if (!doc || typeof doc !== 'object') return []
+  return RETIRED_KEYS.filter((k) => {
+    let at: unknown = doc
+    for (const part of k.split('.')) {
+      if (!at || typeof at !== 'object' || !(part in (at as Record<string, unknown>))) return false
+      at = (at as Record<string, unknown>)[part]
+    }
+    return true
+  })
 }
 
 /** Check a candidate policy.yaml before it is allowed to replace the real one. */

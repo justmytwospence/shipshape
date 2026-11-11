@@ -10,41 +10,41 @@ import {
 
 const ctx = (o: Partial<ActionContext>): ActionContext => ({ state: 'detected', ...o })
 
-test('an update waiting on a human offers the merge, and the things you might do first', () => {
-  const a = actionsFor(ctx({ state: 'pr_open', prNumber: 41, prScope: 'tag-only', hasVerdict: true }))
-  assert.deepEqual(a, ['merge-deploy', 'propose', 'skip'])
+const hold = (kind: 'ask' | 'needs-action' | 'lifeline' | 'unsafe', waivable: boolean) => ({ kind, waivable, text: kind })
+
+test('an update nothing holds offers ship, and the things you might do first', () => {
+  // Ship always leads: it is the operator saying yes, which outranks a hold.
+  assert.deepEqual(actionsFor(ctx({ hasVerdict: true })), ['ship', 'skip'])
 })
 
-test('a pull request with no verdict offers to read the changelog again', () => {
-  assert.ok(actionsFor(ctx({ state: 'pr_open', prNumber: 41, hasVerdict: false })).includes('rerun-review'))
-  assert.ok(
-    actionsFor(ctx({ state: 'pr_open', prNumber: 41, hasVerdict: true, verdictError: true })).includes(
-      'rerun-review',
-    ),
+test('a decision offers snooze, and always-ship only when every hold can be waived', () => {
+  assert.deepEqual(actionsFor(ctx({ hasVerdict: true, holds: [hold('ask', true)] })), ['ship', 'snooze', 'always-ship', 'skip'])
+  assert.deepEqual(
+    actionsFor(ctx({ hasVerdict: true, holds: [hold('ask', true), hold('lifeline', false)] })),
+    ['ship', 'snooze', 'skip'],
+    'a hold no rule may waive leaves nothing for always to mean',
   )
-  assert.ok(
-    !actionsFor(ctx({ state: 'pr_open', prNumber: 41, hasVerdict: true })).includes('rerun-review'),
-    'a verdict that approved is not re-read on a whim',
-  )
-  assert.ok(
-    actionsFor(ctx({ state: 'pr_open', prNumber: 41, hasVerdict: true, verdictHolds: true })).includes(
-      'rerun-review',
-    ),
-    'a verdict that is holding the merge is the one worth disputing',
-  )
+  assert.deepEqual(actionsFor(ctx({ hasVerdict: true, holds: [hold('ask', true)], snoozed: true })), ['ship', 'always-ship', 'skip'])
 })
 
-test('a branch someone has pushed to is not one shipshape drafts onto', () => {
-  const mine = actionsFor(ctx({ state: 'pr_open', prNumber: 7, prScope: 'tag-only', userOwned: true }))
-  assert.ok(!mine.includes('propose'))
-  const already = actionsFor(
-    ctx({ state: 'pr_open', prNumber: 7, prScope: 'proposed', hasProposal: true }),
-  )
-  assert.ok(!already.includes('propose'))
+test('work to do offers a draft, until one exists', () => {
+  const a = actionsFor(ctx({ hasVerdict: true, holds: [hold('needs-action', false)] }))
+  assert.deepEqual(a, ['ship', 'snooze', 'rerun-review', 'propose', 'skip'])
+  assert.ok(!actionsFor(ctx({ hasVerdict: true, holds: [hold('needs-action', false)], hasProposal: true })).includes('propose'))
 })
 
-test('the on-request rung asks, it does not merge', () => {
-  assert.deepEqual(actionsFor(ctx({ state: 'held' })), ['open-pr', 'skip'])
+test('no review, or a failed one, offers to read the changelog', () => {
+  assert.ok(actionsFor(ctx({ hasVerdict: false })).includes('rerun-review'))
+  assert.ok(actionsFor(ctx({ hasVerdict: true, verdictError: true })).includes('rerun-review'))
+  assert.ok(!actionsFor(ctx({ hasVerdict: true })).includes('rerun-review'), 'a verdict that arrived is not re-read on a whim')
+})
+
+test('a frozen service asks: ship or skip', () => {
+  assert.deepEqual(actionsFor(ctx({ state: 'frozen' })), ['ship', 'skip'])
+})
+
+test('a v1 pull request not yet closed by the cutover can only be skipped', () => {
+  assert.deepEqual(actionsFor(ctx({ state: 'pr_open' })), ['skip'])
 })
 
 test('a rolling tag can only be adopted or dismissed', () => {
@@ -125,8 +125,8 @@ test('every state names exactly one button, and names it first', () => {
   const cases: ActionContext[] = [
     ctx({ state: 'detected' }),
     ctx({ state: 'detected', detail: 'rolling' }),
-    ctx({ state: 'held' }),
-    ctx({ state: 'pr_open', prNumber: 1, prScope: 'tag-only' }),
+    ctx({ state: 'frozen' }),
+    ctx({ state: 'pr_open', prScope: 'tag-only' }),
     ctx({ state: 'merged', deployStatus: 'ready' }),
     ctx({ state: 'merged', deployStatus: 'failed' }),
     ctx({ state: 'deploying' }),
@@ -147,18 +147,12 @@ test('every state names exactly one button, and names it first', () => {
   }
 })
 
-test('a failed review is what the button asks about, even with a merge available', () => {
-  // Merging is still possible -- the review is advisory -- but the salient thing is that
-  // nobody has read the changelog yet.
-  const verbs = actionsFor(ctx({ state: 'pr_open', prNumber: 9, hasVerdict: true, verdictError: true }))
-  assert.equal(primaryVerb(verbs), 'rerun-review')
-  assert.ok(verbs.includes('merge-deploy'))
-})
-
 test('a refused verb explains itself in a sentence', () => {
   // A stale page or a double tap gets an answer, never a 404 that htmx would drop.
   assert.match(refusalFor('deploy', ctx({ state: 'pr_open' })), /nothing is waiting to be deployed/)
   assert.match(refusalFor('rollback', ctx({ state: 'verified' })), /nothing to revert/)
   assert.match(refusalFor('retry', ctx({ state: 'failed', atFromTag: false })), /still in the tree/)
-  assert.match(refusalFor('merge-deploy', ctx({ state: 'held' })), /no pull request/)
+  assert.match(refusalFor('ship', ctx({ state: 'verified' })), /nothing to ship/)
+  assert.match(refusalFor('always-ship', ctx({ holds: [hold('lifeline', false)] })), /cannot be waived/)
+  assert.match(refusalFor('snooze', ctx({ snoozed: true })), /already snoozed/)
 })

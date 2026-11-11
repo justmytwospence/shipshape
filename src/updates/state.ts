@@ -10,8 +10,8 @@ import { getDb } from '../db.ts'
  */
 export const UPDATE_STATES = [
   'detected', // seen in a registry, nothing opened yet
-  'held', // the on-request rung: listed, waiting to be asked for
-  'pr_open', // a pull request exists
+  'frozen', // a frozen service: listed, waiting to be asked for
+  'pr_open', // legacy: a GitHub pull request exists (v1; the v2 cutover closes them)
   'merged', // merged; the deploy is queued, ready, or already running
   'deploying', // compose is running right now
   'deployed', // up and healthy, inside the soak window
@@ -25,7 +25,7 @@ export const UPDATE_STATES = [
 export type UpdateState = (typeof UPDATE_STATES)[number]
 
 /** Rows the worklist shows: something could still happen to them without a deploy. */
-export const LIVE_STATES: readonly UpdateState[] = ['detected', 'pr_open', 'held']
+export const LIVE_STATES: readonly UpdateState[] = ['detected', 'pr_open', 'frozen']
 
 /**
  * Tombstones. A rolled-back version must never be offered again on the next scan, and

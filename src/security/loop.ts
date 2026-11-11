@@ -5,7 +5,6 @@ import { pollFeed } from './feed.ts'
 import { runExtraction } from './extract.ts'
 import { hasInventory, listRunning, pruneInventories, recordRunning, scanImage } from './sbom.ts'
 import {
-  commentFixes,
   computeExposures,
   incidentTargets,
   inventoryCandidates,
@@ -98,7 +97,6 @@ export async function runSecurityPass(force = false): Promise<PassResult | null>
 
     // Saying anything is `on` only; shadow stops here with everything recorded.
     await syncSecurityCards(policy)
-    await commentFixes(policy)
     return out
   } catch (err) {
     logEvent({ level: 'warn', kind: 'system', message: 'security pass failed', detail: (err as Error).message })

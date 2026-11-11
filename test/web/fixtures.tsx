@@ -47,8 +47,9 @@ export function update(over: Partial<UpdateView> = {}): UpdateView {
             service: u.service,
             fromTag: u.fromTag,
             toTag: u.toTag,
-            pr: u.pr ? { number: u.pr.number, scope: u.pr.scope } : null,
-            members: [{ stack: u.stack, service: u.service, tier: u.tier }],
+            scope: u.change?.scope ?? null,
+            members: [{ stack: u.stack, service: u.service, cls: u.cls }],
+            restorePoint: false,
           },
           PolicySchema.parse({}),
         ),
@@ -64,8 +65,8 @@ function base(over: Partial<UpdateView>): UpdateView {
     fromTag: '10.9.11',
     toTag: '10.10.3',
     magnitude: 'minor',
-    tier: 'manual',
-    state: 'pr_open',
+    cls: 'ask',
+    state: 'detected',
     detail: null,
     rolling: false,
     fork: false,
@@ -73,15 +74,17 @@ function base(over: Partial<UpdateView>): UpdateView {
     detectedAt: ago(30),
     updatedAt: ago(2),
     ackedAt: null,
-    pr: {
-      number: 41,
-      state: 'open',
-      scope: 'tag-only',
-      userOwned: false,
-      mergeCommitSha: null,
-      held: null,
-      url: 'https://github.com/you/repo/pull/41',
-    },
+    change: null,
+    holds: [
+      { kind: 'ask', waivable: true, text: 'this service always asks' },
+      { kind: 'needs-action', waivable: false, text: 'Needs: Re-select the hardware acceleration device after upgrading' },
+    ],
+    waived: [],
+    shipStatus: 'decision',
+    shipWhy: null,
+    snoozedUntil: null,
+    approvedAt: null,
+    restorePoints: [],
     verdict: {
       recommendation: 'caution',
       confidence: 'medium',
@@ -99,10 +102,14 @@ function base(over: Partial<UpdateView>): UpdateView {
       error: null,
       attempts: 0,
       nextAttemptAt: null,
+      notesInRange: 4,
+      irreversible: false,
+      source: 'reader' as const,
+      provisional: false,
     },
     deploy: null,
-    actions: ['merge-deploy', 'propose', 'skip'],
-    primary: 'merge-deploy',
+    actions: ['ship', 'snooze', 'rerun-review', 'propose', 'skip'],
+    primary: 'ship',
     transient: false,
     presented: {},
     screen: null,
@@ -112,32 +119,27 @@ function base(over: Partial<UpdateView>): UpdateView {
 
 export const UPDATES: Record<string, UpdateView> = {
   waiting: update(),
-  // Asked to wait in a comment. Distinct from `held` below, which is the on-request rung
-  // -- same English word, different thing, which is exactly why the pane must not use the
-  // badge word for this one.
-  holdRequested: update({
+  // Put off for a week: still detected, out of the inbox, listed as parked.
+  snoozed: update({
     id: 9,
-    pr: {
-      number: 41,
-      state: 'open',
-      scope: 'tag-only',
-      userOwned: false,
-      mergeCommitSha: null,
-      held: 'you asked shipshape to hold this',
-      url: 'https://github.com/you/repo/pull/41',
-    },
-    actions: ['merge-deploy', 'release-hold', 'skip'],
-    primary: 'merge-deploy',
+    snoozedUntil: new Date(Date.now() + 5 * 86400_000).toISOString(),
+    shipStatus: 'waiting',
+    shipWhy: 'snoozed',
+    actions: ['ship', 'always-ship', 'skip'],
+    primary: 'ship',
   }),
-  held: update({
+  frozen: update({
     id: 8,
-    state: 'held',
+    state: 'frozen',
+    cls: 'frozen',
     service: 'postgres',
     magnitude: 'major',
-    pr: null,
+    change: null,
+    holds: [],
+    shipStatus: null,
     verdict: null,
-    actions: ['open-pr', 'skip'],
-    primary: 'open-pr',
+    actions: ['ship', 'skip'],
+    primary: 'ship',
   }),
   rolling: update({
     id: 9,
@@ -146,7 +148,9 @@ export const UPDATES: Record<string, UpdateView> = {
     rolling: true,
     service: 'actual',
     magnitude: 'digest',
-    pr: null,
+    change: null,
+    holds: [],
+    shipStatus: null,
     verdict: null,
     actions: ['redeploy', 'skip'],
     primary: 'redeploy',
@@ -198,22 +202,20 @@ export const UPDATES: Record<string, UpdateView> = {
       error: 'the changelog could not be fetched (404)',
       attempts: 3,
       nextAttemptAt: new Date(Date.now() + 3600_000).toISOString(),
+      notesInRange: null,
+      irreversible: false,
+      source: 'reader' as const,
+      provisional: false,
     },
-    actions: ['rerun-review', 'merge-deploy', 'skip'],
+    actions: ['rerun-review', 'ship', 'skip'],
     primary: 'rerun-review',
   }),
   verified: update({
     id: 13,
     state: 'verified',
-    pr: {
-      number: 22,
-      state: 'merged',
-      scope: 'tag-only',
-      userOwned: false,
-      mergeCommitSha: 'abc1234',
-      held: null,
-      url: 'https://github.com/you/repo/pull/22',
-    },
+    change: { id: 22, kind: 'github' as const, number: 22, state: 'merged', scope: 'tag-only' as const, branch: 'b22', mergeCommitSha: 'abc1234', url: 'https://github.com/you/repo/pull/22' },
+    holds: [],
+    shipStatus: null,
     deploy: {
       id: 5,
       status: 'verified',
@@ -235,15 +237,9 @@ export const UPDATES: Record<string, UpdateView> = {
     fromTag: '1.37.2',
     toTag: '1.37.3',
     state: 'left-stopped',
-    pr: {
-      number: 101,
-      state: 'merged',
-      scope: 'tag-only',
-      userOwned: false,
-      mergeCommitSha: 'abc1234',
-      held: null,
-      url: 'https://github.com/you/repo/pull/101',
-    },
+    change: { id: 101, kind: 'github' as const, number: 101, state: 'merged', scope: 'tag-only' as const, branch: 'b101', mergeCommitSha: 'abc1234', url: 'https://github.com/you/repo/pull/101' },
+    holds: [],
+    shipStatus: null,
     deploy: {
       id: 6,
       status: 'left-stopped',
@@ -442,7 +438,6 @@ export const STATUS = {
   version: '0.1.0',
   repoDir: '/srv/compose',
   repo: 'you/repo',
-  mergeMethod: 'squash',
   pushMain: true,
   blackout: ['00:45-02:30'],
   scan: {
@@ -452,7 +447,6 @@ export const STATUS = {
     durationS: 156,
     counts: { 'up-to-date': 62, unchanged: 45, update: 3, error: 4 },
   },
-  digest: { cron: '0 0 8 * * *', nextAt: null },
   // `refused` is rendered here so the class gate covers its badge: it is the state the
   // page could not show through a six-day outage, when a dead token still read `set`.
   credentials: [
@@ -506,11 +500,10 @@ const ACTIVITY = [
 
 const INBOX = {
   needsYou: [
-    { kind: 'pr-waiting' as const, update: UPDATES.waiting! },
-    { kind: 'on-request' as const, update: UPDATES.held! },
+    { kind: 'decision' as const, update: UPDATES.waiting! },
     { kind: 'rolling-moved' as const, update: UPDATES.rolling! },
     { kind: 'ready-to-deploy' as const, update: UPDATES.ready! },
-    { kind: 'review-failed' as const, update: UPDATES.reviewFailed! },
+    { kind: 'decision' as const, update: UPDATES.reviewFailed! },
   ],
   recent: [
     {
@@ -535,7 +528,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
   const inbox = { ...INBOX, scan }
   // The frame's own copy of the clock: the sidebar's chip is the poll's on-switch.
   const CH = { ...CHROME, scan: { ...CHROME.scan, running: !!opts.running } }
-  const list = [UPDATES.waiting!, UPDATES.held!, UPDATES.ready!]
+  const list = [UPDATES.waiting!, UPDATES.frozen!, UPDATES.ready!]
   const detail = (u: UpdateView, ctx: string, listHref: string, warnings: string[] = []) =>
     UpdateDetail({ update: u, milestones: MILESTONES, warnings, ctx, listHref })
   const serviceData = {
@@ -646,7 +639,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
     'inbox-aside': String(InboxAside({ data: inbox })),
     'update-detail': String(detail(UPDATES.waiting!, 'list=updates&stage=open', '/updates')),
     'update-detail-hold': String(
-      detail(UPDATES.holdRequested!, 'list=updates&stage=open', '/updates'),
+      detail(UPDATES.snoozed!, 'list=updates&stage=open', '/updates'),
     ),
     'update-row': String(UpdateRow({ update: UPDATES.waiting!, ctx: 'list=inbox' })),
     'update-row-transient': String(UpdateRow({ update: UPDATES.deploying!, ctx: 'list=inbox' })),
@@ -675,12 +668,12 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
       ),
     ),
     'update-attended': String(
-      detail(update({ id: 21, tier: 'attended' }), 'list=updates&stage=open', '/updates'),
+      detail(update({ id: 21, cls: 'lifeline' }), 'list=updates&stage=open', '/updates'),
     ),
     // Merge in the overflow menu rather than as the primary button.
     'update-secondary-merge': String(
       detail(
-        update({ id: 22, actions: ['rerun-review', 'merge-deploy', 'skip'], primary: 'rerun-review' }),
+        update({ id: 22, actions: ['rerun-review', 'ship', 'skip'], primary: 'rerun-review' }),
         'list=updates&stage=open',
         '/updates',
       ),
@@ -709,7 +702,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
         {
           ...UPDATES.waiting!,
           state: 'detected',
-          pr: null,
+          change: null,
           fork: true,
           forkConflict: 'ecca03b "fix: keep the reading statistics (#2952)" conflicts with upstream v3.5.1 in src/kobo.ts',
         },

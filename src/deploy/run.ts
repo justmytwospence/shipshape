@@ -894,6 +894,7 @@ export async function deployForPr(
     const named = meant.length ? meant : target.services
     const next = nextStep(outcome, { ...target, services: meant }, opts.trigger)
     await notify({
+      eventClass: 'broken',
       key: `shipshape:deploy:${target.stack}`,
       title: down
         ? `shipshape: ${target.stack} is DOWN — deploy failed`
@@ -936,6 +937,7 @@ export async function deployForPr(
     // verifier (`error`) never reaches handleFailure, so this is its only alert.
     if (outcome.verdict?.kind === 'failed') return outcome
     await notify({
+      eventClass: 'broken',
       key: `shipshape:deploy:${target.stack}`,
       title: `shipshape: ${target.stack} unhealthy after deploy`,
       body: `#${prNumber}: ${outcome.detail}\n\nThe new image is running and failing. Roll back with git revert and redeploy if it does not recover.`,

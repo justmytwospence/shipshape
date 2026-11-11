@@ -26,8 +26,9 @@ const VERB: Record<
   Verb,
   { label: string; short?: string; icon?: IconName; style: string; confirm?: boolean }
 > = {
-  'merge-deploy': { label: 'Merge & deploy', icon: 'merge', style: 'btn-primary', confirm: true },
-  'open-pr': { label: 'Open pull request', short: 'Open PR', icon: 'pull-request', style: 'btn-primary' },
+  ship: { label: 'Ship', icon: 'rocket', style: 'btn-primary', confirm: true },
+  snooze: { label: 'Snooze 1 week', short: 'Snooze', icon: 'clock', style: 'btn-ghost' },
+  'always-ship': { label: 'Always ship', short: 'Always', icon: 'merge', style: 'btn-ghost', confirm: true },
   deploy: { label: 'Deploy', icon: 'rocket', style: 'btn-primary' },
   redeploy: { label: 'Redeploy', icon: 'refresh', style: 'btn-primary' },
   retry: { label: 'Try again', short: 'Retry', icon: 'refresh', style: 'btn-primary' },
@@ -35,26 +36,22 @@ const VERB: Record<
   'rerun-review': { label: 'Read the changelog', short: 'Read', icon: 'eye', style: 'btn-primary' },
   propose: { label: 'Draft config changes', icon: 'plus', style: 'btn-ghost' },
   skip: { label: 'Skip', icon: 'skip', style: 'btn-ghost' },
-  // "Release hold", never "Unhold": the noun is already in the sentence the pane shows
-  // ("You asked shipshape to hold this"), and Held stays reserved for the on-request rung.
-  'release-hold': { label: 'Release hold', icon: 'undo', style: 'btn-ghost' },
   ack: { label: 'Acknowledge', short: 'Ack', icon: 'check', style: 'btn-ghost' },
 }
 
 /**
- * Where each verb posts. Merging is the one that addresses a pull request, not an update.
+ * Where each verb posts. Every one addresses the update; the server finds what else the
+ * decision covers.
  *
  * `reply` says what should come back: `view=row` or `view=detail`, plus the list the
  * button was pressed in, so the server can render the same fragment the button sat in.
  */
 function endpoint(u: UpdateView, verb: Verb, reply: string): string {
-  if (verb === 'merge-deploy') return `/prs/${u.pr?.number}/merge?update=${u.id}&${reply}`
-  if (verb === 'propose') return `/prs/${u.pr?.number}/propose?update=${u.id}&${reply}`
   return `/updates/${u.id}/${verb === 'skip' ? 'dismiss' : verb}?${reply}`
 }
 
 /** Verbs safe to offer straight from a list: nothing that needs the analysis on screen. */
-const INLINE: ReadonlySet<Verb> = new Set<Verb>(['deploy', 'open-pr', 'redeploy', 'retry', 'ack'])
+const INLINE: ReadonlySet<Verb> = new Set<Verb>(['deploy', 'redeploy', 'retry', 'ack'])
 
 /**
  * A verb as a button. `target` is what the response replaces: the row when pressed in a
@@ -296,6 +293,46 @@ export const GroupHeader: FC<{
 // -------------------------------------------------------------------- pane
 
 /**
+ * Why a person is needed, in the words the card uses, and what a standing rule already
+ * waived. Nothing when the update simply ships on its own.
+ */
+export const HoldsBlock: FC<{ update: UpdateView }> = ({ update }) => {
+  const waiting = update.shipStatus === 'waiting' && update.shipWhy
+  if (update.holds.length === 0 && update.waived.length === 0 && !waiting && update.restorePoints.length === 0) return null
+  return (
+    <section class="border-base-300 border-t px-4 py-3 text-sm">
+      {update.holds.length > 0 ? (
+        <>
+          <p class="font-medium">Waiting on you</p>
+          <ul class="mt-1 list-disc pl-5 text-xs opacity-80">
+            {update.holds.map((h) => (
+              <li>{h.text}</li>
+            ))}
+          </ul>
+        </>
+      ) : waiting ? (
+        <p class="text-xs opacity-70">Ships on its own: {update.shipWhy}.</p>
+      ) : null}
+      {update.waived.length > 0 ? (
+        <ul class="mt-2 list-disc pl-5 text-xs opacity-60">
+          {update.waived.map((h) => (
+            <li>
+              <s>{h.text}</s> — waived by rule {h.waivedBy}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {update.restorePoints.length > 0 ? (
+        <p class="mt-2 text-xs opacity-70">
+          Restore point{update.restorePoints.length > 1 ? 's' : ''}:{' '}
+          <code class="font-mono">{update.restorePoints.map((p) => p.path).join(', ')}</code>
+        </p>
+      ) : null}
+    </section>
+  )
+}
+
+/**
  * The review, as a bordered block rather than a card. The accent on the left is the
  * verdict's colour, so the block reads at a glance from across the pane.
  */
@@ -315,8 +352,8 @@ export const VerdictBlock: FC<{ update: UpdateView }> = ({ update }) => {
       <section class="border-base-300 border-t px-4 py-3 text-sm">
         <span class="font-medium">No review.</span>{' '}
         <span class="opacity-70">
-          {update.state === 'held'
-            ? 'Nothing is read until a pull request exists.'
+          {update.state === 'frozen'
+            ? 'Nothing is read until you ask for this update.'
             : 'The changelog review has not run for this version.'}
         </span>
       </section>
@@ -581,7 +618,7 @@ export const ActionBar: FC<{
         {update.actions.includes('skip') ? (
           <ActionButton update={update} verb="skip" target={target} reply={reply} />
         ) : null}
-        {secondary.length > 0 || update.pr ? (
+        {secondary.length > 0 || update.change?.url ? (
           <details class="dropdown dropdown-end ml-auto">
             <summary class="btn btn-ghost btn-sm btn-square tap" aria-label="More actions">
               <Icon name="dots" />
@@ -611,11 +648,11 @@ export const ActionBar: FC<{
                   </button>
                 </li>
               ))}
-              {update.pr ? (
+              {update.change?.url ? (
                 <li>
-                  <a href={update.pr.url} target="_blank" rel="noreferrer" class="tap">
+                  <a href={update.change.url} target="_blank" rel="noreferrer" class="tap">
                     <Icon name="external" />
-                    Open #{update.pr.number} on GitHub
+                    {update.change.kind === 'local' ? 'Open the merge commit on GitHub' : `Open #${update.change.number} on GitHub`}
                   </a>
                 </li>
               ) : null}
@@ -674,16 +711,16 @@ export const UpdateDetail: FC<{
         <span class={`badge badge-xs badge-soft ${stage.cls}`}>{stage.label}</span>
         <Change from={update.fromTag} to={update.toTag} />
         <span class="text-xs">
-          {update.pr ? (
-            <a href={update.pr.url} target="_blank" rel="noreferrer" class="link link-hover mr-2">
-              #{update.pr.number} ↗
+          {update.change?.url ? (
+            <a href={update.change.url} target="_blank" rel="noreferrer" class="link link-hover mr-2">
+              {update.change.kind === 'local' ? 'commit' : `#${update.change.number}`} ↗
             </a>
           ) : null}
           <a
             href={`/services/${update.stack}/${update.service}`}
             class="link link-hover opacity-70"
           >
-            {update.tier} rung
+            {update.cls}
           </a>
         </span>
         {listHref ? (
@@ -698,10 +735,7 @@ export const UpdateDetail: FC<{
         ) : null}
       </header>
 
-      {/* Through the existing warnings strip rather than a component of its own: a hold
-          is one sentence about why nothing is happening, which is exactly what that
-          strip already says. "Hold", never "Held" -- the badge word belongs to the
-          on-request rung and means something else. */}
+
       <ActionBar
         update={update}
         target={target}
@@ -710,12 +744,12 @@ export const UpdateDetail: FC<{
           ...(update.forkConflict
             ? [`The fork's fixes could not be replayed onto ${update.toTag}: ${update.forkConflict}. Rebase the fork's homelab branch by hand and move the pinned sha, or drop the commit (FORKS.md); shipshape tries again once the pin or the target changes.`]
             : update.fork
-              ? ['This service is a fork of its upstream image: the pull request replays our fixes onto the new release and moves the build pin, and the deploy builds it (FORKS.md).']
+              ? ['This service is a fork of its upstream image: shipping replays our fixes onto the new release and moves the build pin, and the deploy builds it (FORKS.md).']
               : []),
-          ...(update.pr?.held ? [`You asked shipshape to hold this — it will not merge on its own.`] : []),
           ...(warnings ?? []),
         ]}
       />
+      <HoldsBlock update={update} />
       <SecurityFixBlock update={update} />
       <VerdictBlock update={update} />
       <ScreenBlock update={update} />

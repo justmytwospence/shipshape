@@ -44,6 +44,12 @@ export interface Verdict {
    * changelog that oversells itself earns a line in an email and no reach at all.
    */
   new_features: string[]
+  /**
+   * Applying this version changes stored data in a way that rolling the image back cannot
+   * undo: a schema or data-format migration with no downgrade path. Drives the
+   * `irreversible` hold and a restore point before a stateful deploy.
+   */
+  irreversible: boolean
   recommendation: Recommendation
   confidence: Confidence
   sources: string[]
@@ -86,6 +92,12 @@ const EMIT_VERDICT = {
           'Not bug fixes, not internal changes, and never anything already listed as a breaking change or a ' +
           'migration step. Empty is the common and correct answer.',
       },
+      irreversible: {
+        type: 'boolean',
+        description:
+          'true only when applying this version changes stored data in a way that rolling the image back ' +
+          'cannot undo (a schema or data-format migration with no downgrade path). False otherwise.',
+      },
       recommendation: {
         type: 'string',
         enum: ['approve', 'caution', 'block'],
@@ -107,6 +119,7 @@ const EMIT_VERDICT = {
       'breaking_changes',
       'migration_steps',
       'new_features',
+      'irreversible',
       'recommendation',
       'confidence',
       'sources',
@@ -364,6 +377,7 @@ export function normalise(v: Partial<Verdict>, ctx: { notesInRange?: number } = 
     breaking_changes: breaking,
     migration_steps: steps,
     new_features: asArray(v.new_features),
+    irreversible: v.irreversible === true,
     recommendation: rec,
     confidence: conf,
     sources: asArray(v.sources),
@@ -380,7 +394,7 @@ reportUnknownModels((model) =>
   }),
 )
 
-export type CallPurpose = 'verdict' | 'proposal' | 'revision' | 'screen' | 'replay' | 'security'
+export type CallPurpose = 'verdict' | 'proposal' | 'revision' | 'rule' | 'screen' | 'replay' | 'security'
 
 /** What the ledger knows about a call beyond its usage. */
 export interface CallMeta {

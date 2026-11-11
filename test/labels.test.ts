@@ -85,18 +85,18 @@ beforeEach(() => {
   seedImage()
 })
 
-test('a clean file is edited, committed, and shipshape.pr goes with the policy', async () => {
-  const r = await setServiceLabel({ stack: 'media', service: 'jellyfin', key: 'policy', value: 'manual' })
+test('a clean file is edited, committed, and the v1 labels go with the class', async () => {
+  const r = await setServiceLabel({ stack: 'media', service: 'jellyfin', key: 'class', value: 'ask' })
   assert.equal(r.ok, true, r.message)
   assert.ok(r.sha)
 
   const text = readFileSync(FILE, 'utf8')
-  assert.ok(text.includes('      shipshape.policy: manual\n'))
-  assert.ok(!text.includes('shipshape.pr'), 'the pr label would have kept the service held')
+  assert.ok(text.includes('      shipshape.class: ask\n'))
+  assert.ok(!text.includes('shipshape.pr'), 'the v1 pr label would have said something else')
   assert.ok(text.includes('# the media server'), 'comments survive')
-  assert.match(r.message, /shipshape\.pr/)
+  assert.match(r.message, /v1 policy labels/)
 
-  assert.equal(g(['log', '-1', '--pretty=%s']), 'chore(shipshape): media/jellyfin: shipshape.policy=manual')
+  assert.equal(g(['log', '-1', '--pretty=%s']), 'chore(shipshape): media/jellyfin: shipshape.class=ask')
   assert.equal(g(['log', '-1', '--pretty=%an']), 'shipshape')
   assert.equal(g(['status', '--porcelain']), '', 'the working tree is clean after the commit')
 })
@@ -105,7 +105,7 @@ test('a dirty target file is refused with nothing written', async () => {
   const dirtied = COMPOSE + '# a hand edit in flight\n'
   writeFileSync(FILE, dirtied)
 
-  const r = await setServiceLabel({ stack: 'media', service: 'jellyfin', key: 'policy', value: 'manual' })
+  const r = await setServiceLabel({ stack: 'media', service: 'jellyfin', key: 'class', value: 'ask' })
   assert.equal(r.ok, false)
   assert.match(r.message, /uncommitted changes/)
   assert.equal(readFileSync(FILE, 'utf8'), dirtied, 'the hand edit is untouched')
@@ -131,7 +131,7 @@ test('a gate failure restores the original bytes', async () => {
   chmodSync(join(repo, '.githooks', 'pre-commit'), 0o755)
   g(['config', 'core.hooksPath', '.githooks'])
 
-  const r = await setServiceLabel({ stack: 'media', service: 'jellyfin', key: 'policy', value: 'auto' })
+  const r = await setServiceLabel({ stack: 'media', service: 'jellyfin', key: 'class', value: 'normal' })
   assert.equal(r.ok, false)
   assert.match(r.message, /commit/i)
   assert.equal(readFileSync(FILE, 'utf8'), COMPOSE, 'the original bytes are back')
@@ -151,7 +151,7 @@ test('a compose-config gate failure restores the original bytes', { skip: !hasDo
   resetRepo({ 'media/docker-compose.yaml': bad })
   seedImage()
 
-  const r = await setServiceLabel({ stack: 'media', service: 'jellyfin', key: 'policy', value: 'manual' })
+  const r = await setServiceLabel({ stack: 'media', service: 'jellyfin', key: 'class', value: 'ask' })
   assert.equal(r.ok, false)
   assert.match(r.message, /[Cc]ompose rejected/)
   assert.equal(readFileSync(FILE, 'utf8'), bad, 'the original bytes are back')
@@ -174,21 +174,21 @@ test('the images row decides which compose file is edited', async () => {
 
 test('off main, nothing happens', async () => {
   g(['checkout', '-qb', 'feature'])
-  const r = await setServiceLabel({ stack: 'media', service: 'jellyfin', key: 'policy', value: 'skip' })
+  const r = await setServiceLabel({ stack: 'media', service: 'jellyfin', key: 'class', value: 'frozen' })
   assert.equal(r.ok, false)
   assert.match(r.message, /not main/)
   assert.equal(readFileSync(FILE, 'utf8'), COMPOSE)
 })
 
-test('an unknown policy value is refused before anything is read', async () => {
-  const r = await setServiceLabel({ stack: 'media', service: 'jellyfin', key: 'policy', value: 'manaul' })
+test('an unknown class is refused before anything is read', async () => {
+  const r = await setServiceLabel({ stack: 'media', service: 'jellyfin', key: 'class', value: 'manaul' })
   assert.equal(r.ok, false)
-  assert.match(r.message, /not a policy/)
+  assert.match(r.message, /not a class/)
   assert.equal(g(['rev-list', '--count', 'HEAD']), '1')
 })
 
 test('a service the scan has never recorded is refused', async () => {
-  const r = await setServiceLabel({ stack: 'media', service: 'ghost', key: 'policy', value: 'manual' })
+  const r = await setServiceLabel({ stack: 'media', service: 'ghost', key: 'class', value: 'ask' })
   assert.equal(r.ok, false)
   assert.match(r.message, /[Nn]o compose file is known/)
 })
@@ -237,7 +237,7 @@ test('an unusable repository or notes link is refused before the file is touched
     const r = await setServiceLabels({
       stack: 'media',
       service: 'jellyfin',
-      changes: [{ key: 'policy', value: 'manual' }, change],
+      changes: [{ key: 'class', value: 'ask' }, change],
     })
     assert.equal(r.ok, false, JSON.stringify(change))
     assert.match(r.message, /was not written/)

@@ -45,7 +45,7 @@ function seedUpdate(state: string): number {
     getDb()
       .prepare(
         `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detail, detected_at, updated_at)
-         VALUES ('app', 'web', 'example/app', '1.0.0', '1.1.0', 'minor', 'auto', ?, NULL, ?, ?)`,
+         VALUES ('app', 'web', 'example/app', '1.0.0', '1.1.0', 'minor', 'normal', ?, NULL, ?, ?)`,
       )
       .run(state, now(), now()).lastInsertRowid,
   )
@@ -94,9 +94,9 @@ test('MCP declarations, context and guidance are complete, bounded and read-only
   }
   const templates = (await rpc('resources/templates/list')).result.resourceTemplates
   assert.equal(templates.length, 2)
-  const id = seedUpdate('held')
+  const id = seedUpdate('frozen')
   const update = (await rpc('resources/read', { uri: `shipshape://updates/${id}` })).result
-  assert.ok(JSON.parse(update.contents[0].text).allowed_verbs.includes('open-pr'))
+  assert.ok(JSON.parse(update.contents[0].text).allowed_verbs.includes('ship'))
   assert.ok((await rpc('resources/read', { uri: 'shipshape://updates/not-an-id' })).error)
   const prompts = (await rpc('prompts/list')).result.prompts
   assert.deepEqual(prompts.map((p: any) => p.name), ['review-update'])
@@ -104,33 +104,33 @@ test('MCP declarations, context and guidance are complete, bounded and read-only
   assert.match(prompt.messages[0].content.text, /Do not run an action/)
   assert.ok((await rpc('prompts/get', { name: 'review-update', arguments: { id: '../escape' } })).error)
   assert.equal(requests, 0)
-  assert.equal(getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(id).state, 'held')
+  assert.equal(getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(id).state, 'frozen')
 })
 
 test('get_update says which verbs are allowed now', async () => {
-  const id = seedUpdate('held')
+  const id = seedUpdate('frozen')
   const { isError, body } = await call('get_update', { id })
   assert.equal(isError, false)
   assert.equal(body.id, id)
   assert.ok(Array.isArray(body.allowed_verbs))
-  assert.ok(body.allowed_verbs.includes('open-pr'))
+  assert.ok(body.allowed_verbs.includes('ship'))
   assert.ok(!body.allowed_verbs.includes('rollback'))
 })
 
 test('a verb actionsFor refuses comes back as the refusal and changes nothing, and is logged', async () => {
-  const id = seedUpdate('held')
+  const id = seedUpdate('frozen')
   const { isError, body } = await call('update_action', { id, verb: 'rollback' })
   assert.equal(isError, true)
   assert.equal(body.ok, false)
   assert.ok(body.message.length > 0)
   const row = getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(id) as { state: string }
-  assert.equal(row.state, 'held')
+  assert.equal(row.state, 'frozen')
   const ev = getDb().prepare(`SELECT message FROM events WHERE message LIKE '%via MCP'`).get() as { message: string }
   assert.equal(ev.message, `rollback on update ${id} requested via MCP`)
 })
 
 test('an allowed verb acts: skip dismisses the update for good', async () => {
-  const id = seedUpdate('held')
+  const id = seedUpdate('frozen')
   const { isError, body } = await call('update_action', { id, verb: 'skip' })
   assert.equal(isError, false, body.message)
   const row = getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(id) as { state: string }
@@ -138,7 +138,7 @@ test('an allowed verb acts: skip dismisses the update for good', async () => {
 })
 
 test('a verb not offered is rejected by the schema', async () => {
-  const id = seedUpdate('held')
+  const id = seedUpdate('frozen')
   const r = (await rpc('tools/call', { name: 'update_action', arguments: { id, verb: 'set-policy' } })).result
   assert.equal(r.isError, true)
 })

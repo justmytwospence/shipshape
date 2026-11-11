@@ -1,14 +1,14 @@
 import { getDb, logEvent } from '../db.ts'
-import { loadPolicy } from '../config.ts'
 import { setState, type UpdateState } from './state.ts'
 import { actionsFor, refusalFor, type ActionContext, type Verb } from './actions.ts'
 import { carriedFor, claimJob, linkDeployUpdates, runDeployJob } from '../deploy/queue.ts'
 import { performRollback, revertCommand } from '../deploy/rollback.ts'
+import { mergeMethodFor } from '../gitops/change.ts'
+import { holdsForRow, type HoldRow } from './holds.ts'
 import { stackPeers, withNamespacePeers, type DeployIo, type DeployTarget } from '../deploy/run.ts'
 import { syncMain } from '../gitops/sync.ts'
 import { withGitLock } from '../gitops/repo.ts'
 import { runAnalysisPass } from '../analyze/run.ts'
-import { MIN_CONFIDENCE, verdictHolds, type Confidence, type Verdict } from '../policy.ts'
 
 /**
  * The things a person can do to an update.
@@ -40,33 +40,28 @@ export interface UpdateRow {
   state: UpdateState
   detail: string | null
   acked_at: string | null
+  detected_at: string
+  approved_at: string | null
+  snoozed_until: string | null
+  decision_since: string | null
+  restore_error: string | null
 }
 
-/** Everything a decision needs about one update, in one query. */
-export function contextFor(id: number): { row: UpdateRow; ctx: ActionContext } | null {
+/** Everything a decision needs about one update. */
+export function contextFor(id: number): { row: UpdateRow; ctx: ActionContext; prId: number | null } | null {
   const db = getDb()
   const row = db.prepare(`SELECT * FROM updates WHERE id = ?`).get(id) as UpdateRow | undefined
   if (!row) return null
 
-  // The newest pull request, not "an open one": an update that has been through two
+  // The newest change record, not "an open one": an update that has been through two
   // attempts has two, and joining on open would return neither once both are closed.
-  const pr = db
+  const change = db
     .prepare(
-      `SELECT p.id, p.number, p.state, p.scope, p.user_owned, p.merge_commit_sha, p.hold_reason
+      `SELECT p.id, p.state, p.scope, p.merge_commit_sha
          FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id
         WHERE pu.update_id = ? ORDER BY p.id DESC LIMIT 1`,
     )
-    .get(id) as
-    | {
-        id: number
-        number: number
-        state: string
-        scope: string
-        user_owned: number
-        merge_commit_sha: string | null
-        hold_reason: string | null
-      }
-    | undefined
+    .get(id) as { id: number; state: string; scope: string; merge_commit_sha: string | null } | undefined
 
   const deploy = db
     .prepare(
@@ -77,50 +72,37 @@ export function contextFor(id: number): { row: UpdateRow; ctx: ActionContext } |
     .get(id) as { id: number; status: string } | undefined
 
   const verdict = db
-    .prepare(
-      `SELECT error, recommendation, confidence, source FROM verdicts
-       WHERE image = ? AND from_tag = ? AND to_tag = ?`,
-    )
-    .get(row.image, row.from_tag, row.to_tag) as
-    | { error: string | null; recommendation: string | null; confidence: string | null; source: string | null }
-    | undefined
+    .prepare(`SELECT error, source FROM verdicts WHERE image = ? AND from_tag = ? AND to_tag = ?`)
+    .get(row.image, row.from_tag, row.to_tag) as { error: string | null; source: string | null } | undefined
 
-  const proposal = pr
-    ? (db.prepare(`SELECT id FROM proposals WHERE pr_id = ? AND retryable = 0 LIMIT 1`).get(pr.id) as
-        | { id: number }
-        | undefined)
-    : undefined
+  const proposal = db
+    .prepare(`SELECT id FROM proposals WHERE update_id = ? AND retryable = 0 AND error IS NULL LIMIT 1`)
+    .get(id) as { id: number } | undefined
 
   const image = db
     .prepare(`SELECT current_tag, fork_upstream FROM images WHERE stack = ? AND service = ?`)
     .get(row.stack, row.service) as { current_tag: string | null; fork_upstream: string | null } | undefined
 
+  const waiting = row.state === 'detected' && row.detail !== 'rolling'
+  const held = waiting ? holdsForRow(row as unknown as HoldRow) : null
+
   return {
     row,
+    prId: change?.id ?? null,
     ctx: {
       state: row.state,
       detail: row.detail,
-      prNumber: pr?.number ?? null,
-      prState: (pr?.state as ActionContext['prState']) ?? null,
-      prScope: (pr?.scope as ActionContext['prScope']) ?? null,
-      userOwned: !!pr?.user_owned,
-      mergeCommitSha: pr?.merge_commit_sha ?? null,
+      cls: held?.cls,
+      holds: held?.holds ?? [],
+      snoozed: !!row.snoozed_until && Date.parse(row.snoozed_until) > Date.now(),
+      prScope: (change?.scope as ActionContext['prScope']) ?? null,
+      mergeCommitSha: change?.merge_commit_sha ?? null,
       deployStatus: (deploy?.status as ActionContext['deployStatus']) ?? null,
       verdictError: !!verdict?.error,
       hasVerdict: !!verdict && !verdict.error,
       hasReaderVerdict: !!verdict && !verdict.error && (verdict.source ?? 'reader') === 'reader',
-      verdictHolds:
-        !!verdict &&
-        !verdict.error &&
-        !!verdict.recommendation &&
-        verdictHolds(
-          verdict.recommendation as Verdict,
-          (verdict.confidence as Confidence | null) ?? null,
-          MIN_CONFIDENCE,
-        ),
       hasProposal: !!proposal,
       ackedAt: row.acked_at,
-      held: pr?.hold_reason ?? null,
       // A digest pin carries `tag@sha`; compare the tag part only.
       atFromTag: image ? image.current_tag === row.from_tag.split('@')[0] : undefined,
       fork: !!image?.fork_upstream || row.detail === 'fork',
@@ -197,7 +179,7 @@ export async function runVerb(
 ): Promise<VerbResult> {
   const found = contextFor(id)
   if (!found) return { ok: false, message: 'that update no longer exists' }
-  const { row, ctx } = found
+  const { row, ctx, prId } = found
 
   if (!actionsFor(ctx).includes(verb)) {
     return { ok: false, message: refusalFor(verb, ctx) }
@@ -211,18 +193,16 @@ export async function runVerb(
     case 'retry':
       return retry(row, ctx, opts.io)
     case 'rollback':
-      return rollback(row, ctx, opts.io)
+      return rollback(row, ctx, prId, opts.io)
     case 'ack':
       return acknowledge(row)
     case 'skip':
       return skipUpdate(row)
     case 'rerun-review':
       return rerunReview(row)
-    case 'release-hold':
-      return releaseHold(row)
     default:
-      // The remaining verbs live where their machinery does: merge and propose in the
-      // GitHub routes, open-pr alongside them.
+      // ship, snooze, always-ship and propose live in operator-verbs.ts, where the ship
+      // pass and the rules are.
       return { ok: false, message: `${verb} is handled elsewhere` }
   }
 }
@@ -244,31 +224,6 @@ function skipUpdate(row: UpdateRow): VerbResult {
     message: `${row.from_tag} -> ${row.to_tag} dismissed by the operator`,
   })
   return { ok: true, message: 'Skipped. It will not be offered again unless you ask for it.' }
-}
-
-/**
- * Let go of a pull request you asked shipshape to hold.
- *
- * The other half of a hold, and the reason a hold is a column rather than a state of the
- * comment that asked for it: it lasts until somebody says otherwise, which means there
- * has to be a way to say otherwise. Only clears the standing hold -- an instruction that
- * has not been answered yet still holds, because that one resolves itself.
- */
-function releaseHold(row: UpdateRow): VerbResult {
-  getDb()
-    .prepare(
-      `UPDATE prs SET hold_reason = NULL, hold_at = NULL
-        WHERE id IN (SELECT pr_id FROM pr_updates WHERE update_id = ?)`,
-    )
-    .run(row.id)
-  logEvent({
-    level: 'info',
-    kind: 'pr',
-    stack: row.stack,
-    service: row.service,
-    message: 'hold released by the operator',
-  })
-  return { ok: true, message: 'Released. It can merge on its own again.' }
 }
 
 /** Read the changelog again: for a review that failed, or one that never ran. */
@@ -351,7 +306,7 @@ async function startRedeploy(row: UpdateRow, io?: DeployIo): Promise<VerbResult>
  * Two different situations wear the same word. A deploy that failed can simply be run
  * again -- the change is still in the tree. An update that was rolled back or dismissed
  * has to re-enter the pipeline from the top, which means clearing the tombstone that
- * stops the scan re-offering it and letting the next pull request pass pick it up.
+ * stops the scan re-offering it and letting the next ship pass pick it up.
  */
 async function retry(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Promise<VerbResult> {
   if (row.state === 'merged') {
@@ -367,7 +322,7 @@ async function retry(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Promise
                               status, attempts, created_at, trigger)
          VALUES (?, ?, ?, ?, ?, 0, 0, 'pending', 0, ?, 'retry')`,
       )
-      .run(ctx.prNumber ?? null, prId?.pr_id ?? null, target.stack, target.services.join(' '), target.strategy, now)
+      .run(0, prId?.pr_id ?? null, target.stack, target.services.join(' '), target.strategy, now)
     const deployId = Number(info.lastInsertRowid)
     linkDeployUpdates(deployId, prId?.pr_id ?? null, [row.id])
     const job = claimJob(deployId)
@@ -390,13 +345,12 @@ async function retry(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Promise
   })
   return {
     ok: true,
-    message: `Back in the queue. A pull request opens on the next pass.`,
+    message: `Back in the queue. It is considered again on the next pass.`,
   }
 }
 
 /** Put the previous version back, on purpose rather than because verification said so. */
-async function rollback(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Promise<VerbResult> {
-  const { policy } = loadPolicy()
+async function rollback(row: UpdateRow, ctx: ActionContext, prId: number | null, io?: DeployIo): Promise<VerbResult> {
   const sha = ctx.mergeCommitSha
   if (!sha) return { ok: false, message: 'the merge commit is unknown, so there is nothing to revert' }
 
@@ -416,7 +370,7 @@ async function rollback(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Prom
                             status, attempts, created_at, started_at, trigger)
        VALUES (?, NULL, ?, ?, ?, 0, 0, 'running', 1, ?, ?, 'rollback')`,
     )
-    .run(ctx.prNumber ?? null, target.stack, target.services.join(' '), target.strategy, now, now)
+    .run(null, target.stack, target.services.join(' '), target.strategy, now, now)
   const deployId = Number(info.lastInsertRowid)
   linkDeployUpdates(
     deployId,
@@ -430,7 +384,7 @@ async function rollback(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Prom
 
   void detach(
     (async () => {
-      const result = await performRollback(target, sha, policy.merge_method, {
+      const result = await performRollback(target, sha, mergeMethodFor(prId), {
         carried,
         io,
         record: (p) => {
@@ -466,7 +420,7 @@ async function rollback(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Prom
           stack: row.stack,
           service: row.service,
           message: `rollback of ${row.stack} failed`,
-          detail: `${result.detail}. Undo it by hand: ${revertCommand(sha, policy.merge_method).join(' ')}`,
+          detail: `${result.detail}. Undo it by hand: ${revertCommand(sha, mergeMethodFor(prId)).join(' ')}`,
         })
       }
     })(),

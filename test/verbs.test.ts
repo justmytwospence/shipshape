@@ -132,7 +132,7 @@ test('rolling back needs the commit that landed it', async () => {
   assert.ok(actionsFor(contextFor(id)!.ctx).includes('rollback'), 'and offered once it is known')
 })
 
-test('the context follows the newest pull request, not an open one', async () => {
+test('the context follows the newest change record, not an open one', async () => {
   // An update that has been through two attempts has two pull requests. Joining on
   // `state = open` returns neither once both are closed, which is how a merged update
   // loses the merge commit it would need to roll back.
@@ -154,7 +154,6 @@ test('the context follows the newest pull request, not an open one', async () =>
     )
   }
   const ctx = contextFor(id)!.ctx
-  assert.equal(ctx.prNumber, 22)
   assert.equal(ctx.mergeCommitSha, 'deadbee')
 })
 

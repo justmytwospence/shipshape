@@ -984,6 +984,59 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     ALTER TABLE images ADD COLUMN base_dockerfile TEXT;
   `,
   },
+  {
+    id: '032-v2',
+    sql: `
+    -- v2: updates ship on their own unless a concrete hold says otherwise.
+    --
+    -- A change record is still a prs row, so deploys, rollbacks and every join through
+    -- pr_updates keep working. kind says where it came from: 'github' for a pull request
+    -- (the legacy rows), 'local' for a branch shipshape merged into main itself, which
+    -- stores number = 0.
+    ALTER TABLE prs ADD COLUMN kind TEXT NOT NULL DEFAULT 'github';
+
+    -- The labels v2 reads, mirrored like the others so every reader can go through the
+    -- database: shipshape.class, shipshape.snapshot and shipshape.backup-job.
+    ALTER TABLE images ADD COLUMN class_label TEXT;
+    ALTER TABLE images ADD COLUMN snapshot_label TEXT;
+    ALTER TABLE images ADD COLUMN backup_job_label TEXT;
+
+    -- approved_at: the operator said ship, which overrides holds, cooldown and pause.
+    -- snoozed_until / decision_since: when a decision was put off, and when it first
+    -- waited on a person (escalation counts from there). waived_by: the rules that
+    -- waived a hold when it shipped. restore_error: the last restore point failure.
+    ALTER TABLE updates ADD COLUMN approved_at TEXT;
+    ALTER TABLE updates ADD COLUMN snoozed_until TEXT;
+    ALTER TABLE updates ADD COLUMN decision_since TEXT;
+    ALTER TABLE updates ADD COLUMN waived_by TEXT;
+    ALTER TABLE updates ADD COLUMN restore_error TEXT;
+
+    -- The reader's one new fact: this version changes stored data in a way rolling the
+    -- image back cannot undo.
+    ALTER TABLE verdicts ADD COLUMN irreversible INTEGER NOT NULL DEFAULT 0;
+
+    -- A dump taken before a stateful service was updated.
+    CREATE TABLE restore_points (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      stack          TEXT NOT NULL,
+      service        TEXT NOT NULL,
+      path           TEXT NOT NULL,
+      bytes          INTEGER NOT NULL,
+      pr_id          INTEGER REFERENCES prs(id) ON DELETE SET NULL,
+      offsite_status TEXT,
+      offsite_detail TEXT,
+      created_at     TEXT NOT NULL
+    );
+    CREATE INDEX idx_restore_points_svc ON restore_points(stack, service, created_at);
+
+    -- The ladder became classes, and 'held' became 'frozen'. The tier column keeps its
+    -- name (SQLite cannot rename it cheaply) but holds a service class now.
+    UPDATE updates SET tier = CASE tier
+      WHEN 'auto' THEN 'normal' WHEN 'manual' THEN 'ask'
+      WHEN 'attended' THEN 'lifeline' WHEN 'held' THEN 'frozen' ELSE tier END;
+    UPDATE updates SET state = 'frozen' WHERE state = 'held';
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

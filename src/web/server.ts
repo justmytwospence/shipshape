@@ -15,7 +15,10 @@ import { sourceCounts, sourceFor, sourceForSync, type SourceInfo } from '../reso
 import { runScanNow, scheduleInfo } from '../scheduler.ts'
 import { setState } from '../updates/state.ts'
 import { actionsFor, refusalFor } from '../updates/actions.ts'
-import { contextFor, runVerb, type VerbResult } from '../updates/verbs.ts'
+import { contextFor, type VerbResult } from '../updates/verbs.ts'
+import { isOperatorVerb, runOperatorVerb } from '../updates/operator-verbs.ts'
+import { verifyAction } from '../notify/links.ts'
+import { ActConfirm, ActDone } from './views/ui/act.tsx'
 import {
   inboxNeedsYou,
   inboxParked,
@@ -41,7 +44,8 @@ import {
 import type { Chrome } from './views/ui/shell.tsx'
 import { ctxString, listHref, readCtx, type ListCtx } from './ctx.ts'
 import {
-  DigestPreview,
+  NotifyTools,
+  RulesList,
   SettingsForm,
   type SettingGroup,
   type SettingValue,
@@ -61,44 +65,19 @@ import { llmConfigured, llmProvider } from '../analyze/client.ts'
 import { jevConfigured } from '../analyze/jev.ts'
 import { previewLink } from '../resolver/preview.ts'
 import { InboxList, type InboxData } from './views/ui/inbox.tsx'
-import { ListCount, MergePreview, ScanStatus } from './views/ui/parts.tsx'
+import { ListCount, ScanStatus } from './views/ui/parts.tsx'
 import { UpdateDetail, UpdateRow } from './views/ui/update.tsx'
 import { ReleaseList } from './views/ui/releases.tsx'
-import { runPrPass } from '../gitops/pr.ts'
 import { runAnalysisPass } from '../analyze/run.ts'
-import { proposeForPr } from '../updates/operator-verbs.ts'
-import { runAutoMerge } from '../gitops/automerge.ts'
 import { DiffView } from './views/diff.tsx'
-import { mergeGate, type MergeFacts } from '../gitops/merge-gate.ts'
-import { pollPrs } from '../gitops/poll.ts'
-import { Octokit } from 'octokit'
 import { applySettings, currentValue, SECTIONS, SETTINGS } from '../settings.ts'
 import { SECTION_PROSE } from '../settings/prose.ts'
 import { listModels } from '../analyze/models.ts'
-import {
-  flush as flushDigest,
-  pending as pendingDigest,
-  render as renderDigest,
-  withOutcomes,
-} from '../notify/digest.ts'
 import { activeChannels } from '../notify/index.ts'
 import { configured as emailConfigured, send as sendEmail, escapeHtml as escapeText } from '../notify/email.ts'
-import { rescheduleScan, rescheduleDigest } from '../scheduler.ts'
+import { rescheduleScan } from '../scheduler.ts'
 import { trustedProxyAuth } from './auth.ts'
 import { securityPanel } from '../security/panel.ts'
-
-const PENDING_SQL = `
-  SELECT u.id, u.stack, u.service, u.image, u.from_tag, u.to_tag, u.magnitude,
-         u.tier, u.state, u.detail, p.number AS pr_number,
-         v.recommendation, v.confidence, p.scope AS pr_scope
-  FROM updates u
-  LEFT JOIN pr_updates pu ON pu.update_id = u.id
-  LEFT JOIN prs p ON p.id = pu.pr_id AND p.state = 'open'
-  LEFT JOIN verdicts v ON v.image = u.image AND v.from_tag = u.from_tag
-                      AND v.to_tag = u.to_tag AND v.error IS NULL
-  WHERE u.state IN ('detected','pr_open','held')
-  ORDER BY CASE u.magnitude WHEN 'major' THEN 0 WHEN 'minor' THEN 1
-                            WHEN 'patch' THEN 2 ELSE 3 END, u.stack, u.service`
 
 /** Missing configuration, passed into every page so the banner is unmissable. */
 function missing(): { name: string; why: string }[] {
@@ -106,67 +85,9 @@ function missing(): { name: string; why: string }[] {
   return s.ok ? [] : s.missing
 }
 
-/**
- * The facts the merge gate needs, straight from the database.
- *
- * Read here rather than passed in, because the drawer and the route both need them and
- * they must agree: the button a person sees and the check the click runs are the same
- * question asked twice, a few seconds apart.
- */
-export function mergeFacts(number: number): MergeFacts {
-  const db = getDb()
-  const pr = db
-    .prepare(`SELECT id, number, state, scope, user_owned FROM prs WHERE number = ?`)
-    .get(number) as
-    | { id: number; number: number; state: string; scope: string; user_owned: number }
-    | undefined
-
-  if (!pr) {
-    return {
-      prNumber: null,
-      prState: null,
-      liveMembers: 0,
-      totalMembers: 0,
-      scope: null,
-      userOwned: false,
-      recommendation: null,
-      mergeable: null,
-      checksFailing: false,
-    }
-  }
-
-  const counts = db
-    .prepare(
-      `SELECT COUNT(*) AS total,
-              SUM(CASE WHEN u.state != 'superseded' THEN 1 ELSE 0 END) AS live
-       FROM pr_updates pu JOIN updates u ON u.id = pu.update_id
-       WHERE pu.pr_id = ?`,
-    )
-    .get(pr.id) as { total: number; live: number | null }
-
-  // The worst verdict across the members: a group is only as safe as its least safe part.
-  const worst = db
-    .prepare(
-      `SELECT v.recommendation FROM pr_updates pu
-       JOIN updates u ON u.id = pu.update_id
-       JOIN verdicts v ON v.image = u.image AND v.from_tag = u.from_tag AND v.to_tag = u.to_tag
-       WHERE pu.pr_id = ? AND v.error IS NULL
-       ORDER BY CASE v.recommendation WHEN 'block' THEN 0 WHEN 'caution' THEN 1 ELSE 2 END
-       LIMIT 1`,
-    )
-    .get(pr.id) as { recommendation: string } | undefined
-
-  return {
-    prNumber: pr.number,
-    prState: pr.state,
-    liveMembers: counts.live ?? 0,
-    totalMembers: counts.total,
-    scope: pr.scope,
-    userOwned: pr.user_owned === 1,
-    recommendation: worst?.recommendation ?? null,
-    mergeable: null,
-    checksFailing: false,
-  }
+function repoParts(): { owner: string; repo: string } {
+  const [owner, repo] = env.githubRepo.split('/') as [string, string]
+  return { owner, repo }
 }
 
 /**
@@ -192,19 +113,8 @@ function notifyState(): 'set' | 'missing' | 'not in use' {
   return process.env.NOTIFY_URL && process.env.NOTIFY_TOKEN ? 'set' : 'missing'
 }
 
-let mergeOcto: Octokit | null = null
-function gh(): Octokit {
-  mergeOcto ??= new Octokit({ auth: env.githubToken })
-  return mergeOcto
-}
-
-function repoParts(): { owner: string; repo: string } {
-  const [owner, repo] = env.githubRepo.split('/') as [string, string]
-  return { owner, repo }
-}
-
 /** The labels a browser may write. */
-const LABEL_KEYS = ['policy', 'watch', 'source', 'changelog'] as const
+const LABEL_KEYS = ['class', 'watch', 'source', 'changelog'] as const
 
 /** A promise's value, its error, or 'timeout' once `ms` have passed -- whichever comes first. */
 async function within<T>(p: Promise<T>, ms: number): Promise<T | Error | 'timeout'> {
@@ -234,95 +144,6 @@ function lookedAgain(s: SourceInfo): string {
       ? ` Its shipshape.source label, ${s.label.repo}, still decides.`
       : ''
   return `Found ${found}${likely}.${label}`
-}
-
-/**
- * Merge an update's pull request as the operator, then close the loop at once: the
- * dashboard's Merge button and an alert card's tap both land here.
- */
-export async function mergeUpdatePr(number: number, id: number, force = false): Promise<VerbResult> {
-  const { policy } = loadPolicy()
-  const refuse = (message: string): VerbResult => ({ ok: false, message })
-
-  const facts = mergeFacts(number)
-  // Asked before the merge, while the update still reads as waiting on one: whether the
-  // deploy starts itself is the same answer the button's label gave.
-  const deploys = updateView(id)?.presented?.['merge-deploy']?.label !== 'Merge'
-  let gate = mergeGate(facts, { force })
-  if (!gate.allowed) return refuse(gate.blocked ?? 'the merge gate refused')
-
-  try {
-    const { owner, repo } = repoParts()
-    const live = await gh().rest.pulls.get({ owner, repo, pull_number: number })
-    if (live.data.merged) return refuse(`#${number} has already been merged.`)
-    // GitHub's own answer beats ours: it knows about conflicts and branch protection.
-    gate = mergeGate({ ...facts, mergeable: live.data.mergeable }, { force })
-    if (!gate.allowed) return refuse(gate.blocked ?? 'the merge gate refused')
-    if (gate.needsForce) return refuse(gate.warnings.join('; '))
-
-    await gh().rest.pulls.merge({
-      owner,
-      repo,
-      pull_number: number,
-      merge_method: policy.merge_method,
-    })
-
-    // Recorded as an override when policy would have refused, so the decision is
-    // legible afterwards rather than indistinguishable from an automatic merge.
-    logEvent({
-      level: gate.warnings.length > 0 ? 'warn' : 'info',
-      kind: 'pr',
-      message: `#${number} merged from the dashboard`,
-      detail: gate.warnings.length > 0 ? gate.warnings.join('; ') : 'no objections',
-    })
-  } catch (err) {
-    const msg = (err as Error).message.slice(0, 200)
-    return refuse(`GitHub refused the merge: ${msg}`)
-  }
-
-  // Close the loop now rather than waiting for the next tick: this is what captures
-  // the commit sha, marks the updates, syncs the checkout and queues the deploy.
-  // Never let a failure here report a merge that did land as a failure.
-  try {
-    await pollPrs()
-  } catch {
-    /* the scheduler will pick it up on its next pass */
-  }
-
-  return {
-    ok: true,
-    // The deploy follows the merge unless the service says otherwise, so the reply can
-    // no longer be decided by `paused` -- it is decided by the rung, and the poll pass
-    // that runs a moment from now is what knows it.
-    message: deploys
-      ? 'Merged. The deploy follows, and is watched.'
-      : 'Merged. This one is deployed by hand: press Deploy when you are ready.',
-  }
-}
-
-/** Release a held update for a pull request (the on-request rung). */
-export function openPrForUpdate(id: number): VerbResult {
-  const found = contextFor(id)
-  if (!found) return { ok: false, message: 'that update no longer exists' }
-  if (!actionsFor(found.ctx).includes('open-pr')) {
-    return { ok: false, message: refusalFor('open-pr', found.ctx) }
-  }
-  getDb()
-    .prepare(
-      `UPDATE updates SET state = 'detected', tier = 'manual', updated_at = ? WHERE id = ?`,
-    )
-    .run(new Date().toISOString(), id)
-  logEvent({
-    level: 'info',
-    kind: 'pr',
-    stack: found.row.stack,
-    service: found.row.service,
-    message: 'held update released for PR by operator',
-  })
-  // Ask for it now rather than at some point in the next ten minutes. The button said
-  // "open a pull request"; a wait with no feedback reads as nothing having happened.
-  void runPrPass().catch(() => {})
-  return { ok: true, message: 'Opening a pull request\u2026' }
 }
 
 /**
@@ -435,39 +256,15 @@ export function createApp(): Hono {
     const db = getDb()
     const one = (sql: string) => (db.prepare(sql).get() as { n: number }).n
     return {
-      inbox: one(
-        `SELECT COUNT(*) AS n FROM updates u
-          LEFT JOIN deploys d ON d.id = (
-            SELECT du.deploy_id FROM deploy_updates du WHERE du.update_id = u.id
-             ORDER BY du.deploy_id DESC LIMIT 1)
-         WHERE u.state IN ('pr_open','held')
-            OR (u.state = 'detected' AND u.detail = 'rolling')
-            OR (u.state = 'merged' AND d.status IN ('ready','pending'))
-            OR (u.state = 'merged' AND d.status IN ('failed','error') AND u.acked_at IS NULL)
-            OR (u.state = 'failed' AND u.acked_at IS NULL)
-            OR (d.status = 'degraded' AND u.acked_at IS NULL AND u.state <> 'left-stopped')`,
-      ),
+      // Decisions are judged by the hold logic rather than by SQL, so the count is the
+      // same one the Inbox page lists.
+      inbox: inboxNeedsYou().length,
       updates: one(
-        `SELECT COUNT(*) AS n FROM updates WHERE state IN ('detected','held','pr_open','merged')`,
+        `SELECT COUNT(*) AS n FROM updates WHERE state IN ('detected','frozen','pr_open','merged')`,
       ),
       attention: one(
         `SELECT COUNT(*) AS n FROM images WHERE last_status IS NOT NULL OR constrained_from IS NOT NULL`,
       ),
-    }
-  }
-
-  /**
-   * What the merge gate would object to, as sentences.
-   *
-   * These are warnings, not refusals -- the gate blocks on three facts and warns on the
-   * rest -- so they belong beside the button rather than instead of it.
-   */
-  const mergeWarnings = (u: UpdateView): string[] => {
-    if (!u.pr || u.pr.state !== 'open' || !env.githubToken) return []
-    try {
-      return mergeGate(mergeFacts(u.pr.number)).warnings
-    } catch {
-      return []
     }
   }
 
@@ -595,7 +392,6 @@ export function createApp(): Hono {
       pane: UpdateDetail({
         update,
         milestones: updateTimeline(id),
-        warnings: mergeWarnings(update),
         diff: updateDiff(id),
         listHref: from.href,
         fromService:
@@ -881,88 +677,51 @@ export function createApp(): Hono {
     return (updatePane(id, ctx)?.pane as string | undefined) ?? ''
   }
 
-  /** The update a pull-request verb was pressed on: named in the query, or the PR's first. */
-  const updateOfPr = (c: Context, number: number): number | null => {
-    const named = Number(c.req.query('update'))
-    if (Number.isFinite(named) && named > 0) return named
-    const row = getDb()
-      .prepare(
-        `SELECT pu.update_id AS id FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
-         WHERE p.number = ? ORDER BY pu.update_id LIMIT 1`,
-      )
-      .get(number) as { id: number } | undefined
-    return row?.id ?? null
-  }
-
   /** Not this version. A dismissal is durable: the next scan must not offer it again. */
   app.post('/updates/:id/dismiss', async (c) => {
     const id = Number(c.req.param('id'))
-    return verbReply(c, id, await runVerb(id, 'skip'))
+    return verbReply(c, id, await runOperatorVerb(id, 'skip'))
   })
 
   /**
-   * Promote a held update so the PR engine will pick it up. Held rows are the
-   * datastores: their migrations are deliberate, so the PR only exists once a human
-   * has decided to do one.
+   * Every other verb, through the one dispatcher the alert cards and the MCP use. Ship,
+   * snooze and always-ship wake the loop rather than doing the work here: a restore point
+   * or a build can take minutes and the browser must not sit on the request.
    */
-  app.post('/updates/:id/open-pr', (c) => {
-    const id = Number(c.req.param('id'))
-    return verbReply(c, id, openPrForUpdate(id))
-  })
-
-  /** Bring up a merge that has been waiting, run it again, put it back, or say you saw it. */
-  for (const verb of ['deploy', 'redeploy', 'retry', 'rollback', 'ack', 'release-hold'] as const) {
+  for (const verb of ['ship', 'snooze', 'always-ship', 'propose', 'deploy', 'redeploy', 'retry', 'rollback', 'ack', 'rerun-review'] as const) {
     app.post(`/updates/:id/${verb}`, async (c) => {
       const id = Number(c.req.param('id'))
-      return verbReply(c, id, await runVerb(id, verb))
+      return verbReply(c, id, await runOperatorVerb(id, verb))
     })
   }
 
-  /** Read the changelog again: for a review that failed, or one that never ran. */
-  app.post('/updates/:id/rerun-review', async (c) => {
-    const id = Number(c.req.param('id'))
-    return verbReply(c, id, await runVerb(id, 'rerun-review'))
-  })
-
-  /** Draft config changes for one pull request on demand. */
-  app.post('/prs/:number/propose', async (c) => {
-    const number = Number(c.req.param('number'))
-    const id = updateOfPr(c, number) ?? 0
-    return verbReply(c, id, await proposeForPr(number))
-  })
-
-  /** What auto-merge would do right now, decided by the code that does it. */
   /**
-   * What auto-merge would do right now, decided by the code that actually does it.
-   *
-   * Reachable from the System page. It was an orphan endpoint for a while -- no view
-   * linked to it -- which is how its markup drifted out of step with everything else.
+   * A signed link from an email or an ntfy button. The page names the update and the verb
+   * and asks first; the POST does it. Behind the same authentication as everything else,
+   * so a leaked link alone does nothing.
    */
-  /**
-   * Merge a pull request from here, rather than from GitHub.
-   *
-   * The whole point of the drawer is that everything needed to decide is already on
-   * screen -- the diff, the verdict, the links. Sending someone to GitHub to press a
-   * button, and then waiting for shipshape to notice, was the last step that left the
-   * page for no reason.
-   *
-   * Deliberately narrow. It merges and then closes the loop, and does nothing else: it
-   * writes no pull request state of its own, because `onMerged` is the only thing that
-   * may do that. Marking the row merged here would drop it out of the `state = 'open'`
-   * query that `onMerged` selects on, and the merge would be recorded with no commit
-   * sha, no updates marked, no deploy queued, and no way to ever notice again -- the
-   * exact permanent loss the deploy queue was written to eliminate.
-   */
-  app.post('/prs/:number/merge', async (c) => {
-    const number = Number(c.req.param('number'))
-    const id = updateOfPr(c, number) ?? 0
-    return verbReply(c, id, await mergeUpdatePr(number, id, c.req.query('force') === '1'))
+  app.get('/act/:token', (c) => {
+    const act = verifyAction(c.req.param('token'))
+    if (!act || !isOperatorVerb(act.verb)) return c.text('This link is not valid or has expired.', 404)
+    const v = updateView(act.updateId)
+    if (!v) return c.text('That update no longer exists.', 404)
+    const label = v.presented[act.verb as keyof typeof v.presented]?.label ?? act.verb
+    return c.html(
+      ActConfirm({
+        verb: act.verb,
+        label,
+        title: `${v.stack}/${v.service} ${v.fromTag} -> ${v.toTag}`,
+        steps: v.presented[act.verb as keyof typeof v.presented]?.steps,
+        token: c.req.param('token'),
+      }) as string,
+    )
   })
 
-  app.get('/merge/preview', async (c) => {
-    const r = await runAutoMerge(true)
-    const { policy } = loadPolicy()
-    return c.html(MergePreview({ decisions: r.decisions, paused: policy.paused }) as string)
+  app.post('/act/:token', async (c) => {
+    const act = verifyAction(c.req.param('token'))
+    if (!act || !isOperatorVerb(act.verb)) return c.text('This link is not valid or has expired.', 404)
+    const r = await runOperatorVerb(act.updateId, act.verb)
+    return c.html(ActDone({ ok: r.ok, message: r.message, id: act.updateId }) as string)
   })
 
   /**
@@ -1031,7 +790,8 @@ export function createApp(): Hono {
     const groups: SettingGroup[] = []
     for (const [title, tagline] of SECTIONS) {
       const defs = SETTINGS.filter((d) => d.section === title)
-      if (defs.length === 0) continue
+      // Rules has no fields: it is a read-only list under its own heading.
+      if (defs.length === 0 && title !== 'Rules') continue
       groups.push({
         title,
         tagline,
@@ -1043,14 +803,8 @@ export function createApp(): Hono {
     return groups
   }
 
-  /** What the next digest would say, by the same code that sends it. */
-  const digestPreview = () => {
-    const rows = pendingDigest()
-    // Through the same correction the send applies, or the preview is the one place the
-    // old "opened" for a failed deploy would survive.
-    const message = renderDigest(withOutcomes(rows))
-    return DigestPreview({ title: message?.title ?? null, body: message?.body ?? null, count: rows.length })
-  }
+  /** The sinks notifications go to, and the way to prove the mail path works. */
+  const notifyTools = () => NotifyTools({ channels: activeChannels('decision'), sinks: loadPolicy().policy.notify.sinks.map((x) => x.type) })
 
   /** What the machine is doing and what it has spent, for the Status page (`/status`). */
   const statusData = (): StatusData => {
@@ -1075,7 +829,6 @@ export function createApp(): Hono {
       version: readPackageVersion(),
       repoDir: env.repoDir,
       repo: env.githubRepo,
-      mergeMethod: policy.merge_method,
       pushMain: policy.sync.push_main,
       scan: {
         cron: sched.scan.cron,
@@ -1086,7 +839,6 @@ export function createApp(): Hono {
         // only place it reached the page was as the JSON string in the counters dump.
         counts: info.counts,
       },
-      digest: { cron: sched.digest.cron, nextAt: sched.digest.nextAt, owed: sched.digest.owed },
       credentials: [
         // Presence is not health. Through a six-day outage this row read `set` in green
         // the whole time, because a token that has expired is still very much present.
@@ -1154,7 +906,7 @@ export function createApp(): Hono {
         groups: settingGroups(),
         models: await listModels(),
         readyCount: loadPolicy().policy.paused ? readyToDeploy() : 0,
-        extras: { Notifications: digestPreview() },
+        extras: { Notifications: notifyTools(), Rules: RulesList({ rules: loadPolicy().policy.rules }) },
         chrome: chrome(c),
       }) as string,
     ),
@@ -1172,28 +924,18 @@ export function createApp(): Hono {
     const result = applySettings(changes)
     // A schedule change should not wait for the old schedule to fire before applying.
     if (result.ok && result.applied.includes('scan.cron')) rescheduleScan()
-    if (result.ok && result.applied.includes('notify.cron')) rescheduleDigest()
     return c.html(
       SettingsForm({
         groups: settingGroups(),
         models: await listModels(),
         readyCount: loadPolicy().policy.paused ? readyToDeploy() : 0,
-        extras: { Notifications: digestPreview() },
+        extras: { Notifications: notifyTools(), Rules: RulesList({ rules: loadPolicy().policy.rules }) },
         banner: result.ok
           ? result.applied.length
             ? { level: 'info', text: `Saved: ${result.applied.join(', ')}. Committed to git.` }
             : null
           : { level: 'error', text: result.errors.join(' ') },
       }) as string,
-    )
-  })
-
-  app.post('/settings/digest/send', async (c) => {
-    const r = await flushDigest('manual')
-    return c.html(
-      r.sent > 0
-        ? `<span class="sub">sent ${r.sent} item(s)</span>`
-        : `<span class="sub">${r.skipped ?? 'nothing to send'}</span>`,
     )
   })
 

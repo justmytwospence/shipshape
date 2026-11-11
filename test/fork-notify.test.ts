@@ -26,7 +26,7 @@ const { getDb } = await import('../src/db.ts')
 const { setMinSpacingForTests } = await import('../src/registry/http.ts')
 const { checkFork, reconcileForks, forkRefs, forkVerdict, forkIncidentKey, newestUpstreamTag, recordForkConflict, forkConflictFor, forkConflictKey } =
   await import('../src/forks.ts')
-const { eligibleGroups, isFork } = await import('../src/gitops/pr.ts')
+const { eligibleGroups, isFork } = await import('../src/gitops/ship.ts')
 const { PolicySchema } = await import('../src/config.ts')
 const { mockFetch, assertAllMocked, json, status } = await import('./helpers/http.ts')
 const { parseImageRef } = await import('../src/images/ref.ts')
@@ -274,7 +274,7 @@ test('the newest release is the highest of what shipshape recorded and what GitH
   getDb()
     .prepare(
       `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at)
-       VALUES ('books','app','ghcr.io/o/r','v1.2.0','v1.4.0','minor','held','held','now','now')`,
+       VALUES ('books','app','ghcr.io/o/r','v1.2.0','v1.4.0','minor','frozen','frozen','now','now')`,
     )
     .run()
   const h = mockFetch(t, [releases(['v1.3.0'])])
@@ -287,14 +287,14 @@ test('the newest release is the highest of what shipshape recorded and what GitH
   getDb()
     .prepare(
       `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at)
-       VALUES ('books','app','ghcr.io/o/r','v1.2.0','1.3.0','minor','held','held','now','now')`,
+       VALUES ('books','app','ghcr.io/o/r','v1.2.0','1.3.0','minor','frozen','frozen','now','now')`,
     )
     .run()
   assert.equal(await newestUpstreamTag(svc, 'o/r'), 'v1.3.0')
   assertAllMocked(h)
 })
 
-test('the pull request pass picks a fork up like any service, except while its replay conflicts', async (t) => {
+test('the ship pass picks a fork up like any service, except while its replay conflicts', async (t) => {
   const svc = fork(['o/r#1'])
   seedImage(svc)
   getDb()
@@ -305,7 +305,7 @@ test('the pull request pass picks a fork up like any service, except while its r
     .run()
   const insert = getDb().prepare(
     `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detail, detected_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'minor', 'manual', 'detected', ?, 'now', 'now')`,
+     VALUES (?, ?, ?, ?, ?, 'minor', 'normal', 'detected', ?, 'now', 'now')`,
   )
   insert.run('books', 'app', 'ghcr.io/o/r:v1.2.0', 'v1.2.0', 'v1.3.0', 'fork')
   insert.run('media', 'plain', 'x/y:1.0.0', '1.0.0', '1.1.0', null)

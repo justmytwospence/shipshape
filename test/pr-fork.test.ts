@@ -23,8 +23,8 @@ delete process.env.NOTIFY_URL
 after(() => rmSync(dir, { recursive: true, force: true }))
 
 const { getDb } = await import('../src/db.ts')
-const { buildBranch, prTitle, upstreamRefAt } = await import('../src/gitops/pr.ts')
-const { prBody, carriedFixesSection } = await import('../src/gitops/body.ts')
+const { buildBranch, prTitle, upstreamRefAt } = await import('../src/gitops/ship.ts')
+const { carriedFixesSection } = await import('../src/gitops/body.ts')
 const { forkConflictFor, forkPreparedFor } = await import('../src/forks.ts')
 const { PolicySchema } = await import('../src/config.ts')
 
@@ -171,13 +171,11 @@ test('a fork group builds its branch through bumpFork, from the replay it was ha
   assert.equal(prepared?.toTag, 'v3.5.1')
   assert.equal(prepared?.tag, bump.tag)
 
-  const body = prBody(group(), PolicySchema.parse({}), new Map([[1, 'grimmory-tools/grimmory']]), r.forks)
+  const body = carriedFixesSection(group(), r.forks)
   assert.match(body, /### Carried fixes/)
   assert.match(body, /\[`9f1c2d3`\]|`homelab\/v3\.5\.1-9f1c2d3`/)
   assert.match(body, /\[`ccccccc`\]\(https:\/\/github\.com\/justmytwospence\/grimmory\/commit\/c{40}\) fix: keep the reading statistics \(#2952\) — Spencer/)
   assert.match(body, /grimmory-tools\/grimmory#2952\]\(https:\/\/github\.com\/grimmory-tools\/grimmory\/issues\/2952\): merged, not released/)
-  // The verdict markers still bracket the analysis, so the review splices in as before.
-  assert.ok(body.indexOf('### Carried fixes') < body.indexOf('<!-- shipshape:verdict:start -->'))
 })
 
 test('a retire group builds its branch through retireFork and says so in the title and body', async () => {
@@ -260,7 +258,7 @@ test('a digest-pinned upstream keeps its pin, or the edit is refused', async () 
   assert.equal(readFileSync(join(repo, 'books', 'docker-compose.yaml'), 'utf8'), COMPOSE)
 })
 
-test('an overtaken fork pull request is rebuilt from main onto the newer target', async () => {
+test('an overtaken fork change is rebuilt from main onto the newer target', async () => {
   const repo = workRepo()
   const first = await buildBranch(repo, group('v3.5.0'), 'shipshape/books-grimmory', deps({ ...bump, tag: 'homelab/v3.5.0-9f1c2d3', upstreamTag: 'v3.5.0' }).deps)
   assert.ok(first.ok)

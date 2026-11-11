@@ -22,8 +22,8 @@ export interface OutcomeWords {
 }
 
 export const OUTCOMES = {
-  opened: { badge: 'Waiting on you', verb: 'opened', badgeCls: 'badge-warning', dotCls: 'bg-info' },
-  merged: { badge: 'Merged', verb: 'merged', badgeCls: 'badge-info', dotCls: 'bg-info' },
+  opened: { badge: 'Waiting on you', verb: 'drafted', badgeCls: 'badge-warning', dotCls: 'bg-info' },
+  merged: { badge: 'Shipped', verb: 'shipped', badgeCls: 'badge-info', dotCls: 'bg-info' },
   deployed: { badge: 'Soaking', verb: 'deployed', badgeCls: 'badge-info', dotCls: 'bg-info' },
   verified: { badge: 'Verified', verb: 'verified', badgeCls: 'badge-success', dotCls: 'bg-success' },
   'left-stopped': { badge: 'Left stopped', verb: 'left stopped', badgeCls: 'badge-ghost', dotCls: 'bg-base-300' },

@@ -292,12 +292,12 @@ test('a verb pressed in the pane redraws the pane, not the row', () => {
   }
 })
 
-test('merging and rolling back ask twice', () => {
+test('shipping and rolling back ask twice', () => {
   // Both change a running host. The confirm writes out what will happen.
   const html = VIEWS['update-detail']!
-  assert.match(html, /data-open="#confirm-merge-deploy-7"/)
-  assert.match(html, /id="confirm-merge-deploy-7"/)
-  assert.match(html, /squash #41 into main/)
+  assert.match(html, /data-open="#confirm-ship-7"/)
+  assert.match(html, /id="confirm-ship-7"/)
+  assert.match(html, /merge it into main with a merge commit/)
   // Written from policy (here the defaults), not from constants.
   assert.match(html, /watch it for up to 5 minutes/)
   assert.match(html, /look again 30 minutes later/)
@@ -315,21 +315,22 @@ test('the screen quotes the notes, links them, and says when nothing acted on it
   assert.doesNotMatch(VIEWS['update-detail']!, /Screen \(shadow\)/, 'and is absent where there is no screen')
 })
 
-test('a service deployed by hand offers Merge, not Merge & deploy', () => {
+test('a lifeline service asks first, and says why on the page', () => {
   const html = VIEWS['update-attended']!
-  assert.match(html, />Merge<\/button>/)
-  assert.doesNotMatch(html, /Merge &amp; deploy/)
-  assert.match(html, /press Deploy when you are ready/)
+  assert.match(html, />lifeline</)
+  assert.match(html, />Ship<\/button>/)
+  assert.match(html, /Waiting on you/)
+  assert.match(html, /this service always asks/)
 })
 
 test('a verb that asks first asks from the overflow menu too', () => {
-  // The menu used to post straight to the endpoint, so a merge chosen from it skipped
-  // the confirmation the same verb gets as the primary button.
+  // The menu used to post straight to the endpoint, so a verb chosen from it skipped the
+  // confirmation the same verb gets as the primary button.
   const html = VIEWS['update-secondary-merge']!
   const start = html.indexOf('dropdown-content')
   const menu = html.slice(start, html.indexOf('</ul>', start))
-  assert.match(menu, /data-verb="merge-deploy" data-open="#confirm-merge-deploy-/)
-  assert.doesNotMatch(menu, /hx-post="\/prs\/41\/merge/)
+  assert.match(menu, /data-verb="ship" data-open="#confirm-ship-/)
+  assert.doesNotMatch(menu, /hx-post="\/updates\/\d+\/ship/)
 })
 
 test('a left-stopped update says so', () => {
@@ -467,17 +468,14 @@ test('the banner points at the switch, not at the top of the page it sits on', (
   assert.match(VIEWS['layout']!, /href="\/settings#pause"/)
 })
 
-test('a hold says who asked for it, and offers the way out of it', () => {
+test('a snoozed decision says so, and keeps ship on offer', () => {
   const html = VIEWS['update-detail-hold']!
-  assert.match(html, /You asked shipshape to hold this/)
-  assert.match(html, /Release hold/)
-  // Never the badge word. `Held` is the on-request rung -- the pull request has not been
-  // opened yet -- which is a different situation with a different button, and reusing the
-  // word is how one vocabulary becomes two.
+  assert.match(html, />Ship<\/button>/)
+  assert.doesNotMatch(html, /Release hold/, 'the v1 hold verb is gone')
   assert.doesNotMatch(html, /badge[^"]*">\s*Held/)
 })
 
-test('an ordinary pull request says nothing about a hold', () => {
-  assert.doesNotMatch(VIEWS['update-detail']!, /asked shipshape to hold/)
-  assert.doesNotMatch(VIEWS['update-detail']!, /Release hold/)
+test('a decision lists what it is waiting on, and nothing else says so', () => {
+  assert.match(VIEWS['update-detail']!, /Waiting on you[\s\S]*this service always asks/)
+  assert.doesNotMatch(VIEWS['update-verified']!, /Waiting on you/)
 })

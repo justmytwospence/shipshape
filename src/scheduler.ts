@@ -1,21 +1,16 @@
 import { Cron } from 'croner'
 import { configured, env, loadPolicy } from './config.ts'
-import { logEvent } from './db.ts'
+import { getDb, logEvent } from './db.ts'
 import { runReviewPass } from './analyze/run.ts'
 import { runProposePass } from './propose/run.ts'
-import { runAutoMerge } from './gitops/automerge.ts'
-import { pollIntervalMs, pollPrs } from './gitops/poll.ts'
-import { drainDeployQueue, hasPendingDeploys, runRechecks } from './deploy/queue.ts'
-import { runPrPass } from './gitops/pr.ts'
+import { drainDeployQueue, hasDueRechecks, hasPendingDeploys, runRechecks } from './deploy/queue.ts'
+import { runShipPass } from './gitops/ship.ts'
+import { runCutover } from './gitops/cutover.ts'
 import { runScan } from './scan.ts'
-import { flush as flushDigest, lastItemId, prune as pruneDigest } from './notify/digest.ts'
-import { claimDigestSlot, digestOwed, MAX_WAIT_MS, requestDigest } from './notify/barrier.ts'
 import { checkGitHubAuth } from './health/github-auth.ts'
 import { retryPendingIncidents } from './notify/index.ts'
-import { syncInboxCards } from './notify/inbox-cards.ts'
+import { syncDecisionCards } from './notify/decisions.ts'
 import { checkAnalysisBudget } from './health/analysis-budget.ts'
-import { ingestInstructions } from './revise/ingest.ts'
-import { runInstructionPass } from './revise/run.ts'
 import { createTicker, type Ticker } from './loop/ticker.ts'
 import { logRetired, retireOvertaken } from './updates/overtaken.ts'
 import { startSecurityLoop } from './security/loop.ts'
@@ -31,20 +26,13 @@ import { startSecurityLoop } from './security/loop.ts'
 let job: Cron | null = null
 let currentExpression = ''
 
-let digestJob: Cron | null = null
-let digestExpression = ''
+/** The main loop's heartbeat. Null until the loop is running. */
+let loop: Ticker | null = null
 
-
-/**
- * The pull-request loop's heartbeat. Null until the loop is running.
- *
- * Exposed at module scope for one caller: the digest schedule. The loop is what sends
- * the digest now, and on a quiet morning the loop is on its ten-minute idle cadence with
- * a timer already armed -- so 08:00's summary would go out at some point before 08:10
- * for no reason at all. Recomputing the interval is not enough; the timer that is
- * already ticking has to be replaced, which is what `wake` does.
- */
-let prLoop: Ticker | null = null
+/** Wake the loop now: a verb was pressed and the next thing to do should not wait out the idle interval. */
+export function wakeLoop(): void {
+  loop?.wake()
+}
 
 export function startScheduler(): void {
   const setup = configured()
@@ -67,186 +55,66 @@ export function startScheduler(): void {
     logEvent({ level: 'warn', kind: 'system', message: 'could not retire overtaken updates', detail: (err as Error).message })
   }
   schedule()
-  scheduleDigest()
-  startPrLoop()
+  startLoop()
   // Security incidents against what runs here, on its own clock (src/security/loop.ts).
   // Off unless policy.yaml turns it on; the loop checks on every tick.
   startSecurityLoop()
 }
 
-/**
- * The digest clock, separate from the scan's.
- *
- * They are different questions -- "when should shipshape go and look" and "when do you
- * want to hear about it" -- and tying them together would mean an operator who scans
- * hourly gets hourly pushes. The default sits a few hours after the default scan so a
- * night's work has landed before the summary goes out.
- */
-function scheduleDigest(): void {
+/** Busy while anything is in flight, so a deploy or a ship is not left waiting out the idle interval. */
+export function loopIntervalMs(): number {
   const { policy } = loadPolicy()
-  digestExpression = policy.notify.cron
-  digestJob?.stop()
-  digestJob = new Cron(digestExpression, { timezone: env.tz }, () => {
-    const { policy: now } = loadPolicy()
-    // Pick up a schedule edit without a restart, the same way the scan does.
-    if (now.notify.cron !== digestExpression) {
-      scheduleDigest()
-      return
-    }
-    if (now.notify.routine !== 'digest') return
-    // The clock says the digest is owed; the pull-request loop decides when it goes out.
-    // See notify/barrier.ts -- sending from here would mean sampling shared state from a
-    // timer running beside the work, which is the arrangement this replaced.
-    requestDigest()
-    // ...but the loop has to be asked, or 08:00's digest waits out whatever remains of a
-    // ten-minute idle interval before anything looks at it.
-    prLoop?.wake()
-  })
+  const open = (getDb().prepare(`SELECT COUNT(*) c FROM updates WHERE state = 'detected'`).get() as { c: number }).c > 0
+  const busy = open || hasPendingDeploys() || hasDueRechecks()
+  return (busy ? policy.sync.poll_active_s : policy.sync.poll_idle_s) * 1000
 }
 
 /**
- * Send the digest, if one is owed and this tick left nothing unfinished.
+ * The main loop: review what was detected, ship what is ready, deploy what shipped.
  *
- * Called at the end of every tick, inside the loop rather than beside it. `worked` is
- * the tick's own account of itself; `hasPendingDeploys` covers work queued but not yet
- * carried out. Together they are the whole definition of quiet, and both are read at the
- * one point in the cycle where nothing else is running.
- *
- * The summary is meant to describe a night that is over. A merge at 07:58 whose deploy
- * is still running at 08:00 used to be reported as "merged", with the deploy landing in
- * *tomorrow's* digest -- one event split across two mornings. Now the digest waits for
- * the chain to finish, then describes the outcome.
- *
- * Everything here is guarded: it runs from the tick's `finally`, and a throw would stop
- * the loop rescheduling itself.
+ * Self-rescheduling rather than a fixed interval, because the cadence depends on whether
+ * anything is in flight -- a minute while work is pending, ten when idle.
  */
-async function settleDigest(worked: boolean): Promise<void> {
-  try {
-    if (!digestOwed()) return
-    const slot = claimDigestSlot(!worked && !hasPendingDeploys())
-    if (!slot.send) return
-
-    if (slot.reason === 'deadline') {
-      logEvent({
-        level: 'info',
-        kind: 'system',
-        message: 'digest sent with work still in flight',
-        detail: `waited ${Math.round(MAX_WAIT_MS / 60_000)}m; the rest will appear in the next digest`,
-      })
-    }
-    await flushDigest('cron')
-    pruneDigest()
-  } catch (err) {
-    logEvent({
-      level: 'warn',
-      kind: 'system',
-      message: 'could not send the digest',
-      detail: (err as Error).message,
-    })
-  }
-}
-
-/** Rebuild the digest job, so a schedule edited in the UI applies immediately. */
-export function rescheduleDigest(): void {
-  scheduleDigest()
-}
-
-/**
- * The pull-request loop: notice merges, then open whatever is newly eligible.
- *
- * Self-rescheduling rather than a fixed interval, because the cadence depends on
- * whether anything is open -- a minute while PRs are in flight, ten when idle.
- */
-function startPrLoop(): void {
+function startLoop(): void {
   const tick = async (): Promise<void> => {
-    // Whether this tick left anything unfinished, for the digest barrier below.
-    let worked = false
-    // The digest watermark as the tick began. Zero if it could not be read, which makes
-    // any existing item read as new -- the conservative direction, since a tick wrongly
-    // called busy delays the digest where one wrongly called quiet truncates it.
-    let before = 0
     try {
-      before = lastItemId()
       // First, and whatever else this tick does. A dead credential stops shipshape
       // working, which is a fault rather than a choice, and the state it reports is
       // exactly what the operator would otherwise have to infer from a silent backlog.
       await checkGitHubAuth()
+      // One-time: close the pull requests v1 left open (src/gitops/cutover.ts).
+      await runCutover()
       // Incidents the router could not take earlier: at least once, latest state wins.
       await retryPendingIncidents()
-      // One card per update waiting on you, kept in line with the Inbox (inbox-cards.ts).
-      // Never allowed to stop the tick: a card is a convenience, the Inbox is the record.
-      await syncInboxCards().catch((err) =>
-        logEvent({ level: 'warn', kind: 'system', message: 'inbox cards not synced', detail: (err as Error).message }),
+      // One card per decision waiting on you, kept in line with the Inbox. Never allowed
+      // to stop the tick: a card is a convenience, the Inbox is the record.
+      await syncDecisionCards().catch((err) =>
+        logEvent({ level: 'warn', kind: 'system', message: 'decision cards not synced', detail: (err as Error).message }),
       )
-      // Outside the gate for the same reason, and asked here rather than where the budget
-      // is spent. The old warning lived in `recordCost`, which only runs when a call is
-      // made -- so it went quiet the moment `budgetExhausted()` started refusing to make
-      // them, which is precisely when it mattered. Asked on the tick, the question has an
-      // answer whether or not anything is being analysed.
+      // Asked on the tick rather than where the budget is spent, so the question has an
+      // answer even when nothing is being analysed.
       await checkAnalysisBudget()
-      // Before anything that might merge: an unrecorded comment is one that does not
-      // hold the merge, which is the one thing this must never fail to do.
-      await ingestInstructions()
-      {
-        await pollPrs()
-        // After polling, so every merge this tick noticed is queued before any of them
-        // is acted on, and one slow verify window cannot hide the others.
-        const drained = await drainDeployQueue()
-        await runRechecks()
-        const result = await runPrPass()
-        // Review runs after PR creation, not before: a pull request must appear whether
-        // or not a model is reachable. The screen first, then the reader on what it leaves.
-        await runReviewPass()
-        // After analysis, because a proposal is only drafted once a verdict says the
-        // update needs more than its tag.
-        await runProposePass()
-        // After drafting, so a comment about the drafted changes is answered against the
-        // branch as it actually stands. Its hold is already in force either way -- that
-        // was decided by ingestion, above the gate, before any of this ran.
-        await runInstructionPass()
-        // Last, so a pull request opened this cycle has had its verdict and any
-        // proposal before anything considers merging it.
-        const merge = await runAutoMerge()
-        // Two of the three questions the barrier asks; the watermark is the third, and
-        // it is asked below so that it covers the whole tick rather than this block.
-        // `drained.ran` catches a deploy that finished without recording a digest line
-        // -- a rollback, say, which sets `ran` before it branches on the outcome. And
-        // `merge.merged` catches the gap that made a timer unworkable in the first
-        // place: a merge is not queued for deploy until the *next* tick's `pollPrs`
-        // notices it, so at this instant there is nothing pending to see and the tick is
-        // nowhere near finished.
-        worked = drained.ran > 0 || merge.merged > 0
-        if (result.paused) {
-          logEvent({
-            level: 'info',
-            kind: 'pr',
-            message: 'pull request pass skipped',
-            detail: result.paused,
-          })
-        }
+      // Deploys first: a ship queues one, and one slow verify window must not hide the others.
+      await drainDeployQueue()
+      await runRechecks()
+      // Review before shipping: an update waits (briefly) for its reading.
+      await runReviewPass()
+      // After analysis, because a change is only drafted once a verdict says the update
+      // needs more than its tag.
+      await runProposePass()
+      // Last, so what was detected this cycle has had its verdict and any draft.
+      const result = await runShipPass()
+      if (result.paused) {
+        logEvent({ level: 'info', kind: 'pr', message: 'ship pass skipped', detail: result.paused })
       }
     } catch (err) {
-      // A tick that failed part way through is not a quiet one: whatever it was doing is
-      // unfinished, and the digest should wait for the retry rather than report a
-      // half-done night as the outcome.
-      worked = true
-      logEvent({
-        level: 'error',
-        kind: 'pr',
-        message: 'pull request loop failed',
-        detail: (err as Error).message,
-      })
-    } finally {
-      // The watermark is read here so it spans the whole tick, including the passes that
-      // run above the blackout gate. A throw is contained by the ticker, which arms the
-      // next tick whatever happens in this one.
-      await settleDigest(worked || lastItemId() > before)
+      logEvent({ level: 'error', kind: 'pr', message: 'main loop failed', detail: (err as Error).message })
     }
   }
 
-  prLoop = createTicker(tick, pollIntervalMs)
+  loop = createTicker(tick, loopIntervalMs)
   // Give the first scan a moment before touching git.
-  prLoop.start(20_000)
+  loop.start(20_000)
 }
 
 function schedule(): void {
@@ -283,8 +151,7 @@ async function fire(): Promise<void> {
  */
 export function scheduleInfo(): {
   scan: { cron: string; nextAt: string | null; deferred: boolean }
-  digest: { cron: string; nextAt: string | null; owed: boolean }
-  prLoop: { nextTickAt: string | null }
+  loop: { nextTickAt: string | null }
 } {
   const { policy } = loadPolicy()
   return {
@@ -293,14 +160,7 @@ export function scheduleInfo(): {
       nextAt: job?.nextRun()?.toISOString() ?? null,
       deferred: false,
     },
-    digest: {
-      cron: policy.notify.cron,
-      nextAt: policy.notify.routine === 'digest' ? (digestJob?.nextRun()?.toISOString() ?? null) : null,
-      // The same honesty the scan's deferral gets: between the schedule firing and the
-      // loop finding a quiet tick, "next digest: in 23 hours" is the wrong answer.
-      owed: digestOwed(),
-    },
-    prLoop: { nextTickAt: prLoop?.nextAt() ?? null },
+    loop: { nextTickAt: loop?.nextAt() ?? null },
   }
 }
 

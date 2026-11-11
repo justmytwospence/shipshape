@@ -18,7 +18,6 @@ delete process.env.REPO_DIR
 
 const { getDb } = await import('../src/db.ts')
 const { retireOvertaken } = await import('../src/updates/overtaken.ts')
-const { reconcile, render, outcomesFor } = await import('../src/notify/digest.ts')
 const { actionsFor } = await import('../src/updates/actions.ts')
 
 after(() => rmSync(dir, { recursive: true, force: true }))
@@ -175,25 +174,4 @@ test('no merge time means no evidence of order, so nothing is retired', () => {
   pr(79, u, { mergedAt: null })
   pr(93, update({ from: 'b', to: 'c' }), { mergedAt: at(30) })
   assert.deepEqual(retireOvertaken(), [])
-})
-
-test('the digest calls an overtaken pull request overtaken, not a failure', () => {
-  const url = (n: number) => `https://github.com/you/repo/pull/${n}`
-  const batch = [{ id: 1, at: at(0), category: 'opened' as const, stack: 'minuspod', service: 'minuspod', summary: 'a -> b (#79)', detail: null, url: url(79) }]
-  const m = render(
-    reconcile(batch, new Map([[79, { merged: true, superseded: true, deploy: { status: 'failed', detail: 'compose failed' } }]])),
-  )!
-  assert.equal(m.title, 'shipshape: #79 merged, overtaken by a later update')
-})
-
-test('outcomes know a pull request whose updates were all overtaken', () => {
-  const u79 = update({ from: 'a', to: 'b' })
-  deploy(pr(79, u79, { mergedAt: at(6) }), 79, u79, 'failed')
-  pr(93, update({ from: 'b', to: 'c' }), { mergedAt: at(30) })
-  retireOvertaken()
-
-  const row = (n: number) => ({ id: n, at: at(0), category: 'opened' as const, stack: null, service: null, summary: '', detail: null, url: `https://github.com/you/repo/pull/${n}` })
-  const o = outcomesFor([row(79), row(93)])
-  assert.equal(o.get(79)!.superseded, true)
-  assert.equal(o.get(93)!.superseded, false)
 })

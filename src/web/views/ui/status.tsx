@@ -21,7 +21,6 @@ export interface StatusData {
   version: string
   repoDir: string
   repo: string
-  mergeMethod: string
   pushMain: boolean
   scan: {
     cron: string
@@ -31,7 +30,6 @@ export interface StatusData {
     /** Per-outcome tally from the last sweep, already parsed out of its stored JSON. */
     counts: Record<string, number> | null
   }
-  digest: { cron: string; nextAt: string | null; owed: boolean }
   /** `refused` is present-but-rejected: a token can be all three of set, wrong and silent. */
   credentials: {
     name: string
@@ -298,19 +296,6 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
                     </>
                   ),
                 ],
-                [
-                  'next digest',
-                  data.digest.owed ? (
-                    <>
-                      due now
-                      <span class="ml-2 opacity-50">waiting for work in flight</span>
-                    </>
-                  ) : data.digest.nextAt ? (
-                    <Relative at={data.digest.nextAt} />
-                  ) : (
-                    'off'
-                  ),
-                ],
                 // Hourly, so it belongs with the clocks rather than under a heading of
                 // its own -- and stated in the direction it actually counts.
                 ...(hub ? ([['hub pulls', hub]] as [string, unknown][]) : []),
@@ -379,7 +364,7 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
                 ['version', data.version],
                 ['checkout', data.repoDir],
                 ['repository', data.repo],
-                ['merge method', data.mergeMethod],
+                ['ships as', 'merge commits on main'],
                 ['publishes main', String(data.pushMain)],
               ]}
             />

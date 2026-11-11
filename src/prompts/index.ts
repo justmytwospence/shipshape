@@ -18,20 +18,20 @@ import { paths } from '../config.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 
-export type PromptName = 'verdict' | 'proposal' | 'revision' | 'security'
+export type PromptName = 'verdict' | 'proposal' | 'rule' | 'security'
 
 export const PROMPTS: Record<PromptName, { title: string; help: string }> = {
   verdict: {
     title: 'Changelog review',
-    help: 'Runs where a person will read the result. Decides approve / caution / block, and can withhold an auto-merge but never cause one.',
+    help: 'Runs where a person will read the result. Decides approve / caution / block and what the update needs; it can hold an update for you but never cause one to ship.',
   },
   proposal: {
     title: 'Config changes',
-    help: 'Runs when a review names steps this deployment must take. Drafts the compose changes an update needs beyond its tag.',
+    help: 'Runs when a review names steps this deployment must take. Drafts the compose changes an update needs beyond its tag, onto a local branch you ship from the decision card.',
   },
-  revision: {
-    title: 'Your comments',
-    help: 'Runs when you comment on an open pull request. It can answer, hold, re-read the changelog, skip, or write the change — never merge, never deploy.',
+  rule: {
+    title: 'Always ship',
+    help: 'Runs once when you press Always ship on a decision. Chooses how wide the rule should be and which holds it waives; the rule is written to policy.yaml as a commit.',
   },
   security: {
     title: 'Security incidents',

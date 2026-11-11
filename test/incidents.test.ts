@@ -1,6 +1,6 @@
 import { test, beforeEach, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -13,7 +13,8 @@ const root = mkdtempSync(join(tmpdir(), 'shipshape-incidents-'))
 process.env.DATA_DIR = root
 process.env.NOTIFY_URL = 'http://n8n.invalid/webhook/notify'
 process.env.NOTIFY_TOKEN = 'k'
-delete process.env.POLICY_FILE
+process.env.POLICY_FILE = join(root, 'policy.yaml')
+writeFileSync(process.env.POLICY_FILE, '')
 delete process.env.SMTP_URL
 
 let up = true
@@ -59,9 +60,21 @@ test('an unkeyed message is a one-shot event', async () => {
   assert.equal(getDb().prepare(`SELECT COUNT(*) c FROM incidents`).get()!.c, 0)
 })
 
-test('routine messages stay off the incident channel by default', async () => {
-  await notify({ title: 'merged', body: 'z', kind: 'routine' })
+test('a sink only hears the events it asks for', async () => {
+  writeFileSync(process.env.POLICY_FILE!, 'notify:\n  sinks:\n    - { type: webhook, events: [decision] }\n')
+  await notify({ key: 'shipshape:sync', title: 'sync blocked', body: 'why', priority: 4 })
+  assert.equal(wire.length, 0, 'a system message is not a decision')
+  await notify({ key: 'shipshape:decision:x', title: 'x 1 -> 2', body: 'Ship?', priority: 3, eventClass: 'decision' })
+  assert.equal(wire.length, 1)
+  assert.equal(wire[0]!.key, 'shipshape:decision:x')
+  writeFileSync(process.env.POLICY_FILE!, '')
+})
+
+test('with no sinks configured nothing is sent', async () => {
+  writeFileSync(process.env.POLICY_FILE!, 'notify:\n  sinks: []\n')
+  await notify({ key: 'shipshape:sync', title: 'sync blocked', body: 'why' })
   assert.equal(wire.length, 0)
+  writeFileSync(process.env.POLICY_FILE!, '')
 })
 
 test('a send the router cannot take is retried on the next tick, latest state winning', async () => {

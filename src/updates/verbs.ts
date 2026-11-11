@@ -310,12 +310,23 @@ async function startRedeploy(row: UpdateRow, io?: DeployIo): Promise<VerbResult>
  */
 async function retry(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Promise<VerbResult> {
   if (row.state === 'merged') {
-    const target = targetFor(row.stack, [row.service])
     const now = new Date().toISOString()
     const db = getDb()
     const prId = db
       .prepare(`SELECT pr_id FROM pr_updates WHERE update_id = ? ORDER BY pr_id DESC LIMIT 1`)
       .get(row.id) as { pr_id: number } | undefined
+    // Everything the change moved in this stack goes again, not just this one update: a
+    // stack shipped from one card is one change, and its failed deploy was all of it.
+    const siblings = prId
+      ? (db
+          .prepare(
+            `SELECT u.id, u.service FROM pr_updates pu JOIN updates u ON u.id = pu.update_id
+              WHERE pu.pr_id = ? AND u.stack = ? AND u.state = 'merged' ORDER BY u.id`,
+          )
+          .all(prId.pr_id, row.stack) as { id: number; service: string }[])
+      : []
+    const members = siblings.some((m) => m.id === row.id) ? siblings : [{ id: row.id, service: row.service }]
+    const target = targetFor(row.stack, [...new Set(members.map((m) => m.service))])
     const info = db
       .prepare(
         `INSERT INTO deploys (pr_number, pr_id, stack, services, strategy, ok, healthy,
@@ -324,7 +335,7 @@ async function retry(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Promise
       )
       .run(0, prId?.pr_id ?? null, target.stack, target.services.join(' '), target.strategy, now)
     const deployId = Number(info.lastInsertRowid)
-    linkDeployUpdates(deployId, prId?.pr_id ?? null, [row.id])
+    linkDeployUpdates(deployId, prId?.pr_id ?? null, members.map((m) => m.id))
     const job = claimJob(deployId)
     if (!job) return { ok: false, message: 'that deploy is already running' }
     void detach(runDeployJob(job, { io }), `retry of ${row.stack}`)

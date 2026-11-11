@@ -16,6 +16,7 @@ import {
 } from '../policy.ts'
 import { cooldownFor, memberVerdict, reviewExpected } from '../gitops/policy-inputs.ts'
 import { securityFixFor } from '../security/act.ts'
+import { canRestore } from '../restore/index.ts'
 import type { Magnitude } from '../versions/patterns.ts'
 
 /**
@@ -118,9 +119,6 @@ export function holdsForRow(row: HoldRow, policy: Policy = loadPolicy().policy, 
   const img = db
     .prepare(`SELECT claude_label, base_dockerfile FROM images WHERE stack = ? AND service = ?`)
     .get(row.stack, row.service) as { claude_label: string | null; base_dockerfile: string | null } | undefined
-  const snap = db
-    .prepare(`SELECT 1 FROM images WHERE stack = ? AND snapshot_label IS NOT NULL LIMIT 1`)
-    .get(row.stack)
   const fix = securityFixFor(row.id, policy)
 
   const verdict: HoldVerdict | null =
@@ -142,7 +140,7 @@ export function holdsForRow(row: HoldRow, policy: Policy = loadPolicy().policy, 
     verdict,
     verdictState: state,
     required: img?.claude_label?.trim().toLowerCase() === 'required',
-    hasSnapshot: !!snap,
+    hasSnapshot: canRestore(row.stack, policy),
     restoreError: row.restore_error,
     securityFix: fix !== null,
   }
@@ -172,11 +170,114 @@ export function holdsForUpdate(id: number, policy?: Policy): UpdateHolds | null 
 }
 
 /**
- * Every update that one decision covers: the live rows with the same image repository and
- * target tag, across stacks, plus whatever shares a group with them. Ordered by id, so
- * the first is the one a card and its taps name.
+ * One question for you: the updates one card asks about and one tap answers.
+ *
+ * A decision is a stack: everything in it that needs you, shipped together as one merge
+ * commit when you say ship (src/gitops/ship.ts, `eligibleGroups`). The one exception is a
+ * bump fanned out across stacks -- the same image moving to the same tag in stacks that
+ * have nothing else waiting (nineteen agentgateway sidecars) -- which is one card, not
+ * nineteen.
+ */
+export interface Decision {
+  /** The card key's suffix: `stack:<stack>`, or the image repository for a fan-out. */
+  key: string
+  /** The stack, or null for a fan-out. */
+  stack: string | null
+  /** The image repository for a fan-out, else null. */
+  repository: string | null
+  members: HoldRow[]
+  /** Blocking holds per member id. */
+  holdsOf: Map<number, Hold[]>
+  /** Blocking holds, de-duplicated across members, in first-seen order. */
+  holds: Hold[]
+  since: string
+}
+
+export function currentDecisions(policy: Policy = loadPolicy().policy, now = Date.now()): Decision[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT ${HOLD_COLUMNS} FROM updates u
+        WHERE u.state = 'detected' AND COALESCE(u.detail, '') != 'rolling'
+        ORDER BY u.detected_at DESC, u.id DESC`,
+    )
+    .all() as HoldRow[]
+
+  // The newest target per service; an older detection it overtook is not a question.
+  const seen = new Set<string>()
+  const byStack = new Map<string, { row: HoldRow; holds: Hold[]; repo: string }[]>()
+  for (const r of rows) {
+    const svc = `${r.stack}/${r.service}`
+    if (seen.has(svc)) continue
+    seen.add(svc)
+    let repo: string
+    try {
+      repo = repositoryOf(r.image)
+    } catch {
+      continue
+    }
+    const h = holdsForRow(r, policy, now)
+    if (h.status.status !== 'decision') continue
+    const list = byStack.get(r.stack) ?? []
+    list.push({ row: r, holds: h.holds, repo })
+    byStack.set(r.stack, list)
+  }
+
+  // A stack whose only question is one image at one tag can share a card with every other
+  // stack asking exactly that.
+  const fanSig = (list: { row: HoldRow; repo: string }[]): string | null => {
+    const sigs = new Set(list.map((e) => `${e.repo}|${e.row.to_tag}`))
+    return sigs.size === 1 ? [...sigs][0]! : null
+  }
+  const fan = new Map<string, string[]>()
+  for (const [stack, list] of byStack) {
+    const sig = fanSig(list)
+    if (sig) fan.set(sig, [...(fan.get(sig) ?? []), stack])
+  }
+
+  const build = (
+    key: string,
+    stack: string | null,
+    repository: string | null,
+    entries: { row: HoldRow; holds: Hold[] }[],
+  ): Decision => {
+    const sorted = [...entries].sort((a, b) => a.row.id - b.row.id)
+    const holds = new Map<string, Hold>()
+    for (const e of sorted) for (const h of e.holds) if (!holds.has(h.kind)) holds.set(h.kind, h)
+    const members = sorted.map((e) => e.row)
+    return {
+      key,
+      stack,
+      repository,
+      members,
+      holdsOf: new Map(sorted.map((e) => [e.row.id, e.holds])),
+      holds: [...holds.values()],
+      since: members.map((m) => m.decision_since ?? m.detected_at).sort()[0]!,
+    }
+  }
+
+  const out: Decision[] = []
+  const fanned = new Set<string>()
+  for (const [sig, stacks] of fan) {
+    if (stacks.length < 2) continue
+    const repo = sig.split('|')[0]!
+    out.push(build(repo, null, repo, stacks.flatMap((s) => byStack.get(s)!)))
+    for (const s of stacks) fanned.add(s)
+  }
+  for (const [stack, list] of byStack) {
+    if (fanned.has(stack)) continue
+    out.push(build(`stack:${stack}`, stack, null, list))
+  }
+  return out.sort((a, b) => a.members[0]!.id - b.members[0]!.id)
+}
+
+/**
+ * Every update that one decision covers, ordered by id, so the first is the one a card and
+ * its taps name. An update that is not part of a current decision (snoozed, frozen, acted
+ * on from the dashboard) covers the live rows with the same image repository and target.
  */
 export function decisionMembers(id: number): HoldRow[] {
+  const d = currentDecisions().find((x) => x.members.some((m) => m.id === id))
+  if (d) return d.members
   const db = getDb()
   const base = db.prepare(`SELECT ${HOLD_COLUMNS} FROM updates u WHERE u.id = ?`).get(id) as HoldRow | undefined
   if (!base) return []

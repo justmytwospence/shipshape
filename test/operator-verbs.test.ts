@@ -50,13 +50,18 @@ beforeEach(() => {
 
 test('ship approves every update the decision covers, and clears a snooze', async () => {
   const ids = [add('a', 'ask'), add('b', 'ask'), add('c', 'ask', 'ghcr.io/other/thing')]
-  getDb().prepare(`UPDATE updates SET snoozed_until = ? WHERE id = ?`).run(new Date(Date.now() + 1e9).toISOString(), ids[0])
   const r = await runOperatorVerb(ids[1]!, 'ship')
   assert.equal(r.ok, true, r.message)
   assert.match(r.message, /^Shipping a, b v1\.6\.0 -> v1\.7\.0\./)
   assert.ok(row(ids[0]!).approved_at && row(ids[1]!).approved_at)
-  assert.equal(row(ids[0]!).snoozed_until, null)
-  assert.equal(row(ids[2]!).approved_at, null, 'a different image is a different decision')
+  assert.equal(row(ids[2]!).approved_at, null, 'a different image in another stack is a different decision')
+
+  // Shipped from the dashboard while snoozed: it comes back and ships.
+  const d = add('d', 'ask', 'ghcr.io/x/d')
+  getDb().prepare(`UPDATE updates SET snoozed_until = ? WHERE id = ?`).run(new Date(Date.now() + 1e9).toISOString(), d)
+  assert.equal((await runOperatorVerb(d, 'ship')).ok, true)
+  assert.ok(row(d).approved_at)
+  assert.equal(row(d).snoozed_until, null)
 })
 
 test('snooze puts the whole decision off for a week and restarts its clock', async () => {

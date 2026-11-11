@@ -47,8 +47,8 @@ export async function notify(opts: Message): Promise<void> {
 }
 
 /** Close an incident. Silent when it is not open: nothing is sent at all. */
-export async function resolveIncident(key: string): Promise<void> {
-  await notify({ key, status: 'resolved', title: '', body: '' })
+export async function resolveIncident(key: string, opts: Pick<Message, 'redact' | 'eventClass'> = {}): Promise<void> {
+  await notify({ key, status: 'resolved', title: '', body: '', ...opts })
 }
 
 /** Hand over whatever earlier webhook sends could not. Called once per loop tick. */

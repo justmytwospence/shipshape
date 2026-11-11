@@ -170,3 +170,8 @@ test('inferRule refuses when nothing is holding the update', async () => {
   const id = seed('web', 'web', 'normal')
   await assert.rejects(inferRule(id), /nothing is holding/)
 })
+
+test('the fallback for a stack card with several images is the stack', () => {
+  const r = fallbackRule([member('pay', 'btc', 'docker.io/x/btc:1'), member('pay', 'db', 'docker.io/library/postgres:17')], ['ask'], 'x')
+  assert.deepEqual(r.match, { stack: 'pay' })
+})

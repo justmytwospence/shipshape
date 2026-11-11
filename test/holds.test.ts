@@ -106,6 +106,15 @@ test('a stateful service needs a restore point: no snapshot, or one that failed,
   assert.deepEqual(kinds({ cls: 'normal', hasSnapshot: false }), [], 'only stateful services need one')
 })
 
+test('a digest rebuild of the running version needs neither release notes nor a restore point', () => {
+  const thin = { verdict: null, verdictState: 'unavailable' as const }
+  assert.deepEqual(kinds({ cls: 'stateful', magnitude: 'digest', hasSnapshot: false, ...thin }), [])
+  assert.deepEqual(kinds({ cls: 'normal', magnitude: 'digest', required: true, ...thin }), [])
+  assert.deepEqual(kinds({ cls: 'stateful', magnitude: 'patch', hasSnapshot: false, ...thin }), ['no-evidence', 'no-restore-point'], 'a version move still asks')
+  assert.deepEqual(kinds({ cls: 'ask', magnitude: 'digest', ...thin }), ['ask'], 'the class still asks')
+  assert.deepEqual(kinds({ magnitude: 'digest', verdict: verdict({ recommendation: 'block', breaking: ['x'] }) }), ['unsafe'], 'evidence of risk still holds')
+})
+
 test('a verified security fix lifts ask and no-evidence, and nothing that is a real warning', () => {
   const fix = { securityFix: true }
   assert.deepEqual(kinds({ ...fix, cls: 'ask' }), [])

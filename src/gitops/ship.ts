@@ -22,7 +22,7 @@ import { buildableServices, stackPeers, withNamespacePeers, type DeployTarget } 
 import { enqueueDeploy } from '../deploy/queue.ts'
 import { logRetired, retireOvertaken, type Retired } from '../updates/overtaken.ts'
 import { holdsForRow, HOLD_COLUMNS, type HoldRow, type UpdateHolds } from '../updates/holds.ts'
-import { restorePointsFor, stackHasSnapshot, takeRestorePoint } from '../restore/index.ts'
+import { canRestore, restorePointsFor, takeRestorePoint } from '../restore/index.ts'
 import { notify } from '../notify/index.ts'
 
 /**
@@ -77,11 +77,48 @@ export function eligibleGroups(policy: Policy): UpdateGroup[] {
   if (candidates.length === 0) return []
 
   const { sourceRepoFor, groupLabelFor } = makeLookups(services)
-  return groupUpdates(candidates, sourceRepoFor, groupLabelFor)
+  return mergeApproved(groupUpdates(candidates, sourceRepoFor, groupLabelFor))
+}
+
+/**
+ * One tap on a stack's card approves every update in it at the same instant; those ship
+ * together, as one merge commit and one deploy, rather than one per image.
+ */
+export function mergeApproved(groups: UpdateGroup[]): UpdateGroup[] {
+  const ids = groups.flatMap((g) => g.members.map((m) => m.id))
+  if (ids.length === 0) return groups
+  const approvedAt = new Map(
+    (getDb()
+      .prepare(`SELECT id, approved_at FROM updates WHERE id IN (${ids.map(() => '?').join(',')})`)
+      .all(...ids) as { id: number; approved_at: string | null }[]).map((r) => [r.id, r.approved_at]),
+  )
+  const out: UpdateGroup[] = []
+  const byTap = new Map<string, UpdateGroup[]>()
+  for (const g of groups) {
+    const stamps = new Set(g.members.map((m) => approvedAt.get(m.id) ?? null))
+    const stamp = stamps.size === 1 ? [...stamps][0] : null
+    if (!stamp) {
+      out.push(g)
+      continue
+    }
+    const k = `${g.members[0]!.stack}|${stamp}`
+    byTap.set(k, [...(byTap.get(k) ?? []), g])
+  }
+  for (const gs of byTap.values()) {
+    if (gs.length === 1) {
+      out.push(gs[0]!)
+      continue
+    }
+    const members = gs.flatMap((g) => g.members).sort((a, b) => a.id - b.id)
+    const stack = members[0]!.stack
+    out.push({ key: `${stack}--decision--${members[0]!.id}`, branchKey: `${stack}--decision`, members })
+  }
+  return out.sort((a, b) => a.members[0]!.id - b.members[0]!.id)
 }
 
 /** The local branch a group ships from. Never pushed. */
 export function shipBranchFor(g: UpdateGroup): string {
+  if (g.branchKey?.endsWith('--decision')) return `shipshape/${g.branchKey}-${g.members[0]!.id}`.slice(0, 120)
   const base = g.members.length > 1 ? g.members[0]!.stack + '--group' : `${g.members[0]!.stack}--${g.members[0]!.service}`
   const tag = g.members[0]!.to_tag.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '')
   return `shipshape/${base}--${tag}`.slice(0, 120)
@@ -432,6 +469,11 @@ export function describe(g: UpdateGroup): string {
 export function prTitle(g: UpdateGroup, forks?: Map<number, ForkPrInfo>, bases?: Map<number, BasePrInfo>): string {
   const m = g.members[0]!
   const names = g.members.map((x) => x.service).join(', ')
+  // A stack shipped from one card: each service names its own move.
+  if (new Set(g.members.map((x) => `${x.from_tag}|${x.to_tag}`)).size > 1) {
+    const moves = g.members.map((x) => `${x.service} ${short(x.from_tag)} -> ${short(x.to_tag)}`).join(', ')
+    return `chore(deps): ${m.stack}: bump ${moves}`
+  }
   // A retire is still a version change, but "bump" would undersell what the diff does.
   if (forks && g.members.every((x) => forks.get(x.id)?.kind === 'retire')) {
     return `chore(deps): ${m.stack}: retire the ${names} fork, back to upstream ${short(m.to_tag)}`
@@ -599,8 +641,14 @@ async function passBody(out: ShipRun): Promise<ShipRun> {
 function wantsRestorePoint(statuses: UpdateHolds[]): boolean {
   if (!statuses[0]) return false
   const stack = statuses[0].row.stack
-  if (!stackHasSnapshot(stack)) return false
-  return statuses.some((s) => s.cls === 'stateful' || s.waived.some((h) => h.kind === 'irreversible'))
+  if (!canRestore(stack)) return false
+  // An irreversible migration always gets one. A stateful service gets one for a version
+  // move, not for a digest rebuild of the version it already runs (policy.ts, holdsFor).
+  return statuses.some(
+    (s) =>
+      [...s.holds, ...s.waived].some((h) => h.kind === 'irreversible') ||
+      (s.cls === 'stateful' && s.row.magnitude !== 'digest'),
+  )
 }
 
 async function shipGroup(group: UpdateGroup, policy: Policy): Promise<boolean> {

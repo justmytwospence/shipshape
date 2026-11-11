@@ -172,7 +172,10 @@ export interface HoldInput {
   verdictState: 'present' | 'pending' | 'unavailable'
   /** `shipshape.review: required`: this service would rather stall than ship unread. */
   required: boolean
-  /** Some service in the stack carries `shipshape.snapshot`, so a restore point can be taken. */
+  /**
+   * A restore point can be taken for this stack: some service carries `shipshape.snapshot`,
+   * or the configured offsite backup has a job for it.
+   */
   hasSnapshot: boolean
   /** The last restore point attempt failed, and why. */
   restoreError: string | null
@@ -191,6 +194,10 @@ function weakEvidence(i: HoldInput): boolean {
 export function holdsFor(i: HoldInput): Hold[] {
   const out: Hold[] = []
   const v = i.verdict
+  // A digest move under the same tag is a rebuild of the version already running: there
+  // are no release notes to read and no data migration to protect against, and a rollback
+  // is just the old digest. Missing evidence or a missing restore point says nothing there.
+  const rebuild = i.magnitude === 'digest'
 
   if (i.cls === 'lifeline') {
     out.push({ kind: 'lifeline', waivable: false, text: 'lifeline service: deploys only when you ship it' })
@@ -207,7 +214,7 @@ export function holdsFor(i: HoldInput): Hold[] {
   } else if (v && (v.steps.length > 0 || v.breaking.length > 0)) {
     out.push({ kind: 'needs-action', waivable: false, text: `Needs: ${v.steps[0] ?? v.breaking[0]}` })
   }
-  if (!i.securityFix && weakEvidence(i) && (i.magnitude === 'major' || i.cls === 'stateful' || i.required)) {
+  if (!rebuild && !i.securityFix && weakEvidence(i) && (i.magnitude === 'major' || i.cls === 'stateful' || i.required)) {
     out.push({ kind: 'no-evidence', waivable: true, text: 'no release notes were read for this jump' })
   }
   if (v?.irreversible) {
@@ -217,11 +224,11 @@ export function holdsFor(i: HoldInput): Hold[] {
       text: `the review says this migrates data one-way${i.hasSnapshot ? ' -- a restore point is taken first' : ''}`,
     })
   }
-  if (i.cls === 'stateful' && (!i.hasSnapshot || i.restoreError)) {
+  if (i.cls === 'stateful' && !rebuild && (!i.hasSnapshot || i.restoreError)) {
     out.push({
       kind: 'no-restore-point',
       waivable: true,
-      text: i.restoreError ?? 'no shipshape.snapshot in this stack, so no restore point can be taken',
+      text: i.restoreError ?? 'no shipshape.snapshot and no backup job for this stack, so no restore point can be taken',
     })
   }
   return out

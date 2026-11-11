@@ -10,6 +10,7 @@ import { runScan } from './scan.ts'
 import { checkGitHubAuth } from './health/github-auth.ts'
 import { retryPendingIncidents } from './notify/index.ts'
 import { syncDecisionCards } from './notify/decisions.ts'
+import { refreshOffsiteJobs } from './restore/offsite.ts'
 import { checkAnalysisBudget } from './health/analysis-budget.ts'
 import { createTicker, type Ticker } from './loop/ticker.ts'
 import { logRetired, retireOvertaken } from './updates/overtaken.ts'
@@ -86,6 +87,9 @@ function startLoop(): void {
       await runCutover()
       // Incidents the router could not take earlier: at least once, latest state wins.
       await retryPendingIncidents()
+      // Which stacks the offsite backup can cover (hourly, local config read on its side):
+      // before the cards, because it decides whether a stateful update needs to ask.
+      await refreshOffsiteJobs(loadPolicy().policy.restore_points.offsite).catch(() => {})
       // One card per decision waiting on you, kept in line with the Inbox. Never allowed
       // to stop the tick: a card is a convenience, the Inbox is the record.
       await syncDecisionCards().catch((err) =>

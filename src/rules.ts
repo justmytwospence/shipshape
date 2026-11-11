@@ -63,8 +63,13 @@ export function fallbackRule(
   const repo = repositoryOf(first.image)
   const sameImage = members.every((m) => repositoryOf(m.image) === repo)
   const allBase = members.every((m) => m.baseBuild)
+  const sameStack = members.every((m) => m.stack === first.stack)
   const match: RuleDraft['match'] =
-    members.length > 1 && sameImage ? { image: repo } : { stack: first.stack, service: first.service }
+    members.length > 1 && sameImage
+      ? { image: repo }
+      : members.length > 1 && sameStack
+        ? { stack: first.stack }
+        : { stack: first.stack, service: first.service }
   if (allBase) match.base_build = true
   return {
     match,
@@ -117,7 +122,10 @@ async function askModel(c: ReturnType<typeof context>, today: string): Promise<R
     `Image repository: ${c.repo}`,
     '',
     'Services in this decision:',
-    ...c.info.map((i) => `- ${i.stack}/${i.service}${i.baseBuild ? ' (our own build, watched through its base image)' : ''}`),
+    ...c.info.map(
+      (i) =>
+        `- ${i.stack}/${i.service}: ${shortRepository(i.image)} ${i.row.from_tag} -> ${i.row.to_tag}${i.baseBuild ? ' (our own build, watched through its base image)' : ''}`,
+    ),
     '',
     'Other services that run the same image:',
     ...(c.elsewhere.length > 0 ? c.elsewhere.map((e) => `- ${e.stack}/${e.service}`) : ['- none']),

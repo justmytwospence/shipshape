@@ -3,7 +3,7 @@ import { verifiedFix, type SecurityFix } from '../security/act.ts'
 import { forkConflictFor } from '../forks.ts'
 import { loadPolicy } from '../config.ts'
 import { normaliseClass, type Hold, type ServiceClass } from '../policy.ts'
-import { holdsForRow, type HoldRow } from './holds.ts'
+import { currentDecisions, holdsForRow, type Decision, type HoldRow } from './holds.ts'
 import { changeUrl } from '../gitops/change.ts'
 import { restorePointsFor } from '../restore/index.ts'
 import { present, type Presentation } from './present.ts'
@@ -420,6 +420,8 @@ function toView(u: RawUpdate, _repo?: string): UpdateView {
 
 /** The live updates one decision covers, with their classes: what a confirmation lists. */
 function decisionMembersOf(u: RawUpdate): { stack: string; service: string; cls: ServiceClass }[] {
+  const d = recentDecisions().find((x) => x.members.some((m) => m.id === u.id))
+  if (d) return d.members.map((m) => ({ stack: m.stack, service: m.service, cls: normaliseClass(m.tier) }))
   const rows = getDb()
     .prepare(
       `SELECT stack, service, tier FROM updates
@@ -428,6 +430,13 @@ function decisionMembersOf(u: RawUpdate): { stack: string; service: string; cls:
     .all(u.image, u.to_tag) as { stack: string; service: string; tier: string }[]
   const out = rows.map((r) => ({ stack: r.stack, service: r.service, cls: normaliseClass(r.tier) }))
   return out.length > 0 ? out : [{ stack: u.stack, service: u.service, cls: normaliseClass(u.tier) }]
+}
+
+/** Decisions, computed once per render rather than once per row. */
+let decisionsMemo: { at: number; value: Decision[] } | null = null
+function recentDecisions(): Decision[] {
+  if (!decisionsMemo || Date.now() - decisionsMemo.at > 1000) decisionsMemo = { at: Date.now(), value: currentDecisions() }
+  return decisionsMemo.value
 }
 
 export function updateView(id: number): UpdateView | null {

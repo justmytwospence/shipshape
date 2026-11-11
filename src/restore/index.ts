@@ -8,7 +8,7 @@ import { env, loadPolicy, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { dockerEnvOptions } from '../deploy/docker-env.ts'
 import { isRootStack } from '../deploy/run.ts'
-import { runOffsite, type Fetch } from './offsite.ts'
+import { hasOffsiteJob, runOffsite, runOffsiteAndWait, type Fetch, type WaitIo } from './offsite.ts'
 
 /**
  * Restore points: a dump taken before a stateful service is updated.
@@ -16,7 +16,11 @@ import { runOffsite, type Fetch } from './offsite.ts'
  * What gets dumped is the service's own `shipshape.snapshot` label -- a command that
  * prints a dump to stdout, run inside its container (`pg_dump -U app app`). Shipshape
  * gzips the output to `DATA_DIR/restore-points/<stack>/` and keeps the newest few. An
- * offsite copy can be requested too (./offsite.ts); it never blocks.
+ * offsite copy can be requested too (./offsite.ts); beside a dump it never blocks.
+ *
+ * A stack with no snapshot label but a job on the offsite backup server gets that backup
+ * as its restore point instead: run, waited for, and required to succeed. It is recorded
+ * with the path `offsite:<job>`.
  *
  * Restoring stays manual on purpose: putting data back blindly loses whatever was written
  * after the dump. A card that mentions a restore point names the file, and the person
@@ -30,6 +34,8 @@ export interface RestoreIo {
   dump(container: string, command: string, path: string): Promise<{ ok: true; bytes: number } | { ok: false; reason: string }>
   now(): Date
   fetch?: Fetch
+  /** For the offsite-only restore point, which waits on the backup. */
+  wait?: WaitIo
 }
 
 const DUMP_TIMEOUT_MS = 15 * 60_000
@@ -89,6 +95,18 @@ export function stackHasSnapshot(stack: string): boolean {
   return !!getDb().prepare(`SELECT 1 FROM images WHERE stack = ? AND snapshot_label IS NOT NULL LIMIT 1`).get(stack)
 }
 
+function backupJobLabel(stack: string): string | null {
+  const r = getDb()
+    .prepare(`SELECT backup_job_label FROM images WHERE stack = ? AND backup_job_label IS NOT NULL LIMIT 1`)
+    .get(stack) as { backup_job_label: string } | undefined
+  return r?.backup_job_label ?? null
+}
+
+/** Whether a restore point can be taken: a dump, or else a backup job on the offsite server. */
+export function canRestore(stack: string, policy: Policy = loadPolicy().policy): boolean {
+  return stackHasSnapshot(stack) || hasOffsiteJob(policy.restore_points.offsite, stack, backupJobLabel(stack))
+}
+
 /** The newest restore points for a change, for a card to name. */
 export function restorePointsFor(prId: number): { service: string; path: string; created_at: string }[] {
   return getDb()
@@ -106,6 +124,27 @@ export async function takeRestorePoint(
   const services = db
     .prepare(`SELECT service, snapshot_label, backup_job_label FROM images WHERE stack = ? AND snapshot_label IS NOT NULL ORDER BY service`)
     .all(stack) as { service: string; snapshot_label: string; backup_job_label: string | null }[]
+
+  const cfg = policy.restore_points.offsite
+  if (services.length === 0) {
+    // Nothing to dump: the stack's offsite backup is the restore point, and must succeed.
+    if (!cfg || !hasOffsiteJob(cfg, stack, backupJobLabel(stack))) {
+      return { ok: false, reason: 'no shipshape.snapshot and no backup job for this stack' }
+    }
+    const res = await runOffsiteAndWait(stack, backupJobLabel(stack), cfg, io.wait)
+    if (res.status !== 'ok') {
+      logEvent({ level: 'warn', kind: 'deploy', stack, message: 'restore point failed', detail: res.detail })
+      return { ok: false, reason: `the backup before updating did not finish: ${res.detail}` }
+    }
+    const path = `offsite:${res.detail.split(':')[0]}`
+    db.prepare(
+      `INSERT INTO restore_points (stack, service, path, bytes, pr_id, offsite_status, offsite_detail, created_at)
+       VALUES (?, '(backup job)', ?, 0, ?, 'ok', ?, ?)`,
+    ).run(stack, path, prId ?? null, res.detail, io.now().toISOString())
+    prune(stack, '(backup job)', policy.restore_points.keep)
+    logEvent({ level: 'info', kind: 'deploy', stack, message: `restore point taken: ${res.detail}` })
+    return { ok: true, points: [{ service: '(backup job)', path, bytes: 0 }] }
+  }
 
   const points: { service: string; path: string; bytes: number; id: number }[] = []
   for (const s of services) {
@@ -134,7 +173,6 @@ export async function takeRestorePoint(
     prune(stack, s.service, policy.restore_points.keep)
   }
 
-  const cfg = policy.restore_points.offsite
   if (cfg && points.length > 0) {
     const label = services.find((s) => s.backup_job_label)?.backup_job_label ?? null
     const res = await runOffsite(stack, label, cfg, io.fetch)
@@ -162,7 +200,7 @@ function prune(stack: string, service: string, keep: number): void {
     .prepare(`SELECT id, path FROM restore_points WHERE stack = ? AND service = ? ORDER BY created_at DESC, id DESC LIMIT -1 OFFSET ?`)
     .all(stack, service, keep) as { id: number; path: string }[]
   for (const o of old) {
-    rmSync(o.path, { force: true })
+    if (!o.path.startsWith('offsite:')) rmSync(o.path, { force: true })
     db.prepare(`DELETE FROM restore_points WHERE id = ?`).run(o.id)
   }
 }

@@ -17,7 +17,8 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 
 const { getDb } = await import('../src/db.ts')
 const { takeRestorePoint, stackHasSnapshot } = await import('../src/restore/index.ts')
-const { runOffsite, offsiteJob } = await import('../src/restore/offsite.ts')
+const { runOffsite, offsiteJob, runOffsiteAndWait, refreshOffsiteJobs, setOffsiteJobs, hasOffsiteJob } = await import('../src/restore/offsite.ts')
+const { canRestore } = await import('../src/restore/index.ts')
 const { PolicySchema } = await import('../src/config.ts')
 
 type Io = import('../src/restore/index.ts').RestoreIo
@@ -156,4 +157,70 @@ test('an offsite failure is recorded but never fails the restore point', async (
   const row = getDb().prepare(`SELECT offsite_status, offsite_detail FROM restore_points`).get() as Record<string, string>
   assert.equal(row.offsite_status, 'error')
   assert.match(row.offsite_detail!, /n8n-nightly/, 'the stack label named the job')
+})
+
+/** A fake MCP server: answers each tools/call from `replies`, in order, by tool name. */
+function mcp(replies: Record<string, unknown[]>) {
+  const calls: { name: string; args: unknown }[] = []
+  const fetch = (async (_url: string, init: { body: string }) => {
+    const { params } = JSON.parse(init.body) as { params: { name: string; arguments: unknown } }
+    calls.push({ name: params.name, args: params.arguments })
+    const next = replies[params.name]?.shift()
+    const isError = next instanceof Error
+    const text = isError ? JSON.stringify({ message: (next as Error).message }) : JSON.stringify(next ?? {})
+    return { ok: true, status: 200, text: async () => JSON.stringify({ jsonrpc: '2.0', id: 1, result: { isError, content: [{ type: 'text', text }] } }) }
+  }) as unknown as import('../src/restore/offsite.ts').Fetch
+  return { fetch, calls }
+}
+
+const OFFSITE = { type: 'mcp', url: 'http://backup-mcp:8000/mcp', tool: 'run_backup' }
+const waitIo = (fetch: import('../src/restore/offsite.ts').Fetch) => {
+  let t = 0
+  return { fetch, sleep: async (ms: number) => void (t += ms), now: () => t }
+}
+
+test('the offsite server lists its jobs, and a stack with one can be restored without a dump', async () => {
+  const p = policy(3, OFFSITE)
+  setOffsiteJobs(null)
+  image('bluesky', 'pds', null)
+  assert.equal(canRestore('bluesky', p), false, 'until the jobs are known, nothing is assumed')
+  const { fetch } = mcp({ list_jobs: [{ jobs: [{ job: 'bluesky', kind: 'offen' }, { job: 'n8n', kind: 'offen' }] }] })
+  await refreshOffsiteJobs(p.restore_points.offsite, fetch, true)
+  assert.equal(canRestore('bluesky', p), true)
+  assert.equal(canRestore('influxdb', p), false)
+  assert.equal(hasOffsiteJob(null, 'bluesky', null), false, 'no offsite configured, no job')
+  setOffsiteJobs(null)
+})
+
+test('with no snapshot, the backup job is the restore point: waited for, and it must succeed', async () => {
+  const p = policy(3, OFFSITE)
+  setOffsiteJobs(['bluesky'])
+  image('bluesky', 'pds', null)
+  const ok = mcp({ run_backup: [{ ok: true, run: 7, state: 'starting' }], run_status: [{ run: 7, state: 'running' }, { run: 7, state: 'succeeded' }] })
+  const r = await takeRestorePoint('bluesky', undefined, io({ wait: waitIo(ok.fetch) }), p)
+  assert.equal(r.ok, true)
+  assert.deepEqual(ok.calls.map((c) => c.name), ['run_backup', 'run_status', 'run_status'])
+  assert.deepEqual(ok.calls[1]!.args, { run: 7 })
+  if (r.ok) assert.deepEqual(r.points, [{ service: '(backup job)', path: 'offsite:bluesky', bytes: 0 }])
+  const row = getDb().prepare(`SELECT path, offsite_status FROM restore_points`).get() as Record<string, unknown>
+  assert.deepEqual([row.path, row.offsite_status], ['offsite:bluesky', 'ok'])
+
+  const bad = mcp({ run_backup: [{ ok: true, run: 8, state: 'starting' }], run_status: [{ run: 8, state: 'failed' }] })
+  const f = await takeRestorePoint('bluesky', undefined, io({ wait: waitIo(bad.fetch) }), p)
+  assert.equal(f.ok, false)
+  if (!f.ok) assert.match(f.reason, /did not finish: backup job bluesky failed/)
+
+  const busy = mcp({ run_backup: [new Error('Busy: run 3 (n8n) is running')] })
+  const b = await takeRestorePoint('bluesky', undefined, io({ wait: waitIo(busy.fetch) }), p)
+  assert.equal(b.ok, false)
+  if (!b.ok) assert.match(b.reason, /did not start: Busy/)
+  setOffsiteJobs(null)
+})
+
+test('a backup that outlasts the wait is not a restore point', async () => {
+  const p = PolicySchema.parse({ restore_points: { offsite: { ...OFFSITE, wait_minutes: 1, poll_seconds: 30 } } })
+  const slow = mcp({ run_backup: [{ run: 9 }], run_status: [{ state: 'running' }, { state: 'running' }, { state: 'running' }] })
+  const r = await runOffsiteAndWait('n8n', null, p.restore_points.offsite!, waitIo(slow.fetch))
+  assert.equal(r.status, 'error')
+  assert.match(r.detail, /still running after 1 min/)
 })

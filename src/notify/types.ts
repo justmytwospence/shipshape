@@ -34,4 +34,10 @@ export interface Message {
   status?: IncidentStatus
   /** One-tap fixes. A sink renders what it can: reactions, buttons, or signed links. */
   actions?: IncidentAction[]
+  /**
+   * With `resolved`: remove the message rather than edit it to resolved, for cards whose
+   * history lives elsewhere (a decision is in git and the Activity page). A sink that
+   * cannot remove a message resolves it as usual.
+   */
+  redact?: boolean
 }

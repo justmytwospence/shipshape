@@ -32,6 +32,8 @@ interface Payload {
   status: IncidentStatus
   click?: string
   actions?: IncidentAction[]
+  /** With `resolved`: the router deletes the message instead of editing it. */
+  redact?: boolean
 }
 
 /** Retry and roll back, for `shipshape:deploy:<stack>`; shipshape decides at tap time. */
@@ -59,7 +61,7 @@ export async function sendIncident(sink: WebhookSink, opts: Message): Promise<vo
 
   const payload: Payload =
     status === 'resolved'
-      ? { key: opts.key, source: 'shipshape', status }
+      ? { key: opts.key, source: 'shipshape', status, ...(opts.redact ? { redact: true } : {}) }
       : {
           key: opts.key,
           source: 'shipshape',

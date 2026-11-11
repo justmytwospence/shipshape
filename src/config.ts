@@ -510,7 +510,9 @@ export const PolicySchema = z.object({
   /**
    * A dump taken before a stateful service is updated (src/restore). The dump command is
    * the service's own `shipshape.snapshot` label; `offsite` optionally asks any MCP tool
-   * for an offsite copy too (here: backup-mcp's run_backup). Offsite never blocks a ship.
+   * for an offsite copy too (here: backup-mcp's run_backup). Beside a dump, offsite never
+   * blocks a ship. For a stack with no snapshot label but a backup job (`list_tool`), a
+   * finished backup (`status_tool`, polled up to `wait_minutes`) is the restore point.
    */
   restore_points: z
     .object({
@@ -521,6 +523,10 @@ export const PolicySchema = z.object({
           url: z.string().url(),
           tool: z.string().min(1),
           job: z.string().default('{stack}'),
+          status_tool: z.string().min(1).default('run_status'),
+          list_tool: z.string().min(1).default('list_jobs'),
+          wait_minutes: z.number().int().min(1).max(240).default(30),
+          poll_seconds: z.number().int().min(1).max(300).default(10),
         })
         .nullable()
         .default(null),

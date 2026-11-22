@@ -16,7 +16,6 @@ before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'shipshape-auth-test-'))
   process.env.DATA_DIR = dir
   delete process.env.REPO_DIR
-  delete process.env.HOMELAB_REPO
   delete process.env.GITHUB_REPO
   delete process.env.GITHUB_TOKEN
   delete process.env.ANTHROPIC_API_KEY

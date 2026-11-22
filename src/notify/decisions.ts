@@ -1,6 +1,6 @@
 import { loadPolicy } from '../config.ts'
 import { getDb } from '../db.ts'
-import { env, mcpEnabled } from '../config.ts'
+import { allowedOrigin, env, mcpEnabled } from '../config.ts'
 import { short } from '../gitops/body.ts'
 import { shortRepository } from '../policy.ts'
 import { currentDecisions, type Decision } from '../updates/holds.ts'
@@ -92,7 +92,7 @@ export function cardFor(d: Decision, now = Date.now()): Card {
 
   const verbs = ['ship', 'snooze', ...(d.holds.every((h) => h.waivable) ? ['always-ship'] : []), 'skip']
   const escalate = now - Date.parse(d.since) > policy.notify.escalate_after_days * 86_400_000
-  const origin = process.env.SHIPSHAPE_ALLOWED_ORIGIN
+  const origin = allowedOrigin()
   return {
     key: `${DECISION_PREFIX}${d.key}`,
     title,

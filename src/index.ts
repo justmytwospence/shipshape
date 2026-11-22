@@ -1,4 +1,4 @@
-import { loadPolicy } from './config.ts'
+import { env, loadPolicy } from './config.ts'
 import { getDb, logEvent } from './db.ts'
 import { startScheduler } from './scheduler.ts'
 import { startServer } from './web/server.ts'
@@ -24,7 +24,7 @@ function main(): void {
   // means a configured REPO_DIR -- and that is also what arms the scheduler, whose jobs
   // rewrite git, poll GitHub and recreate containers. Serving without ever starting them
   // is the difference between a dev server and a second production instance.
-  if (process.env.SHIPSHAPE_UI_DEV) {
+  if (env.uiDev) {
     logEvent({
       level: 'info',
       kind: 'system',

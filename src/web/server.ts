@@ -4,7 +4,7 @@ import { Hono, type Context } from 'hono'
 import { raw } from 'hono/html'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { configured, env, loadPolicy } from '../config.ts'
+import { configured, env, loadPolicy, notifyEnv } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'
 import { buildUpdateDiff, type DiffHunk } from '../diff.ts'
@@ -112,8 +112,9 @@ function toastHeader(c: Context, level: 'info' | 'warn' | 'error', text: string)
 
 /** The incident channel needs both the router URL and its key; either alone is not set up. */
 function notifyState(): 'set' | 'missing' | 'not in use' {
-  if (!process.env.NOTIFY_URL && !process.env.NOTIFY_TOKEN) return 'not in use'
-  return process.env.NOTIFY_URL && process.env.NOTIFY_TOKEN ? 'set' : 'missing'
+  const { url, token } = notifyEnv()
+  if (!url && !token) return 'not in use'
+  return url && token ? 'set' : 'missing'
 }
 
 /** The labels a browser may write. */
@@ -865,7 +866,7 @@ export function createApp(): Hono {
         screenCredential(policy.review.screen),
         { name: 'NOTIFY_URL + NOTIFY_TOKEN', state: notifyState() },
         { name: 'SMTP_URL + MAIL_TO', state: emailConfigured() ? 'set' : 'not in use' },
-        { name: 'DOCKER_HUB_LOGIN', state: process.env.DOCKER_HUB_LOGIN ? 'set' : 'not in use' },
+        { name: 'DOCKER_HUB_LOGIN', state: env.dockerHubLogin ? 'set' : 'not in use' },
       ],
       spend: spend.map((s) => ({ ...s, cost: s.cost ?? 0 })),
       budgetUsd: policy.review.monthly_budget_usd,
@@ -881,7 +882,7 @@ export function createApp(): Hono {
         .all() as StatusData['budgets'],
       upstream: sourceCounts(),
       security: securityPanel(),
-      sandbox: !!process.env.SHIPSHAPE_UI_DEV,
+      sandbox: env.uiDev,
     }
   }
 

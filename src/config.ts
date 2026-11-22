@@ -19,7 +19,7 @@ export const env = {
    *  inside the container: `docker compose` resolves relative volume paths and derives
    *  the project name client-side, so a different in-container path would hand the
    *  daemon paths that do not exist. */
-  repoDir: process.env.REPO_DIR ?? process.env.HOMELAB_REPO ?? '',
+  repoDir: process.env.REPO_DIR ?? '',
   dataDir: process.env.DATA_DIR ?? '/data',
   port: Number(process.env.PORT ?? 8080),
   tz: process.env.TZ ?? 'UTC',
@@ -46,10 +46,6 @@ export const env = {
    * and for the tests, which point it at a local bare repository.
    */
   gitRemoteUrl: process.env.GIT_REMOTE_URL ?? '',
-  /** The homelab's notification router: n8n's Alerting workflow, `/webhook/notify`. */
-  notifyUrl: process.env.NOTIFY_URL ?? '',
-  /** Its bearer (ALERT_INTAKE_KEY). */
-  notifyToken: process.env.NOTIFY_TOKEN ?? '',
   /** The MCP listener's port (src/mcp). Off unless set, and it needs MCP_TOKEN as well. */
   mcpPort: process.env.MCP_PORT ? Number(process.env.MCP_PORT) : null,
   /** The bearer every MCP request must carry: `Authorization: Bearer <token>`. */
@@ -69,7 +65,19 @@ export const env = {
   mailFrom: process.env.MAIL_FROM ?? process.env.BOT_EMAIL ?? 'shipshape@localhost',
   dockerHubLogin: process.env.DOCKER_HUB_LOGIN ?? '',
   dockerHubPassword: process.env.DOCKER_HUB_PASSWORD ?? '',
+  /** The sandbox dev server (bin/dev-ui.mjs): no scheduler, nothing reaches out. */
+  uiDev: !!process.env.SHIPSHAPE_UI_DEV,
 } as const
+
+/** The UI's browser origin; read at call time because tests and operators change it without a new import. */
+export function allowedOrigin(): string | undefined {
+  return process.env.SHIPSHAPE_ALLOWED_ORIGIN
+}
+
+/** The notification router's address and key: both, either, or neither (what Status reports). */
+export function notifyEnv(): { url: string; token: string } {
+  return { url: process.env.NOTIFY_URL ?? '', token: process.env.NOTIFY_TOKEN ?? '' }
+}
 
 /** Where policy.yaml lives. Defaults inside the watched repo so it is tracked and
  *  reviewable like everything else; POLICY_FILE overrides for any other layout. */

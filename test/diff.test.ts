@@ -7,7 +7,7 @@ import { join } from 'node:path'
 const DATA = mkdtempSync(join(tmpdir(), 'shipshape-diff-'))
 const REPO = mkdtempSync(join(tmpdir(), 'shipshape-repo-'))
 process.env.DATA_DIR = DATA
-process.env.HOMELAB_REPO = REPO
+process.env.REPO_DIR = REPO
 
 const { getDb } = await import('../src/db.ts')
 const { buildUpdateDiff } = await import('../src/diff.ts')

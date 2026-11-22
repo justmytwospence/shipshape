@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { env } from '../config.ts'
+import { allowedOrigin, env } from '../config.ts'
 import { logEvent } from '../db.ts'
 
 /**
@@ -62,7 +62,7 @@ function secret(): string | null {
 
 /** A link that runs `verb` on an update, or null when links cannot be made (no secret or no origin). */
 export function actionUrl(verb: string, updateId: number): string | null {
-  const origin = process.env.SHIPSHAPE_ALLOWED_ORIGIN
+  const origin = allowedOrigin()
   const s = secret()
   if (!s || !origin) return null
   return `${origin.replace(/\/$/, '')}/act/${makeToken(verb, updateId, s)}`

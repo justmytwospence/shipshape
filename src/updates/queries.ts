@@ -1,7 +1,7 @@
 import { getDb } from '../db.ts'
 import { verifiedFix, type SecurityFix } from '../security/act.ts'
 import { forkConflictFor } from '../forks.ts'
-import { loadPolicy } from '../config.ts'
+import { env, loadPolicy } from '../config.ts'
 import { normaliseClass, type Hold, type ServiceClass } from '../policy.ts'
 import { currentDecisions, holdsForRow, type Decision, type HoldRow } from './holds.ts'
 import { changeUrl } from '../gitops/change.ts'
@@ -445,7 +445,7 @@ export function updateView(id: number): UpdateView | null {
 }
 
 function repoName(): string {
-  return process.env.GITHUB_REPO ?? 'you/repo'
+  return env.githubRepo
 }
 
 // ------------------------------------------------------------------ the inbox

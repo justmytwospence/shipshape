@@ -1,4 +1,4 @@
-import { env, loadPolicy } from '../config.ts'
+import { env, gitBranch, loadPolicy } from '../config.ts'
 import { logEvent } from '../db.ts'
 import { notifyOnce, clearNotifyState as clearReason, notify, resolveIncident } from '../notify/index.ts'
 
@@ -39,8 +39,8 @@ export async function syncMain(): Promise<SyncResult> {
 
   // --- preconditions -------------------------------------------------------
   const head = await git(HOMELAB(), ['symbolic-ref', '--short', 'HEAD'], { allowFail: true })
-  if (head.exitCode !== 0 || head.stdout !== 'main') {
-    const reason = `checkout is on "${head.stdout || 'a detached HEAD'}", not main`
+  if (head.exitCode !== 0 || head.stdout !== gitBranch()) {
+    const reason = `checkout is on "${head.stdout || 'a detached HEAD'}", not "${gitBranch()}" (the branch shipshape publishes; set GIT_BRANCH to change it)`
     await pause(reason)
     return { status: 'paused', reason }
   }
@@ -57,10 +57,10 @@ export async function syncMain(): Promise<SyncResult> {
   }
 
   // --- classify ------------------------------------------------------------
-  await git(HOMELAB(), ['fetch', httpsUrl(), 'main'], { remote: true })
-  const local = (await git(HOMELAB(), ['rev-parse', 'main'])).stdout
+  await git(HOMELAB(), ['fetch', httpsUrl(), gitBranch()], { remote: true })
+  const local = (await git(HOMELAB(), ['rev-parse', gitBranch()])).stdout
   const remote = (await git(HOMELAB(), ['rev-parse', 'FETCH_HEAD'])).stdout
-  const base = (await git(HOMELAB(), ['merge-base', 'main', 'FETCH_HEAD'])).stdout
+  const base = (await git(HOMELAB(), ['merge-base', gitBranch(), 'FETCH_HEAD'])).stdout
 
   if (local === remote) {
     clearNotifyState('sync')
@@ -70,14 +70,14 @@ export async function syncMain(): Promise<SyncResult> {
   if (base === remote) {
     // Local is ahead: publish it.
     if (!policy.sync.push_main) {
-      const reason = 'push_main is disabled, so main cannot be published'
+      const reason = `push_main is disabled, so ${gitBranch()} cannot be published`
       await pause(reason)
       return { status: 'paused', reason }
     }
     const pushed = await pushMain()
     if (pushed.status !== 'ok') return { status: 'refused', reason: pushed.reason }
     clearNotifyState('sync')
-    logEvent({ level: 'info', kind: 'sync', message: 'pushed main to origin' })
+    logEvent({ level: 'info', kind: 'sync', message: `pushed ${gitBranch()} to origin` })
     return { status: 'pushed', sha: local }
   }
 
@@ -86,7 +86,7 @@ export async function syncMain(): Promise<SyncResult> {
     const landed = await fastForward()
     if (landed.status !== 'ok') return { status: 'refused', reason: landed.reason }
     clearNotifyState('sync')
-    logEvent({ level: 'info', kind: 'sync', message: 'fast-forwarded main from origin' })
+    logEvent({ level: 'info', kind: 'sync', message: `fast-forwarded ${gitBranch()} from origin` })
     return { status: 'pulled', sha: remote }
   }
 
@@ -98,7 +98,7 @@ export async function syncMain(): Promise<SyncResult> {
     if (pushed.status !== 'ok') return { status: 'refused', reason: pushed.reason }
   }
   clearNotifyState('sync')
-  const sha = (await git(HOMELAB(), ['rev-parse', 'main'])).stdout
+  const sha = (await git(HOMELAB(), ['rev-parse', gitBranch()])).stdout
   logEvent({ level: 'info', kind: 'sync', message: 'rebased local commits onto origin' })
   return { status: 'rebased-pushed', sha }
 }
@@ -116,7 +116,7 @@ async function inProgress(): Promise<string | null> {
 async function pushMain(): Promise<{ status: 'ok' } | { status: 'failed'; reason: string }> {
   for (let attempt = 0; attempt < 3; attempt++) {
     // Never --force. If this is rejected, origin moved and the next cycle reclassifies.
-    const r = await git(HOMELAB(), ['push', httpsUrl(), 'main:main'], {
+    const r = await git(HOMELAB(), ['push', httpsUrl(), `${gitBranch()}:${gitBranch()}`], {
       remote: true,
       allowFail: true,
     })
@@ -124,7 +124,7 @@ async function pushMain(): Promise<{ status: 'ok' } | { status: 'failed'; reason
     if (!/non-fast-forward|fetch first|rejected/i.test(r.stderr)) {
       return { status: 'failed', reason: `push failed: ${r.stderr.slice(0, 200)}` }
     }
-    await git(HOMELAB(), ['fetch', httpsUrl(), 'main'], { remote: true })
+    await git(HOMELAB(), ['fetch', httpsUrl(), gitBranch()], { remote: true })
   }
   return { status: 'failed', reason: 'push kept losing a race with origin' }
 }
@@ -138,7 +138,7 @@ async function pushMain(): Promise<{ status: 'ok' } | { status: 'failed'; reason
  * conflicting case produces a message naming the files.
  */
 async function fastForward(): Promise<{ status: 'ok' } | { status: 'failed'; reason: string }> {
-  const incoming = (await git(HOMELAB(), ['diff', '--name-only', 'main', 'FETCH_HEAD'])).stdout
+  const incoming = (await git(HOMELAB(), ['diff', '--name-only', gitBranch(), 'FETCH_HEAD'])).stdout
     .split('\n')
     .filter(Boolean)
   const dirty = (await git(HOMELAB(), ['status', '--porcelain'])).stdout
@@ -185,7 +185,7 @@ async function fastForward(): Promise<{ status: 'ok' } | { status: 'failed'; rea
       key: 'shipshape:sync',
       title: 'shipshape: sync blocked',
       body:
-        `A change landed on main, but these files have conflicting local edits:\n` +
+        `A change landed on ${gitBranch()}, but these files have conflicting local edits:\n` +
         `${conflicting.join('\n')}\n\nCommit or discard them and shipshape will resume.`,
       priority: 4,
       tags: ['warning'],
@@ -238,7 +238,7 @@ async function rebaseOntoOrigin(): Promise<{ status: 'ok' } | { status: 'failed'
     key: 'shipshape:sync',
     title: 'shipshape: rebase conflict',
     body:
-      `Local commits could not be replayed onto origin/main.\n${r.stderr.slice(0, 300)}\n\n` +
+      `Local commits could not be replayed onto origin/${gitBranch()}.\n${r.stderr.slice(0, 300)}\n\n` +
       `The checkout was restored; resolve by hand and shipshape will resume.`,
     priority: 4,
     tags: ['warning'],
@@ -251,7 +251,7 @@ async function pause(reason: string): Promise<void> {
   await notifyOnce('sync', reason, {
     key: 'shipshape:sync',
     title: 'shipshape: paused',
-    body: `${reason}.\n\nNothing was changed. shipshape resumes once the checkout is back on main and clean of in-progress operations.`,
+    body: `${reason}.\n\nNothing was changed. shipshape resumes once the checkout is back on ${gitBranch()} and clean of in-progress operations.`,
     priority: 3,
     tags: ['pause_button'],
   })

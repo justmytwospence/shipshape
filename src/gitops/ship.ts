@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { configured, env, gitCredentialProblem, loadPolicy, type Policy } from '../config.ts'
+import { configured, env, gitBranch, gitCredentialProblem, loadPolicy, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { scanRepo } from '../compose/scan.ts'
 import { bumpFork, readForkPin, retireFork } from '../compose/fork-edit.ts'
@@ -221,7 +221,7 @@ export async function buildBranch(
   branch: string,
   deps: BuildDeps = realDeps,
 ): Promise<BuildResult> {
-  await git(repoDir, ['checkout', '-B', branch, 'origin/main'])
+  await git(repoDir, ['checkout', '-B', branch, `origin/${gitBranch()}`])
   const forks = new Map<number, ForkPrInfo>()
   const bases = new Map<number, BasePrInfo>()
 
@@ -758,15 +758,15 @@ async function mergeAndPush(
 ): Promise<{ ok: true; mergeSha: string; branchSha: string } | { ok: false; reason: string }> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const branchSha = (await git(repoDir, ['rev-parse', branch])).stdout
-    await git(repoDir, ['checkout', '-B', 'main', 'origin/main'])
+    await git(repoDir, ['checkout', '-B', gitBranch(), `origin/${gitBranch()}`])
     const merge = await git(repoDir, [...authorArgs(), 'merge', '--no-ff', '-m', title, '-m', body, branch], { allowFail: true })
     if (merge.exitCode !== 0) {
       await git(repoDir, ['merge', '--abort'], { allowFail: true })
-      await git(repoDir, ['checkout', '-f', 'main'], { allowFail: true })
+      await git(repoDir, ['checkout', '-f', gitBranch()], { allowFail: true })
       return { ok: false, reason: `merging ${branch} failed: ${(merge.stderr || merge.stdout).slice(0, 200)}` }
     }
     const mergeSha = (await git(repoDir, ['rev-parse', 'HEAD'])).stdout
-    const push = await git(repoDir, ['push', httpsUrl(), 'main:main'], { remote: true, allowFail: true })
+    const push = await git(repoDir, ['push', httpsUrl(), `${gitBranch()}:${gitBranch()}`], { remote: true, allowFail: true })
     if (push.exitCode === 0) {
       await git(repoDir, ['branch', '-D', branch], { allowFail: true })
       return { ok: true, mergeSha, branchSha }
@@ -776,7 +776,7 @@ async function mergeAndPush(
     }
     // Origin moved under us: refresh and go round once more.
     await git(repoDir, ['fetch', '--prune', httpsUrl(), '+refs/heads/*:refs/remotes/origin/*'], { remote: true })
-    if (rebuild && !(await rebuild())) return { ok: false, reason: 'the branch could not be rebuilt on the new main' }
+    if (rebuild && !(await rebuild())) return { ok: false, reason: `the branch could not be rebuilt on the new ${gitBranch()}` }
   }
   return { ok: false, reason: 'push kept losing a race with origin' }
 }

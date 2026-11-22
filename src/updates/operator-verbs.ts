@@ -1,4 +1,5 @@
 import { closeLocalChange } from '../gitops/drafts.ts'
+import { gitBranch } from '../config.ts'
 import { runProposePass } from '../propose/run.ts'
 import { appendRule, describeRule, inferRule, publishRule } from '../rules.ts'
 import { wakeLoop } from '../scheduler.ts'
@@ -81,7 +82,7 @@ function shipDecision(id: number): VerbResult {
     stack: members[0]?.stack,
     message: `ship approved: ${names(members)}`,
   })
-  return { ok: true, transient: true, message: `Shipping ${names(members)}. It lands on main within a minute, then deploys.` }
+  return { ok: true, transient: true, message: `Shipping ${names(members)}. It lands on ${gitBranch()} within a minute, then deploys.` }
 }
 
 function snoozeDecision(id: number): VerbResult {

@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
+import { gitBranch } from '../config.ts'
 import { logEvent } from '../db.ts'
 import { buildUpdateDiff } from '../diff.ts'
 import { isScanning } from '../scan.ts'
@@ -58,7 +59,7 @@ export function createServer(): McpServer {
     {
       instructions:
         'Shipshape keeps the homelab\'s container images up to date: it scans registries, has the changelog ' +
-        'reviewed, ships what nothing holds back (a merge commit on main) after a cooldown, deploys, verifies and ' +
+        `reviewed, ships what nothing holds back (a merge commit on ${gitBranch()}) after a cooldown, deploys, verifies and ` +
         'rolls back. Start with `inbox` for what is waiting on a decision. `get_update` lists the verbs ' +
         'allowed on an update right now (`allowed_verbs`); `update_action` accepts only those. Deploys run ' +
         'in the background: an action returns once started, and `get_update` shows how it went. ' + USAGE,
@@ -223,7 +224,7 @@ export function createServer(): McpServer {
       title: 'Act on an update',
       description:
         'Apply an operator verb to one update, exactly as the dashboard button would; refused (with the reason) when the verb is not in its allowed_verbs. ' +
-        'ship merges the update into main now (a merge commit) and the deploy follows, whatever is holding it; snooze puts a decision off a week; ' +
+        `ship merges the update into ${gitBranch()} now (a merge commit) and the deploy follows, whatever is holding it; snooze puts a decision off a week; ` +
         'always-ship does what ship does and also writes a standing rule that stops this kind of question coming back (never for a lifeline service, an unsafe review or a list of work); ' +
         'skip dismisses this version for good; deploy brings up a change waiting to be deployed; redeploy pulls a moved rolling tag; retry goes round again after a failure; ' +
         'rollback puts the previous version back; rerun-review reads the changelog again; propose drafts the config changes the update needs onto a local branch that shipping merges; ack marks it seen. ' +

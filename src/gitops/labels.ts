@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { execa } from 'execa'
-import { botIdentity, canPublish, env } from '../config.ts'
+import { botIdentity, canPublish, env, gitBranch } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { setLabel } from '../compose/edit.ts'
 import { CLASS_LABELS } from '../policy.ts'
@@ -105,10 +105,10 @@ async function run(o: { stack: string; service: string; changes: LabelChange[] }
   }
 
   const head = await git(env.repoDir, ['symbolic-ref', '--short', 'HEAD'], { allowFail: true })
-  if (head.exitCode !== 0 || head.stdout !== 'main') {
+  if (head.exitCode !== 0 || head.stdout !== gitBranch()) {
     return {
       ok: false,
-      message: `The checkout is on "${head.stdout || 'a detached HEAD'}", not main. Nothing was changed.`,
+      message: `The checkout is on "${head.stdout || 'a detached HEAD'}", not ${gitBranch()}. Nothing was changed.`,
     }
   }
 

@@ -1,4 +1,4 @@
-import type { Policy } from '../config.ts'
+import { gitBranch, type Policy } from '../config.ts'
 import type { ServiceClass } from '../policy.ts'
 import type { Verb } from './actions.ts'
 
@@ -43,7 +43,7 @@ export function spoken(seconds: number): string {
 }
 
 function shipSteps(f: PresentFacts, policy: Policy): string[] {
-  const steps = ['merge it into main with a merge commit']
+  const steps = [`merge it into ${gitBranch()} with a merge commit`]
   const others = f.members.filter((m) => !(m.stack === f.stack && m.service === f.service))
   if (others.length > 0) {
     const names = others.length > 4 ? `${others.slice(0, 4).map((m) => m.service).join(', ')} and ${others.length - 4} more` : others.map((m) => m.service).join(', ')

@@ -1,4 +1,5 @@
 import type { SectionName } from '../settings.ts'
+import { gitBranch } from '../config.ts'
 
 /**
  * Why each setting exists, next to the setting.
@@ -30,7 +31,7 @@ export const SECTION_PROSE: Record<SectionName, string[]> = {
   ],
   Shipping: [
     'An update ships on its own unless a hold says a person is needed. The holds are few and concrete: the service always asks (`shipshape.class: ask` or `lifeline`), the review found something to do or something unsafe, there is no release note behind a major jump or a stateful service, or a one-way migration has no restore point to fall back on. Nothing here predicts how risky a version looks; the verify window, the soak and the automatic rollback carry the rest.',
-    'Shipping is a merge commit on main, built on a branch in shipshape\'s own clone and never pushed, so `git log` keeps the shape of the change and `git revert -m 1` undoes it. A decision that needs you is one card per image and target, with four answers: ship it, snooze a week, always ship (which writes a rule), or skip the version.',
+    `Shipping is a merge commit on ${gitBranch()}, built on a branch in shipshape's own clone and never pushed, so \`git log\` keeps the shape of the change and \`git revert -m 1\` undoes it. A decision that needs you is one card per image and target, with four answers: ship it, snooze a week, always ship (which writes a rule), or skip the version.`,
   ],
   'Changelog review': [
     'Two stages. The screen -- Jev, a fraction of a cent a look -- reads the release notes shipshape already fetched and answers narrow questions: does a setting change, is there a manual step, does it touch anything this service uses. It picks the lines worth reading rather than writing a summary. The reader -- Opus -- reads the changelog properly, and only where a person will read what it writes.',
@@ -58,7 +59,7 @@ export const SECTION_PROSE: Record<SectionName, string[]> = {
     'A rule can never waive a lifeline service, an unsafe review or a list of work to do. Edit or delete a rule in policy.yaml like anything else; the commit is the record.',
   ],
   'Git sync': [
-    'shipshape publishes main as part of its loop. A branch has to be based on the true tip of main, or merging it silently reverts whatever unpushed local commits touched the same file. There is no safe alternative base, which is why turning publishing off also stops shipping.',
+    `shipshape publishes ${gitBranch()} as part of its loop. A branch has to be based on the true tip of ${gitBranch()}, or merging it silently reverts whatever unpushed local commits touched the same file. There is no safe alternative base, which is why turning publishing off also stops shipping.`,
     'It never fights you for the working tree: while the checkout is on another branch, or a git operation is in progress, the sync loop stands down.',
   ],
 }

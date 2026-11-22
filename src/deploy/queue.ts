@@ -1,5 +1,5 @@
 import { getDb, logEvent } from '../db.ts'
-import { env, loadPolicy } from '../config.ts'
+import { env, gitBranch, loadPolicy } from '../config.ts'
 import { notify } from '../notify/index.ts'
 import { deployForPr, type DeployIo, type DeployTarget } from './run.ts'
 import { handleFailure } from './rollback.ts'
@@ -379,7 +379,7 @@ export async function runDeployJob(
           eventClass: 'broken',
           key: `shipshape:deploy:${job.stack}`,
           title: `shipshape: deploy of ${job.stack} could not be run`,
-          body: `${(err as Error).message.slice(0, 300)}\n\nThe change stands on main. Try again from the update page, or deploy by hand.`,
+          body: `${(err as Error).message.slice(0, 300)}\n\nThe change stands on ${gitBranch()}. Try again from the update page, or deploy by hand.`,
           priority: 5,
           tags: ['rotating_light'],
         })

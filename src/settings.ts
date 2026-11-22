@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { relative } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { Cron } from 'croner'
-import { DEFAULT_MODEL, botIdentity, env, paths, validatePolicyText, type Policy } from './config.ts'
+import { DEFAULT_MODEL, botIdentity, env, gitBranch, paths, validatePolicyText, type Policy } from './config.ts'
 import { logEvent } from './db.ts'
 
 /**
@@ -124,7 +124,7 @@ export const SECTIONS = [
     'Where decisions and failures go. Silence means healthy: nothing is announced on success.',
   ],
   ['Rules', 'Standing always-ship decisions, written by the Always ship button and kept in policy.yaml.'],
-  ['Git sync', 'Publishing main, and staying out of the way while you work.'],
+  ['Git sync', `Publishing ${gitBranch()}, and staying out of the way while you work.`],
 ] as const satisfies readonly (readonly [string, string])[]
 
 export type SectionName = (typeof SECTIONS)[number][0]
@@ -292,7 +292,7 @@ export const SETTINGS: SettingDef[] = [
     label: 'When verification fails',
     help: '',
     about:
-      'Exactly one attempt: a revert commit on main, deployed and announced. There is no second try and no setting that adds one. A pull request carrying more than an image line is never reverted unattended, and a verifier that could not see the containers never triggers anything -- both fall back to asking you.',
+      `Exactly one attempt: a revert commit on ${gitBranch()}, deployed and announced. There is no second try and no setting that adds one. A pull request carrying more than an image line is never reverted unattended, and a verifier that could not see the containers never triggers anything -- both fall back to asking you.`,
   },
   {
     section: 'Deploys',
@@ -339,7 +339,7 @@ export const SETTINGS: SettingDef[] = [
     advanced: false,
     kind: 'bool',
     defaultValue: 'true',
-    label: 'Publish main',
+    label: `Publish ${gitBranch()}`,
     help: '',
     about:
       'Required for shipping: a branch cut from a stale origin reverts unpushed work when merged. Off degrades shipshape to alert-only.',

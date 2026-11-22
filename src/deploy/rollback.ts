@@ -1,5 +1,5 @@
 import { authorArgs, git, withGitLock } from '../gitops/repo.ts'
-import { env, loadPolicy } from '../config.ts'
+import { env, gitBranch, loadPolicy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { notify } from '../notify/index.ts'
 import { changeLabel, changeUrl, mergeMethodFor } from '../gitops/change.ts'
@@ -261,7 +261,7 @@ export async function handleFailure(opts: {
       title: `shipshape: ${opts.target.stack} rolled back, not fully up`,
       body:
         `${what}: ${opts.verdict.detail}\n\n` +
-        `Rolled back. main carries revert ${result.revertSha}. ${result.notes!.join('; ')}.\n\n` +
+        `Rolled back. ${gitBranch()} carries revert ${result.revertSha}. ${result.notes!.join('; ')}.\n\n` +
         `This version will not be offered again. Use Try again on the update page to re-land it.` +
         tail,
       priority: 4,

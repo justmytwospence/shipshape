@@ -1,7 +1,7 @@
 import { getDb } from '../db.ts'
 import { verifiedFix, type SecurityFix } from '../security/act.ts'
 import { forkConflictFor } from '../forks.ts'
-import { env, loadPolicy } from '../config.ts'
+import { env, gitBranch, loadPolicy } from '../config.ts'
 import { normaliseClass, type Hold, type ServiceClass } from '../policy.ts'
 import { currentDecisions, holdsForRow, type Decision, type HoldRow } from './holds.ts'
 import { changeUrl } from '../gitops/change.ts'
@@ -716,7 +716,7 @@ export function updateTimeline(id: number): Milestone[] {
       .get(v.change.id) as { merged_at: string | null; state: string } | undefined
     for (const p of v.restorePoints) out.push({ at: p.createdAt, kind: 'restore', label: `restore point: ${p.service}`, detail: p.path })
     if (c?.merged_at) {
-      out.push({ at: c.merged_at, kind: 'merged', label: v.change.kind === 'local' ? 'shipped: merged into main' : 'merged into main' })
+      out.push({ at: c.merged_at, kind: 'merged', label: v.change.kind === 'local' ? `shipped: merged into ${gitBranch()}` : `merged into ${gitBranch()}` })
     } else if (c?.state === 'closed') {
       out.push({ at: null, kind: 'closed', label: v.change.kind === 'github' ? 'pull request closed without merging' : 'drafted change closed' })
     }

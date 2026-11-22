@@ -11,7 +11,7 @@ import { withGitLock } from './gitops/repo.ts'
 import { syncMain } from './gitops/sync.ts'
 import { prompt } from './prompts/index.ts'
 import { decisionMembers, holdsForRow } from './updates/holds.ts'
-import { repositoryOf, ruleMatches, shortRepository } from './policy.ts'
+import { repositoryOf, ruleMatches, shortRepository, type RuleTarget } from './policy.ts'
 
 /**
  * "Always ship": turn one answer into a standing rule.
@@ -97,7 +97,17 @@ function context(updateId: number) {
   const elsewhere = db
     .prepare(`SELECT stack, service FROM images WHERE repository = ? AND registry = ?`)
     .all(repo.split('/').slice(1).join('/'), repo.split('/')[0]!) as { stack: string; service: string }[]
-  return { members, info, waivable, unwaivable, elsewhere, repo, policy }
+  // Every service shipshape knows, so a model's rule can be checked for what else it reaches.
+  const known = (
+    db.prepare(`SELECT stack, service, registry, repository, base_dockerfile FROM images`).all() as {
+      stack: string
+      service: string
+      registry: string
+      repository: string
+      base_dockerfile: string | null
+    }[]
+  ).map((r): RuleTarget => ({ image: `${r.registry}/${r.repository}`, stack: r.stack, service: r.service, baseBuild: !!r.base_dockerfile }))
+  return { members, info, waivable, unwaivable, elsewhere, repo, policy, known }
 }
 
 /**
@@ -167,10 +177,15 @@ async function askModel(c: ReturnType<typeof context>, today: string): Promise<R
   }
 }
 
-/** The model's answer, or null when it is malformed, too wide, or waives what was not asked. */
+/**
+ * The model's answer, or null when it is malformed, waives what was not asked, or is too
+ * wide: it reaches a service the narrow default rule would not, running a different image.
+ * Reaching services that run the same image as the card is the one widening a model is for
+ * (identical sidecars across stacks); anything further is not what the card answered.
+ */
 export function validateDraft(
   raw: unknown,
-  c: { info: { image: string; stack: string; service: string; baseBuild: boolean }[]; waivable: Waivable[] },
+  c: { info: RuleTarget[]; waivable: Waivable[]; known?: RuleTarget[] },
 ): RuleDraft | null {
   const parsed = RuleSchema.omit({ id: true }).safeParse(raw)
   if (!parsed.success) return null
@@ -179,7 +194,12 @@ export function validateDraft(
   // It must cover every service the card covers, or "always" would leave one asking.
   const probe = { id: 'r0', ...d }
   if (!c.info.every((m) => ruleMatches(probe, m))) return null
-  return d
+  const fallback = { id: 'r0', ...fallbackRule(c.info, d.waive, 'x') }
+  const cardRepos = new Set(c.info.map((m) => repositoryOf(m.image)))
+  const wider = [...(c.known ?? []), ...c.info].some(
+    (t) => ruleMatches(probe, t) && !ruleMatches(fallback, t) && !cardRepos.has(repositoryOf(t.image)),
+  )
+  return wider ? null : d
 }
 
 /** `agentgateway, waiving "no release notes"`: a rule in words, for the verb's answer. */

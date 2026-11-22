@@ -175,3 +175,34 @@ test('the fallback for a stack card with several images is the stack', () => {
   const r = fallbackRule([member('pay', 'btc', 'docker.io/x/btc:1'), member('pay', 'db', 'docker.io/library/postgres:17')], ['ask'], 'x')
   assert.deepEqual(r.match, { stack: 'pay' })
 })
+
+test('a model answer wider than the card is refused', () => {
+  const ctx = {
+    info: [member('a', 'db', 'docker.io/library/postgres:16')],
+    waivable: ['ask' as const],
+    known: [{ image: 'docker.io/library/mariadb', stack: 'b', service: 'db', baseBuild: false }],
+  }
+  assert.equal(validateDraft({ match: { service: 'db' }, waive: ['ask'], because: 'x' }, ctx), null)
+})
+
+test('an image-wide answer stands when only that image runs elsewhere', () => {
+  const ctx = {
+    info: [member('a', 'db', 'docker.io/library/postgres:16')],
+    waivable: ['ask' as const],
+    known: [
+      { image: 'docker.io/library/mariadb', stack: 'b', service: 'db', baseBuild: false },
+      { image: 'docker.io/library/postgres', stack: 'c', service: 'pg', baseBuild: false },
+    ],
+  }
+  const draft = { match: { image: 'docker.io/library/postgres' }, waive: ['ask' as const], because: 'x' }
+  assert.deepEqual(validateDraft(draft, ctx), draft)
+})
+
+test('our-own-builds alone is refused when other builds exist', () => {
+  const ctx = {
+    info: [member('a', 'app', 'docker.io/library/python:3.12', true)],
+    waivable: ['ask' as const],
+    known: [{ image: 'docker.io/library/node', stack: 'b', service: 'web', baseBuild: true }],
+  }
+  assert.equal(validateDraft({ match: { base_build: true }, waive: ['ask'], because: 'x' }, ctx), null)
+})

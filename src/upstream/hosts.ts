@@ -52,14 +52,44 @@ export function isPrivateAddress(ip: string): boolean {
       a >= 224
     )
   }
-  const v6 = ip.toLowerCase()
-  if (v6 === '::' || v6 === '::1') return true
-  if (v6.startsWith('::ffff:')) {
-    const tail = v6.slice('::ffff:'.length)
-    // A mapped address written in hex cannot be told apart cheaply, so it is refused.
-    return isIP(tail) === 4 ? isPrivateAddress(tail) : true
+  const g = ipv6Groups(ip)
+  if (!g) return true
+  const zero = (from: number, to: number) => g.slice(from, to).every((x) => x === 0)
+  if (zero(0, 8) || (zero(0, 7) && g[7] === 1)) return true // :: and ::1
+  if (zero(0, 5) && g[5] === 0xffff) return isPrivateAddress(v4(g[6]!, g[7]!)) // IPv4-mapped
+  if (zero(0, 6)) return true // IPv4-compatible ::a.b.c.d, deprecated
+  if (g[0] === 0x64 && g[1] === 0xff9b && zero(2, 6)) return isPrivateAddress(v4(g[6]!, g[7]!)) // NAT64
+  if (g[0] === 0x64 && g[1] === 0xff9b && g[2] === 1) return true // local-use NAT64
+  if (g[0] === 0x2002) return isPrivateAddress(v4(g[1]!, g[2]!)) // 6to4
+  if (g[0] === 0x100 && zero(1, 4)) return true // discard-only
+  if ((g[0]! & 0xfe00) === 0xfc00) return true // unique local
+  if ((g[0]! & 0xffc0) === 0xfe80) return true // link-local
+  if ((g[0]! & 0xffc0) === 0xfec0) return true // site-local
+  if ((g[0]! & 0xff00) === 0xff00) return true // multicast
+  return false
+}
+
+const v4 = (a: number, b: number) => `${a >> 8}.${a & 255}.${b >> 8}.${b & 255}`
+
+/** The eight 16-bit groups of an IPv6 address, or null when it is malformed. */
+function ipv6Groups(ip: string): number[] | null {
+  let s = ip.toLowerCase().replace(/^\[|\]$/g, '').split('%')[0]!
+  const tail = /(\d+\.\d+\.\d+\.\d+)$/.exec(s)
+  if (tail) {
+    if (isIP(tail[1]!) !== 4) return null
+    const [a, b, c, d] = tail[1]!.split('.').map(Number) as [number, number, number, number]
+    s = s.slice(0, -tail[1]!.length) + `${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`
   }
-  return /^(fc|fd|fe8|fe9|fea|feb|ff)/.test(v6)
+  const halves = s.split('::')
+  if (halves.length > 2) return null
+  const part = (x: string) => (x === '' ? [] : x.split(':'))
+  const head = part(halves[0]!)
+  const rest = halves.length === 2 ? part(halves[1]!) : []
+  const fill = halves.length === 2 ? 8 - head.length - rest.length : 0
+  if (fill < (halves.length === 2 ? 1 : 0) || (halves.length === 1 && head.length !== 8)) return null
+  const groups = [...head, ...Array(fill).fill('0'), ...rest]
+  if (groups.length !== 8 || groups.some((x) => !/^[0-9a-f]{1,4}$/.test(x))) return null
+  return groups.map((x) => parseInt(x, 16))
 }
 
 /** Every address a name resolves to must be public. */

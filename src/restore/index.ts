@@ -1,4 +1,4 @@
-import { createWriteStream, mkdirSync, rmSync, statSync } from 'node:fs'
+import { chmodSync, createWriteStream, mkdirSync, rmSync, statSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -27,6 +27,16 @@ import { hasOffsiteJob, runOffsite, runOffsiteAndWait, type Fetch, type WaitIo }
  * decides.
  */
 
+/**
+ * Make the directory a dump goes into, private to shipshape: 0700 for it and for
+ * restore-points/ above it. A dump is a copy of a service's data.
+ */
+export function prepareDumpDir(path: string): void {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
+  chmodSync(dirname(path), 0o700)
+  chmodSync(dirname(dirname(path)), 0o700)
+}
+
 export interface RestoreIo {
   /** The running container for a service, or null when it is not running. */
   containerId(stack: string, service: string): Promise<string | null>
@@ -51,7 +61,7 @@ export const realRestoreIo: RestoreIo = {
   },
 
   async dump(container, command, path) {
-    mkdirSync(dirname(path), { recursive: true })
+    prepareDumpDir(path)
     let bytes = 0
     const counter = new Transform({
       transform(chunk, _enc, cb) {
@@ -66,7 +76,7 @@ export const realRestoreIo: RestoreIo = {
       ...dockerEnvOptions(),
     })
     try {
-      await pipeline(sub.stdout!, counter, createGzip(), createWriteStream(path))
+      await pipeline(sub.stdout!, counter, createGzip(), createWriteStream(path, { mode: 0o600 }))
     } catch (err) {
       sub.kill()
       rmSync(path, { force: true })

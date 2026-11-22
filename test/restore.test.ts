@@ -230,3 +230,15 @@ test('a backup that outlasts the wait is not a restore point', async () => {
   assert.equal(r.status, 'error')
   assert.match(r.detail, /still running after 1 min/)
 })
+
+test("a restore point's directory is private to shipshape", async () => {
+  const { prepareDumpDir } = await import('../src/restore/index.ts')
+  const { mkdtempSync, mkdirSync, statSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const tmp = mkdtempSync(join(tmpdir(), 'shipshape-dump-'))
+  mkdirSync(join(tmp, 'restore-points'), { mode: 0o755 })
+  prepareDumpDir(join(tmp, 'restore-points', 'stack', 'x.gz'))
+  assert.equal(statSync(join(tmp, 'restore-points')).mode & 0o777, 0o700)
+  assert.equal(statSync(join(tmp, 'restore-points', 'stack')).mode & 0o777, 0o700)
+})

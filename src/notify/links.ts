@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { allowedOrigin, env } from '../config.ts'
 import { logEvent } from '../db.ts'
+import type { IncidentAction } from './types.ts'
 
 /**
  * Signed, expiring action links, for sinks that cannot call back through the MCP (email,
@@ -71,4 +72,18 @@ export function actionUrl(verb: string, updateId: number): string | null {
 export function verifyAction(token: string): { verb: string; updateId: number } | null {
   const s = secret()
   return s ? verifyToken(token, s) : null
+}
+
+/**
+ * The signed links for a message's update actions; empty when links cannot be made. Stack
+ * actions (retry, roll back) need the MCP and are left out.
+ */
+export function messageLinks(actions: IncidentAction[] | undefined, max = 4): { label: string; url: string }[] {
+  return (actions ?? [])
+    .flatMap((a) => {
+      if (!('update' in a.do)) return []
+      const url = actionUrl(a.do.verb, a.do.update)
+      return url ? [{ label: `${a.emoji} ${a.label}`, url }] : []
+    })
+    .slice(0, max)
 }

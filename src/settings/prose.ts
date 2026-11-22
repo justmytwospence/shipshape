@@ -51,7 +51,7 @@ export const SECTION_PROSE: Record<SectionName, string[]> = {
     'A deploy never changes whether a service is running. One that is running is brought up on the new version and verified; one that is stopped, paused or removed is left exactly as it was and reads Left stopped — the compose file carries the new version, so compose brings it up on it, while docker start on the old container would resume the old one. If shipshape cannot ask Docker, the deploy fails and touches nothing.',
   ],
   Notifications: [
-    'Shipshape emits messages and `notify.sinks` says where they go: a webhook (JSON to any URL; a receiver that keeps one message per key can edit it in place and close it on a resolve), email or ntfy. Each sink can list which events it wants: decision, broken, security, system.',
+    'Shipshape emits messages and `notify.sinks` says where they go: a webhook (JSON to any URL; a receiver that keeps one message per key can edit it in place and close it on a resolve), email, ntfy, Discord, Gotify or Apprise. Each sink can list which events it wants: decision, broken, security, system.',
     'Silence means healthy. Nothing is announced on success; a condition that clears is a resolve, which only the webhook acts on. A decision still waiting after the escalation delay is announced once more, louder.',
   ],
   Rules: [

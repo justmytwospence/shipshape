@@ -385,6 +385,15 @@ export const SinkSchema = z.discriminatedUnion('type', [
     token_env: z.string().optional(),
     events: Events,
   }),
+  z.object({ type: z.literal('discord'), url_env: z.string().default('DISCORD_WEBHOOK_URL'), events: Events }),
+  z.object({ type: z.literal('gotify'), url: z.string().url(), token_env: z.string().default('GOTIFY_TOKEN'), events: Events }),
+  z.object({
+    type: z.literal('apprise'),
+    url: z.string().url(),
+    tag: z.string().min(1).optional(),
+    auth_env: z.string().optional(),
+    events: Events,
+  }),
 ])
 export type Sink = z.infer<typeof SinkSchema>
 

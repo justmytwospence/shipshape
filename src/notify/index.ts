@@ -1,6 +1,9 @@
 import { loadPolicy, type EventClass, type Sink } from '../config.ts'
 import { sendEmailSink, configured as emailConfigured } from './sinks/email.ts'
 import { sendNtfy } from './sinks/ntfy.ts'
+import { discordUrl, sendDiscord } from './sinks/discord.ts'
+import { sendGotify } from './sinks/gotify.ts'
+import { appriseAuth, sendApprise } from './sinks/apprise.ts'
 import { endpointOf, retryPendingIncidents as retryWebhook, sendIncident } from './sinks/webhook.ts'
 import type { Message } from './types.ts'
 
@@ -11,7 +14,8 @@ export type { IncidentAction, IncidentStatus, Message, Priority } from './types.
  * Delivery: which sink gets what.
  *
  * Shipshape emits messages; `policy.notify.sinks` says where they go. A sink is a
- * `webhook` (JSON to any URL, the only sink that edits and resolves), `email` or `ntfy`. Each may list the `events` it wants:
+ * `webhook` (JSON to any URL, the only sink that edits and resolves), `email`, `ntfy`,
+ * `discord`, `gotify` or `apprise`. Each may list the `events` it wants:
  * `decision`, `broken`, `security`, `system`. Silence means healthy, so nothing here is a
  * "success" message; a condition that clears is a resolve, which only the webhook acts on.
  *
@@ -40,6 +44,12 @@ export async function notify(opts: Message): Promise<void> {
             return sendEmailSink(opts)
           case 'ntfy':
             return sendNtfy(s, opts)
+          case 'discord':
+            return sendDiscord(s, opts)
+          case 'gotify':
+            return sendGotify(s, opts)
+          case 'apprise':
+            return sendApprise(s, opts)
         }
       }),
   )
@@ -85,6 +95,9 @@ export function sinkCredentials(): { name: string; state: 'set' | 'missing'; not
   const set = (name: string) => (process.env[name] ? 'set' : 'missing')
   for (const s of policy.notify.sinks) {
     if (s.type === 'webhook') add(s.url_env, set(s.url_env), process.env[s.token_env] ? `bearer from ${s.token_env}` : 'no bearer')
+    if (s.type === 'discord') add(s.url_env, discordUrl(s) ? 'set' : 'missing', 'a Discord webhook URL (https)')
+    if (s.type === 'gotify') add(s.token_env, set(s.token_env), `Gotify app token for ${s.url}`)
+    if (s.type === 'apprise' && s.auth_env) add(s.auth_env, set(s.auth_env), 'Apprise basic auth, user:password')
     if (s.type === 'ntfy' && s.token_env) add(s.token_env, set(s.token_env), `ntfy token for ${s.topic}`)
   }
   return [...out.values()]
@@ -99,6 +112,9 @@ export function activeChannels(cls: EventClass = 'system'): string[] {
     if (s.type === 'webhook' && endpointOf(s)) out.push('webhook')
     if (s.type === 'email' && emailConfigured()) out.push('email')
     if (s.type === 'ntfy') out.push(`ntfy ${s.topic}`)
+    if (s.type === 'discord' && discordUrl(s)) out.push('Discord')
+    if (s.type === 'gotify' && process.env[s.token_env]) out.push('Gotify')
+    if (s.type === 'apprise' && appriseAuth(s) !== false) out.push(s.tag ? `Apprise ${s.tag}` : 'Apprise')
   }
   return out
 }

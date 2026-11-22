@@ -18,6 +18,8 @@ Three families of operation, by what you are editing:
   enough surrounding context to be unambiguous. This is what makes the edit checkable
   in a file with no structure to address.
 
+In a compose file, path operations may only address keys under `services.<a service you may change>`, and `replace_text` is not available there. A draft never changes `privileged`, `cap_add`, `devices`, `pid`, `ipc`, `network_mode`, `volumes`, `volumes_from`, `security_opt`, `build`, `user`, `userns_mode`, `cgroup`, `runtime` or `group_add`, and never a `shipshape.*` label — put those in a note.
+
 ## Operations versus notes
 
 Emit an **operation** only when upstream documentation says this update requires it:

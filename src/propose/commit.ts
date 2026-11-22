@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { execa } from 'execa'
 import { parse as parseYaml } from 'yaml'
 import { applyOps, type Op } from './apply.ts'
-import { canWrite, isStructured, type Boundary } from './paths.ts'
+import { canWrite, isStructured, realRelPath, resolveInRepo, type Boundary } from './paths.ts'
 
 /**
  * Turning a set of operations into edited files on disk, or refusing to.
@@ -63,6 +63,15 @@ export function checkAndApply(req: ApplyRequest): ApplyOutcome {
     }
     const verdict = canWrite(file, boundary, selfStack, peek, never)
     if (!verdict.ok) return { ok: false, reason: verdict.reason }
+    // The textual checks above see the path as written; a symbolic link could still land
+    // the write somewhere they forbid. Check where it really goes.
+    const resolved = resolveInRepo(file) ?? file
+    const real = realRelPath(repoDir, resolved)
+    if (!real.ok) return { ok: false, reason: real.reason }
+    if (real.rel !== resolved) {
+      const again = canWrite(real.rel, boundary, selfStack, peek, never)
+      if (!again.ok) return { ok: false, reason: again.reason }
+    }
     byFile.set(file, [...(byFile.get(file) ?? []), op])
   }
 

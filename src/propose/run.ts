@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { botIdentity, env, loadPolicy } from '../config.ts'
+import { botIdentity, env, loadPolicy, paths } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { budgetExhausted } from '../analyze/claude.ts'
 import { scanRepo } from '../compose/scan.ts'
@@ -10,7 +10,8 @@ import { buildBranch } from '../gitops/ship.ts'
 import { eligibleGroups, shipBranchFor } from '../gitops/ship.ts'
 import { ensureWorkRepo, git, withGitLock } from '../gitops/repo.ts'
 import { blockFor, checkAndApply, composeAccepts, restore } from './commit.ts'
-import { scopeFor, boundaryFor, describeBoundary, allowedServices } from './paths.ts'
+import { scopeFor, boundaryFor, describeBoundary, allowedServices, protectedPaths } from './paths.ts'
+import { redactSecrets } from './redact.ts'
 import { proposalHunks } from './hunks.ts'
 import { propose, type Proposal } from './propose.ts'
 import { gatherContext } from './context.ts'
@@ -299,7 +300,7 @@ async function draftFor(c: Candidate): Promise<boolean> {
       fromTag: c.fromTag,
       toTag: c.toTag,
       service: c.service,
-      composeBlock: blockFor(before, c.service),
+      composeBlock: redactSecrets(blockFor(before, c.service)),
       sourceRepo: source.repo,
       verdict: {
         summary: verdict.summary,
@@ -335,7 +336,7 @@ async function draftFor(c: Candidate): Promise<boolean> {
       boundary,
       allowed,
       selfStack: env.selfStack,
-      never: policy.propose.never,
+      never: [...policy.propose.never, ...protectedPaths(env.repoDir, paths.policy)],
     })
 
     if (!applied.ok) {

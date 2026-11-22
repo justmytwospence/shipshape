@@ -111,3 +111,67 @@ test('there is exactly one scopeFor, and it knows every rung', () => {
   assert.equal(scopeFor('repo'), 'repo')
   assert.equal(scopeFor('any'), 'repo')
 })
+
+// ---------------------------------------------------------------------------- compose boundary
+
+const TWO = `services:
+  app:
+    image: example/app:1
+    environment:
+      LOG: info
+  db:
+    image: postgres:16
+    environment:
+      PGDATA: /data
+networks:
+  x:
+    external: true
+`
+
+test('a path operation may not reach a service outside the boundary', async () => {
+  const { applyOps } = await import('../src/propose/apply.ts')
+  const r = applyOps(TWO, 'app', [{ op: 'set_path', path: ['services', 'db', 'environment', 'X'], value: '1' }], ['app'])
+  assert.equal(r.ok, false)
+  assert.match(r.ok ? '' : r.reason, /may not change "db"/)
+})
+
+test('a path operation may not touch the compose file\'s top level', async () => {
+  const { applyOps } = await import('../src/propose/apply.ts')
+  const r = applyOps(TWO, 'app', [{ op: 'set_path', path: ['networks', 'x', 'external'], value: 'false' }], ['app'])
+  assert.match(r.ok ? '' : r.reason, /only change keys under services/)
+})
+
+test('a draft may not widen what a container can reach', async () => {
+  const { applyOps } = await import('../src/propose/apply.ts')
+  for (const key of ['privileged', 'cap_add', 'volumes', 'network_mode', 'user', 'group_add']) {
+    const r = applyOps(TWO, 'app', [{ op: 'set_path', path: ['services', 'app', key], value: 'x' }], ['app'])
+    assert.match(r.ok ? '' : r.reason, /widens what the container can reach/, key)
+  }
+  const removed = applyOps(TWO, 'app', [{ op: 'remove_path', path: ['services', 'app', 'volumes', 0] }], ['app'])
+  assert.match(removed.ok ? '' : removed.reason, /widens/)
+  const renamed = applyOps(TWO, 'app', [{ op: 'rename_path', path: ['services', 'app', 'environment'], to: 'privileged' }], ['app'])
+  assert.match(renamed.ok ? '' : renamed.reason, /widens/)
+})
+
+test('labels move only through set_label, and never shipshape.*', async () => {
+  const { applyOps } = await import('../src/propose/apply.ts')
+  const path = applyOps(TWO, 'app', [{ op: 'set_path', path: ['services', 'app', 'labels', 'a'], value: '1' }], ['app'])
+  assert.match(path.ok ? '' : path.reason, /labels are changed with/)
+  const own = applyOps(TWO, 'app', [{ op: 'set_label', key: 'shipshape.class', value: 'normal' }], ['app'])
+  assert.match(own.ok ? '' : own.reason, /may not change shipshape\.\* labels/)
+})
+
+test('replace_text is refused in a compose file and still works elsewhere', async () => {
+  const { applyOps } = await import('../src/propose/apply.ts')
+  const r = applyOps(TWO, 'app', [{ op: 'replace_text', find: 'info', replace: 'debug' }], ['app'])
+  assert.match(r.ok ? '' : r.reason, /replace_text is not allowed in a compose file/)
+  const plain = applyOps('a = 1\nb = 2\n', 'app', [{ op: 'replace_text', find: 'a = 1', replace: 'a = 3' }], ['app'])
+  assert.equal(plain.ok, true)
+})
+
+test('set_path inside an allowed service still works', async () => {
+  const { applyOps } = await import('../src/propose/apply.ts')
+  const r = applyOps(TWO, 'app', [{ op: 'set_path', path: ['services', 'app', 'environment', 'LOG'], value: 'debug' }], ['app'])
+  assert.equal(r.ok, true)
+  assert.match(r.ok ? r.text : '', /LOG: debug/)
+})

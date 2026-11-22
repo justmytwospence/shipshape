@@ -99,12 +99,15 @@ test('list-form environment blocks are handled in their own style', () => {
 test('labels are edited the same way as environment', () => {
   const r = ok(
     applyOps(MAP_STYLE, 'app', [
-      { op: 'set_label', key: 'shipshape.pattern', value: 'semver' },
-      { op: 'remove_label', key: 'shipshape.watch' },
+      { op: 'set_label', key: 'com.example.tier', value: 'web' },
+      { op: 'set_label', key: 'com.example.gone', value: 'x' },
+      { op: 'remove_label', key: 'com.example.gone' },
     ]),
   )
-  assert.ok(r.text.includes('shipshape.pattern: semver'))
-  assert.ok(!r.text.includes('shipshape.watch'))
+  assert.ok(r.text.includes('com.example.tier: web'))
+  assert.ok(!r.text.includes('com.example.gone'))
+  // A draft never writes shipshape's own labels (test/propose-scope.test.ts).
+  assert.ok(r.text.includes('shipshape.watch'))
 })
 
 test('a missing block is created rather than refused', () => {

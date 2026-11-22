@@ -40,6 +40,72 @@ export type ApplyOutcome =
   | { ok: true; text: string; changed: string[] }
   | { ok: false; reason: string }
 
+/** Top-level service keys a draft may never write: each widens what the container can reach on the host. */
+export const DENIED_SERVICE_KEYS = new Set([
+  'privileged',
+  'cap_add',
+  'devices',
+  'pid',
+  'ipc',
+  'network_mode',
+  'volumes',
+  'volumes_from',
+  'security_opt',
+  'build',
+  'user',
+  'userns_mode',
+  'cgroup',
+  'runtime',
+  'group_add',
+])
+
+/** A compose document: its root is a mapping with a `services` mapping. */
+export function isComposeDocument(text: string): boolean {
+  try {
+    const doc = parseYaml(text) as unknown
+    if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return false
+    const services = (doc as Record<string, unknown>).services
+    return !!services && typeof services === 'object' && !Array.isArray(services)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * What a draft may do in a compose document, beyond the per-service operations: path
+ * operations only under `services.<a permitted service>`, never a key that widens what the
+ * container can reach, labels only through set_label / remove_label, and never a
+ * `shipshape.*` label. A refusal, or null.
+ */
+function composeGuard(op: Op, allowed: string[]): ApplyOutcome | null {
+  if (op.op === 'replace_text') {
+    return { ok: false, reason: 'replace_text is not allowed in a compose file — name the key to change instead' }
+  }
+  if (op.op === 'set_path' || op.op === 'remove_path' || op.op === 'rename_path') {
+    const path = op.path
+    if (path[0] !== 'services' || path.length < 3) {
+      return { ok: false, reason: `a draft may only change keys under services.<service> in a compose file, not ${path.join('.')}` }
+    }
+    if (typeof path[1] !== 'string' || !allowed.includes(path[1])) {
+      return { ok: false, reason: `this proposal may not change "${String(path[1])}" — permitted: ${allowed.join(', ')}` }
+    }
+    const key = String(path[2])
+    const denied = DENIED_SERVICE_KEYS.has(key)
+      ? key
+      : op.op === 'rename_path' && path.length === 3 && DENIED_SERVICE_KEYS.has(op.to)
+        ? op.to
+        : null
+    if (denied) {
+      return { ok: false, reason: `a draft may not change ${denied} on ${path[1]}: it widens what the container can reach on the host` }
+    }
+    if (key === 'labels') return { ok: false, reason: 'labels are changed with set_label and remove_label, not path operations' }
+  }
+  if ((op.op === 'set_label' || op.op === 'remove_label') && /^shipshape\./i.test(op.key)) {
+    return { ok: false, reason: 'a draft may not change shipshape.* labels' }
+  }
+  return null
+}
+
 /**
  * Apply `ops` to `service` in `text`.
  *
@@ -58,11 +124,17 @@ export function applyOps(
 
   let current = text
   const changed: string[] = []
+  const compose = isComposeDocument(text)
 
   for (const op of ops) {
     const target = op.service ?? service
-    // Path operations address a document directly and carry no service; their boundary
-    // is the file, checked before this function is reached.
+    if (compose) {
+      const refused = composeGuard(op, allowed)
+      if (refused) return refused
+    }
+    // Path operations in any other document carry no service; their boundary is the
+    // file, checked before this function is reached. In a compose document composeGuard
+    // has already held them to the permitted services.
     const isPathOp =
       op.op === 'set_path' ||
       op.op === 'remove_path' ||

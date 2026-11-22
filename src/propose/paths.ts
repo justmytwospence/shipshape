@@ -1,4 +1,5 @@
-import { dirname, relative, resolve, sep } from 'node:path'
+import { existsSync, realpathSync } from 'node:fs'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 /**
  * How far a drafted proposal may reach, expressed as a boundary in the repository.
@@ -271,6 +272,32 @@ export function canWrite(
   }
 
   return { ok: true } // repo, past the exclusions above
+}
+
+/**
+ * Repo-relative paths that hold shipshape's own policy: the policy file and the prompt
+ * overrides beside it. Empty when the policy lives outside the repository.
+ */
+export function protectedPaths(repoDir: string, policyFile: string): string[] {
+  const rel = relative(repoDir, policyFile).split(sep).join('/')
+  if (!rel || rel.startsWith('..') || isAbsolute(rel)) return []
+  const dir = dirname(rel)
+  return [rel, dir === '.' ? 'prompts' : `${dir}/prompts`]
+}
+
+/** The path a write would really land on, after symbolic links; refused when that leaves the repository. */
+export function realRelPath(
+  repoDir: string,
+  relPath: string,
+): { ok: true; rel: string } | { ok: false; reason: string } {
+  const root = realpathSync(repoDir)
+  const abs = join(repoDir, relPath)
+  if (!existsSync(abs)) return { ok: true, rel: relPath }
+  const rel = relative(root, realpathSync(abs)).split(sep).join('/')
+  if (rel.startsWith('..') || isAbsolute(rel)) {
+    return { ok: false, reason: `"${relPath}" leads outside the repository through a symbolic link` }
+  }
+  return { ok: true, rel }
 }
 
 /** What the model is told it may touch. Kept in step with what canWrite enforces. */

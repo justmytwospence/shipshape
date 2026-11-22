@@ -13,6 +13,7 @@ import {
   type ServiceSnapshot,
 } from './probe.ts'
 import { includedStacks, scanRepo } from '../compose/scan.ts'
+import { composeFileOfStack, overrideFor } from '../compose/files.ts'
 import { DEFAULT_VERIFY, runVerify, type Verdict } from './verify.ts'
 import { dockerEnvOptions } from './docker-env.ts'
 import { getDb, logEvent } from '../db.ts'
@@ -207,6 +208,19 @@ export function isRootStack(stack: string, repoDir = env.repoDir): boolean {
 }
 
 /**
+ * The `-f` arguments that point compose at a stack's files: none for the root project (no -f at
+ * all, because scoping it loses the networks it defines), otherwise the stack's compose file
+ * and the override Compose would have applied on its own, so the command matches a plain
+ * `docker compose up` in that directory.
+ */
+export function fileArgs(stack: string, repoDir = env.repoDir): string[] {
+  if (isRootStack(stack, repoDir)) return []
+  const file = composeFileOfStack(repoDir, stack)
+  const override = overrideFor(repoDir, file)
+  return ['-f', file, ...(override ? ['-f', override] : [])]
+}
+
+/**
  * `compose up` for exactly the services a deploy means, and nothing they depend on.
  *
  * `--no-deps` is always there because `up -d svc` on its own reaches past `svc`: it
@@ -231,22 +245,7 @@ export function composeArgs(
   // target into a command, so it is the one place that can guarantee the executed and
   // the pasted command agree.
   const services = [...new Set(target.services)]
-  if (isRootStack(target.stack, repoDir)) {
-    // No -f: the root compose file is the project, and its networks are defined there.
-    return { cwd, args: ['compose', 'up', '-d', '--no-deps', ...services] }
-  }
-  return {
-    cwd,
-    args: [
-      'compose',
-      '-f',
-      `${target.stack}/docker-compose.yaml`,
-      'up',
-      '-d',
-      '--no-deps',
-      ...services,
-    ],
-  }
+  return { cwd, args: ['compose', ...fileArgs(target.stack, repoDir), 'up', '-d', '--no-deps', ...services] }
 }
 
 /**
@@ -283,10 +282,7 @@ export function buildArgs(
 
 function removeArgs(target: DeployTarget, repoDir = env.repoDir): { cwd: string; args: string[] } {
   const cwd = repoDir
-  const base = isRootStack(target.stack, repoDir)
-    ? ['compose']
-    : ['compose', '-f', `${target.stack}/docker-compose.yaml`]
-  return { cwd, args: [...base, 'rm', '-sf', ...new Set(target.services)] }
+  return { cwd, args: ['compose', ...fileArgs(target.stack, repoDir), 'rm', '-sf', ...new Set(target.services)] }
 }
 
 /**

@@ -7,7 +7,7 @@ import { execa } from 'execa'
 import { env, loadPolicy, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { dockerEnvOptions } from '../deploy/docker-env.ts'
-import { isRootStack } from '../deploy/run.ts'
+import { fileArgs } from '../deploy/run.ts'
 import { hasOffsiteJob, runOffsite, runOffsiteAndWait, type Fetch, type WaitIo } from './offsite.ts'
 
 /**
@@ -52,9 +52,7 @@ const DUMP_TIMEOUT_MS = 15 * 60_000
 
 export const realRestoreIo: RestoreIo = {
   async containerId(stack, service) {
-    const args = isRootStack(stack)
-      ? ['compose', 'ps', '-q', service]
-      : ['compose', '-f', `${stack}/docker-compose.yaml`, 'ps', '-q', service]
+    const args = ['compose', ...fileArgs(stack), 'ps', '-q', service]
     const r = await execa('docker', args, { cwd: env.repoDir, reject: false, timeout: 30_000, ...dockerEnvOptions() })
     const id = String(r.stdout ?? '').trim().split('\n')[0]
     return r.exitCode === 0 && id ? id : null

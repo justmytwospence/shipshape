@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { parseImageRef, type ImageRef } from '../images/ref.ts'
 import { finalBase, parseFroms } from './dockerfile.ts'
+import { composeFileIn, discoverCompose } from './files.ts'
 
 /**
  * Reads the desired state out of the compose files themselves.
@@ -45,8 +46,10 @@ function traefikPort(labels: Record<string, string>): number | null {
 export function includedStacks(repoDir: string): Set<string> {
   const out = new Set<string>()
   let raw: string
+  const found = composeFileIn(repoDir)
+  if (!found) return out
   try {
-    raw = readFileSync(join(repoDir, 'docker-compose.yaml'), 'utf8')
+    raw = readFileSync(join(repoDir, found.name), 'utf8')
   } catch {
     return out
   }
@@ -60,7 +63,7 @@ export function includedStacks(repoDir: string): Set<string> {
     const path =
       typeof entry === 'string' ? entry : ((entry as { path?: unknown })?.path as string | undefined)
     if (typeof path !== 'string') continue
-    const stack = path.split('/')[0]
+    const stack = path.replace(/^(\.\/)+/, '').split('/')[0]
     if (stack && stack !== '.') out.add(stack)
   }
   return out
@@ -206,38 +209,9 @@ export const KNOWN_LABELS = new Set([
   'fork.waits-on',
 ])
 
-const SKIP_DIRS = new Set(['.git', '.claude', '.agents', 'bin', 'node_modules'])
-
-/** Every `<stack>/docker-compose.yaml` plus the root infrastructure compose. */
+/** Every `<stack>/<compose file>` plus the root compose file. */
 export function findComposeFiles(repoRoot: string): string[] {
-  const out: string[] = []
-  // An unset or missing repository is a configuration state, not an error: the UI
-  // renders setup instructions, and every caller here should simply see no services.
-  if (!repoRoot || !isReadableDir(repoRoot)) return out
-  const root = join(repoRoot, 'docker-compose.yaml')
-  if (exists(root)) out.push(root)
-  for (const entry of readdirSync(repoRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory() || SKIP_DIRS.has(entry.name) || entry.name.startsWith('.')) continue
-    const f = join(repoRoot, entry.name, 'docker-compose.yaml')
-    if (exists(f)) out.push(f)
-  }
-  return out.sort()
-}
-
-function isReadableDir(p: string): boolean {
-  try {
-    return statSync(p).isDirectory()
-  } catch {
-    return false
-  }
-}
-
-function exists(p: string): boolean {
-  try {
-    return statSync(p).isFile()
-  } catch {
-    return false
-  }
+  return discoverCompose(repoRoot).files
 }
 
 /** Compose accepts labels as a map or as a `key=value` list; normalise to a map. */

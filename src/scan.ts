@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { configured, env, loadPolicy, paths, retiredKeys, type Policy } from './config.ts'
 import { getDb, logEvent } from './db.ts'
 import { scanRepo, type ScannedService } from './compose/scan.ts'
+import { discoverCompose } from './compose/files.ts'
 import { detect, type Detection } from './detect.ts'
 import { checkDigest, shortDigest, type DigestCheck } from './digests.ts'
 import { classFor } from './policy.ts'
@@ -46,6 +47,31 @@ export async function runScan(trigger: 'cron' | 'manual'): Promise<ScanResult> {
 
   try {
     const { policy } = loadPolicy()
+    const discovery = discoverCompose(env.repoDir)
+    recordComposeFiles(discovery.files.length)
+    for (const d of discovery.shadowed) {
+      logEvent({
+        level: 'warn',
+        kind: 'scan',
+        message: `${d.dir || 'the repository root'} has more than one compose file; using ${d.kept}`,
+        detail: `Compose prefers ${d.kept} and shipshape follows it. Ignored: ${d.ignored.join(', ')}.`,
+      })
+    }
+    if (discovery.files.length === 0) {
+      // An empty or unmounted REPO_DIR must not read as "every service was removed": the
+      // inventory would be wiped and every update retired.
+      logEvent({
+        level: 'error',
+        kind: 'system',
+        message: `no compose files found in ${env.repoDir}`,
+        detail:
+          'shipshape looks for compose.yaml, compose.yml, docker-compose.yml or docker-compose.yaml in REPO_DIR ' +
+          'itself (the "root" stack) and in each directory directly under it, one directory per stack. Check that ' +
+          'REPO_DIR is the repository root, that it is mounted at the same path inside the container, and that the ' +
+          'files are committed. The existing inventory was left as it was.',
+      })
+      return { status: 'completed', counts: { 'no-compose-files': 1 }, durationS: 0 }
+    }
     const services = scanRepo(env.repoDir, policy.exclude_stacks)
     syncInventory(services)
     reportUnknownLabels(services)
@@ -685,6 +711,16 @@ function persistDigest(svc: ScannedService, c: DigestCheck, policy: Policy): str
       return 'error'
     }
   }
+}
+
+function recordComposeFiles(n: number): void {
+  const now = new Date().toISOString()
+  getDb()
+    .prepare(
+      `INSERT INTO budgets (key, value, window, updated_at) VALUES ('scan.compose_files', ?, NULL, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+    )
+    .run(n, now)
 }
 
 function recordTelemetry(counts: Record<string, number>, durationS: number): void {

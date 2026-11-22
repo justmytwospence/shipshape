@@ -1,4 +1,5 @@
 import { env, loadPolicy } from '../../config.ts'
+import { composeFileOfStack } from '../../compose/files.ts'
 import { getDb, logEvent } from '../../db.ts'
 import { parseImageRef } from '../../images/ref.ts'
 import { assembleNotes, notesInRange } from '../../notes/assemble.ts'
@@ -100,7 +101,7 @@ export function pendingScreens(limit: number, repoDir = env.repoDir, now = Date.
   for (const r of rows) {
     const key = `${r.image}\u0000${r.from_tag}\u0000${r.to_tag}`
     const seen = byKey.get(key)
-    const carrier = { stack: r.stack, service: r.service, composeFile: r.compose_file ?? `${r.stack}/docker-compose.yaml` }
+    const carrier = { stack: r.stack, service: r.service, composeFile: r.compose_file ?? composeFileOfStack(env.repoDir, r.stack) }
     if (seen) {
       if (!seen.carriers.some((c) => c.stack === r.stack && c.service === r.service)) seen.carriers.push(carrier)
       continue

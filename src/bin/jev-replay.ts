@@ -24,6 +24,8 @@ import { getDb } from '../db.ts'
 import { screenBump } from '../analyze/screen/run.ts'
 import { decideScreen, flagsOf, THRESHOLDS, type Thresholds } from '../analyze/screen/decide.ts'
 import type { Answer } from '../analyze/jev.ts'
+import { env } from '../config.ts'
+import { composeFileOfStack } from '../compose/files.ts'
 
 const args = process.argv.slice(2)
 const valueOf = (flag: string) => {
@@ -109,7 +111,7 @@ for (const r of rows) {
       stack: r.stack,
       service: r.service,
       detected_at: r.detected_at,
-      carriers: [{ stack: r.stack, service: r.service, composeFile: r.compose_file ?? `${r.stack}/docker-compose.yaml` }],
+      carriers: [{ stack: r.stack, service: r.service, composeFile: r.compose_file ?? composeFileOfStack(env.repoDir, r.stack) }],
     },
     { purpose: 'replay' },
   )

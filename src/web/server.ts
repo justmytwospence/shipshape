@@ -842,6 +842,7 @@ export function createApp(): Hono {
       pushMain: policy.sync.push_main,
       branch: gitBranch(),
       remote: env.gitRemote.kind === 'https' ? env.gitRemote.host : env.gitRemote.kind === 'local' ? 'local repository' : 'not set',
+      composeFiles: scanInfo().composeFiles,
       scan: {
         cron: sched.scan.cron,
         lastAt: info.lastAt,
@@ -1134,6 +1135,8 @@ export interface ScanInfo {
   durationS: number | null
   counts: Record<string, number> | null
   running: boolean
+  /** How many compose files the last scan found; 0 means REPO_DIR holds none. */
+  composeFiles: number | null
 }
 
 export function scanInfo(): ScanInfo {
@@ -1152,7 +1155,7 @@ export function scanInfo(): ScanInfo {
       counts = null
     }
   }
-  return { lastAt, durationS, counts, running: isScanning() }
+  return { lastAt, durationS, counts, running: isScanning(), composeFiles: by.get('scan.compose_files')?.value ?? null }
 }
 
 function readPackageVersion(): string {

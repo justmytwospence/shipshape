@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { env } from '../config.ts'
 import { includedStacks } from '../compose/scan.ts'
+import { composeFileOfStack } from '../compose/files.ts'
 import { dockerEnvOptions } from './docker-env.ts'
 
 /**
@@ -55,7 +56,7 @@ export function projectName(stack: string, repoDir = env.repoDir): string {
   // under their own would find nothing and the verifier would report "no container"
   // for a service that is running perfectly well.
   const root = stack === 'root' || includedStacks(repoDir).has(stack)
-  const raw = root ? basename(repoDir) : (declaredName(join(repoDir, stack, 'docker-compose.yaml')) ?? stack)
+  const raw = root ? basename(repoDir) : (declaredName(join(repoDir, composeFileOfStack(repoDir, stack))) ?? stack)
   return raw.toLowerCase().replace(/[^a-z0-9_-]/g, '')
 }
 

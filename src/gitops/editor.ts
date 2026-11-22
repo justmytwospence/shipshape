@@ -3,6 +3,7 @@ import { join, relative } from 'node:path'
 import { execa } from 'execa'
 import { parseDocument, isScalar } from 'yaml'
 import { git } from './repo.ts'
+import { overrideFor } from '../compose/files.ts'
 
 /**
  * Rewriting one `image:` value and provably nothing else.
@@ -117,9 +118,13 @@ async function verify(opts: {
 
   // Gate C: compose must still accept the file. `--no-interpolate` because the work
   // clone has no .env -- this validates structure, not variable resolution.
+  // The override Compose would apply goes along: a base file that refers to something the
+  // override defines is valid only with it.
+  const override = overrideFor(repoDir, composeFile)
+  const files = ['-f', join(repoDir, composeFile), ...(override ? ['-f', join(repoDir, override)] : [])]
   const cfg = await execa(
     'docker',
-    ['compose', '-f', join(repoDir, composeFile), 'config', '--no-interpolate', '-q'],
+    ['compose', ...files, 'config', '--no-interpolate', '-q'],
     { reject: false, timeout: 60_000, cwd: repoDir },
   )
   if ((cfg.exitCode ?? 1) !== 0) {

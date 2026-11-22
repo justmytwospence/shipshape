@@ -70,3 +70,25 @@ test('a web page becomes text whose headings still cut by version', () => {
   assert.match(text, /## Version 1\.43\.5 — September\n\n- Fixed playback & transcoding\n- Faster scans/)
   assert.deepEqual(sectionize(text).map((s) => s.key?.core.join('.')), ['1.43.5', '1.43.4'])
 })
+
+test('a page built to be slow is read in linear time', () => {
+  for (const s of ['<'.repeat(200_000), '<a '.repeat(70_000), '<script'.repeat(30_000), '<!--'.repeat(50_000), '<h1>'.repeat(50_000)]) {
+    const t0 = performance.now()
+    htmlToText(s)
+    assert.ok(performance.now() - t0 < 500, `${s.slice(0, 8)} took ${Math.round(performance.now() - t0)} ms`)
+  }
+})
+
+test('odd markup reads sensibly', () => {
+  const cases: [string, string][] = [
+    ['a < b > c', 'a < b > c'],
+    ['x <script>alert(1) and no close', 'x alert(1) and no close'],
+    ['<SCRIPT type="x">bad</SCRIPT >ok', 'ok'],
+    ['<h3>never closed <p>text', 'never closed text'],
+    ['<!-- open comment never closed <p>after', 'after'],
+    ['<p>3 <4</p>', '3 <4'],
+    ['<nav>menu</nav><svg><path/></svg>keep', 'keep'],
+    ['line<br>break<br/>again', 'line\nbreak\nagain'],
+  ]
+  for (const [input, want] of cases) assert.equal(htmlToText(input), want, input)
+})

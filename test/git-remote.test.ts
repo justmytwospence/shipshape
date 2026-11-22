@@ -129,3 +129,11 @@ test('validBranch', () => {
   for (const ok of ['main', 'release/1.x']) assert.equal(validBranch(ok), true, ok)
   for (const bad of ['-x', 'a..b', 'a/', 'x.lock', '']) assert.equal(validBranch(bad), false, bad)
 })
+
+test('a plain http remote is refused like ssh', () => {
+  const remote = parseRemote('http://git.example/me/compose.git', '')
+  assert.equal(remote.kind, 'unsupported')
+  const missing = missingSettings({ repoDir: '/r', repoDirExists: true, rawGithubRepo: '', remote, branch: 'main' })
+  assert.match(missing.find((m: { name: string }) => m.name === 'GIT_REMOTE_URL')?.why ?? '', /plain http/)
+  assert.equal(resolveGitCredentials(remote, { GIT_TOKEN: 't' }).token, '')
+})

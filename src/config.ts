@@ -19,7 +19,7 @@ import { z } from 'zod'
 export interface GitRemote {
   /** What git is given: GIT_REMOTE_URL, else https://github.com/<GITHUB_REPO>.git, else ''. */
   url: string
-  /** `local` is a path or file:// URL (tests, advanced); `unsupported` is ssh and anything else. */
+  /** `local` is a path or file:// URL (tests, advanced); `unsupported` is ssh, plain http and anything else. */
   kind: 'none' | 'https' | 'local' | 'unsupported'
   /** Lower-case hostname of an https remote, else ''. */
   host: string
@@ -30,7 +30,7 @@ export interface GitRemote {
 export function parseRemote(rawUrl: string, githubRepo: string): GitRemote {
   const url = rawUrl.trim() || (githubRepo ? `https://github.com/${githubRepo}.git` : '')
   if (!url) return { url: '', kind: 'none', host: '', webUrl: null }
-  if (/^https?:\/\//i.test(url)) {
+  if (/^https:\/\//i.test(url)) {
     try {
       const u = new URL(url)
       u.username = ''
@@ -299,7 +299,7 @@ export function missingSettings(i: {
   if (i.remote.kind === 'unsupported') {
     missing.push({
       name: 'GIT_REMOTE_URL',
-      why: 'must be an https:// URL (ssh remotes are not supported); sign in with GIT_TOKEN, and GIT_USERNAME for any host other than github.com',
+      why: 'must be an https:// URL (plain http and ssh remotes are not supported); sign in with GIT_TOKEN, and GIT_USERNAME for any host other than github.com',
     })
   }
   if (!validBranch(i.branch)) missing.push({ name: 'GIT_BRANCH', why: `"${i.branch}" is not a usable branch name` })

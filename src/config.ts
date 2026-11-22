@@ -189,11 +189,6 @@ export function allowedOrigin(): string | undefined {
   return process.env.SHIPSHAPE_ALLOWED_ORIGIN
 }
 
-/** The notification router's address and key: both, either, or neither (what Status reports). */
-export function notifyEnv(): { url: string; token: string } {
-  return { url: process.env.NOTIFY_URL ?? '', token: process.env.NOTIFY_TOKEN ?? '' }
-}
-
 /** Where policy.yaml lives. Defaults inside the watched repo so it is tracked and
  *  reviewable like everything else; POLICY_FILE overrides for any other layout. */
 /**

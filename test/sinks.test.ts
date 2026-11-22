@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 /**
- * Notification sinks. Shipshape emits messages; policy says where they go. The webhook is
- * the homelab router and keeps its old wire format exactly; email and ntfy never edit, so
+ * Notification sinks. Shipshape emits messages; policy says where they go. The webhook
+ * keeps its old wire format exactly; email and ntfy never edit, so
  * they speak on a first fire and an escalation and are quiet about everything else.
  */
 
@@ -30,7 +30,7 @@ globalThis.fetch = (async (url: unknown, init: { body: string; headers: Record<s
 }) as unknown as typeof fetch
 
 const { getDb } = await import('../src/db.ts')
-const { notify, activeChannels } = await import('../src/notify/index.ts')
+const { notify, activeChannels, sinkCredentials } = await import('../src/notify/index.ts')
 const { sendNtfy, resetNtfySink } = await import('../src/notify/sinks/ntfy.ts')
 const { sendEmailSink, resetEmailSink } = await import('../src/notify/sinks/email.ts')
 const { verifyToken } = await import('../src/notify/links.ts')
@@ -141,4 +141,27 @@ test('with no links possible (no secret) the buttons are simply left off', async
   await sendNtfy({ type: 'ntfy', url: 'http://ntfy.invalid', topic: 't' }, card)
   process.env.SHIPSHAPE_ALLOWED_ORIGIN = saved
   assert.equal(wire[0]!.body.actions, undefined)
+})
+
+test('a webhook without a token sends no Authorization header', async () => {
+  process.env.OTHER_URL = 'http://hook.invalid/x'
+  delete process.env.NO_SUCH_TOKEN
+  policy('notify:\n  sinks:\n    - type: webhook\n      url_env: OTHER_URL\n      token_env: NO_SUCH_TOKEN\n')
+  await notify(card)
+  assert.equal(wire.length, 1)
+  assert.equal(wire[0]!.url, 'http://hook.invalid/x')
+  assert.equal(wire[0]!.headers.authorization, undefined)
+  assert.deepEqual(activeChannels('decision'), ['webhook'])
+})
+
+test('the status page lists the variables each sink reads, and never their values', () => {
+  policy('notify:\n  sinks:\n    - type: webhook\n    - type: ntfy\n      url: http://ntfy.invalid\n      topic: t\n      token_env: NTFY_TOKEN\n    - type: ntfy\n      url: http://ntfy.invalid\n      topic: u\n      token_env: UNSET_NTFY\n')
+  delete process.env.UNSET_NTFY
+  const rows = sinkCredentials()
+  assert.deepEqual(rows, [
+    { name: 'NOTIFY_URL', state: 'set', note: 'bearer from NOTIFY_TOKEN' },
+    { name: 'NTFY_TOKEN', state: 'set', note: 'ntfy token for t' },
+    { name: 'UNSET_NTFY', state: 'missing', note: 'ntfy token for u' },
+  ])
+  assert.ok(!JSON.stringify(rows).includes('http://n8n.invalid'))
 })

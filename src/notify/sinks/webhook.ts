@@ -17,10 +17,11 @@ import type { IncidentAction, IncidentStatus, Message, Priority } from '../types
 
 type WebhookSink = Extract<Sink, { type: 'webhook' }>
 
-export function endpointOf(sink: Pick<WebhookSink, 'url_env' | 'token_env'>): { url: string; token: string } | null {
+/** Where to post, and the bearer if one is set. A token is optional: unset, no Authorization header is sent. */
+export function endpointOf(sink: Pick<WebhookSink, 'url_env' | 'token_env'>): { url: string; token: string | null } | null {
   const url = process.env[sink.url_env] ?? ''
   const token = process.env[sink.token_env] ?? ''
-  return url && token ? { url, token } : null
+  return url ? { url, token: token || null } : null
 }
 
 interface Payload {
@@ -87,7 +88,7 @@ async function deliver(sink: Pick<WebhookSink, 'url_env' | 'token_env'>, slot: s
   try {
     const res = await fetch(ep.url, {
       method: 'POST',
-      headers: { authorization: `Bearer ${ep.token}`, 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...(ep.token ? { authorization: `Bearer ${ep.token}` } : {}) },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(10_000),
     })

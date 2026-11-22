@@ -75,6 +75,21 @@ export function clearNotifyState(channel: string): void {
   lastReason.delete(channel)
 }
 
+/** For the Status page: the variables the configured sinks read, set or not. Names only. */
+export function sinkCredentials(): { name: string; state: 'set' | 'missing'; note?: string }[] {
+  const { policy } = loadPolicy()
+  const out = new Map<string, { name: string; state: 'set' | 'missing'; note?: string }>()
+  const add = (name: string, state: 'set' | 'missing', note?: string) => {
+    if (!out.has(name)) out.set(name, { name, state, ...(note ? { note } : {}) })
+  }
+  const set = (name: string) => (process.env[name] ? 'set' : 'missing')
+  for (const s of policy.notify.sinks) {
+    if (s.type === 'webhook') add(s.url_env, set(s.url_env), process.env[s.token_env] ? `bearer from ${s.token_env}` : 'no bearer')
+    if (s.type === 'ntfy' && s.token_env) add(s.token_env, set(s.token_env), `ntfy token for ${s.topic}`)
+  }
+  return [...out.values()]
+}
+
 /** Which sinks would actually receive a message of this class, for the UI. */
 export function activeChannels(cls: EventClass = 'system'): string[] {
   const { policy } = loadPolicy()

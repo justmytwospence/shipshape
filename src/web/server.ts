@@ -4,7 +4,7 @@ import { Hono, type Context } from 'hono'
 import { raw } from 'hono/html'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { configured, env, gitBranch, gitCredentialName, loadPolicy, notifyEnv, policyFileState, type Policy } from '../config.ts'
+import { configured, env, gitBranch, gitCredentialName, loadPolicy, policyFileState, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'
 import { buildUpdateDiff, type DiffHunk } from '../diff.ts'
@@ -74,7 +74,7 @@ import { DiffView } from './views/diff.tsx'
 import { applySettings, currentValue, SECTIONS, SETTINGS } from '../settings.ts'
 import { SECTION_PROSE } from '../settings/prose.ts'
 import { listModels } from '../analyze/models.ts'
-import { activeChannels } from '../notify/index.ts'
+import { activeChannels, sinkCredentials } from '../notify/index.ts'
 import { configured as emailConfigured, send as sendEmail, escapeHtml as escapeText } from '../notify/email.ts'
 import { rescheduleScan } from '../scheduler.ts'
 import { authMiddleware, describeAuth, registerAuthRoutes, resolveAuth } from './auth/index.ts'
@@ -108,13 +108,6 @@ function toastHeader(c: Context, level: 'info' | 'warn' | 'error', text: string)
     'HX-Trigger',
     json.replace(/[\u0080-\uffff]/g, (ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`),
   )
-}
-
-/** The incident channel needs both the router URL and its key; either alone is not set up. */
-function notifyState(): 'set' | 'missing' | 'not in use' {
-  const { url, token } = notifyEnv()
-  if (!url && !token) return 'not in use'
-  return url && token ? 'set' : 'missing'
 }
 
 /** The labels a browser may write. */
@@ -872,7 +865,7 @@ export function createApp(): Hono {
         // fortnight of unreviewed merges looked normal on this page.
         providerCredential(policy),
         screenCredential(policy.review.screen),
-        { name: 'NOTIFY_URL + NOTIFY_TOKEN', state: notifyState() },
+        ...sinkCredentials(),
         { name: 'SMTP_URL + MAIL_TO', state: emailConfigured() ? 'set' : 'not in use' },
         { name: 'DOCKER_HUB_LOGIN', state: env.dockerHubLogin ? 'set' : 'not in use' },
       ],

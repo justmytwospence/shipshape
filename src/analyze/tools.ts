@@ -1,6 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk'
 import { baseModel, llmProvider } from './client.ts'
-import type { LlmProvider } from '../config.ts'
+import type { LlmProvider, Policy } from '../config.ts'
 
 /**
  * The web tools each model is actually allowed to use, and how much they may read.
@@ -131,6 +131,11 @@ export function toolChoiceFor(model: string, provider: LlmProvider = llmProvider
   if (provider === 'custom') return { type: 'auto' }
   const family = baseModel(model)
   return NO_FORCED_TOOL.some((m) => family.startsWith(m)) ? { type: 'auto' } : { type: 'any' }
+}
+
+/** Whether the reader and the drafter get web_search / web_fetch. Never on a custom endpoint. */
+export function webEnabled(policy: Pick<Policy, 'review'>, provider: LlmProvider = llmProvider()): boolean {
+  return policy.review.web !== 'off' && provider !== 'custom'
 }
 
 /** The system prompt, cached where the provider supports prompt caching. */

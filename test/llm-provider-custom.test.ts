@@ -20,7 +20,7 @@ const { DEFAULT_MODEL, MODEL_DEFAULTS, PolicySchema } = await import('../src/con
 const { readerOn } = await import('../src/policy.ts')
 const { listModels } = await import('../src/analyze/models.ts')
 const { recordCost, recordSpend, budgetExhausted } = await import('../src/analyze/claude.ts')
-const { toolChoiceFor, systemPrompt } = await import('../src/analyze/tools.ts')
+const { toolChoiceFor, systemPrompt, webEnabled } = await import('../src/analyze/tools.ts')
 const { getDb } = await import('../src/db.ts')
 const { mockFetch, assertAllMocked, json } = await import('./helpers/http.ts')
 
@@ -65,7 +65,8 @@ test('calls to it cost nothing, warn about nothing and never spend the budget', 
   assert.equal(budgetExhausted(), false)
 })
 
-test('tool choice is never forced and the system prompt is not cached', () => {
+test('tool choice is never forced, the system prompt is not cached, and web tools stay off', () => {
   assert.deepEqual(toolChoiceFor('claude-opus-5'), { type: 'auto' })
   assert.equal(systemPrompt('s'), 's')
+  assert.equal(webEnabled(PolicySchema.parse({})), false)
 })

@@ -464,6 +464,8 @@ export const PolicySchema = z.object({
       // Drafts config changes and answers comments: rare, high-stakes work.
       code_model: z.string().optional(),
       monthly_budget_usd: z.number().positive().optional(),
+      // auto -- the reader and the drafter may search and fetch (never on a custom endpoint); off -- they read only what shipshape fetched
+      web: z.enum(['auto', 'off']).optional(),
     })
     .prefault({}),
   /** The old spelling of `review`. Accepted, folded, never written back. */
@@ -771,6 +773,7 @@ export const PolicySchema = z.object({
       model: review.model ?? (claude?.mode === 'off' ? 'off' : (claude?.model ?? DEFAULT_MODEL)),
       code_model: review.code_model ?? claude?.code_model ?? DEFAULT_MODEL,
       monthly_budget_usd: review.monthly_budget_usd ?? claude?.monthly_budget_usd ?? 40,
+      web: review.web ?? ('auto' as const),
     },
     prs: { max_open: prs.max_open },
     sync: {

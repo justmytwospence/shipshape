@@ -4,7 +4,7 @@ import { env, loadPolicy, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { prompt } from '../prompts/index.ts'
 import { costOf, estimateInputCost, reportUnknownModels, unpricedCost } from './pricing.ts'
-import { WEB_BUDGET, systemPrompt, toolChoiceFor, webTools } from './tools.ts'
+import { WEB_BUDGET, systemPrompt, toolChoiceFor, webEnabled, webTools } from './tools.ts'
 import { readerOn } from '../policy.ts'
 import type { DeploymentEntry } from './screen/state.ts'
 import { assembleNotes, evidenceOf, notesInRange, type NotesBundle, type NotesEvidence } from '../notes/assemble.ts'
@@ -179,7 +179,7 @@ export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | 
   const allowed = ['github.com', 'docs.linuxserver.io', 'api.linuxserver.io']
   const client = llmClient(2)
   const system = prompt('verdict')
-  const user = renderPrompt(target, notes)
+  const user = renderPrompt(target, notes, { web: webEnabled(policy) })
   const meta = { image: target.image, fromTag: target.fromTag, toTag: target.toTag }
   const started = Date.now()
 
@@ -194,7 +194,7 @@ export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | 
         tools: [
           // Revision picked per model: the 2026 pair filters search results before they
           // reach the context window, but only exists on the larger models.
-          ...webTools(policy.review.model, WEB_BUDGET, allowed),
+          ...(webEnabled(policy) ? webTools(policy.review.model, WEB_BUDGET, allowed) : []),
           EMIT_VERDICT,
         ],
         tool_choice: toolChoiceFor(policy.review.model),
@@ -241,7 +241,8 @@ export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | 
  * and so that it would break. Every one of those tags was in the registry; shipshape had
  * read it there. Exported for the tests.
  */
-export function renderPrompt(t: AnalyzeTarget, b: NotesBundle): string {
+export function renderPrompt(t: AnalyzeTarget, b: NotesBundle, opts: { web?: boolean } = {}): string {
+  const web = opts.web ?? true
   const s = b.source
   const how = s.detail ?? s.tier
   const certainty =
@@ -320,8 +321,12 @@ export function renderPrompt(t: AnalyzeTarget, b: NotesBundle): string {
 
   if (notesInRange(b) === 0) {
     parts.push(
-      `\nNo release notes for this range were retrieved automatically. Search for this project's changelog before judging, and if you cannot find one, say so and grade accordingly.`,
+      web
+        ? `\nNo release notes for this range were retrieved automatically. Search for this project's changelog before judging, and if you cannot find one, say so and grade accordingly.`
+        : `\nNo release notes for this range were retrieved automatically, and this review has no web access. Judge on what is above, say in the summary that the notes were not found, and grade accordingly.`,
     )
+  } else if (!web) {
+    parts.push(`\nThis review has no web access: judge only on the material above.`)
   }
 
   parts.push(`\nCall emit_verdict once you have judged this update.`)

@@ -137,6 +137,12 @@ test('an approximate range says it is one, and nothing in range asks for a searc
   assert.match(text, /No release notes for this range were retrieved automatically/)
 })
 
+test('without web access the review is told so, and is not told to search', () => {
+  const text = renderPrompt(jackett, bundle(), { web: false })
+  assert.match(text, /has no web access/)
+  assert.doesNotMatch(text, /Search for/)
+})
+
 test('a confident approval with no notes in the range is read as medium, and nothing else moves', () => {
   // The prompt asks for high confidence only on notes actually read, and a confident
   // approval is the one that merges unattended.

@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { llmClient, llmConfigured, missingKeyMessage } from '../analyze/client.ts'
 import { env, loadPolicy } from '../config.ts'
 import { isTimeout, recordCost, recordUnanswered } from '../analyze/claude.ts'
-import { WEB_BUDGET, toolChoiceFor, webTools, systemPrompt } from '../analyze/tools.ts'
+import { WEB_BUDGET, toolChoiceFor, webTools, systemPrompt, webEnabled } from '../analyze/tools.ts'
 import { prompt } from '../prompts/index.ts'
 import type { Op } from './apply.ts'
 import { renderContext, type DeployContext } from './context.ts'
@@ -151,7 +151,7 @@ export async function propose(input: ProposeInput): Promise<Proposal | { error: 
   const client = llmClient(2)
   const allowed = ['github.com', 'docs.linuxserver.io', 'api.linuxserver.io']
   const system = prompt('proposal')
-  const user = renderPrompt(input)
+  const user = renderPrompt(input, webEnabled(policy))
   const meta = { image: input.image, fromTag: input.fromTag, toTag: input.toTag }
   const started = Date.now()
 
@@ -162,7 +162,7 @@ export async function propose(input: ProposeInput): Promise<Proposal | { error: 
         max_tokens: 8192,
         system: systemPrompt(system),
         tools: [
-          ...webTools(policy.review.code_model, WEB_BUDGET, allowed),
+          ...(webEnabled(policy) ? webTools(policy.review.code_model, WEB_BUDGET, allowed) : []),
           PROPOSE_CHANGES,
         ],
         tool_choice: toolChoiceFor(policy.review.code_model),
@@ -195,7 +195,7 @@ export async function propose(input: ProposeInput): Promise<Proposal | { error: 
   }
 }
 
-function renderPrompt(i: ProposeInput): string {
+function renderPrompt(i: ProposeInput, web: boolean): string {
   return [
     `Service: ${i.service}`,
     `Image: ${i.image}`,
@@ -220,9 +220,17 @@ function renderPrompt(i: ProposeInput): string {
     '',
     i.scope,
     '',
-    'Read the upstream migration documentation before deciding. Then call',
-    'propose_changes with the operations this specific configuration requires, and notes',
-    'for everything else.',
+    ...(web
+      ? [
+          'Read the upstream migration documentation before deciding. Then call',
+          'propose_changes with the operations this specific configuration requires, and notes',
+          'for everything else.',
+        ]
+      : [
+          'You have no web access for this draft: the release notes, the review and the',
+          'configuration above are all the documentation there is. Call propose_changes with the',
+          'operations they show this configuration requires, and notes for everything else.',
+        ]),
   ]
     .filter(Boolean)
     .join('\n')

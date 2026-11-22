@@ -197,6 +197,22 @@ export const SETTINGS: SettingDef[] = [
   },
   {
     section: 'Changelog review',
+    path: 'review.web',
+    advanced: true,
+    kind: 'enum',
+    options: ['auto', 'off'],
+    optionHelp: {
+      auto: 'the reader and the drafter may search and read github.com and the LinuxServer docs (never on a custom endpoint)',
+      off: 'they read only what shipshape fetched',
+    },
+    defaultValue: 'auto',
+    label: 'Web access',
+    help: '',
+    about:
+      'Searches are billed per request, and fetched pages are most of what a reading costs. Off, a release with no notes in the range is judged on what shipshape fetched alone.',
+  },
+  {
+    section: 'Changelog review',
     path: 'review.monthly_budget_usd',
     kind: 'number',
     min: 0,

@@ -247,3 +247,51 @@ test('an update for a service that is in no compose file any more is retired, no
   const row = db.prepare(`SELECT state, detail FROM updates WHERE id = ?`).get(id) as { state: string; detail: string }
   assert.deepEqual([row.state, row.detail], ['superseded', 'service removed'])
 })
+
+function draft(id: number, opts: { steps: string[] }) {
+  const db = getDb()
+  const pr = Number(
+    db
+      .prepare(
+        `INSERT INTO prs (number, branch, head_sha_pushed, state, group_key, scope, kind, created_at)
+         VALUES (0, 'shipshape/app--app--1.0.1', '', 'open', NULL, 'proposed', 'local', '2026-01-02T00:00:00Z')`,
+      )
+      .run().lastInsertRowid,
+  )
+  db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(pr, id)
+  db.prepare(
+    `INSERT INTO proposals (pr_id, update_id, ops, notes, summary, sources, changed, model, error, hunks, created_at)
+     VALUES (?, ?, '[]', '[]', NULL, '[]', '[]', 'm', NULL, '[]', '2026-01-02T00:00:00Z')`,
+  ).run(pr, id)
+  db.prepare(
+    `INSERT INTO verdicts (image, from_tag, to_tag, recommendation, confidence, breaking_changes, migration_steps, sources, source, created_at)
+     VALUES ('example/app:1.0.0', '1.0.0', '1.0.1', 'approve', 'high', '[]', ?, '[]', 'reader', '2026-01-03T00:00:00Z')`,
+  ).run(JSON.stringify(opts.steps))
+  return pr
+}
+
+test('a draft whose review was read again with no work is closed, not merged', async () => {
+  setup([{ name: 'app' }])
+  const id = seed('app')
+  const pr = draft(id, { steps: [] })
+  const before = g(origin, ['rev-parse', 'main'])
+  await runShipPass()
+  const row = getDb().prepare(`SELECT state FROM prs WHERE id = ?`).get(pr) as { state: string }
+  assert.equal(row.state, 'closed')
+  assert.equal((getDb().prepare(`SELECT COUNT(*) c FROM proposals WHERE pr_id = ?`).get(pr) as { c: number }).c, 0)
+  const ev = getDb().prepare(`SELECT detail FROM events WHERE message = 'a drafted change was closed'`).get() as { detail: string }
+  assert.match(ev.detail, /read again/)
+  assert.notEqual(g(origin, ['rev-parse', 'main']), before, 'the tag-only change shipped instead')
+  assert.match(g(origin, ['log', '-1', '--format=%s', 'main']), /bump app/)
+})
+
+test('a draft still justified by its review waits for you', async () => {
+  setup([{ name: 'app' }])
+  const id = seed('app')
+  const pr = draft(id, { steps: ['set X'] })
+  const before = g(origin, ['rev-parse', 'main'])
+  await runShipPass()
+  assert.equal(g(origin, ['rev-parse', 'main']), before)
+  assert.equal((getDb().prepare(`SELECT state FROM prs WHERE id = ?`).get(pr) as { state: string }).state, 'open')
+  assert.ok((getDb().prepare(`SELECT decision_since FROM updates WHERE id = ?`).get(id) as { decision_since: string | null }).decision_since)
+})

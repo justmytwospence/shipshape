@@ -18,6 +18,7 @@ import { applyForkEdit, bumpImage } from './editor.ts'
 import { changeText, carriedFixesSection, baseImageSection, short, type BasePrInfo, type ForkPrInfo } from './body.ts'
 import { authorArgs, ensureWorkRepo, git, httpsUrl, withGitLock } from './repo.ts'
 import { syncMain } from './sync.ts'
+import { closeLocalChange, closeStaleDrafts, draftFor } from './drafts.ts'
 import { buildableServices, stackPeers, withNamespacePeers, type DeployTarget } from '../deploy/run.ts'
 import { enqueueDeploy } from '../deploy/queue.ts'
 import { logRetired, retireOvertaken, type Retired } from '../updates/overtaken.ts'
@@ -570,19 +571,6 @@ function groupStatus(statuses: UpdateHolds[]): 'ready' | 'decision' | 'waiting' 
   return 'waiting'
 }
 
-/** A drafted config change left an open local branch for these updates, if one did. */
-function draftFor(group: UpdateGroup): { id: number; branch: string } | null {
-  const ids = group.members.map((m) => m.id)
-  const row = getDb()
-    .prepare(
-      `SELECT p.id, p.branch FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id
-        WHERE p.kind = 'local' AND p.state = 'open' AND p.scope = 'proposed' AND pu.update_id IN (${ids.map(() => '?').join(',')})
-        ORDER BY p.id DESC LIMIT 1`,
-    )
-    .get(...ids) as { id: number; branch: string } | undefined
-  return row ?? null
-}
-
 /**
  * One pass: work out which groups are ready, and ship them, up to `ship.max_per_run`.
  *
@@ -621,6 +609,8 @@ async function passBody(out: ShipRun): Promise<ShipRun> {
     out.paused = 'GITHUB_TOKEN is not set'
     return out
   }
+
+  await closeStaleDrafts()
 
   const groups = eligibleGroups(policy)
   const now = new Date().toISOString()
@@ -788,17 +778,6 @@ async function mergeAndPush(
     if (rebuild && !(await rebuild())) return { ok: false, reason: 'the branch could not be rebuilt on the new main' }
   }
   return { ok: false, reason: 'push kept losing a race with origin' }
-}
-
-/** Close a local change record that will never merge, deleting its branch in the work clone. */
-export function closeLocalChange(prId: number, why: string): void {
-  const db = getDb()
-  const now = new Date().toISOString()
-  db.transaction(() => {
-    db.prepare(`UPDATE prs SET state = 'closed' WHERE id = ?`).run(prId)
-    db.prepare(`DELETE FROM proposals WHERE pr_id = ?`).run(prId)
-  })()
-  logEvent({ level: 'info', kind: 'pr', message: 'a drafted change was closed', detail: `${why} (${now.slice(0, 10)})` })
 }
 
 /** The change record for a branch shipshape merged itself: a `prs` row with `kind = 'local'`. */

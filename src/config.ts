@@ -141,9 +141,9 @@ export const DEFAULT_MODEL =
 const Window = z.string().regex(/^\d{2}:\d{2}-\d{2}:\d{2}$/)
 
 /**
- * The holds an operator may waive with a rule ("always ship"). `lifeline`, `unsafe` and
- * `needs-action` are deliberately not here: no rule can remove a real warning or the
- * guard on the way back in.
+ * The holds an operator may waive with a rule ("always ship"). `lifeline`, `unsafe`,
+ * `needs-action` and `draft` are deliberately not here: no rule can remove a real warning,
+ * the guard on the way back in, or the read a drafted change is waiting for.
  */
 export const WAIVABLE = ['ask', 'no-evidence', 'irreversible', 'no-restore-point'] as const
 export type Waivable = (typeof WAIVABLE)[number]

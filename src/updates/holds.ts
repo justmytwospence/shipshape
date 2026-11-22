@@ -111,6 +111,24 @@ function verdictFor(row: HoldRow): VerdictRow {
   )
 }
 
+/**
+ * When the open drafted change for this update was drafted, or null when there is none.
+ * Only a successful draft that changed files counts: a notes-only proposal leaves the change
+ * at scope `tag-only`, and there is nothing to read.
+ */
+export function draftedAt(updateId: number): string | null {
+  const row = getDb()
+    .prepare(
+      `SELECT MAX(pr2.created_at) AS at FROM proposals pr2
+         JOIN prs p ON p.id = pr2.pr_id
+         JOIN pr_updates pu ON pu.pr_id = p.id
+        WHERE pu.update_id = ? AND p.kind = 'local' AND p.state = 'open' AND p.scope = 'proposed'
+          AND pr2.error IS NULL AND pr2.retryable = 0`,
+    )
+    .get(updateId) as { at: string | null } | undefined
+  return row?.at ?? null
+}
+
 /** Compute everything for one row. `now` is injectable for the tests. */
 export function holdsForRow(row: HoldRow, policy: Policy = loadPolicy().policy, now = Date.now()): UpdateHolds {
   const db = getDb()
@@ -133,6 +151,10 @@ export function holdsForRow(row: HoldRow, policy: Policy = loadPolicy().policy, 
         }
       : null
 
+  // An approval older than the draft does not cover it: the draft is what needs reading.
+  const drafted = draftedAt(row.id)
+  const draftPending = drafted !== null && !(row.approved_at !== null && row.approved_at > drafted)
+
   const cls = normaliseClass(row.tier)
   const input: HoldInput = {
     cls,
@@ -143,6 +165,7 @@ export function holdsForRow(row: HoldRow, policy: Policy = loadPolicy().policy, 
     hasSnapshot: canRestore(row.stack, policy),
     restoreError: row.restore_error,
     securityFix: fix !== null,
+    draft: draftPending,
   }
   const target: RuleTarget = {
     image: row.image,
@@ -154,7 +177,7 @@ export function holdsForRow(row: HoldRow, policy: Policy = loadPolicy().policy, 
     ...input,
     target,
     rules: policy.rules,
-    approved: row.approved_at !== null,
+    approved: row.approved_at !== null && !draftPending,
     paused: policy.paused,
     snoozedUntil: row.snoozed_until,
     cooldown: cooldownFor(row, fix, policy, now),

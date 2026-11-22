@@ -235,3 +235,20 @@ test('the policy schema accepts rules and sinks, and folds the v1 keys', () => {
   assert.deepEqual(PolicySchema.parse({ notify: { incidents: 'off' } }).notify.sinks, [])
   assert.equal(PolicySchema.parse({}).ship.cooldown_days, 7)
 })
+
+// ---------------------------------------------------------------------------- drafts
+
+test('a drafted change holds, and no rule can waive it', () => {
+  const holds = holdsFor(input({ draft: true }))
+  const [h] = holds
+  assert.equal(h!.kind, 'draft')
+  assert.equal(h!.waivable, false)
+  assert.equal(h!.text, 'a drafted change is waiting to be read')
+  const all = rule({ id: 'r9', waive: ['ask', 'no-evidence', 'irreversible', 'no-restore-point'], match: { image: 'ghcr.io/agentgateway/agentgateway' } })
+  assert.deepEqual(blocking(applyRules(holds, [all], target)).map((x) => x.kind), ['draft'])
+})
+
+test('shipStatus: a pending draft is a decision even when nothing else holds', () => {
+  const s = shipStatus(ship({ draft: true }))
+  assert.equal(s.status, 'decision')
+})

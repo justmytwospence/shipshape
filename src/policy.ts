@@ -143,9 +143,18 @@ export function reviewMode(policy: Policy): 'advisory' | 'off' {
 
 /**
  * Why an update is waiting for a person. Only some can be waived by a rule: a `lifeline`,
- * an `unsafe` verdict and a `needs-action` list are never waivable.
+ * an `unsafe` verdict, a `needs-action` list and an unread drafted change (`draft`) are
+ * never waivable.
  */
-export type HoldKind = 'lifeline' | 'ask' | 'unsafe' | 'needs-action' | 'no-evidence' | 'irreversible' | 'no-restore-point'
+export type HoldKind =
+  | 'lifeline'
+  | 'ask'
+  | 'unsafe'
+  | 'needs-action'
+  | 'draft'
+  | 'no-evidence'
+  | 'irreversible'
+  | 'no-restore-point'
 
 export interface Hold {
   kind: HoldKind
@@ -181,6 +190,8 @@ export interface HoldInput {
   restoreError: string | null
   /** A verified security fix (src/security/act.ts): lifts `ask` and `no-evidence`. */
   securityFix: boolean
+  /** An open drafted config change exists and nobody has said ship since it was drafted. */
+  draft?: boolean
 }
 
 /** Reading that cannot be trusted to have seen the jump: nothing read, or read thinly. */
@@ -214,6 +225,7 @@ export function holdsFor(i: HoldInput): Hold[] {
   } else if (v && (v.steps.length > 0 || v.breaking.length > 0)) {
     out.push({ kind: 'needs-action', waivable: false, text: `Needs: ${v.steps[0] ?? v.breaking[0]}` })
   }
+  if (i.draft) out.push({ kind: 'draft', waivable: false, text: 'a drafted change is waiting to be read' })
   if (!rebuild && !i.securityFix && weakEvidence(i) && (i.magnitude === 'major' || i.cls === 'stateful' || i.required)) {
     out.push({ kind: 'no-evidence', waivable: true, text: 'no release notes were read for this jump' })
   }

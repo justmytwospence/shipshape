@@ -23,9 +23,11 @@ import { backoffUntil } from '../backoff.ts'
  * Never a replacement for the tag bump -- an addition to it. The branch (built in
  * shipshape's work clone, never pushed) then carries two commits: the mechanical change
  * shipshape can prove correct, and the drafted changes it cannot. The change record's
- * scope flips to `proposed`, which means it never ships on its own and is never reverted
- * without you. Every path here ends with a human deciding: the decision card says what
- * was drafted, and shipping it merges both commits.
+ * scope flips to `proposed`, which holds the update with the `draft` hold
+ * (src/updates/holds.ts) until someone presses Ship after it was drafted, and is never
+ * reverted without you. Every path here ends with a human deciding: the decision card says
+ * what was drafted, and shipping it merges both commits. A later reading that lists no work
+ * closes the draft instead (closeStaleDrafts, src/gitops/drafts.ts).
  */
 
 export interface ProposeRunResult {

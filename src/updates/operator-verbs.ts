@@ -1,4 +1,4 @@
-import { closeLocalChange } from '../gitops/ship.ts'
+import { closeLocalChange } from '../gitops/drafts.ts'
 import { runProposePass } from '../propose/run.ts'
 import { appendRule, describeRule, inferRule, publishRule } from '../rules.ts'
 import { wakeLoop } from '../scheduler.ts'

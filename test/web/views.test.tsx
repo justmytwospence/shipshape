@@ -479,3 +479,28 @@ test('a decision lists what it is waiting on, and nothing else says so', () => {
   assert.match(VIEWS['update-detail']!, /Waiting on you[\s\S]*this service always asks/)
   assert.doesNotMatch(VIEWS['update-verified']!, /Waiting on you/)
 })
+
+test('a link the model or a feed supplied is only ever http(s)', async () => {
+  const { update } = await import('./fixtures.tsx')
+  const { UpdateDetail } = await import('../../src/web/views/ui/update.tsx')
+  const u = update()
+  const html = String(
+    UpdateDetail({
+      update: { ...u, verdict: { ...u.verdict!, sources: ['javascript://github.com/%0aalert(1)', 'https://github.com/a/b'] } },
+      milestones: [],
+      warnings: [],
+      ctx: '',
+      listHref: '/updates',
+    }),
+  )
+  assert.doesNotMatch(html, /javascript:/)
+  assert.match(html, /href="https:\/\/github\.com\/a\/b"/)
+})
+
+test('every outbound link goes through ExtLink', async () => {
+  const { readdirSync } = await import('node:fs')
+  const root = join(import.meta.dirname, '../../src/web/views')
+  const files = (readdirSync(root, { recursive: true }) as string[]).filter((f) => f.endsWith('.tsx'))
+  const hits = files.flatMap((f) => (readFileSync(join(root, f), 'utf8').match(/target="_blank"/g) ?? []).map(() => f))
+  assert.deepEqual(hits, ['ui/parts.tsx'])
+})

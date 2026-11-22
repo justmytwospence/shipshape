@@ -34,3 +34,12 @@ test('a token expires after two weeks', () => {
   assert.notEqual(verifyToken(t, SECRET, now + 13 * 86_400_000), null)
   assert.equal(verifyToken(t, SECRET, now + 15 * 86_400_000), null)
 })
+
+test('safeHref keeps http(s) and drops everything else', async () => {
+  const { safeHref } = await import('../src/links.ts')
+  for (const bad of ['javascript:alert(1)', 'javascript://github.com/%0aalert(1)', 'data:text/html,x', 'vbscript:x', 'https://u:p@example.com/', '', 'x'.repeat(3000), 42]) {
+    assert.equal(safeHref(bad), null, String(bad).slice(0, 40))
+  }
+  assert.equal(safeHref('https://github.com/a/b'), 'https://github.com/a/b')
+  assert.equal(safeHref('http://example.com/x'), 'http://example.com/x')
+})

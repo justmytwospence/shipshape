@@ -1,6 +1,8 @@
 import type { FC } from 'hono/jsx'
 import { Icon, type IconName } from './icon.tsx'
+import { safeHref } from '../../../links.ts'
 import {
+  ExtLink,
   Change,
   MagnitudeBadge,
   Relative,
@@ -423,10 +425,10 @@ export const VerdictBlock: FC<{ update: UpdateView }> = ({ update }) => {
         <p class="text-xs opacity-50">
           {v.sources.length > 0 ? (
             <>
-              {v.sources.map((s) => (
-                <a href={s} target="_blank" rel="noreferrer" class="link link-hover mr-2">
+              {v.sources.map(safeHref).filter((s): s is string => s !== null).map((s) => (
+                <ExtLink href={s} class="link link-hover mr-2">
                   {hostOf(s)}
-                </a>
+                </ExtLink>
               ))}
               ·{' '}
             </>
@@ -547,9 +549,9 @@ const ScreenLines: FC<{ title: string; lines: { text: string; version: string; u
           <li>
             {l.text}{' '}
             {l.url ? (
-              <a href={l.url} target="_blank" rel="noreferrer" class="link link-hover opacity-60">
+              <ExtLink href={l.url} class="link link-hover opacity-60">
                 {l.version}
-              </a>
+              </ExtLink>
             ) : (
               <span class="opacity-60">{l.version}</span>
             )}
@@ -650,10 +652,10 @@ export const ActionBar: FC<{
               ))}
               {update.change?.url ? (
                 <li>
-                  <a href={update.change.url} target="_blank" rel="noreferrer" class="tap">
+                  <ExtLink href={update.change.url} class="tap">
                     <Icon name="external" />
                     {update.change.kind === 'local' ? 'Open the merge commit on GitHub' : `Open #${update.change.number} on GitHub`}
-                  </a>
+                  </ExtLink>
                 </li>
               ) : null}
             </ul>
@@ -712,9 +714,9 @@ export const UpdateDetail: FC<{
         <Change from={update.fromTag} to={update.toTag} />
         <span class="text-xs">
           {update.change?.url ? (
-            <a href={update.change.url} target="_blank" rel="noreferrer" class="link link-hover mr-2">
+            <ExtLink href={update.change.url} class="link link-hover mr-2">
               {update.change.kind === 'local' ? 'commit' : `#${update.change.number}`} ↗
-            </a>
+            </ExtLink>
           ) : null}
           <a
             href={`/services/${update.stack}/${update.service}`}

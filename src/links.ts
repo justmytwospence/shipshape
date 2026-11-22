@@ -160,3 +160,19 @@ function nameForGhcr(repository: string): string {
   const parts = repository.split('/')
   return parts.slice(1).join('/')
 }
+
+/** An outbound link a page may render: http(s), no credentials, at most 2048 characters. Anything else is null. */
+export function safeHref(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const s = value.trim()
+  if (!s || s.length > 2048) return null
+  let u: URL
+  try {
+    u = new URL(s)
+  } catch {
+    return null
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
+  if (u.username || u.password) return null
+  return u.toString()
+}

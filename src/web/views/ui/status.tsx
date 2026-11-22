@@ -1,5 +1,5 @@
 import type { FC } from 'hono/jsx'
-import { Relative } from './parts.tsx'
+import { ExtLink, Relative } from './parts.tsx'
 import type { SecurityPanel } from '../../../security/panel.ts'
 
 /**
@@ -216,9 +216,9 @@ const SecurityBlock: FC<{ s: SecurityPanel }> = ({ s }) => (
               </span>
               {e.exploited ? <span class="badge badge-xs badge-soft badge-error">exploited</span> : null}
               {e.url ? (
-                <a href={e.url} class="link min-w-0 flex-1 truncate" target="_blank" rel="noopener">
+                <ExtLink href={e.url} class="link min-w-0 flex-1 truncate">
                   {e.title}
-                </a>
+                </ExtLink>
               ) : (
                 <span class="min-w-0 flex-1 truncate">{e.title}</span>
               )}

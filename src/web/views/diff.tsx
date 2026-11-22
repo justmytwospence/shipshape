@@ -1,4 +1,5 @@
 import type { FC } from 'hono/jsx'
+import { ExtLink } from './ui/parts.tsx'
 import type { DiffResult, DiffHunk, ForkChange } from '../../diff.ts'
 import type { RefLinks } from '../../links.ts'
 
@@ -62,9 +63,9 @@ const CommitLine: FC<{ c: { sha: string; short: string; subject: string; author:
 }) => (
   <li class="flex flex-wrap items-baseline gap-x-2">
     {web ? (
-      <a href={`${web}/commit/${c.sha}`} target="_blank" rel="noopener" class="link link-hover font-mono">
+      <ExtLink href={`${web}/commit/${c.sha}`} class="link link-hover font-mono">
         {c.short}
-      </a>
+      </ExtLink>
     ) : (
       <span class="font-mono">{c.short}</span>
     )}
@@ -95,9 +96,9 @@ const ForkBlock: FC<{ fork: ForkChange }> = ({ fork }) => {
           <>
             Our fixes were replayed onto the new release and pushed to the fork as{' '}
             {web && fork.sha ? (
-              <a href={`${web}/commit/${fork.sha}`} target="_blank" rel="noopener" class="link link-hover font-mono">
+              <ExtLink href={`${web}/commit/${fork.sha}`} class="link link-hover font-mono">
                 {fork.tag}
-              </a>
+              </ExtLink>
             ) : (
               <code class="font-mono">{fork.tag}</code>
             )}
@@ -146,9 +147,9 @@ const ForkBlock: FC<{ fork: ForkChange }> = ({ fork }) => {
 }
 
 const Ext: FC<{ href: string; children?: unknown }> = ({ href, children }) => (
-  <a href={href} target="_blank" rel="noopener" class="btn btn-ghost btn-xs tap font-normal">
+  <ExtLink href={href} class="btn btn-ghost btn-xs tap font-normal">
     {children} ↗
-  </a>
+  </ExtLink>
 )
 
 export const DiffView: FC<{

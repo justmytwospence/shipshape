@@ -8,6 +8,7 @@ import { exploited, readIncident } from './feed.ts'
 import { incidentTargets } from './extract.ts'
 import { checkFix, matchPackages, type Hit, type Target } from './match.ts'
 import { hasInventory, inventory, pullCandidate, scanImage, type Exec, type Running } from './sbom.ts'
+import { safeHref } from '../links.ts'
 
 /**
  * From matches to consequences: exposures, verified fixes, cards and comments.
@@ -319,12 +320,13 @@ export async function syncSecurityCards(policy: Policy): Promise<number> {
           .slice(0, 3)
           .map((l) => ({ emoji: '🚀', label: `ship ${l.service}`, do: { target: 'shipshape' as const, verb: 'ship', update: l.fix!.id } }))
       : undefined
+    const link = safeHref(inc.url)
     await notify({
       eventClass: 'security',
       key,
       title: `${inc.title.slice(0, 120)} · ${all.length} service${all.length === 1 ? '' : 's'} exposed`,
-      body: `${body}\n\n${inc.url ?? ''}`.trim(),
-      click: inc.url ?? undefined,
+      body: `${body}\n\n${link ?? ''}`.trim(),
+      click: link ?? undefined,
       priority,
       actions: actions && actions.length > 0 ? actions : undefined,
     })

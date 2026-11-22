@@ -2,6 +2,7 @@ import { OUTCOMES, type Outcome } from '../../../updates/vocabulary.ts'
 import type { FC, PropsWithChildren } from 'hono/jsx'
 import { Icon, type IconName } from './icon.tsx'
 import type { UpdateView } from '../../../updates/queries.ts'
+import { safeHref } from '../../../links.ts'
 
 /**
  * The vocabulary, rendered.
@@ -141,6 +142,22 @@ export const VerdictChip: FC<{ update: UpdateView; long?: boolean }> = ({ update
 }
 
 // -------------------------------------------------------------------- bits
+
+/** Every link that leaves shipshape. Renders text, not a link, when the href is not http(s). */
+export const ExtLink: FC<{ href: string | null | undefined; class?: string; children?: unknown }> = ({
+  href,
+  class: cls,
+  children,
+}) => {
+  const safe = safeHref(href)
+  return safe ? (
+    <a href={safe} target="_blank" rel="noopener noreferrer" class={cls}>
+      {children}
+    </a>
+  ) : (
+    <span class={cls}>{children}</span>
+  )
+}
 
 export const Mono: FC<PropsWithChildren> = ({ children }) => (
   <span class="font-mono text-xs">{children}</span>

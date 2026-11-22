@@ -1,5 +1,5 @@
 import type { FC } from 'hono/jsx'
-import { EmptyState, Relative, Search, Tabs } from './parts.tsx'
+import { ExtLink, EmptyState, Relative, Search, Tabs } from './parts.tsx'
 import { GroupHeader } from './update.tsx'
 
 /**
@@ -74,14 +74,9 @@ function linkify(message: string, repo: string): unknown[] {
     const at = m.index ?? 0
     if (at > last) parts.push(message.slice(last, at))
     parts.push(
-      <a
-        href={`https://github.com/${repo}/pull/${m[1]}`}
-        target="_blank"
-        rel="noreferrer"
-        class="link link-hover"
-      >
+      <ExtLink href={`https://github.com/${repo}/pull/${m[1]}`} class="link link-hover">
         {m[0]}
-      </a>,
+      </ExtLink>,
     )
     last = at + m[0].length
   }

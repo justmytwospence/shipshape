@@ -10,6 +10,7 @@ import type { DeploymentEntry } from './screen/state.ts'
 import { assembleNotes, evidenceOf, notesInRange, type NotesBundle, type NotesEvidence } from '../notes/assemble.ts'
 import { sourceFor } from '../resolver/index.ts'
 import { parseImageRef } from '../images/ref.ts'
+import { safeHref } from '../links.ts'
 
 /**
  * Reading the changelog so a human does not have to.
@@ -380,7 +381,7 @@ export function normalise(v: Partial<Verdict>, ctx: { notesInRange?: number } = 
     irreversible: v.irreversible === true,
     recommendation: rec,
     confidence: conf,
-    sources: asArray(v.sources),
+    sources: asArray(v.sources).map(safeHref).filter((s): s is string => s !== null),
   }
 }
 

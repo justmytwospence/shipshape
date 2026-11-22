@@ -1,6 +1,6 @@
 import type { FC } from 'hono/jsx'
 import { Icon } from './icon.tsx'
-import { EmptyState, Mono, Relative, Search, ServiceName, Tabs } from './parts.tsx'
+import { ExtLink, EmptyState, Mono, Relative, Search, ServiceName, Tabs } from './parts.tsx'
 import { GroupHeader, UpdateRow } from './update.tsx'
 import type { UpdateView } from '../../../updates/queries.ts'
 import type { LinkPreview } from '../../../resolver/preview.ts'
@@ -495,9 +495,9 @@ const ForkSection: FC<{ fork: NonNullable<ServiceDetailData['fork']> }> = ({ for
             <span class="w-24 shrink-0 opacity-70">{i === 0 ? 'waits on' : ''}</span>
             <span class="min-w-0 flex-1">
               {r.url ? (
-                <a href={r.url} target="_blank" rel="noopener" class="link link-hover font-mono">
+                <ExtLink href={r.url} class="link link-hover font-mono">
                   {r.ref}
-                </a>
+                </ExtLink>
               ) : (
                 <span class="font-mono">{r.ref}</span>
               )}
@@ -506,9 +506,9 @@ const ForkSection: FC<{ fork: NonNullable<ServiceDetailData['fork']> }> = ({ for
             <span class="flex items-center gap-1.5">
               <span class={`badge badge-xs badge-soft ${FORK_STATE_CLS[r.state]}`}>{r.label}</span>
               {r.releaseUrl ? (
-                <a href={r.releaseUrl} target="_blank" rel="noopener" class="link link-hover">
+                <ExtLink href={r.releaseUrl} class="link link-hover">
                   release
-                </a>
+                </ExtLink>
               ) : null}
             </span>
           </div>

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
+import { safeHref } from '../links.ts'
 
 /**
  * Reading the incident index (pwn.watch's incidents.json).
@@ -106,7 +107,7 @@ export function storeIncidents(incidents: FeedIncident[], categories: readonly s
         status: i.status,
         tags: JSON.stringify(i.tags ?? []),
         cve_ids: JSON.stringify(i.cveIds ?? []),
-        url: i.url ?? null,
+        url: safeHref(i.url),
         updated_at: i.updatedAt ?? null,
         raw: JSON.stringify(i),
         fetched_at: now,

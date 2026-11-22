@@ -1,5 +1,5 @@
 import type { FC } from 'hono/jsx'
-import { Change, EmptyState, MagnitudeBadge, Relative, ServiceName, VerdictChip } from './parts.tsx'
+import { ExtLink, Change, EmptyState, MagnitudeBadge, Relative, ServiceName, VerdictChip } from './parts.tsx'
 import type { ReleaseView } from '../../../updates/queries.ts'
 
 /**
@@ -100,19 +100,19 @@ export const ReleaseRow: FC<{
       {l.releases || l.source || l.docs || l.tag || l.image || !l.source ? (
         <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
           {l.releases ? (
-            <a href={l.releases} target="_blank" rel="noreferrer" class={LINK}>
+            <ExtLink href={l.releases} class={LINK}>
               Release notes
-            </a>
+            </ExtLink>
           ) : null}
           {l.source ? (
-            <a href={l.source} target="_blank" rel="noreferrer" class={LINK}>
+            <ExtLink href={l.source} class={LINK}>
               Project
-            </a>
+            </ExtLink>
           ) : null}
           {l.docs ? (
-            <a href={l.docs} target="_blank" rel="noreferrer" class={LINK}>
+            <ExtLink href={l.docs} class={LINK}>
               Image docs
-            </a>
+            </ExtLink>
           ) : null}
           {/*
             Not every image resolves to a project, and a row with nowhere to go is the
@@ -121,9 +121,9 @@ export const ReleaseRow: FC<{
             reference, so it is the floor: worse than a changelog, better than a dead end.
           */}
           {!l.releases && !l.source && (l.tag || l.image) ? (
-            <a href={(l.tag ?? l.image) as string} target="_blank" rel="noreferrer" class={LINK}>
+            <ExtLink href={(l.tag ?? l.image) as string} class={LINK}>
               {release.registry}
-            </a>
+            </ExtLink>
           ) : null}
           {/* The way to fix the dead end, on the row that has it. */}
           {!l.source ? (

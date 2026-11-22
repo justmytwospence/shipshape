@@ -48,7 +48,7 @@ test('a symbolic link into a forbidden directory is refused', () => {
 })
 
 test('the policy file and its prompts are never writable', () => {
-  assert.deepEqual(protectedPaths('/r', '/r/shipshape.yaml'), ['shipshape.yaml', 'prompts'])
+  assert.deepEqual(protectedPaths('/r', '/r/shipshape.yaml'), ['shipshape.yaml', 'shipshape-prompts'])
   assert.deepEqual(protectedPaths('/r', '/r/shipshape/config/policy.yaml'), [
     'shipshape/config/policy.yaml',
     'shipshape/config/prompts',

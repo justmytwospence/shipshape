@@ -15,6 +15,9 @@ process.env.REPO_DIR = repo
 process.env.SELF_STACK = 'shipshape'
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'shipshape-prompts-data-'))
 delete process.env.POLICY_FILE
+// The older layout: a policy.yaml under the shipshape stack, which resolution still finds.
+mkdirSync(join(repo, 'shipshape', 'config'), { recursive: true })
+writeFileSync(join(repo, 'shipshape', 'config', 'policy.yaml'), '')
 
 const { prompt, defaultPrompt, isCustomised, overridePath } = await import('../src/prompts/index.ts')
 

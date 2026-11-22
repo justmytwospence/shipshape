@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs'
-import { relative } from 'node:path'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, relative } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { parseDocument, YAMLMap, YAMLSeq } from 'yaml'
 import { llmClient, llmConfigured } from './analyze/client.ts'
@@ -7,6 +7,7 @@ import { budgetExhausted, isTimeout, recordCost, recordUnanswered } from './anal
 import { toolChoiceFor } from './analyze/tools.ts'
 import { botIdentity, env, loadPolicy, paths, RuleSchema, validatePolicyText, WAIVABLE, type Rule, type Waivable } from './config.ts'
 import { getDb, logEvent } from './db.ts'
+import { POLICY_STARTER } from './policy-starter.ts'
 import { withGitLock } from './gitops/repo.ts'
 import { syncMain } from './gitops/sync.ts'
 import { prompt } from './prompts/index.ts'
@@ -226,11 +227,20 @@ export function describeRule(rule: Pick<Rule, 'match' | 'waive'>): string {
 export function appendRule(rule: Rule): { sha: string } {
   const file = paths.policy
   const rel = relative(env.repoDir, file)
-  const dirty = execFileSync('git', ['diff', '--name-only', '--', rel], { cwd: env.repoDir }).toString().trim()
-  if (dirty) throw new Error('policy.yaml has uncommitted changes; commit or discard them first')
+  // No file yet: the first rule creates it from the starter.
+  let original: string | null
+  try {
+    original = readFileSync(file, 'utf8')
+  } catch (err) {
+    if ((err as { code?: string }).code !== 'ENOENT' || !env.repoDir) throw err
+    original = null
+  }
+  if (original !== null) {
+    const dirty = execFileSync('git', ['diff', '--name-only', '--', rel], { cwd: env.repoDir }).toString().trim()
+    if (dirty) throw new Error('policy.yaml has uncommitted changes; commit or discard them first')
+  }
 
-  const original = readFileSync(file, 'utf8')
-  const doc = parseDocument(original)
+  const doc = parseDocument(original ?? POLICY_STARTER)
   let rules = doc.get('rules') as YAMLSeq | undefined
   if (!(rules instanceof YAMLSeq)) {
     rules = new YAMLSeq()
@@ -254,6 +264,7 @@ export function appendRule(rule: Rule): { sha: string } {
   const check = validatePolicyText(text)
   if (!check.ok) throw new Error(`the rule would make policy.yaml invalid: ${check.error}`)
 
+  mkdirSync(dirname(file), { recursive: true })
   writeFileSync(file, text)
   try {
     execFileSync('git', ['add', '--', rel], { cwd: env.repoDir })
@@ -265,7 +276,8 @@ export function appendRule(rule: Rule): { sha: string } {
   } catch (err) {
     // Unstage first: `checkout -- file` restores from the index, which now holds the rule.
     execFileSync('git', ['reset', '-q', '--', rel], { cwd: env.repoDir })
-    writeFileSync(file, original)
+    if (original === null) rmSync(file, { force: true })
+    else writeFileSync(file, original)
     throw new Error(`could not commit the rule: ${(err as Error).message.slice(0, 160)}`)
   }
   const sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: env.repoDir }).toString().trim()

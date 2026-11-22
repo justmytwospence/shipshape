@@ -1,5 +1,5 @@
 import { reviewMode } from '../policy.ts'
-import { loadPolicy } from '../config.ts'
+import { loadPolicy, policyFileState } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { monthlySpend } from '../analyze/claude.ts'
 import { notify, resolveIncident } from '../notify/index.ts'
@@ -138,7 +138,7 @@ export async function noteBudgetSpent(reading: BudgetReading): Promise<void> {
         : '',
       '',
       `It resumes on its own on ${resumesOn()}. To restart it now, raise`,
-      '`review.monthly_budget_usd` in shipshape/config/policy.yaml, or on the Settings page.',
+      `\`review.monthly_budget_usd\` in ${policyFileState().rel}, or on the Settings page.`,
       fresh ? '' : `Still spent since ${since.slice(0, 10)}.`,
     ]
       .filter(Boolean)

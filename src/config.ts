@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute, join, relative } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { z } from 'zod'
 
@@ -196,10 +196,25 @@ export function notifyEnv(): { url: string; token: string } {
 
 /** Where policy.yaml lives. Defaults inside the watched repo so it is tracked and
  *  reviewable like everything else; POLICY_FILE overrides for any other layout. */
+/**
+ * POLICY_FILE; else $REPO_DIR/shipshape.yaml if present; else the older
+ * $REPO_DIR/<SELF_STACK>/config/policy.yaml if present; else $REPO_DIR/shipshape.yaml, which
+ * the first Settings save or Always ship creates.
+ */
+export function resolvePolicyPath(
+  repoDir: string,
+  selfStack: string,
+  explicit: string | undefined,
+  exists: (p: string) => boolean = existsSync,
+): string {
+  if (explicit) return isAbsolute(explicit) ? explicit : join(repoDir, explicit)
+  const root = join(repoDir, 'shipshape.yaml')
+  const legacy = join(repoDir, selfStack, 'config', 'policy.yaml')
+  return !exists(root) && exists(legacy) ? legacy : root
+}
+
 function policyPath(): string {
-  const explicit = process.env.POLICY_FILE
-  if (explicit) return isAbsolute(explicit) ? explicit : join(env.repoDir, explicit)
-  return join(env.repoDir, env.selfStack, 'config', 'policy.yaml')
+  return resolvePolicyPath(env.repoDir, env.selfStack, process.env.POLICY_FILE)
 }
 
 export const paths = {
@@ -210,6 +225,11 @@ export const paths = {
   lock: join(env.dataDir, 'git.lock'),
   policy: policyPath(),
 } as const
+
+/** Where the policy file is, repo-relative, and whether it exists yet. */
+export function policyFileState(): { path: string; rel: string; exists: boolean } {
+  return { path: paths.policy, rel: relative(env.repoDir, paths.policy) || paths.policy, exists: existsSync(paths.policy) }
+}
 
 /** The MCP listener runs only with a port and a token of at least 32 characters. */
 export const MCP_TOKEN_MIN = 32
@@ -759,12 +779,13 @@ let cached: { policy: Policy; raw: string } | null = null
 /** Reads policy.yaml fresh from the repo. A malformed file is never fatal: the tool
  *  keeps running on the last good config (or defaults) and surfaces the error, because
  *  a syntax error should not take the updater offline. */
-export function loadPolicy(): { policy: Policy; error?: string } {
+export function loadPolicy(): { policy: Policy; error?: string; missing?: true } {
   let raw: string
   try {
     raw = readFileSync(paths.policy, 'utf8')
   } catch {
-    return { policy: cached?.policy ?? FALLBACK, error: `policy.yaml not found at ${paths.policy}` }
+    // An absent file is the normal first-run state: the defaults hold, and paused is true.
+    return { policy: cached?.policy ?? FALLBACK, missing: true }
   }
   if (cached?.raw === raw) return { policy: cached.policy }
   try {

@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { paths } from '../config.ts'
 
@@ -53,7 +53,11 @@ export function defaultPrompt(name: PromptName): string {
 
 /** Where an override for this prompt lives: beside policy.yaml, in the watched repository. */
 export function overridePath(name: PromptName): string {
-  return join(dirname(paths.policy), 'prompts', `${name}.md`)
+  // Beside the older policy.yaml layout, a prompts/ directory; beside a root shipshape.yaml,
+  // shipshape-prompts/, so the repository root does not gain a generic `prompts`.
+  const base = basename(paths.policy)
+  const dir = base === 'policy.yaml' ? 'prompts' : `${base.replace(/\.ya?ml$/, '')}-prompts`
+  return join(dirname(paths.policy), dir, `${name}.md`)
 }
 
 function override(name: PromptName): string | null {

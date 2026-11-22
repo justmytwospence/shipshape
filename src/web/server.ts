@@ -4,7 +4,7 @@ import { Hono, type Context } from 'hono'
 import { raw } from 'hono/html'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { configured, env, gitBranch, gitCredentialName, loadPolicy, notifyEnv } from '../config.ts'
+import { configured, env, gitBranch, gitCredentialName, loadPolicy, notifyEnv, policyFileState } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'
 import { buildUpdateDiff, type DiffHunk } from '../diff.ts'
@@ -843,6 +843,7 @@ export function createApp(): Hono {
       branch: gitBranch(),
       remote: env.gitRemote.kind === 'https' ? env.gitRemote.host : env.gitRemote.kind === 'local' ? 'local repository' : 'not set',
       composeFiles: scanInfo().composeFiles,
+      policyFile: (({ rel, exists }) => ({ rel, exists }))(policyFileState()),
       scan: {
         cron: sched.scan.cron,
         lastAt: info.lastAt,

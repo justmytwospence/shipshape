@@ -1,4 +1,4 @@
-import { env, loadPolicy } from './config.ts'
+import { env, loadPolicy, policyFileState } from './config.ts'
 import { getDb, logEvent } from './db.ts'
 import { startScheduler } from './scheduler.ts'
 import { startServer } from './web/server.ts'
@@ -6,15 +6,22 @@ import { startMcpServer } from './mcp/listen.ts'
 
 function main(): void {
   getDb()
-  const { policy, error } = loadPolicy()
+  const { policy, error, missing } = loadPolicy()
   if (error) {
     logEvent({ level: 'error', kind: 'system', message: 'policy load failed', detail: error })
+  } else if (missing) {
+    logEvent({
+      level: 'info',
+      kind: 'system',
+      message: 'no policy file yet',
+      detail: `defaults apply and shipshape is paused. The first change made in Settings creates ${policyFileState().rel}.`,
+    })
   }
   logEvent({
     level: 'info',
     kind: 'system',
     message: 'shipshape started',
-    detail: `ships=merge-commits push_main=${policy.sync.push_main} screen=${policy.review.screen} reader=${policy.review.model}`,
+    detail: `ships=merge-commits push_main=${policy.sync.push_main} screen=${policy.review.screen} reader=${policy.review.model} branch=${env.gitBranch} remote=${env.gitRemote.host || env.gitRemote.kind}`,
   })
 
   startServer()

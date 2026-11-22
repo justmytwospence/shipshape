@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from 'node:fs'
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 /**
  * How far a drafted proposal may reach, expressed as a boundary in the repository.
@@ -281,8 +281,10 @@ export function canWrite(
 export function protectedPaths(repoDir: string, policyFile: string): string[] {
   const rel = relative(repoDir, policyFile).split(sep).join('/')
   if (!rel || rel.startsWith('..') || isAbsolute(rel)) return []
+  // The prompt overrides' directory, named as src/prompts/index.ts names it.
+  const name = basename(rel) === 'policy.yaml' ? 'prompts' : `${basename(rel).replace(/\.ya?ml$/, '')}-prompts`
   const dir = dirname(rel)
-  return [rel, dir === '.' ? 'prompts' : `${dir}/prompts`]
+  return [rel, dir === '.' ? name : `${dir}/${name}`]
 }
 
 /** The path a write would really land on, after symbolic links; refused when that leaves the repository. */

@@ -1,9 +1,10 @@
-import { readFileSync, writeFileSync } from 'node:fs'
-import { relative } from 'node:path'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, relative } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { Cron } from 'croner'
 import { DEFAULT_MODEL, botIdentity, env, gitBranch, paths, validatePolicyText, type Policy } from './config.ts'
 import { logEvent } from './db.ts'
+import { POLICY_STARTER } from './policy-starter.ts'
 
 /**
  * Editing policy.yaml from the browser.
@@ -384,16 +385,21 @@ export function applySettings(changes: Record<string, string>): ApplyResult {
   const file = paths.policy
   // Git wants the path relative to the repository root, wherever policy.yaml lives.
   const rel = relative(env.repoDir, file)
-  let original: string
+  // No file yet: start from the starter, which this save then creates. Only with a
+  // repository configured, so a sandbox without one never writes into the working directory.
+  let original: string | null
   try {
     original = readFileSync(file, 'utf8')
   } catch (err) {
-    return { ok: false, errors: [`cannot read policy.yaml: ${(err as Error).message}`] }
+    if ((err as { code?: string }).code !== 'ENOENT' || !env.repoDir) {
+      return { ok: false, errors: [`cannot read policy.yaml: ${(err as Error).message}`] }
+    }
+    original = null
   }
 
   // Never fold a browser edit into hand-edits sitting in the working tree -- the commit
   // would carry changes nobody reviewed here.
-  const dirty = gitOut(['diff', '--name-only', '--', rel])
+  const dirty = original === null ? '' : gitOut(['diff', '--name-only', '--', rel])
   if (dirty) {
     return {
       ok: false,
@@ -405,7 +411,7 @@ export function applySettings(changes: Record<string, string>): ApplyResult {
 
   const errors: string[] = []
   const applied: string[] = []
-  let text = original
+  let text = original ?? POLICY_STARTER
 
   for (const [path, rawValue] of Object.entries(changes)) {
     const def = SETTINGS.find((s) => s.path === path)
@@ -438,6 +444,7 @@ export function applySettings(changes: Record<string, string>): ApplyResult {
   const check = validatePolicyText(text)
   if (!check.ok) return { ok: false, errors: [check.error] }
 
+  mkdirSync(dirname(file), { recursive: true })
   writeFileSync(file, text)
   try {
     execFileSync('git', ['add', '--', rel], { cwd: env.repoDir })
@@ -456,7 +463,8 @@ export function applySettings(changes: Record<string, string>): ApplyResult {
   } catch (err) {
     // Unstage first: `checkout -- file` restores from the index, which holds the edit.
     execFileSync('git', ['reset', '-q', '--', rel], { cwd: env.repoDir })
-    writeFileSync(file, original)
+    if (original === null) rmSync(file, { force: true })
+    else writeFileSync(file, original)
     return { ok: false, errors: [`could not commit the change: ${(err as Error).message}`] }
   }
 

@@ -15,7 +15,7 @@ process.env.DATA_DIR = root
 process.env.POLICY_FILE = join(root, 'policy.yaml')
 process.env.NOTIFY_URL = 'http://n8n.invalid/webhook/notify'
 process.env.NOTIFY_TOKEN = 'k'
-process.env.SHIPSHAPE_ACTION_SECRET = 'secret'
+process.env.SHIPSHAPE_ACTION_SECRET = '0123456789abcdef0123456789abcdef'
 process.env.SHIPSHAPE_ALLOWED_ORIGIN = 'https://shipshape.example'
 process.env.MCP_PORT = '8082'
 process.env.MCP_TOKEN = 'a'.repeat(32)
@@ -113,7 +113,7 @@ test('ntfy gets one JSON publish, with the actions as signed view buttons', asyn
   const [button] = w.body.actions
   assert.equal(button.action, 'view')
   const token = button.url.replace('https://shipshape.example/act/', '')
-  assert.deepEqual(verifyToken(token, 'secret'), { verb: 'ship', updateId: 7 })
+  assert.deepEqual(verifyToken(token, '0123456789abcdef0123456789abcdef'), { verb: 'ship', updateId: 7 })
 })
 
 test('ntfy and email speak on a first fire and an escalation, and not on repeats or resolves', async () => {

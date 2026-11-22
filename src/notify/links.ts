@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { env } from '../config.ts'
+import { logEvent } from '../db.ts'
 
 /**
  * Signed, expiring action links, for sinks that cannot call back through the MCP (email,
@@ -35,13 +36,39 @@ export function verifyToken(token: string, secret: string, now = Date.now()): { 
   }
 }
 
+/** A secret shorter than this is treated as unset: it would sign links that can be guessed. */
+export const ACTION_SECRET_MIN = 32
+
+let warned = false
+
+/** The secret links are signed with, or null when there is none worth signing with. */
+function secret(): string | null {
+  const s = env.actionSecret
+  if (!s) return null
+  if (s.length < ACTION_SECRET_MIN) {
+    if (!warned) {
+      warned = true
+      logEvent({
+        level: 'warn',
+        kind: 'system',
+        message: 'SHIPSHAPE_ACTION_SECRET is shorter than 32 characters, so no action links are sent',
+        detail: 'generate one with: openssl rand -hex 32',
+      })
+    }
+    return null
+  }
+  return s
+}
+
 /** A link that runs `verb` on an update, or null when links cannot be made (no secret or no origin). */
 export function actionUrl(verb: string, updateId: number): string | null {
   const origin = process.env.SHIPSHAPE_ALLOWED_ORIGIN
-  if (!env.actionSecret || !origin) return null
-  return `${origin.replace(/\/$/, '')}/act/${makeToken(verb, updateId, env.actionSecret)}`
+  const s = secret()
+  if (!s || !origin) return null
+  return `${origin.replace(/\/$/, '')}/act/${makeToken(verb, updateId, s)}`
 }
 
 export function verifyAction(token: string): { verb: string; updateId: number } | null {
-  return env.actionSecret ? verifyToken(token, env.actionSecret) : null
+  const s = secret()
+  return s ? verifyToken(token, s) : null
 }

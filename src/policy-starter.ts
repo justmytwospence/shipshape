@@ -23,6 +23,7 @@ review:
   # model:                   # the reader of changelogs; unset = the default for your provider, off = none
   # code_model:              # drafts config changes
   monthly_budget_usd: 15     # every model call together
+  web: auto                  # auto | off : the reader may search and read upstream pages (never on a custom endpoint)
 
 propose:
   mode: auto                 # auto | off : draft config changes when a release needs more than its tag
@@ -38,10 +39,10 @@ deploy:
 
 notify:
   escalate_after_days: 7     # a decision still waiting after this long is announced once more
-  sinks: []                  # where decisions and failures go: webhook, email, ntfy
+  sinks: []                  # where decisions and failures go: webhook, email, ntfy, discord, gotify, apprise
 
 sync:
-  push_main: true            # publish the branch shipshape ships to (GIT_BRANCH, default main)
+  push_main: true            # publish the branch shipshape ships to (GIT_BRANCH; default: origin's default branch, else main)
   poll_active_s: 60          # loop interval while work is in flight
   poll_idle_s: 600           # loop interval when idle
 

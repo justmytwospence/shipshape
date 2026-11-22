@@ -1,5 +1,6 @@
 import type { FC, PropsWithChildren } from 'hono/jsx'
 import { THEME_SCRIPT } from '../../theme-script.ts'
+import { SignOutForm } from './auth.tsx'
 import { Icon, type IconName } from './icon.tsx'
 import { Relative, ScanStatus } from './parts.tsx'
 import { version } from '../../version.ts'
@@ -55,6 +56,8 @@ export interface Chrome {
   /** What the sidebar counts beside each destination. */
   counts?: { inbox: number; updates: number; attention: number }
   scan?: { lastAt: string | null; nextAt: string | null; running: boolean }
+  /** Password sign-in: the sidebar offers Sign out. */
+  signOut?: boolean
 }
 
 export interface LayoutProps {
@@ -263,6 +266,7 @@ const Sidebar: FC<{ nav: NavKey | null; chrome?: Chrome }> = ({ nav, chrome }) =
         >
           <kbd class="kbd kbd-xs">?</kbd>
         </button>
+        {chrome?.signOut ? <SignOutForm /> : null}
         <span class="ml-auto font-mono text-xs opacity-50">v{version()}</span>
       </div>
     </div>

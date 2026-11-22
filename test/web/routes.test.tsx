@@ -25,6 +25,9 @@ before(async () => {
   delete process.env.HOMELAB_REPO
   delete process.env.ANTHROPIC_API_KEY
   delete process.env.GITHUB_TOKEN
+  delete process.env.SHIPSHAPE_PASSWORD
+  delete process.env.SHIPSHAPE_PASSWORD_FILE
+  delete process.env.SHIPSHAPE_USER_HEADER
   process.env.SHIPSHAPE_TRUSTED_PROXY = TEST_PROXY
   process.env.SHIPSHAPE_ALLOWED_USER = TEST_USER
   process.env.SHIPSHAPE_ALLOWED_ORIGIN = TEST_ORIGIN
@@ -297,4 +300,8 @@ test('the CSP hash matches the theme script the page actually inlines', async ()
   const body = html.match(/<script>([\s\S]*?)<\/script>/)![1]!
   const hash = `sha256-${createHash('sha256').update(body).digest('base64')}`
   assert.ok((await app.request('/')).headers.get('content-security-policy')!.includes(hash))
+})
+
+test('proxy mode does not render a sign-out control', async () => {
+  assert.doesNotMatch(await (await app.request('/')).text(), /action="\/logout"/)
 })

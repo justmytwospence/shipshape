@@ -25,9 +25,13 @@ before(async () => {
 
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-function appWithConfig(config: { proxy?: string; user?: string; origin?: string } = {
+function appWithConfig(config: { proxy?: string; user?: string; origin?: string; userHeader?: string; password?: string; passwordFile?: string } = {
   proxy: TEST_PROXY, user: TEST_USER, origin: TEST_ORIGIN,
 }) {
+  for (const k of ['SHIPSHAPE_PASSWORD', 'SHIPSHAPE_PASSWORD_FILE', 'SHIPSHAPE_USER_HEADER']) delete process.env[k]
+  if (config.userHeader !== undefined) process.env.SHIPSHAPE_USER_HEADER = config.userHeader
+  if (config.password !== undefined) process.env.SHIPSHAPE_PASSWORD = config.password
+  if (config.passwordFile !== undefined) process.env.SHIPSHAPE_PASSWORD_FILE = config.passwordFile
   if (config.proxy === undefined) delete process.env.SHIPSHAPE_TRUSTED_PROXY
   else process.env.SHIPSHAPE_TRUSTED_PROXY = config.proxy
   if (config.user === undefined) delete process.env.SHIPSHAPE_ALLOWED_USER
@@ -88,7 +92,7 @@ test('the trusted peer still needs exactly the configured Remote-User', async ()
 test('auth protects every read route, static handler, redirect and unknown path', async () => {
   const app = appWithConfig()
   const paths = app.routes.filter((r) => r.method === 'GET' && r.path !== '/health').map((r) => concrete(r.path))
-  paths.push('/static/app.css', '/static/manifest.webmanifest', '/not-a-route', '/health/', '/health/extra')
+  paths.push('/static/not-a-file.css', '/not-a-route', '/health/', '/health/extra')
   for (const path of paths) {
     assert.equal((await app.request(path)).status, 403, path)
     assert.equal((await app.request(path, { headers: forged }, socketBindings('192.0.2.19'))).status, 403, `${path}: forged user`)
@@ -130,14 +134,16 @@ test('missing or invalid authentication configuration fails closed, even in prod
     { proxy: '', user: TEST_USER },
     { proxy: TEST_PROXY, user: '' },
     { proxy: TEST_PROXY, user: '   ' },
-    ...['*', 'localhost', '192.0.2.0/24', `${TEST_PROXY},192.0.2.19`, ` ${TEST_PROXY}`].map((proxy) => ({ proxy, user: TEST_USER })),
+    ...['*', 'localhost', '192.0.2.0/0', '192.0.2.0/33', 'not-an-ip/24', `${TEST_PROXY},`].map((proxy) => ({ proxy, user: TEST_USER })),
   ]
   for (const config of configs) {
     const app = appWithConfig(config)
-    for (const [path, method] of [['/images', 'GET'], ['/settings', 'POST'], ['/static/app.css', 'GET']]) {
+    for (const [path, method] of [['/images', 'GET'], ['/settings', 'POST']]) {
       const res = await app.request(path!, { method, headers: identity }, socketBindings(TEST_PROXY))
       assert.equal(res.status, 503, JSON.stringify(config))
       assert.equal(res.headers.get('Cache-Control'), 'no-store')
+      assert.match(res.headers.get('content-type') ?? '', /text\/html/)
+      assert.match(await res.text(), /SHIPSHAPE_PASSWORD/)
     }
     const health = await app.request('/health')
     assert.equal(health.status, 200)
@@ -448,5 +454,145 @@ test('the real Node adapter uses its socket, never a forged HTTP header', async 
     const health = await fetch(`${base}/health`)
     assert.equal(health.status, 200)
     assert.deepEqual(await health.json(), { ok: true })
+  }
+})
+
+// ---------------------------------------------------------------------------- modes and setup
+
+const getAuth = () => import('../../src/web/auth/setup.ts')
+
+function withEnv<T>(vars: Record<string, string | undefined>, fn: () => T): T {
+  const keys = ['SHIPSHAPE_PASSWORD', 'SHIPSHAPE_PASSWORD_FILE', 'SHIPSHAPE_TRUSTED_PROXY', 'SHIPSHAPE_ALLOWED_USER', 'SHIPSHAPE_USER_HEADER', 'SHIPSHAPE_ALLOWED_ORIGIN']
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]))
+  for (const k of keys) delete process.env[k]
+  for (const [k, v] of Object.entries(vars)) if (v !== undefined) process.env[k] = v
+  try {
+    return fn()
+  } finally {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k]
+      else process.env[k] = saved[k]
+    }
+  }
+}
+
+test('mode is inferred from the environment: password, proxy, both, neither', async () => {
+  const { resolveAuth } = await getAuth()
+  assert.equal(withEnv({ SHIPSHAPE_PASSWORD: 'correct horse battery' }, resolveAuth).mode, 'password')
+  assert.equal(withEnv({ SHIPSHAPE_TRUSTED_PROXY: TEST_PROXY, SHIPSHAPE_ALLOWED_USER: TEST_USER }, resolveAuth).mode, 'proxy')
+  assert.equal(withEnv({ SHIPSHAPE_PASSWORD: 'correct horse battery', SHIPSHAPE_TRUSTED_PROXY: TEST_PROXY }, resolveAuth).mode, 'error')
+  assert.equal(withEnv({}, resolveAuth).mode, 'unconfigured')
+  assert.equal(withEnv({ SHIPSHAPE_ALLOWED_USER: TEST_USER }, resolveAuth).mode, 'unconfigured')
+})
+
+test('a password and a trusted proxy together are a configuration error naming both variables', async () => {
+  const { resolveAuth } = await getAuth()
+  const a = withEnv({ SHIPSHAPE_PASSWORD: 'correct horse battery', SHIPSHAPE_TRUSTED_PROXY: TEST_PROXY, SHIPSHAPE_ALLOWED_USER: TEST_USER }, resolveAuth)
+  assert.equal(a.mode, 'error')
+  assert.match(a.mode === 'error' ? a.problems.join() : '', /SHIPSHAPE_PASSWORD.*SHIPSHAPE_TRUSTED_PROXY/)
+})
+
+test('SHIPSHAPE_PASSWORD and SHIPSHAPE_PASSWORD_FILE together are a configuration error', async () => {
+  const { resolveAuth } = await getAuth()
+  const a = withEnv({ SHIPSHAPE_PASSWORD: 'correct horse battery', SHIPSHAPE_PASSWORD_FILE: '/x' }, resolveAuth)
+  assert.match(a.mode === 'error' ? a.problems.join() : '', /both set/)
+})
+
+test('a password shorter than 12 characters is a configuration error and is never echoed', async () => {
+  const { resolveAuth } = await getAuth()
+  const a = withEnv({ SHIPSHAPE_PASSWORD: 'hunter2' }, resolveAuth)
+  const text = a.mode === 'error' ? a.problems.join() : ''
+  assert.match(text, /at least 12 characters \(it is 7\)/)
+  assert.doesNotMatch(text, /hunter2/)
+})
+
+test('a password file is read, one trailing newline is stripped, an unreadable one is a configuration error', async () => {
+  const { writeFileSync } = await import('node:fs')
+  const { resolveAuth } = await getAuth()
+  const file = join(dir, 'pw')
+  writeFileSync(file, 'correct horse battery\n')
+  const a = withEnv({ SHIPSHAPE_PASSWORD_FILE: file }, resolveAuth)
+  assert.equal(a.mode, 'password')
+  assert.ok(a.mode === 'password' && a.password.verify('correct horse battery'))
+  const b = withEnv({ SHIPSHAPE_PASSWORD_FILE: join(dir, 'missing') }, resolveAuth)
+  assert.match(b.mode === 'error' ? b.problems.join() : '', /cannot read .* \(ENOENT\)/)
+})
+
+test('the setup page is styled HTML with both options and the compose snippet, 503, no-store, for every method', async () => {
+  const app = appWithConfig({})
+  for (const method of ['GET', 'POST', 'PUT']) {
+    const res = await app.request('/', { method }, socketBindings(TEST_PROXY))
+    assert.equal(res.status, 503)
+    assert.equal(res.headers.get('cache-control'), 'no-store')
+    assert.match(res.headers.get('content-type') ?? '', /text\/html/)
+    const html = await res.text()
+    for (const s of ['/static/app.css', 'SHIPSHAPE_PASSWORD', 'SHIPSHAPE_TRUSTED_PROXY', 'Remote-User']) assert.ok(html.includes(s), s)
+  }
+  const head = await app.request('/', { method: 'HEAD' }, socketBindings(TEST_PROXY))
+  assert.equal(head.status, 503)
+  assert.equal(await head.text(), '')
+})
+
+test('CIDRs and comma-separated lists name trusted proxies', async () => {
+  const cases: [string, string, number][] = [
+    ['192.0.2.16/28', '192.0.2.18', 200],
+    ['192.0.2.16/28', '192.0.2.200', 403],
+    ['198.51.100.7, 192.0.2.16/28', '192.0.2.18', 200],
+    ['2001:db8::/32', '2001:db8::5', 200],
+    ['192.0.2.16/28', '::ffff:192.0.2.18', 200],
+  ]
+  for (const [proxy, peer, want] of cases) {
+    const app = appWithConfig({ proxy, user: TEST_USER, origin: TEST_ORIGIN })
+    assert.equal((await app.request('/health/x', { headers: identity }, socketBindings(peer))).status === 403 ? 403 : 200, want, `${proxy} ${peer}`)
+  }
+})
+
+test('invalid proxy entries are configuration errors that name the entry', async () => {
+  const { resolveAuth } = await getAuth()
+  const a = withEnv({ SHIPSHAPE_TRUSTED_PROXY: 'proxy.lan', SHIPSHAPE_ALLOWED_USER: TEST_USER }, resolveAuth)
+  assert.match(a.mode === 'error' ? a.problems.join() : '', /"proxy\.lan" is not an IP address or a CIDR/)
+})
+
+test('a custom SHIPSHAPE_USER_HEADER replaces Remote-User, and Remote-User then stops working', async () => {
+  const app = appWithConfig({ proxy: TEST_PROXY, user: TEST_USER, origin: TEST_ORIGIN, userHeader: 'X-authentik-username' })
+  assert.notEqual((await app.request('/status', { headers: { 'X-authentik-username': TEST_USER } }, socketBindings(TEST_PROXY))).status, 403)
+  assert.equal((await app.request('/status', { headers: identity }, socketBindings(TEST_PROXY))).status, 403)
+})
+
+test('an invalid SHIPSHAPE_USER_HEADER is a configuration error', async () => {
+  const { resolveAuth } = await getAuth()
+  const a = withEnv({ SHIPSHAPE_TRUSTED_PROXY: TEST_PROXY, SHIPSHAPE_ALLOWED_USER: TEST_USER, SHIPSHAPE_USER_HEADER: 'Remote User' }, resolveAuth)
+  assert.match(a.mode === 'error' ? a.problems.join() : '', /single HTTP header name/)
+})
+
+test('SHIPSHAPE_ALLOWED_USER accepts a list; a header carrying two names is refused', async () => {
+  const app = appWithConfig({ proxy: TEST_PROXY, user: `alice, ${TEST_USER}`, origin: TEST_ORIGIN })
+  assert.notEqual((await app.request('/status', { headers: { 'Remote-User': 'alice' } }, socketBindings(TEST_PROXY))).status, 403)
+  assert.equal((await app.request('/status', { headers: { 'Remote-User': `alice, ${TEST_USER}` } }, socketBindings(TEST_PROXY))).status, 403)
+})
+
+test('a trusted proxy without an allowed user is a configuration error', async () => {
+  const { resolveAuth } = await getAuth()
+  const a = withEnv({ SHIPSHAPE_TRUSTED_PROXY: TEST_PROXY }, resolveAuth)
+  assert.match(a.mode === 'error' ? a.problems.join() : '', /SHIPSHAPE_ALLOWED_USER is required/)
+})
+
+test('static files are readable without authentication in every mode, GET and HEAD only', async () => {
+  for (const config of [{ proxy: TEST_PROXY, user: TEST_USER, origin: TEST_ORIGIN }, {}, { password: 'correct horse battery' }]) {
+    const app = appWithConfig(config)
+    assert.equal((await app.request('/static/app.js', {}, socketBindings('192.0.2.99'))).status, 200, JSON.stringify(config))
+    assert.equal((await app.request('/static/app.js', { method: 'HEAD' }, socketBindings('192.0.2.99'))).status, 200)
+    assert.notEqual((await app.request('/static/app.js', { method: 'POST' }, socketBindings('192.0.2.99'))).status, 200)
+    assert.notEqual((await app.request('/static/app.js', { headers: { Upgrade: 'websocket' } }, socketBindings('192.0.2.99'))).status, 200)
+  }
+})
+
+test('the static exemption is exactly the files in public/', async () => {
+  const { readdirSync } = await import('node:fs')
+  const { staticAllowlist } = await import('../../src/web/auth/index.ts')
+  assert.deepEqual([...staticAllowlist()].sort(), readdirSync('public').map((f) => `/static/${f}`).sort())
+  const app = appWithConfig()
+  for (const p of ['/static/%2e%2e/settings', '/static/..%2fsettings', '/static/nope.css']) {
+    assert.notEqual((await app.request(p, {}, socketBindings('192.0.2.99'))).status, 200, p)
   }
 })

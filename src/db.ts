@@ -1037,6 +1037,21 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     UPDATE updates SET state = 'frozen' WHERE state = 'held';
   `,
   },
+  {
+    id: '033-sessions',
+    sql: `
+    -- Password sign-in (src/web/auth/session.ts): only the SHA-256 of a session token is
+    -- kept, with the fingerprint of the password it was made with.
+    CREATE TABLE sessions (
+      token_hash     TEXT PRIMARY KEY,
+      created_at     TEXT NOT NULL,
+      last_seen_at   TEXT NOT NULL,
+      expires_at     TEXT NOT NULL,
+      pw_fingerprint TEXT NOT NULL
+    );
+    CREATE INDEX idx_sessions_expires ON sessions(expires_at);
+  `,
+  },
 ]
 
 function migrate(d: Db): void {

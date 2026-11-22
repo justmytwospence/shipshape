@@ -135,7 +135,7 @@ export async function prepareFork(input: PrepareForkInput): Promise<PrepareForkR
   // The pinned commit must be in the fork: through its branches and tags, or fetched by
   // sha when it is reachable but on neither (GitHub serves reachable commits by sha).
   if (!(await hasCommit(dir, input.pinnedSha))) {
-    await git(dir, ['fetch', '--no-tags', 'fork', input.pinnedSha], { remote: true, allowFail: true })
+    await git(dir, ['fetch', '--no-tags', 'fork', input.pinnedSha], { remote: 'github', allowFail: true })
     if (!(await hasCommit(dir, input.pinnedSha))) {
       return refuse(`the pinned commit ${input.pinnedSha.slice(0, 7)} is not in the fork ${input.forkUrl}`)
     }
@@ -234,7 +234,7 @@ export async function prepareFork(input: PrepareForkInput): Promise<PrepareForkR
   const alreadyPushed = !!existing
   if (!input.dryRun) {
     if (!existing) {
-      const pushed = await git(dir, ['push', 'fork', `${sha}:refs/tags/${tag}`], { remote: true, allowFail: true })
+      const pushed = await git(dir, ['push', 'fork', `${sha}:refs/tags/${tag}`], { remote: 'github', allowFail: true })
       if (pushed.exitCode !== 0) return refuse(pushRefusal(input.forkUrl, pushed.stderr))
     }
     const branch = (await git(dir, ['rev-parse', '--verify', '-q', 'refs/remotes/fork/homelab'], { allowFail: true })).stdout
@@ -242,7 +242,7 @@ export async function prepareFork(input: PrepareForkInput): Promise<PrepareForkR
       const args = branch
         ? ['push', `--force-with-lease=refs/heads/homelab:${branch}`, 'fork', `${sha}:refs/heads/homelab`]
         : ['push', 'fork', `${sha}:refs/heads/homelab`]
-      const moved = await git(dir, args, { remote: true, allowFail: true })
+      const moved = await git(dir, args, { remote: 'github', allowFail: true })
       if (moved.exitCode !== 0) return refuse(pushRefusal(input.forkUrl, moved.stderr))
     }
   }
@@ -269,13 +269,13 @@ async function ensureClone(dir: string, forkUrl: string, upstreamUrl: string): P
   // Tags namespaced per side, branches only for the fork: the replay needs upstream's
   // tags and the fork's `homelab` tip, nothing else.
   await git(dir, ['fetch', '--no-tags', '--prune', 'upstream', `+refs/tags/*:${UP}*`], {
-    remote: true,
+    remote: 'github',
     timeoutMs: 600_000,
   })
   await git(
     dir,
     ['fetch', '--no-tags', '--prune', 'fork', '+refs/heads/*:refs/remotes/fork/*', `+refs/tags/*:${FK}*`],
-    { remote: true, timeoutMs: 600_000 },
+    { remote: 'github', timeoutMs: 600_000 },
   )
 }
 

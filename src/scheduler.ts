@@ -7,7 +7,7 @@ import { drainDeployQueue, hasDueRechecks, hasPendingDeploys, runRechecks } from
 import { runShipPass } from './gitops/ship.ts'
 import { runCutover } from './gitops/cutover.ts'
 import { runScan } from './scan.ts'
-import { checkGitHubAuth } from './health/github-auth.ts'
+import { checkRemoteAuth } from './health/github-auth.ts'
 import { retryPendingIncidents } from './notify/index.ts'
 import { syncDecisionCards } from './notify/decisions.ts'
 import { refreshOffsiteJobs } from './restore/offsite.ts'
@@ -43,7 +43,7 @@ export function startScheduler(): void {
     logEvent({
       level: 'warn',
       kind: 'system',
-      message: 'not configured yet — scanning and pull requests are standing by',
+      message: 'not configured yet — scanning and shipping are standing by',
       detail: setup.missing.map((m) => m.name).join(', '),
     })
     return
@@ -82,7 +82,7 @@ function startLoop(): void {
       // First, and whatever else this tick does. A dead credential stops shipshape
       // working, which is a fault rather than a choice, and the state it reports is
       // exactly what the operator would otherwise have to infer from a silent backlog.
-      await checkGitHubAuth()
+      await checkRemoteAuth()
       // One-time: close the pull requests v1 left open (src/gitops/cutover.ts).
       await runCutover()
       // Incidents the router could not take earlier: at least once, latest state wins.

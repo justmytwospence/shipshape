@@ -2,6 +2,7 @@ import { execa, type Options } from 'execa'
 import { existsSync, rmSync } from 'node:fs'
 import { botIdentity, env, paths } from '../config.ts'
 import { logEvent } from '../db.ts'
+import { credentialArgs, credentialEnv } from './credentials.ts'
 import { looksLikeGitAuthFailure, noteAuthFailure } from '../health/github-auth.ts'
 
 /**
@@ -15,54 +16,9 @@ import { looksLikeGitAuthFailure, noteAuthFailure } from '../health/github-auth.
  *     dirty working tree in the live checkout can never block or corrupt a PR.
  */
 
-export interface GitCredential {
-  origin: string
-  username: string
-  password: string
-}
-
-/** The origin of an http(s) URL, or null for a local path, ssh or anything else. */
-function originOf(url: string): string | null {
-  try {
-    const u = new URL(url)
-    return u.protocol === 'https:' || u.protocol === 'http:' ? u.origin : null
-  } catch {
-    return null
-  }
-}
-
-/** Who gets which credential. P2b replaces the values (GIT_TOKEN / GIT_USERNAME); the scoping stays. */
-export function gitCredentials(remoteUrl = httpsUrl(), githubToken = env.githubToken): GitCredential[] {
-  if (!githubToken) return []
-  const out: GitCredential[] = []
-  const remote = originOf(remoteUrl)
-  if (remote) out.push({ origin: remote, username: 'x-access-token', password: githubToken })
-  // Fork and upstream remotes live on github.com whatever the compose remote is.
-  if (remote !== 'https://github.com') out.push({ origin: 'https://github.com', username: 'x-access-token', password: githubToken })
-  return out
-}
-
-/**
- * Credentials go in through an inline helper rather than a remote URL or a config file:
- * a token embedded in a URL leaks into `git remote -v`, reflogs, and error messages.
- * The empty first helper clears anything inherited from system config; each origin then
- * gets a helper of its own (`credential.<origin>.helper`), so nothing is offered to any
- * other host -- not a redirect, a submodule, or a fork URL somewhere else. The values
- * travel in the environment, never in argv.
- */
-export function credentialArgs(creds: GitCredential[] = gitCredentials()): { args: string[]; env: Record<string, string> } {
-  const args = ['-c', 'credential.helper=']
-  const vars: Record<string, string> = {}
-  creds.forEach((c, i) => {
-    args.push('-c', `credential.${c.origin}.helper=!f(){ echo username=$SHIPSHAPE_GIT_USERNAME_${i}; echo password=$SHIPSHAPE_GIT_PASSWORD_${i}; };f`)
-    vars[`SHIPSHAPE_GIT_USERNAME_${i}`] = c.username
-    vars[`SHIPSHAPE_GIT_PASSWORD_${i}`] = c.password
-  })
-  return { args, env: vars }
-}
-
+/** Where git operations go: GIT_REMOTE_URL, else https://github.com/<GITHUB_REPO>.git. */
 export function httpsUrl(): string {
-  return env.gitRemoteUrl || `https://github.com/${env.githubRepo}.git`
+  return env.gitRemote.url
 }
 
 export interface GitResult {
@@ -76,7 +32,8 @@ export async function git(
   cwd: string,
   args: string[],
   opts: {
-    remote?: boolean
+    /** true: the compose repository's credential; 'github': GITHUB_TOKEN for github.com (forks). */
+    remote?: boolean | 'github'
     allowFail?: boolean
     /** For the few commands that may legitimately take longer than two minutes: a first fetch of a large upstream. */
     timeoutMs?: number
@@ -84,13 +41,13 @@ export async function git(
     env?: Record<string, string>
   } = {},
 ): Promise<GitResult> {
-  const creds = opts.remote ? credentialArgs() : { args: [], env: {} }
-  const full = [...creds.args, ...args]
+  const which = opts.remote === 'github' ? 'github' : 'compose'
+  const full = [...(opts.remote ? credentialArgs(which) : []), ...args]
   const execOpts: Options = {
     cwd,
     reject: false,
     timeout: opts.timeoutMs ?? 120_000,
-    env: { ...(opts.env ?? {}), ...creds.env, GIT_TERMINAL_PROMPT: '0' },
+    env: { ...(opts.env ?? {}), ...(opts.remote ? credentialEnv(which) : {}), GIT_TERMINAL_PROMPT: '0' },
   }
   const r = await execa('git', full, execOpts)
   const out = {

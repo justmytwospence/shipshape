@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { configured, env, loadPolicy, type Policy } from '../config.ts'
+import { configured, env, gitCredentialProblem, loadPolicy, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { scanRepo } from '../compose/scan.ts'
 import { bumpFork, readForkPin, retireFork } from '../compose/fork-edit.ts'
@@ -605,8 +605,9 @@ async function passBody(out: ShipRun): Promise<ShipRun> {
     out.paused = `not configured: ${setup.missing.map((m) => m.name).join(', ')}`
     return out
   }
-  if (!env.githubToken) {
-    out.paused = 'GITHUB_TOKEN is not set'
+  const credential = gitCredentialProblem()
+  if (credential) {
+    out.paused = credential
     return out
   }
 

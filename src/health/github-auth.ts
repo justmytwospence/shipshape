@@ -1,7 +1,9 @@
-import { Octokit } from 'octokit'
-import { env } from '../config.ts'
+import { execa } from 'execa'
+import { env, gitBranch, gitCredentialName, type GitRemote } from '../config.ts'
 import { logEvent } from '../db.ts'
 import { notify, resolveIncident } from '../notify/index.ts'
+import { ghRequest } from '../upstream/github.ts'
+import { credentialArgs, credentialEnv } from '../gitops/credentials.ts'
 
 /**
  * Saying so when GitHub stops accepting the credentials.
@@ -94,22 +96,24 @@ export async function noteAuthFailure(reason: string): Promise<void> {
   const since = failing?.since ?? new Date(now).toISOString()
   failing = { since, reason, lastAlertAt: now }
 
+  const host = env.gitRemote.host || 'the git remote'
   logEvent({
     level: 'error',
     kind: 'pr',
-    message: 'GitHub is refusing the credentials',
+    message: `${host} is refusing the credentials`,
     detail: reason,
   })
   await notify({
+    // The key predates other forges; kept so an incident already open resolves normally.
     key: 'shipshape:github-auth',
-    title: 'shipshape: GitHub is refusing the credentials',
+    title: `shipshape: ${host} is refusing the credentials`,
     body: [
       reason,
       '',
-      'Nothing can ship or push main while this lasts. Scanning carries on, so',
+      `Nothing can ship or publish ${gitBranch()} while this lasts. Scanning carries on, so`,
       'the backlog will keep growing until it is fixed.',
       '',
-      `Set GITHUB_TOKEN in shipshape/.env, then: docker compose -f shipshape/docker-compose.yaml up -d`,
+      `Fix ${gitCredentialName()} in the environment shipshape runs with, then recreate the container so it is read again.`,
       fresh ? '' : `Still failing since ${since}.`,
     ]
       .filter(Boolean)
@@ -124,37 +128,88 @@ export async function noteAuthOk(): Promise<void> {
   if (!failing) return
   const since = failing.since
   failing = null
-  logEvent({ level: 'info', kind: 'pr', message: 'GitHub is accepting the credentials again', detail: `refused since ${since}` })
+  logEvent({
+    level: 'info',
+    kind: 'pr',
+    message: `${env.gitRemote.host || 'the git remote'} is accepting the credentials again`,
+    detail: `refused since ${since}`,
+  })
   await resolveIncident('shipshape:github-auth')
 }
 
-let probe: Octokit | null = null
+export type ProbeMethod = 'api' | 'ls-remote' | 'none'
 
-/** Can we read the repository we are configured to work on? */
-export async function probeGitHubAuth(): Promise<AuthState> {
-  const [owner, repo] = env.githubRepo.split('/') as [string, string]
-  probe ??= new Octokit({ auth: env.githubToken })
-  try {
-    const res = await probe.rest.repos.get({ owner, repo })
-    return classifyProbe(res.status, '')
-  } catch (err) {
-    const e = err as { status?: number; message?: string }
-    // No status at all is a network problem, not a credential one. Saying "your token is
-    // dead" when the internet is down is how an alert loses its meaning.
-    if (typeof e.status !== 'number') return { ok: true }
-    return classifyProbe(e.status, e.message ?? '')
+/**
+ * How the credential is checked. The API is asked only with GITHUB_TOKEN, and only when
+ * that is also the git credential: a GIT_TOKEN for some other host must never reach
+ * api.github.com. Every other https remote is asked with `git ls-remote`.
+ */
+export function probeMethod(i: { remote: GitRemote; githubRepo: string; gitToken: string; githubToken: string }): ProbeMethod {
+  if (i.remote.kind !== 'https' || !i.gitToken) return 'none'
+  if (i.remote.host === 'github.com' && i.githubRepo && i.gitToken === i.githubToken) return 'api'
+  return 'ls-remote'
+}
+
+const currentMethod = () =>
+  probeMethod({ remote: env.gitRemote, githubRepo: env.githubRepo, gitToken: env.gitToken, githubToken: env.githubToken })
+
+async function probeApi(): Promise<AuthState> {
+  const r = await ghRequest<unknown>(`/repos/${env.githubRepo}`, { token: env.githubToken })
+  if (r.ok) return { ok: true }
+  if (r.kind === 'not-found') return classifyProbe(404, '')
+  if (r.kind === 'auth') {
+    return r.status === 401 ? classifyProbe(401, '') : classifyProbe(r.status ?? 403, 'the token cannot read this repository')
+  }
+  // Rate-limited, network, server: not a credential fault.
+  return { ok: true }
+}
+
+let lsRemoteMemo: { at: number; state: AuthState } | null = null
+const LS_REMOTE_EVERY_MS = 5 * 60_000
+
+async function probeLsRemote(): Promise<AuthState> {
+  if (lsRemoteMemo && Date.now() - lsRemoteMemo.at < LS_REMOTE_EVERY_MS) return lsRemoteMemo.state
+  const r = await execa('git', [...credentialArgs('compose'), 'ls-remote', '--exit-code', env.gitRemote.url, 'HEAD'], {
+    cwd: '/',
+    reject: false,
+    timeout: 30_000,
+    env: { ...credentialEnv('compose'), GIT_TERMINAL_PROMPT: '0' },
+  })
+  const stderr = String(r.stderr ?? '').trim()
+  const first = stderr.split('\n')[0] ?? ''
+  const host = env.gitRemote.host
+  let state: AuthState
+  // 2: reachable, no HEAD (an empty repository).
+  if (r.exitCode === 0 || r.exitCode === 2) state = { ok: true }
+  else if (looksLikeGitAuthFailure(stderr)) state = { ok: false, kind: 'rejected', reason: `${host} refused the credentials (${first})` }
+  else if (/not found|does not exist|404/i.test(stderr)) {
+    state = { ok: false, kind: 'unreachable', reason: `${host} has no repository at ${env.gitRemote.webUrl} that these credentials can see` }
+  } else state = { ok: true } // a network failure is not a credential fault
+  lsRemoteMemo = { at: Date.now(), state }
+  return state
+}
+
+/** Can the configured credential reach the repository we are configured to work on? */
+export async function probeRemoteAuth(): Promise<AuthState> {
+  switch (currentMethod()) {
+    case 'api':
+      return probeApi()
+    case 'ls-remote':
+      return probeLsRemote()
+    default:
+      return { ok: true }
   }
 }
 
 /**
  * Probe, and alert on the transition. Safe to call every tick.
  *
- * Skipped entirely when no token is configured: an unconfigured install is a setup banner,
- * not a fault, and the operator has not asked it to do anything yet.
+ * Skipped entirely when there is nothing to check: an unconfigured install is a setup
+ * banner, not a fault, and the operator has not asked it to do anything yet.
  */
-export async function checkGitHubAuth(): Promise<AuthState> {
-  if (!env.githubToken) return { ok: true }
-  const state = await probeGitHubAuth()
+export async function checkRemoteAuth(): Promise<AuthState> {
+  if (currentMethod() === 'none') return { ok: true }
+  const state = await probeRemoteAuth()
   if (state.ok) await noteAuthOk()
   else await noteAuthFailure(state.reason)
   return state
@@ -163,4 +218,5 @@ export async function checkGitHubAuth(): Promise<AuthState> {
 /** Test seam: the module holds one standing condition, and tests need it reset. */
 export function resetAuthHealth(): void {
   failing = null
+  lsRemoteMemo = null
 }

@@ -68,6 +68,7 @@ export const ActivityToolbar: FC<{ kind: string; problems: boolean; q: string }>
 
 /** `#41` becomes a link, because it is the only thing in a log line worth clicking. */
 function linkify(message: string, repo: string): unknown[] {
+  if (!repo) return [message]
   const parts: unknown[] = []
   let last = 0
   for (const m of message.matchAll(/#(\d+)/g)) {

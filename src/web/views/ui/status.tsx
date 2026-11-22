@@ -22,6 +22,14 @@ export interface StatusData {
   repoDir: string
   repo: string
   pushMain: boolean
+  /** The branch shipshape publishes to. */
+  branch?: string
+  /** The remote's host, `local repository`, or `not set`. */
+  remote?: string
+  /** Where the policy file is, and whether it exists yet. */
+  policyFile?: { rel: string; exists: boolean }
+  /** How many compose files the last scan found; null before any scan. */
+  composeFiles?: number | null
   scan: {
     cron: string
     lastAt: string | null
@@ -362,10 +370,17 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
             <KV
               rows={[
                 ['version', data.version],
-                ['checkout', data.repoDir],
-                ['repository', data.repo],
-                ['ships as', 'merge commits on main'],
-                ['publishes main', String(data.pushMain)],
+                ['checkout', data.repoDir || 'not set'],
+                ['repository', data.repo || 'not set'],
+                ['remote', data.remote ?? 'not set'],
+                ['ships as', `merge commits on ${data.branch ?? 'main'}`],
+                [`publishes ${data.branch ?? 'main'}`, String(data.pushMain)],
+                ...(data.policyFile
+                  ? [['policy file', data.policyFile.exists ? data.policyFile.rel : `none yet -- defaults apply; Settings creates ${data.policyFile.rel}`] as [string, string]]
+                  : []),
+                ...(data.composeFiles !== undefined
+                  ? [['compose files', data.composeFiles == null ? 'not scanned yet' : data.composeFiles === 0 ? 'none found -- check REPO_DIR' : String(data.composeFiles)] as [string, string]]
+                  : []),
               ]}
             />
           </Block>

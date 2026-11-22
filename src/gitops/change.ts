@@ -23,13 +23,18 @@ export function mergeMethodFor(prId: number | null | undefined): 'merge' | 'squa
 
 /** Where to read the change: a pull request page, or the merge commit. */
 export function changeUrl(prId: number | null | undefined): string | undefined {
-  if (prId == null || !env.githubRepo) return undefined
+  if (prId == null) return undefined
   const row = getDb().prepare(`SELECT kind, number, merge_commit_sha FROM prs WHERE id = ?`).get(prId) as
     | { kind: string; number: number; merge_commit_sha: string | null }
     | undefined
   if (!row) return undefined
-  if (row.kind === 'local') return row.merge_commit_sha ? `https://github.com/${env.githubRepo}/commit/${row.merge_commit_sha}` : undefined
-  return `https://github.com/${env.githubRepo}/pull/${row.number}`
+  if (row.kind === 'local') {
+    // `/commit/<sha>` resolves on GitHub, Gitea, Forgejo and, by redirect, GitLab.
+    const web = env.gitRemote.webUrl
+    return web && row.merge_commit_sha ? `${web}/commit/${row.merge_commit_sha}` : undefined
+  }
+  // A v1 pull request page exists only on GitHub.
+  return env.githubRepo && env.gitRemote.host === 'github.com' ? `https://github.com/${env.githubRepo}/pull/${row.number}` : undefined
 }
 
 /** `#12` for a pull request, `the change` for a local one. */

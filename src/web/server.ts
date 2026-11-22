@@ -4,7 +4,7 @@ import { Hono, type Context } from 'hono'
 import { raw } from 'hono/html'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { configured, env, loadPolicy, notifyEnv } from '../config.ts'
+import { configured, env, gitBranch, gitCredentialName, loadPolicy, notifyEnv } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'
 import { buildUpdateDiff, type DiffHunk } from '../diff.ts'
@@ -838,8 +838,10 @@ export function createApp(): Hono {
     return {
       version: readPackageVersion(),
       repoDir: env.repoDir,
-      repo: env.githubRepo,
+      repo: env.githubRepo || env.gitRemote.webUrl || '',
       pushMain: policy.sync.push_main,
+      branch: gitBranch(),
+      remote: env.gitRemote.kind === 'https' ? env.gitRemote.host : env.gitRemote.kind === 'local' ? 'local repository' : 'not set',
       scan: {
         cron: sched.scan.cron,
         lastAt: info.lastAt,
@@ -853,8 +855,15 @@ export function createApp(): Hono {
         // Presence is not health. Through a six-day outage this row read `set` in green
         // the whole time, because a token that has expired is still very much present.
         {
-          name: 'GITHUB_TOKEN',
-          state: !env.githubToken ? 'missing' : authHealth().ok ? 'set' : 'refused',
+          name: gitCredentialName(),
+          state:
+            env.gitRemote.kind === 'local'
+              ? 'not in use'
+              : !(env.gitRemote.kind === 'https' ? env.gitToken : env.githubToken)
+                ? 'missing'
+                : authHealth().ok
+                  ? 'set'
+                  : 'refused',
         },
         // Same reasoning as the row above: the key is present and valid all month, and
         // buys nothing once the budget is spent. Reading `set` through that is how a
@@ -1103,7 +1112,7 @@ function diffFragment(id: number): string {
         links: row && ref ? refLinks(ref, row.to_tag, source?.repo ?? null) : undefined,
         service: row ? { stack: row.stack, service: row.service } : undefined,
         prNumber: pr?.number ?? null,
-        prUrl: pr ? `https://github.com/${env.githubRepo}/pull/${pr.number}` : null,
+        prUrl: pr && env.githubRepo ? `https://github.com/${env.githubRepo}/pull/${pr.number}` : null,
         prScope: pr?.scope ?? null,
         proposal: proposal
           ? {

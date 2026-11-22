@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { execa } from 'execa'
-import { botIdentity, env } from '../config.ts'
+import { botIdentity, canPublish, env } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { setLabel } from '../compose/edit.ts'
 import { CLASS_LABELS } from '../policy.ts'
@@ -240,7 +240,7 @@ async function run(o: { stack: string; service: string; changes: LabelChange[] }
   // Publish, best-effort: the commit exists either way, and the regular sync cycle
   // retries. Unconfigured (tests, first run) means there is no origin to publish to.
   let publishNote = ''
-  if (env.githubRepo && env.githubToken) {
+  if (canPublish()) {
     try {
       const sync = await syncMain()
       if (sync.status === 'paused' || sync.status === 'refused') {

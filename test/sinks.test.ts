@@ -132,7 +132,7 @@ test('ntfy and email speak on a first fire and an escalation, and not on repeats
 test('email is skipped when SMTP is not configured, so there is no half-working state', async () => {
   await sendEmailSink(card)
   assert.equal(wire.length, 0)
-  assert.deepEqual(activeChannels('decision'), ['homelab alerting'])
+  assert.deepEqual(activeChannels('decision'), ['webhook'])
 })
 
 test('with no links possible (no secret) the buttons are simply left off', async () => {

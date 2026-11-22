@@ -11,8 +11,7 @@ export type { IncidentAction, IncidentStatus, Message, Priority } from './types.
  * Delivery: which sink gets what.
  *
  * Shipshape emits messages; `policy.notify.sinks` says where they go. A sink is a
- * `webhook` (the homelab's notification router, which keeps one live card per key and is
- * what Hermes replies to), `email` or `ntfy`. Each may list the `events` it wants:
+ * `webhook` (JSON to any URL, the only sink that edits and resolves), `email` or `ntfy`. Each may list the `events` it wants:
  * `decision`, `broken`, `security`, `system`. Silence means healthy, so nothing here is a
  * "success" message; a condition that clears is a resolve, which only the webhook acts on.
  *
@@ -82,7 +81,7 @@ export function activeChannels(cls: EventClass = 'system'): string[] {
   const out: string[] = []
   for (const s of policy.notify.sinks) {
     if (!wantsEvent(s, cls)) continue
-    if (s.type === 'webhook' && endpointOf(s)) out.push('homelab alerting')
+    if (s.type === 'webhook' && endpointOf(s)) out.push('webhook')
     if (s.type === 'email' && emailConfigured()) out.push('email')
     if (s.type === 'ntfy') out.push(`ntfy ${s.topic}`)
   }

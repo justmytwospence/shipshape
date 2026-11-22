@@ -180,7 +180,7 @@ export const SETTINGS: SettingDef[] = [
     },
     defaultValue: 'off',
     label: 'Screen',
-    help: 'Jev, a fraction of a cent a look',
+    help: 'a fast classifier through OpenRouter (needs OPENROUTER_API_KEY), a fraction of a cent a look',
     about:
       'A fast model answers narrow questions about the release notes -- does a setting change, is there a manual step -- and picks the lines worth reading. It can hold an update back and never cause one.',
   },

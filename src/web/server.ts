@@ -925,14 +925,14 @@ export function createApp(): Hono {
   }
 
   const screenCredential = (mode: 'off' | 'shadow' | 'on'): StatusData['credentials'][number] => {
-    if (mode === 'off') return { name: 'Screen (Jev)', state: 'off' }
-    if (!jevConfigured()) return { name: 'Screen (Jev)', state: 'missing', note: 'needs OPENROUTER_API_KEY' }
+    if (mode === 'off') return { name: 'Screen', state: 'off' }
+    if (!jevConfigured()) return { name: 'Screen', state: 'missing', note: 'needs OPENROUTER_API_KEY' }
     const last = getDb()
       .prepare(`SELECT error FROM screens ORDER BY created_at DESC LIMIT 1`)
       .get() as { error: string | null } | undefined
     return last?.error
-      ? { name: 'Screen (Jev)', state: 'refused', note: last.error.slice(0, 200) }
-      : { name: 'Screen (Jev)', state: mode }
+      ? { name: 'Screen', state: 'refused', note: last.error.slice(0, 200) }
+      : { name: 'Screen', state: mode }
   }
 
   /** Merged updates that will not move until someone presses Deploy. */

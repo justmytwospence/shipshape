@@ -34,7 +34,7 @@ export const SECTION_PROSE: Record<SectionName, string[]> = {
     `Shipping is a merge commit on ${gitBranch()}, built on a branch in shipshape's own clone and never pushed, so \`git log\` keeps the shape of the change and \`git revert -m 1\` undoes it. A decision that needs you is one card per image and target, with four answers: ship it, snooze a week, always ship (which writes a rule), or skip the version.`,
   ],
   'Changelog review': [
-    'Two stages. The screen -- Jev, a fraction of a cent a look -- reads the release notes shipshape already fetched and answers narrow questions: does a setting change, is there a manual step, does it touch anything this service uses. It picks the lines worth reading rather than writing a summary. The reader -- Opus -- reads the changelog properly, and only where a person will read what it writes.',
+    'Two stages. The screen -- a fast classifier reached through OpenRouter, a fraction of a cent a look -- reads the release notes shipshape already fetched and answers narrow questions: does a setting change, is there a manual step, does it touch anything this service uses. It picks the lines worth reading rather than writing a summary. The reader -- the model set below -- reads the changelog properly, and only where a person will read what it writes. With web access on it may also search the upstream project\'s own pages.',
     'Either can hold an update for you and neither can cause one to ship. Release notes are untrusted text from the internet, so the worst a hostile changelog can achieve is a stopped update. Reaching the monthly budget pauses the reader and drafting; updates keep shipping on the evidence that is left, because an unreviewed update you can see beats an invisible one.',
   ],
   'Config proposals': [
@@ -51,7 +51,7 @@ export const SECTION_PROSE: Record<SectionName, string[]> = {
     'A deploy never changes whether a service is running. One that is running is brought up on the new version and verified; one that is stopped, paused or removed is left exactly as it was and reads Left stopped — the compose file carries the new version, so compose brings it up on it, while docker start on the old container would resume the old one. If shipshape cannot ask Docker, the deploy fails and touches nothing.',
   ],
   Notifications: [
-    'Shipshape emits messages and `notify.sinks` says where they go: a webhook (the homelab router, which keeps one live card per condition and is what Hermes replies to), email or ntfy. Each sink can list which events it wants: decision, broken, security, system.',
+    'Shipshape emits messages and `notify.sinks` says where they go: a webhook (JSON to any URL; a receiver that keeps one message per key can edit it in place and close it on a resolve), email or ntfy. Each sink can list which events it wants: decision, broken, security, system.',
     'Silence means healthy. Nothing is announced on success; a condition that clears is a resolve, which only the webhook acts on. A decision still waiting after the escalation delay is announced once more, louder.',
   ],
   Rules: [

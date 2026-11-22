@@ -4,15 +4,15 @@ import { getDb, logEvent } from '../../db.ts'
 import type { IncidentAction, IncidentStatus, Message, Priority } from '../types.ts'
 
 /**
- * The webhook sink: an *incident* posted to the homelab's notification router (n8n's
- * Alerting workflow), which owns loudness, quiet hours and the one Matrix message per
- * incident that is edited in place. An incident carries a stable `key`; a later message
- * with the same key edits it, and `status: 'resolved'` closes it silently. Recovery is
+ * The webhook sink: an incident posted as JSON to any URL. A receiver that keeps one
+ * message per `key` can edit it in place and remove it on `status: 'resolved'`. An
+ * incident carries a stable `key`; a later message with the same key edits it, and
+ * `status: 'resolved'` closes it silently. Recovery is
  * never a message of its own: silence means healthy.
  *
  * Delivery is at least once. An incident that cannot be handed over is kept in the
  * database and retried on the next loop tick (`retryPendingIncidents`), latest state per
- * key winning, so a router restart does not drop a failure.
+ * key winning, so a receiver restart does not drop a failure.
  */
 
 type WebhookSink = Extract<Sink, { type: 'webhook' }>
@@ -32,7 +32,7 @@ interface Payload {
   status: IncidentStatus
   click?: string
   actions?: IncidentAction[]
-  /** With `resolved`: the router deletes the message instead of editing it. */
+  /** With `resolved`: the receiver deletes the message instead of editing it. */
   redact?: boolean
 }
 
@@ -55,7 +55,7 @@ export async function sendIncident(sink: WebhookSink, opts: Message): Promise<vo
   const row = opts.key
     ? (db.prepare(`SELECT open FROM incidents WHERE key = ?`).get(opts.key) as { open: number } | undefined)
     : undefined
-  // Only resolve what this process opened (or a restart remembered): the router would
+  // Only resolve what this process opened (or a restart remembered): the receiver would
   // ignore it anyway, and this keeps every healthy sync and deploy off the wire.
   if (status === 'resolved' && !row?.open) return
 
@@ -103,7 +103,7 @@ async function deliver(sink: Pick<WebhookSink, 'url_env' | 'token_env'>, slot: s
     logEvent({
       level: 'warn',
       kind: 'system',
-      message: 'notification router unreachable; will retry',
+      message: 'notification webhook unreachable; will retry',
       detail: (err as Error).message,
     })
     return false

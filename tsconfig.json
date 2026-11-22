@@ -19,15 +19,12 @@
     "jsx": "react-jsx",
     "jsxImportSource": "hono/jsx",
 
-    "outDir": "dist",
-    "rootDir": "src",
-    "sourceMap": true,
-    "declaration": false,
+    "noEmit": true,
 
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "test"]
+  "include": ["src/**/*", "test/**/*"],
+  "exclude": ["node_modules", "dist"]
 }

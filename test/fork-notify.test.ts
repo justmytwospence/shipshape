@@ -30,6 +30,7 @@ const { eligibleGroups, isFork } = await import('../src/gitops/ship.ts')
 const { PolicySchema } = await import('../src/config.ts')
 const { mockFetch, assertAllMocked, json, status } = await import('./helpers/http.ts')
 const { parseImageRef } = await import('../src/images/ref.ts')
+const { scannedService } = await import('./helpers/scanned.ts')
 type ScannedService = import('../src/compose/scan.ts').ScannedService
 
 setMinSpacingForTests(0)
@@ -39,36 +40,17 @@ const API = 'https://api.github.com/repos/o/r'
 const KEY = forkIncidentKey('books', 'app')
 
 function fork(waitsOn: string[], upstream = 'ghcr.io/o/r:v1.2.0@sha256:' + 'a'.repeat(64)): ScannedService {
-  return {
+  return scannedService({
     stack: 'books',
     service: 'app',
     composeFile: 'books/docker-compose.yaml',
     imageRaw: 'app-fork:v1.2.0-abc',
     ref: parseImageRef(upstream),
-    labels: {},
-    profiles: [],
-    dormant: false,
     hasBuild: true,
-    buildContext: "https://github.com/me/r.git#abc1234abc1234abc1234abc1234abc1234abc12",
-    watched: true,
-    unwatchable: null,
+    buildContext: 'https://github.com/me/r.git#abc1234abc1234abc1234abc1234abc1234abc12',
     pattern: 'digest',
-    tagInclude: null,
-    policyLabel: null,
-    sourceLabel: null,
-    changelogLabel: null,
-    claudeLabel: null,
-    deployLabel: null,
-    probePort: null,
-    archivePre: null,
-    networkMode: null,
-    prLabel: null,
-    proposeLabel: null,
-    groupLabel: null,
-    unknownLabels: [],
-    labelProblems: [],
     fork: { upstream, waitsOn },
-  }
+  })
 }
 
 function seedImage(svc: ScannedService): void {

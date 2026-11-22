@@ -90,6 +90,7 @@ const bundle = (o: Partial<NotesBundle> = {}): NotesBundle => ({
   container: [],
   fetches: [],
   notes: [],
+  external: null,
   incomplete: false,
   ...o,
 })

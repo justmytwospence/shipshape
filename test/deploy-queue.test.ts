@@ -96,7 +96,7 @@ test('a tick takes a bounded slice, leaving the rest queued', () => {
   }
   assert.equal(dueJobs().length, 3, 'default cap')
   assert.equal(
-    getDb().prepare(`SELECT COUNT(*) c FROM deploys WHERE status='pending'`).get().c,
+    (getDb().prepare(`SELECT COUNT(*) c FROM deploys WHERE status='pending'`).get() as { c: number }).c,
     6,
     'the rest stay queued rather than being dropped',
   )

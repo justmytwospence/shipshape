@@ -57,7 +57,7 @@ test('a verb the state does not offer is refused with a reason, not an exception
   assert.equal(r.ok, false)
   assert.match(r.message, /nothing is waiting to be deployed/)
   // And nothing was written.
-  assert.equal(getDb().prepare(`SELECT COUNT(*) c FROM deploys`).get<{ c: number }>().c, 0)
+  assert.equal((getDb().prepare(`SELECT COUNT(*) c FROM deploys`).get() as { c: number }).c, 0)
 })
 
 test('a verb on an update that has been deleted says so', async () => {

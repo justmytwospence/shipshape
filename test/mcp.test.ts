@@ -104,7 +104,7 @@ test('MCP declarations, context and guidance are complete, bounded and read-only
   assert.match(prompt.messages[0].content.text, /Do not run an action/)
   assert.ok((await rpc('prompts/get', { name: 'review-update', arguments: { id: '../escape' } })).error)
   assert.equal(requests, 0)
-  assert.equal(getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(id).state, 'frozen')
+  assert.equal((getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(id) as { state: string }).state, 'frozen')
 })
 
 test('get_update says which verbs are allowed now', async () => {

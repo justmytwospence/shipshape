@@ -20,6 +20,7 @@ const { detect } = await import('../src/detect.ts')
 const { resetResolverMemo } = await import('../src/resolver/index.ts')
 const { parseImageRef } = await import('../src/images/ref.ts')
 const { mockFetch, assertAllMocked, json, status, text } = await import('./helpers/http.ts')
+const { scannedService } = await import('./helpers/scanned.ts')
 type ScannedService = import('../src/compose/scan.ts').ScannedService
 
 setMinSpacingForTests(0)
@@ -30,32 +31,7 @@ beforeEach(() => {
 })
 
 function svc(stack: string, service: string, image: string, pattern: string): ScannedService {
-  return {
-    stack,
-    service,
-    composeFile: `${stack}/docker-compose.yaml`,
-    imageRaw: image,
-    ref: parseImageRef(image),
-    labels: {},
-    profiles: [],
-    hasBuild: false,
-    buildContext: null,
-    watched: true,
-    unwatchable: null,
-    pattern,
-    tagInclude: null,
-    policyLabel: null,
-    sourceLabel: null,
-    claudeLabel: null,
-    deployLabel: null,
-    probePort: null,
-    archivePre: null,
-    networkMode: null,
-    prLabel: null,
-    proposeLabel: null,
-    groupLabel: null,
-    wud: { watch: null, tagInclude: null, gated: false, link: null },
-  }
+  return scannedService({ stack, service, imageRaw: image, ref: parseImageRef(image), pattern })
 }
 
 const hubTags = (repo: string, tags: string[]) => ({

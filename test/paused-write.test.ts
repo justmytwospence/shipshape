@@ -67,7 +67,7 @@ test('an old file reads as paused, without saying so', () => {
 
 test('the switch can be written into a file that has never carried it', async () => {
   const res = await settings.applySettings({ paused: 'false' })
-  assert.equal(res.ok, true, res.ok ? '' : res.error)
+  assert.equal(res.ok, true, res.ok ? '' : res.errors.join('; '))
 
   const text = readFileSync(join(repo, 'shipshape', 'config', 'policy.yaml'), 'utf8')
   assert.match(text, /^paused: false$/m, 'the key is written at the top level')
@@ -80,7 +80,7 @@ test('the switch can be written into a file that has never carried it', async ()
 
 test('flipping it back rewrites the same line rather than adding another', async () => {
   const res = await settings.applySettings({ paused: 'true' })
-  assert.equal(res.ok, true, res.ok ? '' : res.error)
+  assert.equal(res.ok, true, res.ok ? '' : res.errors.join('; '))
 
   const text = readFileSync(join(repo, 'shipshape', 'config', 'policy.yaml'), 'utf8')
   assert.equal(text.match(/^paused:/gm)?.length, 1, 'one line, not two')

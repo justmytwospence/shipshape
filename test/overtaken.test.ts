@@ -89,7 +89,7 @@ test('once retired it offers nothing to press', () => {
   pr(79, u79, { mergedAt: at(6) })
   pr(93, update({ from: 'b', to: 'c' }), { mergedAt: at(30) })
   retireOvertaken()
-  assert.deepEqual(actionsFor({ state: stateOf(u79).state as never, prNumber: 79, deployStatus: 'failed' }), [])
+  assert.deepEqual(actionsFor({ state: stateOf(u79).state as never, deployStatus: 'failed' }), [])
 })
 
 test('an update whose own deploy is queued or running keeps its own outcome', () => {

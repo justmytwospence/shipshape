@@ -35,7 +35,7 @@ RUN apk add --no-cache --virtual .build-deps python3 make g++ \
     && npm ci \
     && apk del .build-deps
 
-COPY tsconfig.json ./
+COPY tsconfig.json tsconfig.build.json ./
 COPY src/ ./src/
 COPY public/ ./public/
 RUN npm run build

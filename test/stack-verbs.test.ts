@@ -75,7 +75,7 @@ test('the newest deploy is the one addressed', () => {
 
 test('deploy incidents carry retry and roll back; others carry nothing', () => {
   const actions = deployActions('shipshape:deploy:paseo')!
-  assert.deepEqual(actions.map((a) => [a.emoji, a.do.verb, a.do.stack]), [
+  assert.deepEqual(actions.map((a) => [a.emoji, a.do.verb, (a.do as { stack: string }).stack]), [
     ['🔁', 'retry', 'paseo'],
     ['⏪', 'rollback', 'paseo'],
   ])

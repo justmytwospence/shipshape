@@ -10,17 +10,17 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "npm run css && tsc && cp src/prompts/*.md dist/prompts/",
+    "build": "npm run css && tsc -p tsconfig.build.json && cp src/prompts/*.md dist/prompts/",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test 'test/**/*.test.ts' 'test/web/*.test.tsx'",
+    "test": "node --import tsx --import ./test/setup.ts --test 'test/**/*.test.ts' 'test/web/*.test.tsx'",
     "resolve-report": "tsx src/bin/resolve-report.ts",
     "jev-replay": "tsx src/bin/jev-replay.ts",
     "dev:ui": "node bin/dev-ui.mjs",
     "shots": "node bin/shots.mjs",
     "css": "tailwindcss -i src/styles/app.css -o public/app.css --minify",
     "css:watch": "tailwindcss -i src/styles/app.css -o public/app.css --watch",
-    "pretest": "npm run css"
+    "pretest": "npm run css && node bin/check-test-prereqs.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

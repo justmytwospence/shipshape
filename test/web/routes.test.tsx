@@ -168,7 +168,7 @@ test('the old addresses still land somewhere', async () => {
     ['/settings/advanced', '/settings'],
     ['/settings/raw', '/settings'],
     ['/settings/digest', '/settings#notifications'],
-  ]) {
+  ] as [string, string][]) {
     const res = await app.request(from)
     assert.equal(res.status, 301, from)
     assert.equal(res.headers.get('location'), to, from)

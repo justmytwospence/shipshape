@@ -631,7 +631,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
       }),
     ),
     'settings-page': String(
-      SettingsPage({ tab: 'general', groups: SETTING_GROUPS, readyCount: 2, chrome: CH }),
+      SettingsPage({ groups: SETTING_GROUPS, readyCount: 2, chrome: CH }),
     ),
     'status-page': String(StatusPage({ data: STATUS, chrome: CH })),
     // fragments

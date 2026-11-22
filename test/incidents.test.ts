@@ -57,7 +57,7 @@ test('resolving an open incident sends one bare resolution, once', async () => {
 test('an unkeyed message is a one-shot event', async () => {
   await notify({ title: 'note', body: 'y' })
   assert.equal(wire[0]!.status, 'event')
-  assert.equal(getDb().prepare(`SELECT COUNT(*) c FROM incidents`).get()!.c, 0)
+  assert.equal((getDb().prepare(`SELECT COUNT(*) c FROM incidents`).get() as { c: number }).c, 0)
 })
 
 test('a sink only hears the events it asks for', async () => {

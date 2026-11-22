@@ -22,6 +22,7 @@ const { canRestore } = await import('../src/restore/index.ts')
 const { PolicySchema } = await import('../src/config.ts')
 
 type Io = import('../src/restore/index.ts').RestoreIo
+type Fetch = import('../src/restore/offsite.ts').Fetch
 
 let tick = 0
 function io(over: Partial<Io> = {}): Io & { dumps: string[] } {
@@ -115,9 +116,14 @@ test('only the newest few are kept per service, files and rows', async () => {
 
 // ---------------------------------------------------------------------------- offsite
 
-const cfg = { type: 'mcp' as const, url: 'http://backup-mcp:8000/mcp', tool: 'run_backup', job: '{stack}' }
-const reply = (body: unknown, ok = true, sse = false) =>
-  (async () => ({ ok, status: ok ? 200 : 500, text: async () => (sse ? `data: ${JSON.stringify(body)}\n\n` : JSON.stringify(body)) })) as never
+const cfg = { type: 'mcp' as const, url: 'http://backup-mcp:8000/mcp', tool: 'run_backup', job: '{stack}',
+  status_tool: 'run_status',
+  list_tool: 'list_jobs',
+  wait_minutes: 30,
+  poll_seconds: 10,
+}
+const reply = (body: unknown, ok = true, sse = false): Fetch =>
+  async () => ({ ok, status: ok ? 200 : 500, text: async () => (sse ? `data: ${JSON.stringify(body)}\n\n` : JSON.stringify(body)) })
 
 test('the offsite job is the stack\'s own label, else the template', () => {
   assert.equal(offsiteJob('{stack}', 'n8n', null), 'n8n')
@@ -131,7 +137,7 @@ test('offsite calls the tool with the job and reads either answer shape', async 
   for (const sse of [false, true]) {
     const r = await runOffsite('n8n', null, cfg, async (url, init) => {
       sent = { url, body: JSON.parse(init.body) }
-      return reply(ok, true, sse)()
+      return reply(ok, true, sse)(url, init)
     })
     assert.deepEqual(r, { status: 'ok', detail: 'n8n: started' })
   }

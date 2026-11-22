@@ -18,7 +18,8 @@ import { actionsFor, refusalFor } from '../updates/actions.ts'
 import { contextFor, type VerbResult } from '../updates/verbs.ts'
 import { isOperatorVerb, runOperatorVerb } from '../updates/operator-verbs.ts'
 import { verifyAction } from '../notify/links.ts'
-import { ActConfirm, ActDone } from './views/ui/act.tsx'
+import { ACT_EXPIRED, ACT_GONE, ActConfirm, ActDone, ActError } from './views/ui/act.tsx'
+import { ErrorPage, notFoundCopy, serverErrorCopy } from './views/ui/errors.tsx'
 import {
   inboxNeedsYou,
   inboxParked,
@@ -710,9 +711,9 @@ export function createApp(): Hono {
    */
   app.get('/act/:token', (c) => {
     const act = verifyAction(c.req.param('token'))
-    if (!act || !isOperatorVerb(act.verb)) return c.text('This link is not valid or has expired.', 404)
+    if (!act || !isOperatorVerb(act.verb)) return c.html(ActError(ACT_EXPIRED) as string, 404)
     const v = updateView(act.updateId)
-    if (!v) return c.text('That update no longer exists.', 404)
+    if (!v) return c.html(ActError(ACT_GONE) as string, 404)
     const label = v.presented[act.verb as keyof typeof v.presented]?.label ?? act.verb
     return c.html(
       ActConfirm({
@@ -727,7 +728,7 @@ export function createApp(): Hono {
 
   app.post('/act/:token', async (c) => {
     const act = verifyAction(c.req.param('token'))
-    if (!act || !isOperatorVerb(act.verb)) return c.text('This link is not valid or has expired.', 404)
+    if (!act || !isOperatorVerb(act.verb)) return c.html(ActError(ACT_EXPIRED) as string, 404)
     const r = await runOperatorVerb(act.updateId, act.verb)
     return c.html(ActDone({ ok: r.ok, message: r.message, id: act.updateId }) as string)
   })
@@ -983,6 +984,47 @@ export function createApp(): Hono {
   app.get('/settings/status', (c) => c.redirect('/status', 301))
   app.get('/images', (c) => c.redirect('/services', 301))
 
+
+  // Unknown paths and unexpected errors are pages in the shell, not bare text. htmx does
+  // not swap a 4xx or 5xx body, so an htmx request gets an empty body and a toast instead.
+  // The page must render even when the database is what broke.
+  const safeChrome = (c: Context): Chrome | undefined => {
+    try {
+      return chrome(c)
+    } catch {
+      return undefined
+    }
+  }
+  const errorResponse = (c: Context, status: 404 | 500) => {
+    if (c.req.header('HX-Request')) {
+      toastHeader(
+        c,
+        status === 404 ? 'warn' : 'error',
+        status === 404
+          ? 'That no longer exists.'
+          : 'Something went wrong. It may have been partly carried out; check Activity before trying again.',
+      )
+      return c.body(null, status)
+    }
+    const url = new URL(c.req.url)
+    const copy = status === 404 ? notFoundCopy(c.req.path) : serverErrorCopy(c.req.method, url.pathname + url.search)
+    return c.html(ErrorPage({ ...copy, chrome: safeChrome(c) }) as string, status)
+  }
+  app.notFound((c) => errorResponse(c, 404))
+  app.onError((err, c) => {
+    console.error('[web]', err)
+    try {
+      logEvent({
+        level: 'error',
+        kind: 'system',
+        message: `unhandled error: ${c.req.method} ${c.req.path}`,
+        detail: err instanceof Error ? (err.stack ?? err.message) : String(err),
+      })
+    } catch {
+      // The database may be what failed; the container log has it.
+    }
+    return errorResponse(c, 500)
+  })
 
   return app
 }

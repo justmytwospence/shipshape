@@ -44,3 +44,36 @@ export const ActDone: FC<{ ok: boolean; message: string; id: number }> = ({ ok, 
     </div>
   </Layout>
 )
+
+/** A signed link that cannot be acted on: expired, forged, or pointing at an update that is gone. */
+export const ActError: FC<{ heading: string; message: string; href: string; label: string }> = ({
+  heading,
+  message,
+  href,
+  label,
+}) => (
+  <Layout title={heading} nav={null}>
+    <div class="mx-auto flex w-full max-w-xl flex-col gap-3 p-4">
+      <h2 class="text-base font-semibold">{heading}</h2>
+      <p class="text-sm">{message}</p>
+      <a href={href} class="btn btn-ghost btn-sm tap self-start">
+        {label}
+      </a>
+    </div>
+  </Layout>
+)
+
+export const ACT_EXPIRED = {
+  heading: 'This link has expired',
+  message:
+    "Action links from messages stop working after 14 days, or when shipshape's action secret changes. Open the update in shipshape to act on it.",
+  href: '/',
+  label: 'Open shipshape',
+}
+
+export const ACT_GONE = {
+  heading: 'That update is gone',
+  message: 'It was shipped, skipped or superseded after this message was sent.',
+  href: '/updates',
+  label: 'Open Updates',
+}

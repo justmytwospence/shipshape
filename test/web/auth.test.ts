@@ -596,3 +596,11 @@ test('the static exemption is exactly the files in public/', async () => {
     assert.notEqual((await app.request(p, {}, socketBindings('192.0.2.99'))).status, 200, p)
   }
 })
+
+test('the signed action page is styled when the link is invalid', async () => {
+  const app = appWithConfig()
+  const res = await app.request('/act/garbage', { headers: identity }, socketBindings(TEST_PROXY))
+  assert.equal(res.status, 404)
+  assert.match(res.headers.get('content-type') ?? '', /text\/html/)
+  assert.match(await res.text(), /This link has expired/)
+})

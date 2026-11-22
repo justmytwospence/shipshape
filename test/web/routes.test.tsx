@@ -305,3 +305,51 @@ test('the CSP hash matches the theme script the page actually inlines', async ()
 test('proxy mode does not render a sign-out control', async () => {
   assert.doesNotMatch(await (await app.request('/')).text(), /action="\/logout"/)
 })
+
+test('an unknown path is a styled 404 inside the shell', async () => {
+  const res = await app.request('/no-such-page')
+  assert.equal(res.status, 404)
+  const html = await res.text()
+  assert.match(html, /<html lang="en"/)
+  assert.match(html, /That page is not here/)
+  assert.match(html, /href="\/"/)
+})
+
+test('an unknown update or service says it is gone', async () => {
+  assert.match(await (await app.request('/updates/9999')).text(), /That update is gone/)
+  assert.match(await (await app.request('/services/nope/nope')).text(), /That service is gone/)
+})
+
+test('a 404 or 500 asked by htmx has an empty body and a toast', async () => {
+  const res = await app.request('/nope', { headers: { 'HX-Request': 'true' } })
+  assert.equal(res.status, 404)
+  assert.equal(await res.text(), '')
+  assert.match(res.headers.get('hx-trigger') ?? '', /"level":"warn"/)
+})
+
+test('an exception in a handler is a styled 500, logged, and never leaks the error', async () => {
+  const { createApp } = await import('../../src/web/server.ts')
+  const { getDb } = await import('../../src/db.ts')
+  const s = createApp()
+  s.get('/boom', () => {
+    throw new Error('secret-detail')
+  })
+  const req = (headers: Record<string, string> = {}) =>
+    s.request('/boom', { headers: { 'Remote-User': TEST_USER, ...headers } }, socketBindings(TEST_PROXY))
+  const original = console.error
+  console.error = () => {}
+  try {
+    const res = await req()
+    assert.equal(res.status, 500)
+    const html = await res.text()
+    assert.match(html, /Something went wrong/)
+    assert.doesNotMatch(html, /secret-detail/)
+    const row = getDb().prepare(`SELECT message FROM events WHERE message LIKE 'unhandled error: GET /boom%'`).get()
+    assert.ok(row)
+    const hx = await req({ 'HX-Request': 'true' })
+    assert.equal(await hx.text(), '')
+    assert.match(hx.headers.get('hx-trigger') ?? '', /"level":"error"/)
+  } finally {
+    console.error = original
+  }
+})

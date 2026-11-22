@@ -83,6 +83,8 @@
 
   // A request that never arrived is the one failure htmx cannot express as content.
   function failed(e) {
+    // The server already said what happened in its own toast; a second one would repeat it.
+    if (e.detail && e.detail.xhr && e.detail.xhr.getResponseHeader && e.detail.xhr.getResponseHeader('HX-Trigger')) return
     toast({
       level: 'error',
       text:

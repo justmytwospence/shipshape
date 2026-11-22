@@ -30,7 +30,10 @@ export function configured(): boolean {
 let transport: Transporter | null = null
 
 function mailer(): Transporter {
-  transport ??= createTransport(env.smtpUrl, {
+  // The URL goes inside the options object: the second argument of createTransport is
+  // message defaults (from, to, headers), so timeouts passed there were silently ignored.
+  transport ??= createTransport({
+    url: env.smtpUrl,
     // A hung SMTP server must not hold up the loop that is trying to tell you something
     // went wrong. Fail fast and log; the Activity page still has the event.
     connectionTimeout: 15_000,

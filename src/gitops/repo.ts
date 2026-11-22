@@ -15,18 +15,50 @@ import { looksLikeGitAuthFailure, noteAuthFailure } from '../health/github-auth.
  *     dirty working tree in the live checkout can never block or corrupt a PR.
  */
 
+export interface GitCredential {
+  origin: string
+  username: string
+  password: string
+}
+
+/** The origin of an http(s) URL, or null for a local path, ssh or anything else. */
+function originOf(url: string): string | null {
+  try {
+    const u = new URL(url)
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.origin : null
+  } catch {
+    return null
+  }
+}
+
+/** Who gets which credential. P2b replaces the values (GIT_TOKEN / GIT_USERNAME); the scoping stays. */
+export function gitCredentials(remoteUrl = httpsUrl(), githubToken = env.githubToken): GitCredential[] {
+  if (!githubToken) return []
+  const out: GitCredential[] = []
+  const remote = originOf(remoteUrl)
+  if (remote) out.push({ origin: remote, username: 'x-access-token', password: githubToken })
+  // Fork and upstream remotes live on github.com whatever the compose remote is.
+  if (remote !== 'https://github.com') out.push({ origin: 'https://github.com', username: 'x-access-token', password: githubToken })
+  return out
+}
+
 /**
  * Credentials go in through an inline helper rather than a remote URL or a config file:
  * a token embedded in a URL leaks into `git remote -v`, reflogs, and error messages.
- * The empty first helper clears anything inherited from system config.
+ * The empty first helper clears anything inherited from system config; each origin then
+ * gets a helper of its own (`credential.<origin>.helper`), so nothing is offered to any
+ * other host -- not a redirect, a submodule, or a fork URL somewhere else. The values
+ * travel in the environment, never in argv.
  */
-function credentialArgs(): string[] {
-  return [
-    '-c',
-    'credential.helper=',
-    '-c',
-    'credential.helper=!f(){ echo username=x-access-token; echo password=$GITHUB_TOKEN; };f',
-  ]
+export function credentialArgs(creds: GitCredential[] = gitCredentials()): { args: string[]; env: Record<string, string> } {
+  const args = ['-c', 'credential.helper=']
+  const vars: Record<string, string> = {}
+  creds.forEach((c, i) => {
+    args.push('-c', `credential.${c.origin}.helper=!f(){ echo username=$SHIPSHAPE_GIT_USERNAME_${i}; echo password=$SHIPSHAPE_GIT_PASSWORD_${i}; };f`)
+    vars[`SHIPSHAPE_GIT_USERNAME_${i}`] = c.username
+    vars[`SHIPSHAPE_GIT_PASSWORD_${i}`] = c.password
+  })
+  return { args, env: vars }
 }
 
 export function httpsUrl(): string {
@@ -52,12 +84,13 @@ export async function git(
     env?: Record<string, string>
   } = {},
 ): Promise<GitResult> {
-  const full = [...(opts.remote ? credentialArgs() : []), ...args]
+  const creds = opts.remote ? credentialArgs() : { args: [], env: {} }
+  const full = [...creds.args, ...args]
   const execOpts: Options = {
     cwd,
     reject: false,
     timeout: opts.timeoutMs ?? 120_000,
-    env: { ...(opts.env ?? {}), GITHUB_TOKEN: env.githubToken, GIT_TERMINAL_PROMPT: '0' },
+    env: { ...(opts.env ?? {}), ...creds.env, GIT_TERMINAL_PROMPT: '0' },
   }
   const r = await execa('git', full, execOpts)
   const out = {

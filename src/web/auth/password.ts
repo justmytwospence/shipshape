@@ -1,5 +1,6 @@
-import { readFileSync } from 'node:fs'
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import type { Context } from 'hono'
 import { browserOrigin } from './proxy.ts'
 
@@ -68,6 +69,30 @@ export interface PasswordConfig {
 }
 export type PasswordParse = { ok: true; config: PasswordConfig } | { ok: false; problems: string[] }
 
+/**
+ * The key the session fingerprint is made with: 32 random bytes in DATA_DIR/session-key,
+ * created on first use. Keyed, so a copy of the database alone is no help in guessing the
+ * password; per install, so two installs with one password do not share fingerprints.
+ */
+export function fingerprintKey(dataDir: string): { ok: true; key: Buffer } | { ok: false; problem: string } {
+  const file = join(dataDir, 'session-key')
+  try {
+    mkdirSync(dataDir, { recursive: true, mode: 0o700 })
+    try {
+      writeFileSync(file, randomBytes(32).toString('hex') + '\n', { mode: 0o600, flag: 'wx' })
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'EEXIST') throw err
+    }
+    const hex = readFileSync(file, 'utf8').trim()
+    if (!/^[0-9a-f]{64}$/.test(hex)) {
+      return { ok: false, problem: `${file} is not a key shipshape wrote. Delete it and restart: everyone is signed out once.` }
+    }
+    return { ok: true, key: Buffer.from(hex, 'hex') }
+  } catch (err) {
+    return { ok: false, problem: `cannot create ${file} (${(err as { code?: string }).code ?? 'error'}): DATA_DIR must be writable.` }
+  }
+}
+
 export function parsePasswordConfig(env: NodeJS.ProcessEnv): PasswordParse {
   const problems: string[] = []
   let password: string | null = null
@@ -92,11 +117,13 @@ export function parsePasswordConfig(env: NodeJS.ProcessEnv): PasswordParse {
       'SHIPSHAPE_ALLOWED_ORIGIN must be one origin such as https://shipshape.example.com: scheme, host and optional port, with no path or trailing slash.',
     )
   }
-  if (problems.length > 0 || password === null) return { ok: false, problems }
+  const keyed = problems.length === 0 && password !== null ? fingerprintKey(env.DATA_DIR || '/data') : null
+  if (keyed && !keyed.ok) problems.push(keyed.problem)
+  if (problems.length > 0 || password === null || !keyed || !keyed.ok) return { ok: false, problems }
 
   const salt = randomBytes(16)
   const key = scryptSync(password, salt, 64)
-  const fingerprint = scryptSync(password, 'shipshape-pw-fingerprint-v1', 16).toString('hex')
+  const fingerprint = createHmac('sha256', keyed.key).update(password).digest('hex').slice(0, 32)
   return {
     ok: true,
     config: {

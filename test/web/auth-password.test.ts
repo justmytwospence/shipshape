@@ -1,6 +1,7 @@
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { scryptSync } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { socketBindings } from '../helpers/trusted-proxy.ts'
@@ -239,4 +240,33 @@ test('the shell offers Sign out in password mode', async () => {
   const req = app()
   const token = await signIn(req)
   assert.match(await (await req('/status', { headers: cookie(token) })).text(), /action="\/logout"/)
+})
+
+test('the session fingerprint is keyed per install', async () => {
+  const req = app()
+  await signIn(req)
+  const keyFile = join(dir, 'session-key')
+  assert.equal(statSync(keyFile).mode & 0o777, 0o600)
+  assert.match(readFileSync(keyFile, 'utf8'), /^[0-9a-f]{64}\n$/)
+  const row = getDb().prepare(`SELECT pw_fingerprint FROM sessions ORDER BY created_at DESC LIMIT 1`).get() as { pw_fingerprint: string }
+  assert.notEqual(row.pw_fingerprint, scryptSync(PASSWORD, 'shipshape-pw-fingerprint-v1', 16).toString('hex'))
+})
+
+test('the key survives a restart', async () => {
+  const token = await signIn(app())
+  const res = await app()('/status', { headers: cookie(token) })
+  assert.equal(res.status, 200)
+})
+
+test('a malformed session-key is a setup problem', async () => {
+  const d = mkdtempSync(join(tmpdir(), 'shipshape-key-'))
+  try {
+    writeFileSync(join(d, 'session-key'), 'nonsense')
+    const { parsePasswordConfig } = await import('../../src/web/auth/password.ts')
+    const r = parsePasswordConfig({ SHIPSHAPE_PASSWORD: 'x'.repeat(12), DATA_DIR: d })
+    assert.equal(r.ok, false)
+    assert.match(r.ok ? '' : r.problems.join(), /is not a key shipshape wrote/)
+  } finally {
+    rmSync(d, { recursive: true, force: true })
+  }
 })

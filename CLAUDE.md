@@ -14,19 +14,27 @@ re-deriving the model from `config.ts`.
 
 ```
 npm run dev:ui      # sandbox UI dev server on :8081 (see below) -- use this, not `npm run dev`
-npm test            # node --test via tsx
-npm run typecheck   # tsc --noEmit (note: it does not typecheck test/)
+npm test            # node --test via tsx; needs git and the `docker compose` CLI on PATH
+npm run typecheck   # tsc --noEmit over src/ and test/
 npm run shots       # screenshot matrix, see "Look at it"
 ```
 
-`npm run dev:ui` (`bin/dev-ui.mjs`) builds a throwaway world in `.dev/`: an **online-backup
-copy** of the live SQLite database (never the file itself — it is WAL and the container is
-writing to it) and a `git archive` of the compose repo with its own throwaway git repo and
-no remote. It sets `SHIPSHAPE_UI_DEV=1`, which stops the scheduler from starting, and
-deletes every credential from the environment.
+`npm run dev:ui` (`bin/dev-ui.mjs`) builds a throwaway world in `.dev/`. By default that is an
+empty database and an empty scratch git repository: the first-run state. `--repo <path>`
+swaps in a `git archive` of a compose repository's HEAD (in a throwaway repo with no
+remote) and `--db <file>` an **online-backup copy** of a real SQLite database (never the
+file itself: it is WAL and its owner is still writing to it). It sets `SHIPSHAPE_UI_DEV=1`,
+which stops the scheduler from starting, deletes every credential from the environment and
+points `DOCKER_HOST` at nothing.
 
-**Never point a dev server at the real checkout.** `POST /settings` commits into
-`REPO_DIR`, and a configured `REPO_DIR` + `GITHUB_REPO` arms the scheduler — git sync,
+The app answers only its trusted proxy, with a user header, and has no development bypass.
+So `dev:ui` runs the app on port+1 and a small proxy on :8081 that adds `Remote-User: dev`:
+browse :8081, never :8082. A POST must carry the origin the app was told (`--origin`,
+default `http://127.0.0.1:8081`). Behind an SSH tunnel you browse `http://localhost:8081`, so
+start it with `--origin http://localhost:8081` or every button answers 403.
+
+**Never point a dev server at a real checkout.** `POST /settings` commits into
+`REPO_DIR`, and a configured `REPO_DIR` + `GITHUB_REPO` arms the scheduler: git sync,
 GitHub polling, container recreation. That is not a dev server, it is a second production
 instance.
 
@@ -40,14 +48,14 @@ Every UI change gets a screenshot pass at **phone and desktop, light and dark**,
 routes it touched:
 
 ```
-node bin/shots.mjs --label my-change --routes / /updates          # dev server
+node bin/shots.mjs --label my-change --routes / /updates          # dev server on :8081
 node bin/shots.mjs --label after --compare baseline               # side-by-side sheet
-node bin/shots.mjs --base http://<container-ip>:8080 --label prod  # the deployed container
+node bin/shots.mjs --base https://shipshape.example.org --cdp http://127.0.0.1:9222 --label prod
 ```
 
-The container's address changes every time it is recreated. Find it with
-`docker inspect shipshape --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}'`
-and use the `10.0.74.x` one.
+The last form is for a deployed instance. It answers only its own reverse proxy, so a bare
+headless Chrome gets a 403: point `--cdp` at a Chrome that is already signed in to it, and
+`--base` at the address that browser uses.
 
 It needs a CDP endpoint. This host is headless, so run one in a container that shares the
 host's network (CDP stays bound to 127.0.0.1):
@@ -72,20 +80,21 @@ a regression, and a drop in `rowsVisible` on a list page as one too (Inbox, Upda
 Services should show 20+ rows at 1440×900 and ~15 on a phone). `.shots/baseline` is the
 pre-redesign UI — keep it.
 
-**Polypane** is the better tool when the operator is at their Mac, because it shows every
-breakpoint at once and it is a real browser with a real session. It runs there, not here,
-so it needs a tunnel:
+**Polypane** is the better tool when you are at a desktop machine, because it shows every
+breakpoint at once and it is a real browser with a real session. It runs there, not on a
+headless dev host, so it needs a tunnel:
 
 ```sh
-# on the Mac
+# on the desktop
 open -a Polypane --args --remote-debugging-port=5858
-ssh -N -R 5858:127.0.0.1:5858 -L 8081:127.0.0.1:8081 nuc   # keep open
+ssh -N -R 5858:127.0.0.1:5858 -L 8081:127.0.0.1:8081 <dev-host>   # keep open
 ```
 
-Then `curl -sf --max-time 2 http://127.0.0.1:5858/json/version` answers here, and the
-`chrome-devtools` MCP server drives it; otherwise use `chrome-headless` or `bin/shots.mjs`.
-Polypane holds a real Authelia session, so treat it as the operator's browser: look, do
-not click through destructive flows.
+Then `curl -sf --max-time 2 http://127.0.0.1:5858/json/version` answers on the dev host,
+and the `chrome-devtools` MCP server drives it; otherwise use `chrome-headless` or
+`bin/shots.mjs`. Browse `http://localhost:8081` and start `dev:ui` with
+`--origin http://localhost:8081`. If Polypane holds a signed-in session to a real
+deployment, treat it as the operator's browser: look, do not click through destructive flows.
 
 ## The interface
 
@@ -187,12 +196,15 @@ into one place, so keep it there:
 A change is not done when it is committed; it is done when it is running.
 
 ```
-# from the PRIMARY checkout (/home/spencer/homelab), never a worktree --
-# compose resolves relative volume paths and the project name from the checkout it runs in
-docker compose -f shipshape/docker-compose.yaml up -d --build
+# from the primary checkout of the compose repository that runs shipshape, never a
+# worktree -- compose resolves relative volume paths and the project name from the
+# checkout it runs in
+docker compose -f <stack>/docker-compose.yaml up -d --build
 curl -s http://<container-ip>:8080/health
-node shipshape/app/bin/shots.mjs --base http://<container-ip>:8080 --label prod-after
 ```
 
-Then commit the submodule pointer in the parent repo. shipshape excludes its own stack, so
-it never updates itself — that rebuild is always by hand.
+Find the address with
+`docker inspect shipshape --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}'`.
+If the compose repository carries this repository as a submodule, commit the new pointer
+there. shipshape excludes its own stack, so it never updates itself -- that rebuild is
+always by hand.

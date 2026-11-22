@@ -12,16 +12,21 @@
  * container sharing the host's network:
  *
  *   docker run -d --rm --name ss-chrome --network host --shm-size=1g \
+ *     -v "$PWD/bin/shots-fonts.conf:/etc/fonts/local.conf:ro" \
  *     gcr.io/zenika-hub/alpine-chrome:124 --no-sandbox --disable-gpu \
  *     --disable-dev-shm-usage --remote-debugging-port=9222 --hide-scrollbars about:blank
  *
- * With --network host it reaches both the dev server on 127.0.0.1 and the deployed
- * container's address, and CDP stays bound to 127.0.0.1. Pass --cdp to point elsewhere
- * (a local Chrome, or Polypane's --remote-debugging-port).
+ * With --network host it reaches the dev server on 127.0.0.1 (`npm run dev:ui` puts its
+ * authenticating proxy there), and CDP stays bound to 127.0.0.1. Pass --cdp to point
+ * elsewhere (a local Chrome, or Polypane's --remote-debugging-port).
+ *
+ * A deployed instance answers only its own reverse proxy, so a bare headless Chrome gets a
+ * 403 there. To shoot one, give --cdp a Chrome that is already signed in to it (Chrome
+ * with --remote-debugging-port, or Polypane) and --base the address you browse.
  *
  * Usage:
  *   node bin/shots.mjs --label baseline
- *   node bin/shots.mjs --base http://10.0.74.70:8080 --label prod-before
+ *   node bin/shots.mjs --base https://shipshape.example.org --cdp http://127.0.0.1:9222 --label prod
  *   node bin/shots.mjs --routes / /updates --vp phone --scheme dark --full
  *   node bin/shots.mjs --label after --compare baseline
  *
@@ -307,6 +312,7 @@ const version = await fetch(`${args.cdp}/json/version`)
     throw new Error(
       `no CDP endpoint at ${args.cdp} — start one:\n` +
         '  docker run -d --rm --name ss-chrome --network host --shm-size=1g \\\n' +
+        '    -v "$PWD/bin/shots-fonts.conf:/etc/fonts/local.conf:ro" \\\n' +
         '    gcr.io/zenika-hub/alpine-chrome:124 --no-sandbox --disable-gpu \\\n' +
         '    --disable-dev-shm-usage --remote-debugging-port=9222 --hide-scrollbars about:blank',
     )

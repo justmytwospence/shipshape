@@ -12,12 +12,12 @@ suite could not see. Never report a UI change as done on the strength of `npm te
 ## 1. Get a browser
 
 ```
-curl -sf --max-time 2 http://127.0.0.1:5858/json/version   # Polypane, via the Mac's tunnel
+curl -sf --max-time 2 http://127.0.0.1:5858/json/version   # Polypane, via its tunnel
 curl -sf --max-time 2 http://127.0.0.1:9222/json/version   # the local headless container
 ```
 
 If neither answers, start the container (host networking, so it reaches both the dev
-server on 127.0.0.1 and the deployed container's address; CDP stays on 127.0.0.1):
+server on 127.0.0.1; CDP stays on 127.0.0.1):
 
 ```
 docker run -d --rm --name ss-chrome --network host --shm-size=1g \
@@ -28,20 +28,22 @@ docker run -d --rm --name ss-chrome --network host --shm-size=1g \
 
 If Polypane *is* up, prefer it for interactive states (pane filled, dialog, keyboard
 focus) through the `chrome-devtools` MCP server — it is a real browser at every
-breakpoint at once. It is also the operator's own session: look, don't click through
-merges, deploys or rollbacks.
+breakpoint at once. If it holds a signed-in session to a real deployment it is the operator's own: look,
+don't click through ships, deploys or rollbacks.
 
 ## 2. Serve the app
 
 ```
-npm run dev:ui          # :8081, sandbox database + throwaway checkout, scheduler off
-npm run dev:ui -- --fresh   # re-snapshot the live database
-npm run dev:ui -- --empty   # the unconfigured first-run state
+npm run dev:ui                          # :8081 behind a proxy that signs you in; empty first-run state
+npm run dev:ui -- --repo <compose-repo> # a sandbox copy of a compose repository's HEAD
+npm run dev:ui -- --db <shipshape.db>   # a sandbox copy of a real database
+npm run dev:ui -- --empty               # drop the database: the unconfigured first-run state
 ```
 
-Give it ~40s (better-sqlite3 rebuilds on first run) and check `curl -s
-http://127.0.0.1:8081/health`. If `src/styles/app.css` exists, the Tailwind watcher runs
-too; otherwise run `npm run css` yourself before shooting, or every class is missing.
+Give it ~10s and check `curl -s http://127.0.0.1:8081/health`. If `src/styles/app.css`
+exists, the Tailwind watcher runs too; otherwise run `npm run css` yourself before
+shooting, or every class is missing. Browsing by another name than `127.0.0.1` (an SSH
+tunnel's `localhost`) needs `--origin http://localhost:8081`, or every POST answers 403.
 
 ## 3. Capture the matrix
 

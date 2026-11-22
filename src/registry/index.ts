@@ -80,6 +80,9 @@ async function listDockerHubTags(repository: string): Promise<TagInfo[]> {
       if (r.tag_status && r.tag_status !== 'active') continue
       out.push({ tag: r.name, digest: r.digest ?? null, publishedAt: r.last_updated ?? null })
     }
+    if (body.next && new URL(body.next).host !== 'hub.docker.com') {
+      throw new RegistryError(`Docker Hub pointed its tag list at ${new URL(body.next).host}; refusing to follow`)
+    }
     url = body.next ?? ''
   }
   return out
@@ -157,7 +160,15 @@ async function listOciTags(registry: string, repository: string): Promise<TagInf
 
     const link = res.headers.get('link')
     const next = link ? /<([^>]+)>\s*;\s*rel="?next"?/.exec(link)?.[1] : null
-    url = next ? new URL(next, `https://${registry}`).toString() : ''
+    if (next) {
+      const nextUrl = new URL(next, url)
+      if (nextUrl.host !== new URL(url).host) {
+        throw new RegistryError(`${registry} pointed its tag list at ${nextUrl.host}; refusing to follow`)
+      }
+      url = nextUrl.toString()
+    } else {
+      url = ''
+    }
   }
 
   if (url) {

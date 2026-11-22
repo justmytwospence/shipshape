@@ -1,9 +1,7 @@
-import { promises as dns } from 'node:dns'
-import { isIP } from 'node:net'
 import { getDb } from '../db.ts'
 import { readCache, writeCache, type CacheRow } from '../registry/http.ts'
 import { htmlToText } from '../notes/html.ts'
-import { checkUrl, isPrivateAddress } from './hosts.ts'
+import { checkUrl, publicAddress } from './hosts.ts'
 
 /**
  * Fetching a link an operator typed, and nothing it could be turned into.
@@ -91,24 +89,6 @@ export async function safeFetch(link: string): Promise<SafeFetch> {
     return { ok: true, text, contentType: type, bytes: body.bytes, url: current, fromCache: false }
   }
   return { ok: false, reason: `it redirects more than ${MAX_REDIRECTS} times`, transient: false }
-}
-
-/** Every address a name resolves to must be public. */
-async function publicAddress(host: string): Promise<{ ok: true } | { ok: false; reason: string; transient: boolean }> {
-  if (isIP(host.replace(/^\[|\]$/g, ''))) return { ok: true }
-  let addresses: { address: string }[]
-  try {
-    addresses = await dns.lookup(host, { all: true })
-  } catch (err) {
-    const code = (err as { code?: string }).code
-    return code === 'ENOTFOUND'
-      ? { ok: false, reason: `"${host}" does not resolve`, transient: false }
-      : { ok: false, reason: `"${host}" could not be resolved (${code ?? (err as Error).message})`, transient: true }
-  }
-  const bad = addresses.find((a) => isPrivateAddress(a.address))
-  return bad
-    ? { ok: false, reason: `"${host}" resolves to ${bad.address}, a private address`, transient: false }
-    : { ok: true }
 }
 
 function textKind(type: string, path: string): 'html' | 'text' | null {

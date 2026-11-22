@@ -1,4 +1,5 @@
 import { getDb, logEvent } from '../db.ts'
+import { publicAddress, refusedHost } from '../upstream/hosts.ts'
 
 /**
  * Shared HTTP plumbing for registry access: bearer-token caching, ETag revalidation,
@@ -99,16 +100,16 @@ export async function registryFetch(url: string, opts: FetchOpts = {}): Promise<
 
   await pace(host)
   // A hung connection must cost one image 30s, not stall the entire serial scan.
-  let res = await fetch(url, { method, headers, redirect: 'follow', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+  let res = await fetchHops(url, { method, headers })
 
   if (res.status === 401) {
     const challenge = res.headers.get('www-authenticate')
-    const token = challenge ? await acquireToken(challenge, opts.auth ?? null) : null
+    const token = challenge ? await acquireToken(challenge, opts.auth ?? null, host) : null
     if (token) {
       tokenCache.set(scopeKey, token)
       headers.authorization = `Bearer ${token.token}`
       await pace(host)
-      res = await fetch(url, { method, headers, redirect: 'follow', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
+      res = await fetchHops(url, { method, headers })
     }
   }
 
@@ -124,6 +125,48 @@ export async function registryFetch(url: string, opts: FetchOpts = {}): Promise<
   return res
 }
 
+/**
+ * A registry may send a request somewhere else -- a blob to its CDN, a token to its auth
+ * server -- and shipshape follows. Leaving the registry's own host is allowed only over
+ * https, to a public name that resolves to public addresses: a hostile or compromised
+ * registry must not be able to point the scanner at a service inside the lab.
+ */
+async function checkHop(next: URL, home: string, what: 'redirected to' | 'asked for a token from'): Promise<void> {
+  if (next.host === home) return
+  if (next.protocol !== 'https:') throw new RegistryError(`${home} ${what} ${next.origin}, which is not https`)
+  const why = refusedHost(next.hostname)
+  if (why) throw new RegistryError(`${home} ${what} ${next.hostname}, and ${why}`)
+  const pub = await publicAddress(next.hostname)
+  if (!pub.ok) throw new RegistryError(`${home} ${what} ${next.hostname}, and ${pub.reason}`)
+}
+
+/** Fetch with redirects followed by hand, each hop checked, the bearer dropped off-host. */
+async function fetchHops(url: string, init: { method: string; headers: Record<string, string> }): Promise<Response> {
+  const home = new URL(url).host
+  let current = url
+  let headers = { ...init.headers }
+  for (let hop = 0; hop <= 5; hop++) {
+    const res = await fetch(current, {
+      method: init.method,
+      headers,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+    const location = res.headers.get('location')
+    if (![301, 302, 303, 307, 308].includes(res.status) || !location) return res
+    const next = new URL(location, current)
+    await checkHop(next, home, 'redirected to')
+    if (next.host !== new URL(current).host) {
+      // The same rule fetch's own redirect handling applies: credentials stay on their host.
+      const { authorization: _dropped, ...rest } = headers
+      headers = rest
+    }
+    current = next.toString()
+    await pace(next.host)
+  }
+  throw new RegistryError(`${home} redirected more than 5 times`)
+}
+
 function scopeFor(url: string): string {
   const u = new URL(url)
   // Tokens are per repository scope, not per host.
@@ -134,6 +177,7 @@ function scopeFor(url: string): string {
 async function acquireToken(
   challenge: string,
   auth: { username: string; password: string } | null,
+  home: string,
 ): Promise<TokenEntry | null> {
   const params: Record<string, string> = {}
   for (const m of challenge.matchAll(/(\w+)="([^"]*)"/g)) params[m[1]!] = m[2]!
@@ -143,9 +187,11 @@ async function acquireToken(
   const u = new URL(realm)
   if (params.service) u.searchParams.set('service', params.service)
   if (params.scope) u.searchParams.set('scope', params.scope)
+  await checkHop(u, home, 'asked for a token from')
 
   const headers: Record<string, string> = { 'user-agent': USER_AGENT }
-  if (auth) {
+  // Docker Hub credentials are Docker Hub's: they go to its auth server and nowhere else.
+  if (auth && u.hostname === 'auth.docker.io') {
     headers.authorization = `Basic ${Buffer.from(`${auth.username}:${auth.password}`).toString('base64')}`
   }
 

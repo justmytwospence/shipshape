@@ -113,7 +113,20 @@
   }
 }
 
+/* The request indicator. htmx would inject these rules as an inline <style>, which the
+ * content security policy refuses (includeIndicatorStyles is off), so they live here,
+ * unlayered like htmx's own so a component's opacity cannot override them. */
+.htmx-indicator {
+  opacity: 0;
+}
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  opacity: 1;
+  transition: opacity 200ms ease-in;
+}
+
 @layer components {
+
   /* -------------------------------------------------------------- safe areas
    *
    * Installed to a home screen there is no browser chrome to absorb the notch or the

@@ -83,7 +83,7 @@ export const InboxList: FC<{ data: InboxData; selectedId?: number }> = ({ data, 
     <div
       id="inbox"
       hx-get="/fragments/inbox"
-      hx-trigger="every 10s [document.getElementById('scan-running')], every 60s"
+      hx-trigger="every 60s, scan-progress from:body"
       hx-swap="innerHTML"
     >
       {groups.size === 0 ? (

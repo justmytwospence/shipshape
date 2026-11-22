@@ -543,7 +543,7 @@ const RungDialog: FC<{ svc: ServiceRowData; ctx?: string }> = ({ svc, ctx }) => 
         hx-swap="outerHTML"
         hx-disabled-elt="find button[type=submit]"
         hx-indicator="#busy"
-        onsubmit="this.closest('dialog').close()"
+        data-close-dialog
       >
         <input type="hidden" name="key" value="class" />
         {RUNGS.map((r) => (
@@ -565,7 +565,7 @@ const RungDialog: FC<{ svc: ServiceRowData; ctx?: string }> = ({ svc, ctx }) => 
           <button
             type="button"
             class="btn btn-ghost btn-sm tap"
-            onclick="this.closest('dialog').close()"
+            data-close-dialog
           >
             Cancel
           </button>
@@ -634,7 +634,7 @@ const LinkDialog: FC<{ svc: ServiceRowData; link?: ServiceDetailData['link']; ct
             />
           </fieldset>
           <div class="modal-action mt-3">
-            <button type="button" class="btn btn-ghost btn-sm tap" onclick="this.closest('dialog').close()">
+            <button type="button" class="btn btn-ghost btn-sm tap" data-close-dialog>
               Cancel
             </button>
             <button type="submit" class="btn btn-sm tap">
@@ -670,7 +670,7 @@ export const LinkPreviewPane: FC<{ preview?: LinkPreview; failure?: string; ctx?
           hx-swap="outerHTML"
           hx-disabled-elt="find button[type=submit]"
           hx-indicator="#busy"
-          onsubmit="this.closest('dialog').close()"
+          data-close-dialog
         >
           <input type="hidden" name="link" value="1" />
           {p.source ? <input type="hidden" name="source" value={p.values.source} /> : null}

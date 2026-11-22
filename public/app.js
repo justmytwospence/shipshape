@@ -8,6 +8,12 @@
 ;(function () {
   'use strict'
 
+  if ('serviceWorker' in navigator) {
+    addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js').catch(function () {})
+    })
+  }
+
   // ------------------------------------------------------------------- theme
   //
   // `auto` removes the attribute entirely so daisyUI's own prefers-dark rule applies;
@@ -101,6 +107,31 @@
       dlg.showModal()
     }
   })
+
+  // A Cancel button, or a form that submits, closes the dialog it sits in. Delegated here
+  // because the content security policy allows no inline handlers.
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-close-dialog]')
+    if (!b) return
+    var d = b.closest('dialog')
+    if (d) d.close()
+  })
+  document.addEventListener(
+    'submit',
+    function (e) {
+      var f = e.target.closest('form[data-close-dialog]')
+      if (!f) return
+      var d = f.closest('dialog')
+      if (d) d.close()
+    },
+    true,
+  )
+
+  // While a scan runs, the Inbox refreshes every 10 seconds rather than every 60: its
+  // trigger listens for this event, which replaces a trigger filter htmx would have to eval.
+  setInterval(function () {
+    if (document.getElementById('scan-running')) document.body.dispatchEvent(new Event('scan-progress'))
+  }, 10000)
 
   // ------------------------------------------------------------------- rows
   //

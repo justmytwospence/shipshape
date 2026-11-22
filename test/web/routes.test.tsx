@@ -275,3 +275,26 @@ test('every message a verb can produce fits in a header', async () => {
     assert.ok(parsed.toast?.text, verb)
   }
 })
+
+test('every response carries the security headers', async () => {
+  const { CSP } = await import('../../src/web/security-headers.ts')
+  for (const path of ['/', '/status']) {
+    const res = await app.request(path)
+    assert.equal(res.headers.get('content-security-policy'), CSP, path)
+    assert.equal(res.headers.get('x-frame-options'), 'DENY')
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff')
+    assert.equal(res.headers.get('referrer-policy'), 'no-referrer')
+  }
+  const { createApp } = await import('../../src/web/server.ts')
+  const denied = await createApp().request('/', {}, socketBindings(TEST_PROXY))
+  assert.equal(denied.status, 403)
+  assert.equal(denied.headers.get('content-security-policy'), CSP)
+})
+
+test('the CSP hash matches the theme script the page actually inlines', async () => {
+  const { createHash } = await import('node:crypto')
+  const html = await (await app.request('/')).text()
+  const body = html.match(/<script>([\s\S]*?)<\/script>/)![1]!
+  const hash = `sha256-${createHash('sha256').update(body).digest('base64')}`
+  assert.ok((await app.request('/')).headers.get('content-security-policy')!.includes(hash))
+})

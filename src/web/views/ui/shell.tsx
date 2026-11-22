@@ -1,4 +1,5 @@
 import type { FC, PropsWithChildren } from 'hono/jsx'
+import { THEME_SCRIPT } from '../../theme-script.ts'
 import { Icon, type IconName } from './icon.tsx'
 import { Relative, ScanStatus } from './parts.tsx'
 import { version } from '../../version.ts'
@@ -30,29 +31,17 @@ export const NAV: { key: NavKey; href: string; label: string; icon: IconName }[]
 ]
 
 /**
- * Resolve the theme before the first paint. Deliberately inline and not deferred: any
- * later and the page renders light, then repaints dark, which is worse than either.
- */
-const THEME_SCRIPT = `(function(){
-  try {
-    var s = localStorage.getItem('shipshape-theme') || 'auto';
-    var d = document.documentElement;
-    if (s === 'auto') d.removeAttribute('data-theme');
-    else d.setAttribute('data-theme', s === 'dark' ? 'bridge-dark' : 'bridge');
-  } catch (e) {}
-})()`
-
-const SW_SCRIPT = `if ('serviceWorker' in navigator) {
-  addEventListener('load', function(){ navigator.serviceWorker.register('/sw.js').catch(function(){}) })
-}`
-
-/**
  * Back and forward are full reloads. htmx's history cache would snapshot a list that
  * polls and restore it stale, cannot restore an inner scroller's position anyway, and
  * a 149-row page runs into localStorage quota warnings. Every URL here renders correctly
  * from the server, so a reload is one round trip and always right.
  */
-const HTMX_CONFIG = '{"historyCacheSize":0,"refreshOnHistoryMiss":true}'
+//
+// The content security policy forbids eval and inline styles: allowEval and
+// allowScriptTags off keep htmx from needing the first, includeIndicatorStyles off from
+// injecting the second (the indicator rules live in app.css instead).
+const HTMX_CONFIG =
+  '{"historyCacheSize":0,"refreshOnHistoryMiss":true,"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false}'
 
 /**
  * What every page needs to draw its frame: the state of the machine, for the sidebar's
@@ -125,7 +114,6 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
       <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
       <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
       <script src="/static/htmx.min.js" defer />
-      <script dangerouslySetInnerHTML={{ __html: SW_SCRIPT }} defer />
     </head>
     <body class="bg-base-100 text-base-content min-h-dvh lg:h-dvh lg:overflow-hidden">
       <progress

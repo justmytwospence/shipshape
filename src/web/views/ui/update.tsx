@@ -152,7 +152,7 @@ const Confirm: FC<{
             hx-swap="outerHTML"
             hx-disabled-elt="this"
             hx-indicator="#busy"
-            onclick="this.closest('dialog').close()"
+            data-close-dialog
           >
             {label}
           </button>

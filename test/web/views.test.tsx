@@ -117,7 +117,8 @@ test('the installable bits are all present', () => {
   assert.equal(html.match(/name="theme-color"/g)?.length, 2, 'one per colour scheme')
   assert.match(html, /apple-mobile-web-app-capable/)
   assert.match(html, /rel="apple-touch-icon"/)
-  assert.match(html, /navigator\.serviceWorker\.register\('\/sw\.js'\)/)
+  assert.match(html, /<script src="\/static\/app\.js"/)
+  assert.match(readFileSync(join(import.meta.dirname, '../../public/app.js'), 'utf8'), /navigator\.serviceWorker\.register\('\/sw\.js'\)/)
 })
 
 test('both navigations exist, keyed to the same breakpoint', () => {
@@ -503,4 +504,26 @@ test('every outbound link goes through ExtLink', async () => {
   const files = (readdirSync(root, { recursive: true }) as string[]).filter((f) => f.endsWith('.tsx'))
   const hits = files.flatMap((f) => (readFileSync(join(root, f), 'utf8').match(/target="_blank"/g) ?? []).map(() => f))
   assert.deepEqual(hits, ['ui/parts.tsx'])
+})
+
+test('no view carries an inline event handler or an inline script but the theme', () => {
+  for (const [name, html] of Object.entries(VIEWS)) {
+    assert.doesNotMatch(html, /\son[a-z]+="/, name)
+    const inline = html.match(/<script(?![^>]*\ssrc=)[^>]*>[\s\S]*?<\/script>/g) ?? []
+    assert.ok(inline.length <= 1, `${name}: ${inline.length} inline scripts`)
+    for (const s of inline) assert.match(s, /shipshape-theme/, `${name}: the only inline script is the theme`)
+  }
+})
+
+test('htmx is configured for the CSP', () => {
+  const html = VIEWS['layout']!
+  for (const k of ['allowEval', 'includeIndicatorStyles', 'allowScriptTags']) {
+    assert.match(html, new RegExp(`&quot;${k}&quot;:false`), k)
+  }
+})
+
+test('the inbox scan poll needs no eval', () => {
+  const html = VIEWS['inbox-page'] ?? VIEWS['inbox']!
+  assert.match(html, /hx-trigger="every 60s, scan-progress from:body"/)
+  assert.doesNotMatch(html, /\[document/)
 })

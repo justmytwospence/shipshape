@@ -77,6 +77,7 @@ import { activeChannels } from '../notify/index.ts'
 import { configured as emailConfigured, send as sendEmail, escapeHtml as escapeText } from '../notify/email.ts'
 import { rescheduleScan } from '../scheduler.ts'
 import { trustedProxyAuth } from './auth.ts'
+import { securityHeaders } from './security-headers.ts'
 import { securityPanel } from '../security/panel.ts'
 
 /** Missing configuration, passed into every page so the banner is unmissable. */
@@ -212,6 +213,7 @@ export function createApp(): Hono {
 
   // Run before every route, including static files, redirects and unknown paths.
   // Only read-only GET /health (not an upgrade) is exempt for the container healthcheck.
+  app.use('*', securityHeaders())
   app.use('*', trustedProxyAuth())
   app.get('/health', (c) => c.json({ ok: true }))
 

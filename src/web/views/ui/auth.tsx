@@ -77,7 +77,7 @@ export const SetupPage: FC<{ problems: string[] }> = ({ problems }) => (
       <section>
         <h2 class="font-semibold">Option 2: your reverse proxy signs people in</h2>
         <p class="mt-1">
-          For Authelia, Authentik, oauth2-proxy, Tailscale and similar. shipshape trusts a username header, but only when
+          For Authelia, Authentik, oauth2-proxy and similar. shipshape trusts a username header, but only when
           the request comes from your proxy's address.
         </p>
         <Snippet text={PROXY_SNIPPET} />

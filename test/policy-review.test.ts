@@ -10,11 +10,13 @@ import { readerOn, reviewMode } from '../src/policy.ts'
  * them without error rather than refusing a file that used to be valid.
  */
 
-test('review: is the new block, with Opus and a $40 budget by default', () => {
+test('review: is the new block, with Sonnet reading, Opus drafting and a $15 budget by default', () => {
   const p = PolicySchema.parse({})
   assert.equal(p.review.screen, 'off')
-  assert.match(p.review.model, /claude-opus-5[.-]5/)
-  assert.equal(p.review.monthly_budget_usd, 40)
+  assert.match(p.review.model, /claude-sonnet-5[.-]5/)
+  assert.match(p.review.code_model, /claude-opus-5[.-]5/)
+  assert.equal(p.review.monthly_budget_usd, 15)
+  assert.equal(p.review.web, 'auto')
   assert.ok(!('claude' in p), 'the old block is not in the parsed policy')
 })
 

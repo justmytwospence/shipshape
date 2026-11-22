@@ -16,7 +16,7 @@ process.env.OPENROUTER_API_KEY = 'sk-or-test'
 after(() => rmSync(dir, { recursive: true, force: true }))
 
 const { llmClient, llmProvider, decisionsKey, modelsEndpoint } = await import('../src/analyze/client.ts')
-const { DEFAULT_MODEL, MODEL_DEFAULTS, PolicySchema } = await import('../src/config.ts')
+const { DEFAULT_READER_MODEL, DEFAULT_CODE_MODEL, MODEL_DEFAULTS, PolicySchema } = await import('../src/config.ts')
 const { readerOn } = await import('../src/policy.ts')
 const { listModels } = await import('../src/analyze/models.ts')
 const { recordCost, recordSpend, budgetExhausted } = await import('../src/analyze/claude.ts')
@@ -42,8 +42,9 @@ test('the screen keeps the OpenRouter key', () => {
 
 test('a custom endpoint has no default model, and no model means no reader', () => {
   assert.deepEqual(MODEL_DEFAULTS.custom, { reader: '', code: '' })
-  assert.equal(DEFAULT_MODEL, '')
-  assert.equal(readerOn({ ...PolicySchema.parse({}), review: { ...PolicySchema.parse({}).review, model: '' } }), false)
+  assert.equal(DEFAULT_READER_MODEL, '')
+  assert.equal(DEFAULT_CODE_MODEL, '')
+  assert.equal(readerOn(PolicySchema.parse({})), false)
   assert.equal(readerOn(PolicySchema.parse({ review: { model: 'qwen3' } })), true)
 })
 

@@ -527,7 +527,7 @@ review:
   screen: shadow              # off | shadow | on -- Jev, needs OPENROUTER_API_KEY
   model: anthropic/claude-opus-5.5        # the reader; `off` for none
   code_model: anthropic/claude-opus-5.5   # drafts config changes, picks a rule's scope
-  monthly_budget_usd: 40      # every model call together
+  monthly_budget_usd: 15      # every model call together
 propose:
   mode: auto                  # auto | off (the verb works either way)
 restore_points:

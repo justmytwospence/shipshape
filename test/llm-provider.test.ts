@@ -7,12 +7,13 @@ process.env.ANTHROPIC_API_KEY = 'sk-ant-test'
 process.env.OPENROUTER_API_KEY = 'sk-or-test'
 
 const { llmProvider, decisionsKey, modelsEndpoint } = await import('../src/analyze/client.ts')
-const { DEFAULT_MODEL } = await import('../src/config.ts')
+const { DEFAULT_READER_MODEL, DEFAULT_CODE_MODEL } = await import('../src/config.ts')
 
-test('with both keys, Messages go to Anthropic and Jev stays on OpenRouter', () => {
+test('with both keys, Messages go to Anthropic and the screen stays on OpenRouter', () => {
   assert.equal(llmProvider(), 'anthropic')
   assert.equal(decisionsKey(), 'sk-or-test')
-  assert.equal(DEFAULT_MODEL, 'claude-opus-5-5')
+  assert.equal(DEFAULT_READER_MODEL, 'claude-sonnet-5-5')
+  assert.equal(DEFAULT_CODE_MODEL, 'claude-opus-5-5')
   const m = modelsEndpoint()
   assert.match(m!.url, /api\.anthropic\.com/)
   assert.equal(m!.headers['x-api-key'], 'sk-ant-test')

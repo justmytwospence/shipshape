@@ -22,7 +22,7 @@ review:
   screen: off                # off | shadow | on : a fast model that screens every changelog
   # model:                   # the reader of changelogs; unset = the default for your provider, off = none
   # code_model:              # drafts config changes
-  monthly_budget_usd: 40     # every model call together
+  monthly_budget_usd: 15     # every model call together
 
 propose:
   mode: auto                 # auto | off : draft config changes when a release needs more than its tag

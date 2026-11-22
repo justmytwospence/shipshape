@@ -336,7 +336,10 @@ const Tier = z
 export type Tier = z.infer<typeof Tier>
 
 /** The model every stage defaults to, spelled for whoever serves it. */
-export const DEFAULT_MODEL = MODEL_DEFAULTS[providerOf(env)].code
+/** The reader: a reading is a summary of release notes, so the mid-sized model does it. */
+export const DEFAULT_READER_MODEL = MODEL_DEFAULTS[providerOf(env)].reader
+/** Drafting and rule scope, where a wrong edit costs more than the call. */
+export const DEFAULT_CODE_MODEL = MODEL_DEFAULTS[providerOf(env)].code
 
 /** "HH:MM-HH:MM", may wrap past midnight. Only still parsed so a retired key can be named. */
 const Window = z.string().regex(/^\d{2}:\d{2}-\d{2}:\d{2}$/)
@@ -770,9 +773,9 @@ export const PolicySchema = z.object({
     review: {
       // Off unless asked for: a new paid call is something you opt into.
       screen: review.screen ?? ('off' as const),
-      model: review.model ?? (claude?.mode === 'off' ? 'off' : (claude?.model ?? DEFAULT_MODEL)),
-      code_model: review.code_model ?? claude?.code_model ?? DEFAULT_MODEL,
-      monthly_budget_usd: review.monthly_budget_usd ?? claude?.monthly_budget_usd ?? 40,
+      model: review.model ?? (claude?.mode === 'off' ? 'off' : (claude?.model ?? DEFAULT_READER_MODEL)),
+      code_model: review.code_model ?? claude?.code_model ?? DEFAULT_CODE_MODEL,
+      monthly_budget_usd: review.monthly_budget_usd ?? claude?.monthly_budget_usd ?? 15,
       web: review.web ?? ('auto' as const),
     },
     prs: { max_open: prs.max_open },

@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, relative } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { Cron } from 'croner'
-import { DEFAULT_MODEL, botIdentity, env, gitBranch, paths, validatePolicyText, type Policy } from './config.ts'
+import { DEFAULT_CODE_MODEL, DEFAULT_READER_MODEL, botIdentity, env, gitBranch, paths, validatePolicyText, type Policy } from './config.ts'
 import { logEvent } from './db.ts'
 import { POLICY_STARTER } from './policy-starter.ts'
 
@@ -189,9 +189,12 @@ export const SETTINGS: SettingDef[] = [
     path: 'review.model',
     advanced: true,
     kind: 'model',
-    defaultValue: DEFAULT_MODEL,
+    defaultValue: DEFAULT_READER_MODEL,
+    defaultLabel: DEFAULT_READER_MODEL ? undefined : 'none -- a custom endpoint needs one set',
     label: 'Reader',
-    help: 'reads the changelog where a person will read the result; off for none',
+    help: DEFAULT_READER_MODEL
+      ? 'reads the changelog where a person will read the result; off for none'
+      : 'required with a custom endpoint (LLM_BASE_URL), which has no default; off for none',
     about:
       'Pick from the list, or type an id that is not on it.',
   },
@@ -216,11 +219,11 @@ export const SETTINGS: SettingDef[] = [
     path: 'review.monthly_budget_usd',
     kind: 'number',
     min: 0,
-    defaultValue: '40',
+    defaultValue: '15',
     label: 'Monthly budget',
     help: 'USD, every model call together',
     about:
-      'Reaching it pauses the reader, drafting and comment replies. Pull requests keep opening regardless.',
+      'Reaching it pauses the reader and drafting until the 1st of next month; updates keep shipping on the evidence that is left. Calls to a custom endpoint (LLM_BASE_URL) are not priced and never count against it.',
   },
 
   // ------------------------------------------------------- Drafting config changes
@@ -245,9 +248,10 @@ export const SETTINGS: SettingDef[] = [
     path: 'review.code_model',
     advanced: true,
     kind: 'model',
-    defaultValue: DEFAULT_MODEL,
+    defaultValue: DEFAULT_CODE_MODEL,
+    defaultLabel: DEFAULT_CODE_MODEL ? undefined : 'none -- a custom endpoint needs one set',
     label: 'Model',
-    help: 'drafts config changes and answers your comments',
+    help: 'drafts config changes and picks the scope of an Always ship rule',
     about:
       'Rare, high-stakes work: a draft is a change nothing else has checked.',
   },

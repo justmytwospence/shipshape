@@ -1,4 +1,4 @@
-import { env } from '../../config.ts'
+import { env, mcpEnabled } from '../../config.ts'
 import type { Sink } from '../../config.ts'
 import { getDb, logEvent } from '../../db.ts'
 import type { IncidentAction, IncidentStatus, Message, Priority } from '../types.ts'
@@ -39,7 +39,7 @@ interface Payload {
 /** Retry and roll back, for `shipshape:deploy:<stack>`; shipshape decides at tap time. */
 export function deployActions(key: string | undefined): IncidentAction[] | undefined {
   const m = key?.match(/^shipshape:deploy:(.+)$/)
-  if (!m || !env.mcpPort) return undefined
+  if (!m || !mcpEnabled()) return undefined
   const stack = m[1]!
   return [
     { emoji: '🔁', label: 'retry', do: { target: 'shipshape', verb: 'retry', stack } },

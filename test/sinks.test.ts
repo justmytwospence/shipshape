@@ -18,6 +18,7 @@ process.env.NOTIFY_TOKEN = 'k'
 process.env.SHIPSHAPE_ACTION_SECRET = 'secret'
 process.env.SHIPSHAPE_ALLOWED_ORIGIN = 'https://shipshape.example'
 process.env.MCP_PORT = '8082'
+process.env.MCP_TOKEN = 'a'.repeat(32)
 process.env.NTFY_TOKEN = 'tk'
 delete process.env.SMTP_URL
 after(() => rmSync(root, { recursive: true, force: true }))

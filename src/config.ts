@@ -50,8 +50,12 @@ export const env = {
   notifyUrl: process.env.NOTIFY_URL ?? '',
   /** Its bearer (ALERT_INTAKE_KEY). */
   notifyToken: process.env.NOTIFY_TOKEN ?? '',
-  // The MCP listener (src/mcp): off unless set, and only ever reached through the OAuth sidecar.
+  /** The MCP listener's port (src/mcp). Off unless set, and it needs MCP_TOKEN as well. */
   mcpPort: process.env.MCP_PORT ? Number(process.env.MCP_PORT) : null,
+  /** The bearer every MCP request must carry: `Authorization: Bearer <token>`. */
+  mcpToken: process.env.MCP_TOKEN ?? '',
+  /** Where the MCP listener binds. */
+  mcpHost: process.env.MCP_HOST || '0.0.0.0',
   /** Signs the action links in email and ntfy notifications (src/notify/links.ts). Unset,
    *  those sinks send no links. */
   actionSecret: process.env.SHIPSHAPE_ACTION_SECRET ?? null,
@@ -83,6 +87,12 @@ export const paths = {
   lock: join(env.dataDir, 'git.lock'),
   policy: policyPath(),
 } as const
+
+/** The MCP listener runs only with a port and a token of at least 32 characters. */
+export const MCP_TOKEN_MIN = 32
+export function mcpEnabled(): boolean {
+  return env.mcpPort !== null && env.mcpToken.length >= MCP_TOKEN_MIN
+}
 
 /** Git author arguments for tool-authored commits. */
 export function botIdentity(): string[] {

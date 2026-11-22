@@ -20,12 +20,13 @@ const { OPERATOR_VERBS } = await import('../src/updates/operator-verbs.ts')
 
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const app = createMcpApp()
+const TOKEN = 'a'.repeat(32)
+const app = createMcpApp(TOKEN)
 async function rpc(method: string, params: unknown = {}): Promise<any> {
   const r = await app.fetch(
     new Request('http://shipshape/mcp', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', authorization: `Bearer ${TOKEN}` },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
     }),
   )
@@ -152,4 +153,28 @@ test('stack_action with no deploy says so', async () => {
 test('unknown things are errors, not empty answers', async () => {
   assert.equal((await call('get_update', { id: 999999 })).isError, true)
   assert.equal((await call('get_service', { stack: 'no', service: 'such' })).isError, true)
+})
+
+const raw = (headers: Record<string, string>) =>
+  app.fetch(
+    new Request('http://shipshape/mcp', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...headers },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+    }),
+  )
+
+test('without the token the MCP answers 401 and runs nothing', async () => {
+  const r = await raw({})
+  assert.equal(r.status, 401)
+  assert.match(r.headers.get('www-authenticate') ?? '', /^Bearer/)
+  assert.equal((getDb().prepare(`SELECT COUNT(*) c FROM events`).get() as { c: number }).c, 0)
+})
+
+test('a wrong token of the right length is refused', async () => {
+  assert.equal((await raw({ authorization: `Bearer ${'b'.repeat(32)}` })).status, 401)
+})
+
+test('/health needs no token', async () => {
+  assert.equal((await app.fetch(new Request('http://shipshape/health'))).status, 200)
 })

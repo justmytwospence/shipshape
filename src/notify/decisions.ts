@@ -1,6 +1,6 @@
 import { loadPolicy } from '../config.ts'
 import { getDb } from '../db.ts'
-import { env } from '../config.ts'
+import { env, mcpEnabled } from '../config.ts'
 import { short } from '../gitops/body.ts'
 import { shortRepository } from '../policy.ts'
 import { currentDecisions, type Decision } from '../updates/holds.ts'
@@ -99,7 +99,7 @@ export function cardFor(d: Decision, now = Date.now()): Card {
     body: lines.join('\n'),
     priority: escalate ? 4 : 3,
     click: origin ? `${origin.replace(/\/$/, '')}/updates/${first.id}` : undefined,
-    actions: env.mcpPort
+    actions: mcpEnabled()
       ? verbs.map((verb) => {
           const [emoji, label] = VERB_UI[verb]!
           return { emoji, label, do: { target: 'shipshape' as const, verb, update: first.id } }

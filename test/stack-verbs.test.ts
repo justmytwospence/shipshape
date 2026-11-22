@@ -14,6 +14,7 @@ import { join } from 'node:path'
 const dir = mkdtempSync(join(tmpdir(), 'shipshape-stack-verbs-'))
 process.env.DATA_DIR = dir
 process.env.MCP_PORT = '8082'
+process.env.MCP_TOKEN = 'a'.repeat(32)
 delete process.env.REPO_DIR
 
 const { getDb } = await import('../src/db.ts')

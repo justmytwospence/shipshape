@@ -17,6 +17,7 @@ process.env.POLICY_FILE = join(root, 'policy.yaml')
 process.env.NOTIFY_URL = 'http://n8n.invalid/webhook/notify'
 process.env.NOTIFY_TOKEN = 'k'
 process.env.MCP_PORT = '8082'
+process.env.MCP_TOKEN = 'a'.repeat(32)
 process.env.SHIPSHAPE_ALLOWED_ORIGIN = 'https://shipshape.example'
 delete process.env.REPO_DIR
 delete process.env.ANTHROPIC_API_KEY

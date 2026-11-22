@@ -1,4 +1,4 @@
-import { env, loadPolicy, type Policy } from '../config.ts'
+import { env, loadPolicy, mcpEnabled, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'
 import { formatImageRef, parseImageRef } from '../images/ref.ts'
@@ -313,7 +313,7 @@ export async function syncSecurityCards(policy: Policy): Promise<number> {
         return `- ${name}${isPublic(svc(l.stack, l.service)) ? ' (public)' : ''}: ${l.pkgs} · ${fix}`
       })
       .join('\n')
-    const actions: IncidentAction[] | undefined = env.mcpPort
+    const actions: IncidentAction[] | undefined = mcpEnabled()
       ? all
           .filter((l) => l.fix?.pr)
           .slice(0, 3)

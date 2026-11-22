@@ -106,3 +106,10 @@ test('the first Always ship creates the file and appends the rule', () => {
 test('prompt overrides beside a root shipshape.yaml live in shipshape-prompts/', () => {
   assert.equal(overridePath('verdict'), join(repo, 'shipshape-prompts', 'verdict.md'))
 })
+
+test('a monthly budget of 0 is refused with a reason', async () => {
+  const res = await applySettings({ 'review.monthly_budget_usd': '0' })
+  assert.equal(res.ok, false)
+  assert.match(res.ok ? '' : res.errors.join(), /at least 0\.01/)
+  assert.equal(existsSync(file), false)
+})

@@ -218,12 +218,12 @@ export const SETTINGS: SettingDef[] = [
     section: 'Changelog review',
     path: 'review.monthly_budget_usd',
     kind: 'number',
-    min: 0,
+    min: 0.01,
     defaultValue: '15',
     label: 'Monthly budget',
     help: 'USD, every model call together',
     about:
-      'Reaching it pauses the reader and drafting until the 1st of next month; updates keep shipping on the evidence that is left. Calls to a custom endpoint (LLM_BASE_URL) are not priced and never count against it.',
+      'Reaching it pauses the reader and drafting until the 1st of next month; updates keep shipping on the evidence that is left. Calls to a custom endpoint (LLM_BASE_URL) are not priced and never count against it. To spend nothing, set Reader to off.',
   },
 
   // ------------------------------------------------------- Drafting config changes

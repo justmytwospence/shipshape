@@ -270,3 +270,16 @@ test('a malformed session-key is a setup problem', async () => {
     rmSync(d, { recursive: true, force: true })
   }
 })
+
+test('a password over 1024 characters is a setup problem', async () => {
+  const d = mkdtempSync(join(tmpdir(), 'shipshape-long-'))
+  try {
+    const { parsePasswordConfig } = await import('../../src/web/auth/password.ts')
+    const long = parsePasswordConfig({ SHIPSHAPE_PASSWORD: 'x'.repeat(1025), DATA_DIR: d })
+    assert.equal(long.ok, false)
+    assert.match(long.ok ? '' : long.problems.join(), /at most 1024 characters/)
+    assert.equal(parsePasswordConfig({ SHIPSHAPE_PASSWORD: 'x'.repeat(1024), DATA_DIR: d }).ok, true)
+  } finally {
+    rmSync(d, { recursive: true, force: true })
+  }
+})

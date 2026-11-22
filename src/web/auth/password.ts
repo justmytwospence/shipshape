@@ -13,6 +13,7 @@ import { browserOrigin } from './proxy.ts'
  */
 
 export const MIN_PASSWORD_LENGTH = 12
+export const MAX_PASSWORD_LENGTH = 1024
 export const LIMIT_PER_ADDRESS = 5
 export const LIMIT_GLOBAL = 30
 export const LIMIT_WINDOW_MS = 15 * 60_000
@@ -110,6 +111,9 @@ export function parsePasswordConfig(env: NodeJS.ProcessEnv): PasswordParse {
   if (password !== null && password.length < MIN_PASSWORD_LENGTH) {
     problems.push(`The password must be at least ${MIN_PASSWORD_LENGTH} characters (it is ${password.length}).`)
   }
+  if (password !== null && password.length > MAX_PASSWORD_LENGTH) {
+    problems.push(`The password must be at most ${MAX_PASSWORD_LENGTH} characters (it is ${password.length}).`)
+  }
   const rawOrigin = env.SHIPSHAPE_ALLOWED_ORIGIN
   const origin = browserOrigin(rawOrigin)
   if (rawOrigin && !origin) {
@@ -127,7 +131,7 @@ export function parsePasswordConfig(env: NodeJS.ProcessEnv): PasswordParse {
   return {
     ok: true,
     config: {
-      verify: (attempt) => attempt.length <= 1024 && timingSafeEqual(key, scryptSync(attempt, salt, 64)),
+      verify: (attempt) => attempt.length <= MAX_PASSWORD_LENGTH && timingSafeEqual(key, scryptSync(attempt, salt, 64)),
       fingerprint,
       secureCookie: !!origin?.startsWith('https://'),
       origin,

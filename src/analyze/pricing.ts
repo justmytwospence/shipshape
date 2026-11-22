@@ -130,3 +130,15 @@ export function costOf(usage: Anthropic.Usage, model: string): CallCost {
   }
 }
 
+
+/** A call to a custom endpoint: tokens as reported, cost unknown and recorded as 0. */
+export function unpricedCost(usage: Anthropic.Usage): CallCost {
+  return {
+    cost: 0,
+    input: usage.input_tokens,
+    output: usage.output_tokens,
+    cacheWrite: usage.cache_creation_input_tokens ?? 0,
+    cacheRead: usage.cache_read_input_tokens ?? 0,
+    searches: 0,
+  }
+}

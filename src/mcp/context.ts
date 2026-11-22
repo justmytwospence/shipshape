@@ -1,6 +1,7 @@
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 import { getDb } from '../db.ts'
+import { llmProvider } from '../analyze/client.ts'
 import { loadPolicy } from '../config.ts'
 import { scheduleInfo } from '../scheduler.ts'
 import { HUB_RESERVE } from '../registry/http.ts'
@@ -47,7 +48,10 @@ export function apiUsage() {
     github: { remaining: null, reset_at: null, quota_state: 'unknown', auth_healthy: authHealth().ok },
     model_budget: { month, spent_usd: spent?.value ?? 0, observed_at: spent?.updated_at ?? null,
       limit_usd: policy.review.monthly_budget_usd, healthy: budgetHealth().ok,
-      note: 'Local shared ledger, not a per-agent spending allowance.' },
+      priced: llmProvider() !== 'custom',
+      note: llmProvider() === 'custom'
+        ? 'A custom endpoint (LLM_BASE_URL) is not priced; only the screen is counted.'
+        : 'Local shared ledger, not a per-agent spending allowance.' },
     guidance: USAGE,
   }
 }

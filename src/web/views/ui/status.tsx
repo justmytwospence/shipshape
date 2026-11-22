@@ -48,6 +48,8 @@ export interface StatusData {
   spend: { model: string; purpose: string; calls: number; cost: number }[]
   budgetUsd: number
   spentUsd: number
+  /** False with a custom endpoint, whose calls are recorded at no cost. */
+  priced: boolean
   deploys: { at: string | null; stack: string; services: string; status: string; trigger: string }[]
   budgets: { key: string; value: number; window: string | null }[]
   /** Where watched images' release notes come from: how many are certain, likely, or unknown. */
@@ -330,19 +332,27 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
 
           <Block>
             <H>Changelog review, this month</H>
-            <div class="flex items-baseline justify-between text-sm">
-              <span>
-                ${data.spentUsd.toFixed(2)} of ${data.budgetUsd.toFixed(2)}
-              </span>
-              <span class="text-xs opacity-60">
-                {data.budgetUsd > 0 ? Math.round((data.spentUsd / data.budgetUsd) * 100) : 0}%
-              </span>
-            </div>
-            <progress
-              class="progress progress-primary my-1 w-full"
-              value={String(data.spentUsd)}
-              max={String(Math.max(data.budgetUsd, data.spentUsd))}
-            />
+            {data.priced ? (
+              <>
+                <div class="flex items-baseline justify-between text-sm">
+                  <span>
+                    ${data.spentUsd.toFixed(2)} of ${data.budgetUsd.toFixed(2)}
+                  </span>
+                  <span class="text-xs opacity-60">
+                    {data.budgetUsd > 0 ? Math.round((data.spentUsd / data.budgetUsd) * 100) : 0}%
+                  </span>
+                </div>
+                <progress
+                  class="progress progress-primary my-1 w-full"
+                  value={String(data.spentUsd)}
+                  max={String(Math.max(data.budgetUsd, data.spentUsd))}
+                />
+              </>
+            ) : (
+              <div class="text-sm">
+                <span>unpriced (custom endpoint)</span>
+              </div>
+            )}
             {data.spend.length === 0 ? (
               <p class="text-xs opacity-60">Nothing has been read this month.</p>
             ) : (
@@ -351,15 +361,17 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
                   <div class="flex min-h-7 items-center justify-between gap-3">
                     <span class="min-w-0 truncate font-mono">{sp.model}</span>
                     <span class="shrink-0 opacity-70">
-                      {sp.purpose} · {sp.calls} calls · ${sp.cost < 0.1 ? sp.cost.toFixed(4) : sp.cost.toFixed(2)}
+                      {sp.purpose} · {sp.calls} calls
+                      {data.priced || sp.cost > 0 ? ` · $${sp.cost < 0.1 ? sp.cost.toFixed(4) : sp.cost.toFixed(2)}` : ''}
                     </span>
                   </div>
                 ))}
               </div>
             )}
             <p class="mt-1 text-xs opacity-50">
-              Reaching the budget pauses the reader and drafting; the screen keeps going under
-              its own $1 ceiling. It never stops a pull request opening.
+              {data.priced
+                ? 'Reaching the budget pauses the reader and drafting; the screen keeps going under its own $1 ceiling. Updates keep shipping on the evidence that is left.'
+                : 'A custom endpoint is not priced, so the budget never pauses it. The screen, if on, is still counted under its own $1 ceiling.'}
             </p>
           </Block>
 

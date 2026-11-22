@@ -3,8 +3,8 @@ import { llmClient, llmConfigured, llmProvider, missingKeyMessage } from './clie
 import { env, loadPolicy, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { prompt } from '../prompts/index.ts'
-import { costOf, estimateInputCost, reportUnknownModels } from './pricing.ts'
-import { WEB_BUDGET, toolChoiceFor, webTools } from './tools.ts'
+import { costOf, estimateInputCost, reportUnknownModels, unpricedCost } from './pricing.ts'
+import { WEB_BUDGET, systemPrompt, toolChoiceFor, webTools } from './tools.ts'
 import { readerOn } from '../policy.ts'
 import type { DeploymentEntry } from './screen/state.ts'
 import { assembleNotes, evidenceOf, notesInRange, type NotesBundle, type NotesEvidence } from '../notes/assemble.ts'
@@ -190,7 +190,7 @@ export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | 
         max_tokens: 4096,
         // tools + system are identical across every verdict in a scan pass, so the
         // first call writes this prefix and the rest read it at a tenth of the price.
-        system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+        system: systemPrompt(system),
         tools: [
           // Revision picked per model: the 2026 pair filters search results before they
           // reach the context window, but only exists on the larger models.
@@ -417,8 +417,11 @@ export function recordCost(
   purpose: CallPurpose = 'verdict',
   meta: CallMeta = {},
 ): void {
-  const c = costOf(usage, model)
-  writeLedger(policy, model, purpose, meta, {
+  const provider = meta.provider ?? llmProvider()
+  // A custom endpoint is not priced: its tokens are recorded at no cost, never at the
+  // table's fallback rate for an unknown model.
+  const c = provider === 'custom' ? unpricedCost(usage) : costOf(usage, model)
+  writeLedger(policy, model, purpose, { ...meta, provider }, {
     cost: c.cost,
     input: c.input,
     output: c.output,
@@ -443,14 +446,15 @@ export function recordUnanswered(
   promptChars: number,
   meta: CallMeta = {},
 ): void {
+  const custom = (meta.provider ?? llmProvider()) === 'custom'
   writeLedger(policy, model, purpose, { outcome: 'timeout', ...meta }, {
-    cost: estimateInputCost(model, promptChars),
+    cost: custom ? 0 : estimateInputCost(model, promptChars),
     input: Math.round(promptChars / 4),
     output: 0,
     cacheWrite: 0,
     cacheRead: 0,
     searches: 0,
-    estimated: true,
+    estimated: !custom,
   })
 }
 
@@ -536,12 +540,12 @@ function writeLedger(
   ).run('claude.spend_usd', c.cost, month, now)
 
   const spent = monthlySpend()
-  if (spent >= policy.review.monthly_budget_usd) {
+  if (llmProvider() !== 'custom' && spent >= policy.review.monthly_budget_usd) {
     logEvent({
       level: 'warn',
       kind: 'analysis',
       message: 'monthly analysis budget reached',
-      detail: `$${spent.toFixed(2)} of $${policy.review.monthly_budget_usd} — analysis pauses, pull requests continue`,
+      detail: `$${spent.toFixed(2)} of $${policy.review.monthly_budget_usd} — analysis pauses, updates keep shipping`,
     })
   }
 }
@@ -555,6 +559,8 @@ export function monthlySpend(): number {
 }
 
 export function budgetExhausted(): boolean {
+  // A custom endpoint is not priced, so no amount of it can spend the budget.
+  if (llmProvider() === 'custom') return false
   const { policy } = loadPolicy()
   return monthlySpend() >= policy.review.monthly_budget_usd
 }

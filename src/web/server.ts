@@ -4,7 +4,7 @@ import { Hono, type Context } from 'hono'
 import { raw } from 'hono/html'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { configured, env, gitBranch, gitCredentialName, loadPolicy, notifyEnv, policyFileState } from '../config.ts'
+import { configured, env, gitBranch, gitCredentialName, loadPolicy, notifyEnv, policyFileState, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'
 import { buildUpdateDiff, type DiffHunk } from '../diff.ts'
@@ -62,7 +62,7 @@ import {
   serviceRows,
 } from '../updates/services.ts'
 import { setServiceLabels, type LabelChange, type LabelKey } from '../gitops/labels.ts'
-import { llmConfigured, llmProvider } from '../analyze/client.ts'
+import { llmConfigured, llmEndpointHost, llmProvider } from '../analyze/client.ts'
 import { jevConfigured } from '../analyze/jev.ts'
 import { previewLink } from '../resolver/preview.ts'
 import { InboxList, type InboxData } from './views/ui/inbox.tsx'
@@ -870,10 +870,7 @@ export function createApp(): Hono {
         // Same reasoning as the row above: the key is present and valid all month, and
         // buys nothing once the budget is spent. Reading `set` through that is how a
         // fortnight of unreviewed merges looked normal on this page.
-        {
-          name: llmProvider() === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENROUTER_API_KEY',
-          state: !llmConfigured() ? 'missing' : budgetHealth().ok ? 'set' : 'budget spent',
-        },
+        providerCredential(policy),
         screenCredential(policy.review.screen),
         { name: 'NOTIFY_URL + NOTIFY_TOKEN', state: notifyState() },
         { name: 'SMTP_URL + MAIL_TO', state: emailConfigured() ? 'set' : 'not in use' },
@@ -882,6 +879,7 @@ export function createApp(): Hono {
       spend: spend.map((s) => ({ ...s, cost: s.cost ?? 0 })),
       budgetUsd: policy.review.monthly_budget_usd,
       spentUsd: spent ?? 0,
+      priced: llmProvider() !== 'custom',
       deploys: db
         .prepare(
           `SELECT COALESCE(finished_at, started_at, created_at) AS at, stack, services, status, trigger
@@ -902,6 +900,30 @@ export function createApp(): Hono {
    * the gateway used. A guardrail that excludes the provider reads as a 404 that nothing
    * else on this page would explain.
    */
+  /** Who serves the reader, by the variable in use. A custom endpoint is named by its host, never its key. */
+  const providerCredential = (policy: Policy): StatusData['credentials'][number] => {
+    switch (llmProvider()) {
+      case 'custom':
+        return policy.review.model.trim()
+          ? { name: 'LLM_BASE_URL', state: 'set', note: `${llmEndpointHost()}, unpriced` }
+          : {
+              name: 'LLM_BASE_URL',
+              state: 'missing',
+              note: 'set review.model in the policy file: a custom endpoint has no default model, so nothing is read',
+            }
+      case 'anthropic':
+        return { name: 'ANTHROPIC_API_KEY', state: budgetHealth().ok ? 'set' : 'budget spent' }
+      case 'openrouter':
+        return { name: 'OPENROUTER_API_KEY', state: budgetHealth().ok ? 'set' : 'budget spent' }
+      default:
+        return {
+          name: 'ANTHROPIC_API_KEY, OPENROUTER_API_KEY or LLM_BASE_URL',
+          state: 'missing',
+          note: 'no changelog is read; updates ship on the evidence that is left',
+        }
+    }
+  }
+
   const screenCredential = (mode: 'off' | 'shadow' | 'on'): StatusData['credentials'][number] => {
     if (mode === 'off') return { name: 'Screen (Jev)', state: 'off' }
     if (!jevConfigured()) return { name: 'Screen (Jev)', state: 'missing', note: 'needs OPENROUTER_API_KEY' }

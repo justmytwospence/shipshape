@@ -126,7 +126,7 @@ export async function inferRule(updateId: number, today = new Date().toISOString
 
 async function askModel(c: ReturnType<typeof context>, today: string): Promise<RuleDraft | null> {
   const { policy } = c
-  if (!llmConfigured() || budgetExhausted()) return null
+  if (!llmConfigured() || budgetExhausted() || !policy.review.code_model.trim()) return null
   const first = c.members[0]!
   const user = [
     `Decision: ${shortRepository(first.image)} ${first.from_tag} -> ${first.to_tag} (${today})`,

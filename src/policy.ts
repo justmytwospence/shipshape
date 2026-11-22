@@ -125,9 +125,10 @@ export function foldGroupClass(classes: string[]): ServiceClass {
   return all.reduce((a, b) => (CLASS_RANK[b] > CLASS_RANK[a] ? b : a))
 }
 
-/** Whether a reader is configured at all. `review.model: off` turns it off. */
+/** Whether a reader is configured at all. `review.model: off` turns it off, and so does no model at all (a custom endpoint has no default). */
 export function readerOn(policy: Policy): boolean {
-  return policy.review.model.trim().toLowerCase() !== 'off'
+  const m = policy.review.model.trim().toLowerCase()
+  return m !== '' && m !== 'off'
 }
 
 /**

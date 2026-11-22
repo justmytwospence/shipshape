@@ -1,5 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk'
-import { baseModel } from './client.ts'
+import { baseModel, llmProvider } from './client.ts'
+import type { LlmProvider } from '../config.ts'
 
 /**
  * The web tools each model is actually allowed to use, and how much they may read.
@@ -123,7 +124,16 @@ const NO_FORCED_TOOL = ['claude-opus-5.5', 'claude-opus-5-5', 'claude-sonnet-5.5
  * instruction does the work, and the caller's existing "the model did not return ..."
  * branch handles a reply that ignored it -- recorded in the ledger as `no-answer`.
  */
-export function toolChoiceFor(model: string): { type: 'any' } | { type: 'auto' } {
+export function toolChoiceFor(model: string, provider: LlmProvider = llmProvider()): { type: 'any' } | { type: 'auto' } {
+  // A custom endpoint may not honour a forced choice (Ollama documents tool_choice as
+  // unsupported), and one that rejects it fails every call. `auto` plus the prompt's
+  // closing instruction works everywhere; a reply without the tool is already handled.
+  if (provider === 'custom') return { type: 'auto' }
   const family = baseModel(model)
   return NO_FORCED_TOOL.some((m) => family.startsWith(m)) ? { type: 'auto' } : { type: 'any' }
+}
+
+/** The system prompt, cached where the provider supports prompt caching. */
+export function systemPrompt(text: string, provider: LlmProvider = llmProvider()): string | Anthropic.TextBlockParam[] {
+  return provider === 'custom' ? text : [{ type: 'text', text, cache_control: { type: 'ephemeral' } }]
 }

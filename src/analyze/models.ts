@@ -28,11 +28,12 @@ export async function listModels(): Promise<string[]> {
     // Both endpoints answer `{data: [{id}]}`. OpenRouter lists every vendor it routes to
     // -- hundreds of them -- and shipshape's prompts, tool revisions and pricing table
     // are all written against Claude, so the list it offers stays Claude.
-    const ids = (body.data ?? [])
-      .map((m) => m.id)
-      .filter((id) => id.startsWith('anthropic/') || id.startsWith('claude-'))
-    if (ids.length > 0) writeCache(ids)
-    return ids
+    const ids = (body.data ?? []).map((m) => m.id)
+    // A custom endpoint serves what its operator loaded, under whatever names: offer all of
+    // them. Anthropic and OpenRouter lists stay Claude, which the prompts are written against.
+    const offered = llmProvider() === 'custom' ? ids : ids.filter((id) => id.startsWith('anthropic/') || id.startsWith('claude-'))
+    if (offered.length > 0) writeCache(offered)
+    return offered
   } catch {
     // The page must render without a working key.
     return []

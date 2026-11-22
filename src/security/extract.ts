@@ -3,6 +3,7 @@ import { loadPolicy, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { budgetExhausted, isTimeout, recordCost, recordUnanswered } from '../analyze/claude.ts'
 import { llmClient, llmConfigured } from '../analyze/client.ts'
+import { readerOn } from '../policy.ts'
 import { askJev, jevConfigured } from '../analyze/jev.ts'
 import { toolChoiceFor } from '../analyze/tools.ts'
 import { prompt } from '../prompts/index.ts'
@@ -243,7 +244,7 @@ export interface ExtractRun {
 export async function runExtraction(call: ExtractCall = callReader, limit = PER_PASS): Promise<ExtractRun> {
   const out: ExtractRun = { extracted: 0, skipped: 0, failed: 0 }
   const { policy } = loadPolicy()
-  if (policy.review.model === 'off') return { ...out, reason: 'off' }
+  if (!readerOn(policy)) return { ...out, reason: 'off' }
   if (!llmConfigured()) return { ...out, reason: 'unconfigured' }
   const db = getDb()
   const save = db.prepare(

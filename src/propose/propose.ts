@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { llmClient, llmConfigured, missingKeyMessage } from '../analyze/client.ts'
 import { env, loadPolicy } from '../config.ts'
 import { isTimeout, recordCost, recordUnanswered } from '../analyze/claude.ts'
-import { WEB_BUDGET, toolChoiceFor, webTools } from '../analyze/tools.ts'
+import { WEB_BUDGET, toolChoiceFor, webTools, systemPrompt } from '../analyze/tools.ts'
 import { prompt } from '../prompts/index.ts'
 import type { Op } from './apply.ts'
 import { renderContext, type DeployContext } from './context.ts'
@@ -144,6 +144,9 @@ export interface ProposeInput {
 export async function propose(input: ProposeInput): Promise<Proposal | { error: string }> {
   const { policy } = loadPolicy()
   if (!llmConfigured()) return { error: missingKeyMessage() }
+  if (!policy.review.code_model.trim()) {
+    return { error: 'no code model is set: a custom endpoint (LLM_BASE_URL) has no default, so set review.code_model in the policy file' }
+  }
 
   const client = llmClient(2)
   const allowed = ['github.com', 'docs.linuxserver.io', 'api.linuxserver.io']
@@ -157,7 +160,7 @@ export async function propose(input: ProposeInput): Promise<Proposal | { error: 
       {
         model: policy.review.code_model,
         max_tokens: 8192,
-        system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+        system: systemPrompt(system),
         tools: [
           ...webTools(policy.review.code_model, WEB_BUDGET, allowed),
           PROPOSE_CHANGES,

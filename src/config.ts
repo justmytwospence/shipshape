@@ -134,13 +134,13 @@ export const env = {
   botEmail: process.env.BOT_EMAIL ?? 'shipshape@localhost',
 
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? '',
-  /** An OpenRouter key serves Jev's Decisions API, and the Messages calls too when no
-   *  Anthropic key is set. The Anthropic key wins for Messages when both are set, and the
-   *  two are never sent together -- see `src/analyze/client.ts`. */
+  /** Serves the screen's Decisions API; serves the Messages calls when neither LLM_BASE_URL
+   *  nor ANTHROPIC_API_KEY is set; is the fallback credential for LLM_BASE_URL. */
   openrouterApiKey: process.env.OPENROUTER_API_KEY ?? '',
-  /** Overrides the gateway base URL. Only needed for a self-hosted Anthropic-compatible
-   *  proxy; OpenRouter's own base is the default and needs no setting. */
+  /** A custom Anthropic-Messages-compatible endpoint (Ollama, LiteLLM). Set, it serves every model call. */
   llmBaseUrl: process.env.LLM_BASE_URL ?? '',
+  /** The custom endpoint's bearer. */
+  llmApiKey: process.env.LLM_API_KEY ?? '',
   /** The MCP listener's port (src/mcp). Off unless set, and it needs MCP_TOKEN as well. */
   mcpPort: process.env.MCP_PORT ? Number(process.env.MCP_PORT) : null,
   /** The bearer every MCP request must carry: `Authorization: Bearer <token>`. */
@@ -237,6 +237,24 @@ export function mcpEnabled(): boolean {
   return env.mcpPort !== null && env.mcpToken.length >= MCP_TOKEN_MIN
 }
 
+export type LlmProvider = 'custom' | 'anthropic' | 'openrouter' | 'none'
+
+/** Who serves the Messages API. Pure, so the defaults below and the client agree. */
+export function providerOf(k: { llmBaseUrl: string; anthropicApiKey: string; openrouterApiKey: string }): LlmProvider {
+  if (k.llmBaseUrl) return 'custom'
+  if (k.anthropicApiKey) return 'anthropic'
+  if (k.openrouterApiKey) return 'openrouter'
+  return 'none'
+}
+
+export const MODEL_DEFAULTS: Record<LlmProvider, { reader: string; code: string }> = {
+  anthropic: { reader: 'claude-sonnet-5-5', code: 'claude-opus-5-5' },
+  none: { reader: 'claude-sonnet-5-5', code: 'claude-opus-5-5' },
+  openrouter: { reader: 'anthropic/claude-sonnet-5.5', code: 'anthropic/claude-opus-5.5' },
+  // A custom endpoint serves whatever its operator loaded; there is no name to guess.
+  custom: { reader: '', code: '' },
+}
+
 /** Git author arguments for tool-authored commits. */
 export function botIdentity(): string[] {
   return ['-c', 'user.name=shipshape', '-c', `user.email=${env.botEmail}`]
@@ -318,8 +336,7 @@ const Tier = z
 export type Tier = z.infer<typeof Tier>
 
 /** The model every stage defaults to, spelled for whoever serves it. */
-export const DEFAULT_MODEL =
-  !process.env.ANTHROPIC_API_KEY && process.env.OPENROUTER_API_KEY ? 'anthropic/claude-opus-5.5' : 'claude-opus-5-5'
+export const DEFAULT_MODEL = MODEL_DEFAULTS[providerOf(env)].code
 
 /** "HH:MM-HH:MM", may wrap past midnight. Only still parsed so a retired key can be named. */
 const Window = z.string().regex(/^\d{2}:\d{2}-\d{2}:\d{2}$/)

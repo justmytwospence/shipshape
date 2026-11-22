@@ -90,3 +90,20 @@ test('models that refuse a forced tool choice are asked, not forced', () => {
   assert.deepEqual(toolChoiceFor('anthropic/claude-opus-5'), { type: 'any' })
   assert.deepEqual(toolChoiceFor('anthropic/claude-haiku-4.5'), { type: 'any' })
 })
+
+test('a custom endpoint never forces a tool choice', async () => {
+  const { toolChoiceFor } = await import('../src/analyze/tools.ts')
+  assert.deepEqual(toolChoiceFor('anthropic/claude-opus-5', 'custom'), { type: 'auto' })
+})
+
+test('unpricedCost reports tokens and no cost', async () => {
+  const { unpricedCost } = await import('../src/analyze/pricing.ts')
+  assert.deepEqual(unpricedCost({ input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 2, cache_read_input_tokens: 1 } as never), {
+    cost: 0,
+    input: 10,
+    output: 5,
+    cacheWrite: 2,
+    cacheRead: 1,
+    searches: 0,
+  })
+})

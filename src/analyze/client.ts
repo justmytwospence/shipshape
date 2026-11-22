@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { env } from '../config.ts'
+import { env, providerOf, type LlmProvider } from '../config.ts'
 
 /**
  * One place that decides who serves the model, and under what credential.
@@ -10,56 +10,81 @@ import { env } from '../config.ts'
  * shape of bug this repository has had before with upstream links. There is one accessor
  * now, and `test/llm-client.test.ts` fails on a new `new Anthropic(` outside this file.
  *
- * OpenRouter speaks the Anthropic Messages API natively at `/v1/messages` -- not an
- * OpenAI-shaped translation -- so the SDK, the tool definitions, the forced `tool_choice`
- * and the server-side `web_search` / `web_fetch` tools all carry over unchanged. What
- * differs is the credential: OpenRouter authenticates with `Authorization: Bearer`,
- * where Anthropic uses `x-api-key`.
+ * Three providers speak the Anthropic Messages API: Anthropic itself, OpenRouter (natively
+ * at `/v1/messages`), and any custom endpoint given as LLM_BASE_URL -- Ollama and LiteLLM
+ * both serve it. Precedence is custom, then Anthropic, then OpenRouter, and each key goes
+ * only to its own vendor: a custom endpoint gets LLM_API_KEY, or the OpenRouter key for an
+ * install that pointed LLM_BASE_URL at a gateway before LLM_API_KEY existed.
  */
 
-/** OpenRouter's Anthropic-compatible base. The SDK appends `/v1/messages`. */
 const OPENROUTER_BASE = 'https://openrouter.ai/api'
+const ANTHROPIC_BASE = 'https://api.anthropic.com'
 
-/** Whether a model can be called at all. Every entry point checks this before spending. */
+export function llmProvider(): LlmProvider {
+  return providerOf(env)
+}
+
+/** Whether a model can be called at all. A custom endpoint needs no key. */
 export function llmConfigured(): boolean {
-  return Boolean(env.openrouterApiKey || env.anthropicApiKey)
+  return llmProvider() !== 'none'
 }
 
 /** Which env var an operator is missing, named exactly, for the error they will read. */
 export function missingKeyMessage(): string {
-  return 'neither ANTHROPIC_API_KEY nor OPENROUTER_API_KEY is set'
+  return 'no model provider is set: set ANTHROPIC_API_KEY, OPENROUTER_API_KEY or LLM_BASE_URL'
 }
 
-/** Who is serving the model right now, for the status page and the activity log. */
+/** The custom endpoint's bearer: its own key, else the OpenRouter key. */
+function customToken(): string | null {
+  return env.llmApiKey || env.openrouterApiKey || null
+}
+
+/** For the Status page: which host a custom endpoint is, never its key. */
+export function llmEndpointHost(): string | null {
+  if (llmProvider() !== 'custom') return null
+  try {
+    return new URL(env.llmBaseUrl).host
+  } catch {
+    return env.llmBaseUrl
+  }
+}
+
 /**
- * Anthropic wins when both keys are set (since 2026-10-20): the Messages calls run on the
- * Max plan's monthly API credits, which only pay for Anthropic's own API, while the
- * OpenRouter key stays for Jev's Decisions API alone (`decisionsKey`). Each key still
- * goes only to its own vendor.
+ * A client that sends no credential at all. Passing null for both keys is not enough: the
+ * SDK then resolves one from its config files and ANTHROPIC_* environment on the first
+ * request, and would hand it to whatever LLM_BASE_URL points at.
  */
-export function llmProvider(): 'openrouter' | 'anthropic' | 'none' {
-  if (env.anthropicApiKey) return 'anthropic'
-  if (env.openrouterApiKey) return 'openrouter'
-  return 'none'
+class NoCredentialAnthropic extends Anthropic {
+  protected override _shouldResolveDefaultCredentials(): boolean {
+    return false
+  }
 }
 
 export function llmClient(maxRetries: number): Anthropic {
-  if (llmProvider() === 'openrouter') {
-    return new Anthropic({
-      baseURL: env.llmBaseUrl || OPENROUTER_BASE,
-      // Explicitly null, and load-bearing. The SDK defaults `apiKey` from
-      // ANTHROPIC_API_KEY when the caller omits it, and builds BOTH auth headers when
-      // both are present -- so omitting this would send the operator's Anthropic key to
-      // OpenRouter on every call. A credential for one vendor must never travel to
-      // another.
-      apiKey: null,
-      authToken: env.openrouterApiKey,
-      maxRetries,
-    })
+  switch (llmProvider()) {
+    case 'custom': {
+      const token = customToken()
+      return token
+        ? new Anthropic({ baseURL: env.llmBaseUrl, apiKey: null, authToken: token, maxRetries })
+        : new NoCredentialAnthropic({
+            baseURL: env.llmBaseUrl,
+            apiKey: null,
+            authToken: null,
+            defaultHeaders: { 'X-Api-Key': null, Authorization: null },
+            maxRetries,
+          })
+    }
+    case 'openrouter':
+      // apiKey explicitly null, and load-bearing: the SDK defaults it from
+      // ANTHROPIC_API_KEY when omitted and would send both auth headers, handing the
+      // Anthropic key to OpenRouter.
+      return new Anthropic({ baseURL: OPENROUTER_BASE, apiKey: null, authToken: env.openrouterApiKey, maxRetries })
+    default:
+      // baseURL pinned: the SDK would otherwise read ANTHROPIC_BASE_URL from the environment
+      // and send the Anthropic key wherever it points. authToken null so no bearer from
+      // ANTHROPIC_AUTH_TOKEN travels alongside the key.
+      return new Anthropic({ baseURL: ANTHROPIC_BASE, apiKey: env.anthropicApiKey, authToken: null, maxRetries })
   }
-  // authToken null for the same reason in reverse: never send a bearer from the
-  // environment (ANTHROPIC_AUTH_TOKEN) alongside the key.
-  return new Anthropic({ apiKey: env.anthropicApiKey, authToken: null, maxRetries })
 }
 
 /**
@@ -89,17 +114,16 @@ export function decisionsKey(): string | null {
 
 /** Where to list the models this credential may actually use. */
 export function modelsEndpoint(): { url: string; headers: Record<string, string> } | null {
-  if (llmProvider() === 'openrouter') {
-    return {
-      url: `${env.llmBaseUrl || OPENROUTER_BASE}/v1/models`,
-      headers: { authorization: `Bearer ${env.openrouterApiKey}` },
+  switch (llmProvider()) {
+    case 'custom': {
+      const token = customToken()
+      return { url: `${env.llmBaseUrl.replace(/\/+$/, '')}/v1/models`, headers: token ? { authorization: `Bearer ${token}` } : {} }
     }
+    case 'openrouter':
+      return { url: `${OPENROUTER_BASE}/v1/models`, headers: { authorization: `Bearer ${env.openrouterApiKey}` } }
+    case 'anthropic':
+      return { url: `${ANTHROPIC_BASE}/v1/models?limit=50`, headers: { 'x-api-key': env.anthropicApiKey, 'anthropic-version': '2023-06-01' } }
+    default:
+      return null
   }
-  if (env.anthropicApiKey) {
-    return {
-      url: 'https://api.anthropic.com/v1/models?limit=50',
-      headers: { 'x-api-key': env.anthropicApiKey, 'anthropic-version': '2023-06-01' },
-    }
-  }
-  return null
 }

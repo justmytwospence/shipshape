@@ -1,4 +1,5 @@
 import { reviewMode } from '../policy.ts'
+import { llmProvider } from '../analyze/client.ts'
 import { loadPolicy, policyFileState } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { monthlySpend } from '../analyze/claude.ts'
@@ -173,6 +174,7 @@ export async function noteBudgetAvailable(): Promise<void> {
 export async function checkAnalysisBudget(): Promise<BudgetReading | null> {
   const { policy } = loadPolicy()
   if (reviewMode(policy) === 'off' && policy.review.screen === 'off') return null
+  if (llmProvider() === 'custom') return null
   const reading = classifyBudget(monthlySpend(), policy.review.monthly_budget_usd)
   if (reading.exhausted) await noteBudgetSpent(reading)
   else await noteBudgetAvailable()

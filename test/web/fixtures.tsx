@@ -439,6 +439,7 @@ export const STATUS = {
   repoDir: '/srv/compose',
   repo: 'you/repo',
   pushMain: true,
+  priced: true,
   blackout: ['00:45-02:30'],
   scan: {
     cron: '0 0 3 * * *',
@@ -634,6 +635,12 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
       SettingsPage({ groups: SETTING_GROUPS, readyCount: 2, chrome: CH }),
     ),
     'status-page': String(StatusPage({ data: STATUS, chrome: CH })),
+    'status-page-unpriced': String(
+      StatusPage({
+        data: { ...STATUS, priced: false, spend: [{ model: 'qwen3:32b', purpose: 'verdict', calls: 12, cost: 0 }] },
+        chrome: CH,
+      }),
+    ),
     // fragments
     inbox: String(InboxList({ data: inbox })),
     'inbox-aside': String(InboxAside({ data: inbox })),

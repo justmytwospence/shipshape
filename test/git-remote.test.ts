@@ -100,7 +100,7 @@ test('a change links to its merge commit on the remote', () => {
   const sha = 'a'.repeat(40)
   const id = Number(
     getDb()
-      .prepare(`INSERT INTO prs (number, branch, head_sha_pushed, state, scope, kind, merge_commit_sha, created_at) VALUES (0, 'b', 'x', 'merged', 'tag-only', 'local', ?, 'now')`)
+      .prepare(`INSERT INTO prs (number, branch, head_sha_pushed, state, scope, merge_commit_sha, created_at) VALUES (0, 'b', 'x', 'merged', 'tag-only', ?, 'now')`)
       .run(sha).lastInsertRowid,
   )
   assert.equal(changeUrl(id), `https://git.example.test:3000/me/compose/commit/${sha}`)

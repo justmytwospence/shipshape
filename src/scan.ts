@@ -194,28 +194,28 @@ function syncInventory(services: ScannedService[]): void {
   const upsert = db.prepare(
     `INSERT INTO images (stack, service, compose_file, image_ref, registry, repository,
                          current_tag, current_digest, watched, pattern, tag_include,
-                         policy_label, class_label, snapshot_label, backup_job_label,
-                         source_label, changelog_label, claude_label, deploy_label,
-                         probe_port, archive_pre, network_mode, unwatchable,
+                         legacy_labels, class_label, snapshot_label, backup_job_label,
+                         source_label, changelog_label, review_label, deploy_label,
+                         probe_port, network_mode, unwatchable,
                          fork_upstream, fork_waits_on, base_dockerfile, last_seen_at)
      VALUES (@stack, @service, @compose_file, @image_ref, @registry, @repository,
              @current_tag, @current_digest, @watched, @pattern, @tag_include,
-             @policy_label, @class_label, @snapshot_label, @backup_job_label,
-             @source_label, @changelog_label, @claude_label, @deploy_label,
-             @probe_port, @archive_pre, @network_mode, @unwatchable,
+             @legacy_labels, @class_label, @snapshot_label, @backup_job_label,
+             @source_label, @changelog_label, @review_label, @deploy_label,
+             @probe_port, @network_mode, @unwatchable,
              @fork_upstream, @fork_waits_on, @base_dockerfile, @last_seen_at)
      ON CONFLICT(stack, service) DO UPDATE SET
        compose_file = excluded.compose_file, image_ref = excluded.image_ref,
        registry = excluded.registry, repository = excluded.repository,
        current_tag = excluded.current_tag, current_digest = excluded.current_digest,
        watched = excluded.watched, pattern = excluded.pattern,
-       tag_include = excluded.tag_include, policy_label = excluded.policy_label,
+       tag_include = excluded.tag_include, legacy_labels = excluded.legacy_labels,
        class_label = excluded.class_label, snapshot_label = excluded.snapshot_label,
        backup_job_label = excluded.backup_job_label,
        source_label = excluded.source_label, changelog_label = excluded.changelog_label,
-       claude_label = excluded.claude_label,
+       review_label = excluded.review_label,
        deploy_label = excluded.deploy_label, probe_port = excluded.probe_port,
-       archive_pre = excluded.archive_pre, network_mode = excluded.network_mode,
+       network_mode = excluded.network_mode,
        unwatchable = excluded.unwatchable,
        fork_upstream = excluded.fork_upstream, fork_waits_on = excluded.fork_waits_on,
        base_dockerfile = excluded.base_dockerfile,
@@ -236,16 +236,15 @@ function syncInventory(services: ScannedService[]): void {
         watched: s.watched ? 1 : 0,
         pattern: s.pattern,
         tag_include: s.tagInclude,
-        policy_label: s.legacyLabels.length ? s.legacyLabels.join(', ') : null,
+        legacy_labels: s.legacyLabels.length ? s.legacyLabels.join(', ') : null,
         class_label: s.classLabel,
         snapshot_label: s.snapshotLabel,
         backup_job_label: s.backupJobLabel,
         source_label: s.sourceLabel,
         changelog_label: s.changelogLabel ?? null,
-        claude_label: s.reviewLabel,
+        review_label: s.reviewLabel,
         deploy_label: s.deployLabel,
         probe_port: s.probePort,
-        archive_pre: null,
         network_mode: s.networkMode,
         unwatchable: s.unwatchable,
         fork_upstream: s.fork?.upstream ?? null,
@@ -274,9 +273,9 @@ export function refreshServiceLabels(stack: string, service: string): boolean {
   if (!svc) return false
   getDb()
     .prepare(
-      `UPDATE images SET watched = ?, policy_label = ?, class_label = ?, snapshot_label = ?,
+      `UPDATE images SET watched = ?, legacy_labels = ?, class_label = ?, snapshot_label = ?,
                          backup_job_label = ?, source_label = ?, changelog_label = ?,
-                         claude_label = ?, deploy_label = ?
+                         review_label = ?, deploy_label = ?
        WHERE stack = ? AND service = ?`,
     )
     .run(

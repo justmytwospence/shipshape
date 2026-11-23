@@ -491,7 +491,7 @@ const ACTIVITY = [
     lastAt: null,
     count: 1,
     level: 'info' as const,
-    kind: 'pr',
+    kind: 'ship',
     stack: null,
     service: null,
     message: 'shipped jellyfin 10.9.11 -> 10.10.3',

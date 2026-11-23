@@ -29,9 +29,9 @@ const rows = () =>
     .all() as { message: string; count: number; at: string; last_at: string | null }[]
 
 test('a repeated message bumps a count instead of adding a row', () => {
-  db.logEvent({ level: 'info', kind: 'pr', message: 'holding 13 update(s)' })
-  db.logEvent({ level: 'info', kind: 'pr', message: 'holding 13 update(s)' })
-  db.logEvent({ level: 'info', kind: 'pr', message: 'holding 13 update(s)' })
+  db.logEvent({ level: 'info', kind: 'ship', message: 'holding 13 update(s)' })
+  db.logEvent({ level: 'info', kind: 'ship', message: 'holding 13 update(s)' })
+  db.logEvent({ level: 'info', kind: 'ship', message: 'holding 13 update(s)' })
 
   const held = rows().filter((r) => r.message === 'holding 13 update(s)')
   assert.equal(held.length, 1, 'three identical events are one row')

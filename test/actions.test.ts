@@ -43,10 +43,6 @@ test('a frozen service asks: ship or skip', () => {
   assert.deepEqual(actionsFor(ctx({ state: 'frozen' })), ['ship', 'skip'])
 })
 
-test('a v1 pull request not yet closed by the cutover can only be skipped', () => {
-  assert.deepEqual(actionsFor(ctx({ state: 'pr_open' })), ['skip'])
-})
-
 test('a rolling tag can only be adopted or dismissed', () => {
   // There is nothing to change in git: the tag already points somewhere new.
   assert.deepEqual(actionsFor(ctx({ state: 'detected', detail: 'rolling' })), ['redeploy', 'skip'])
@@ -126,7 +122,6 @@ test('every state names exactly one button, and names it first', () => {
     ctx({ state: 'detected' }),
     ctx({ state: 'detected', detail: 'rolling' }),
     ctx({ state: 'frozen' }),
-    ctx({ state: 'pr_open' }),
     ctx({ state: 'merged', deployStatus: 'ready' }),
     ctx({ state: 'merged', deployStatus: 'failed' }),
     ctx({ state: 'deploying' }),
@@ -149,7 +144,7 @@ test('every state names exactly one button, and names it first', () => {
 
 test('a refused verb explains itself in a sentence', () => {
   // A stale page or a double tap gets an answer, never a 404 that htmx would drop.
-  assert.match(refusalFor('deploy', ctx({ state: 'pr_open' })), /nothing is waiting to be deployed/)
+  assert.match(refusalFor('deploy', ctx({ state: 'detected' })), /nothing is waiting to be deployed/)
   assert.match(refusalFor('rollback', ctx({ state: 'verified' })), /nothing to revert/)
   assert.match(refusalFor('retry', ctx({ state: 'failed', atFromTag: false })), /still in the tree/)
   assert.match(refusalFor('ship', ctx({ state: 'verified' })), /nothing to ship/)

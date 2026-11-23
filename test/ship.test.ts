@@ -100,8 +100,8 @@ test('a ready update lands on main as a merge commit with the branch as its seco
   assert.equal(g(join(dir, 'data', 'repo'), ['branch', '--list', 'shipshape/*']), '')
 
   // The record: a local change, merged, with the commit it merged as.
-  const row = getDb().prepare(`SELECT kind, number, state, merge_commit_sha, scope FROM prs`).get() as Record<string, unknown>
-  assert.deepEqual([row.kind, row.number, row.state, row.scope], ['local', 0, 'merged', 'tag-only'])
+  const row = getDb().prepare(`SELECT number, state, merge_commit_sha, scope FROM prs`).get() as Record<string, unknown>
+  assert.deepEqual([row.number, row.state, row.scope], [0, 'merged', 'tag-only'])
   assert.equal(row.merge_commit_sha, g(origin, ['rev-parse', 'main']))
   assert.equal((getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(id) as { state: string }).state, 'merged')
 
@@ -253,8 +253,8 @@ function draft(id: number, opts: { steps: string[] }) {
   const pr = Number(
     db
       .prepare(
-        `INSERT INTO prs (number, branch, head_sha_pushed, state, group_key, scope, kind, created_at)
-         VALUES (0, 'shipshape/app--app--1.0.1', '', 'open', NULL, 'proposed', 'local', '2026-01-02T00:00:00Z')`,
+        `INSERT INTO prs (number, branch, head_sha_pushed, state, group_key, scope, created_at)
+         VALUES (0, 'shipshape/app--app--1.0.1', '', 'open', NULL, 'proposed', '2026-01-02T00:00:00Z')`,
       )
       .run().lastInsertRowid,
   )

@@ -29,7 +29,7 @@ function seedUpdate(o: Partial<{ state: string; detail: string | null; toTag: st
                             detail, detected_at, updated_at)
        VALUES ('media','jellyfin','jellyfin/jellyfin','10.9.11',?,'minor','manual',?,?,?,?)`,
     )
-    .run(o.toTag ?? '10.10.3', o.state ?? 'pr_open', o.detail ?? null, now(), now())
+    .run(o.toTag ?? '10.10.3', o.state ?? 'detected', o.detail ?? null, now(), now())
   return Number(info.lastInsertRowid)
 }
 
@@ -52,7 +52,7 @@ beforeEach(() => {
 })
 
 test('a verb the state does not offer is refused with a reason, not an exception', async () => {
-  const id = seedUpdate({ state: 'pr_open' })
+  const id = seedUpdate({ state: 'detected' })
   const r = await runVerb(id, 'deploy')
   assert.equal(r.ok, false)
   assert.match(r.message, /nothing is waiting to be deployed/)

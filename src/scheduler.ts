@@ -106,10 +106,10 @@ function startLoop(): void {
       // Last, so what was detected this cycle has had its verdict and any draft.
       const result = await runShipPass()
       if (result.paused) {
-        logEvent({ level: 'info', kind: 'pr', message: 'ship pass skipped', detail: result.paused })
+        logEvent({ level: 'info', kind: 'ship', message: 'ship pass skipped', detail: result.paused })
       }
     } catch (err) {
-      logEvent({ level: 'error', kind: 'pr', message: 'main loop failed', detail: (err as Error).message })
+      logEvent({ level: 'error', kind: 'ship', message: 'main loop failed', detail: (err as Error).message })
     }
   }
 

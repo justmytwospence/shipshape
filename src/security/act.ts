@@ -19,7 +19,7 @@ import { safeHref } from '../links.ts'
  */
 
 /** States in which an update could still be the way out of an exposure. */
-const CANDIDATE_STATES = ['detected', 'frozen', 'pr_open']
+const CANDIDATE_STATES = ['detected', 'frozen']
 /** Don't pull from Docker Hub below this many remaining pulls; scans need them more. */
 const HUB_FLOOR = 60
 /** A verified fix that has not landed after this long gets a card anyway. */

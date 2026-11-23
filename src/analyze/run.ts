@@ -350,12 +350,12 @@ function deploymentFor(carriers: { stack: string; service: string }[]): Deployme
     .filter((d): d is DeploymentEntry => d !== null)
 }
 
-/** `shipshape.review: required` (or the older `shipshape.claude`), as the last scan recorded it. */
+/** `shipshape.review: required`, as the last scan recorded it. */
 function requiredReview(stack: string, service: string): boolean {
   const row = getDb()
-    .prepare(`SELECT claude_label FROM images WHERE stack = ? AND service = ?`)
-    .get(stack, service) as { claude_label: string | null } | undefined
-  return row?.claude_label?.trim().toLowerCase() === 'required'
+    .prepare(`SELECT review_label FROM images WHERE stack = ? AND service = ?`)
+    .get(stack, service) as { review_label: string | null } | undefined
+  return row?.review_label?.trim().toLowerCase() === 'required'
 }
 
 /**

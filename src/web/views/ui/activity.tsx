@@ -13,7 +13,7 @@ import { GroupHeader } from './update.tsx'
  * the whole width and a day is a sticky header.
  */
 
-export const KINDS = ['scan', 'policy', 'pr', 'analysis', 'deploy', 'sync', 'system'] as const
+export const KINDS = ['scan', 'policy', 'ship', 'analysis', 'deploy', 'sync', 'system'] as const
 export type EventKind = (typeof KINDS)[number]
 
 export interface ActivityRow {

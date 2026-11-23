@@ -217,7 +217,7 @@ function skipUpdate(row: UpdateRow): VerbResult {
   setState(row.id, 'skipped', 'dismissed')
   logEvent({
     level: 'info',
-    kind: 'pr',
+    kind: 'ship',
     stack: row.stack,
     service: row.service,
     message: `${row.from_tag} -> ${row.to_tag} dismissed by the operator`,
@@ -347,7 +347,7 @@ async function retry(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Promise
   getDb().prepare(`UPDATE updates SET acked_at = NULL WHERE id = ?`).run(row.id)
   logEvent({
     level: 'info',
-    kind: 'pr',
+    kind: 'ship',
     stack: row.stack,
     service: row.service,
     message: `${row.from_tag} -> ${row.to_tag} put back in the queue by the operator`,

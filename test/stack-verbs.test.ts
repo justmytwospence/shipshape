@@ -59,12 +59,12 @@ test('a stack with no deploy says so', async () => {
 })
 
 test('a verb the newest deploy does not allow comes back as the refusal, and changes nothing', async () => {
-  const { updateId } = seedDeploy('app', 'pr_open')
+  const { updateId } = seedDeploy('app', 'detected')
   const r = await runStackVerb('app', 'rollback')
   assert.equal(r.ok, false)
   assert.ok(r.message.length > 0)
   const row = getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(updateId) as { state: string }
-  assert.equal(row.state, 'pr_open')
+  assert.equal(row.state, 'detected')
 })
 
 test('the newest deploy is the one addressed', () => {

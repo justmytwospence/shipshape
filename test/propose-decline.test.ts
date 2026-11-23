@@ -184,8 +184,8 @@ function failedDraft(stack: string, attempts: number, nextAttemptAt: string | nu
   const updateId = idOf[stack]!
   const info = db
     .prepare(
-      `INSERT INTO prs (number, branch, head_sha_pushed, state, scope, kind, created_at)
-       VALUES (0, ?, '', 'open', 'tag-only', 'local', ?)`,
+      `INSERT INTO prs (number, branch, head_sha_pushed, state, scope, created_at)
+       VALUES (0, ?, '', 'open', 'tag-only', ?)`,
     )
     .run(`shipshape/${stack}--draft`, new Date().toISOString())
   db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(info.lastInsertRowid, updateId)
@@ -220,8 +220,8 @@ test('a refused draft is final, for the button too', () => {
   const db = getDb()
   const info = db
     .prepare(
-      `INSERT INTO prs (number, branch, head_sha_pushed, state, scope, kind, created_at)
-       VALUES (0, 'shipshape/pihole--draft', '', 'open', 'tag-only', 'local', ?)`,
+      `INSERT INTO prs (number, branch, head_sha_pushed, state, scope, created_at)
+       VALUES (0, 'shipshape/pihole--draft', '', 'open', 'tag-only', ?)`,
     )
     .run(new Date().toISOString())
   db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(info.lastInsertRowid, idOf.pihole)

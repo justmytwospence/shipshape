@@ -32,54 +32,30 @@ after(() => {
   if (have && dir) rmSync(dir, { recursive: true, force: true })
 })
 
-test('the new schema applies to a database with real history in it', (t) => {
+test('v1 is gone from a database with real history in it', (t) => {
   if (!have) return t.skip('set SHIPSHAPE_LIVE_DB to an online backup to run this')
   const d = db.getDb()
   const cols = (table: string) =>
     (d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name)
+  const tables = (d.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as { name: string }[]).map((r) => r.name)
 
-  assert.ok(cols('instructions').includes('comment_id'))
-  assert.ok(cols('proposals').includes('instruction_id'))
-  assert.ok(cols('prs').includes('hold_reason'))
+  for (const gone of ['prompts', 'model_tier_decisions', 'digest_items', 'digest_due', 'instructions']) {
+    assert.ok(!tables.includes(gone), gone)
+  }
+  for (const gone of ['kind', 'user_owned', 'scope_sha', 'hold_reason', 'hold_at']) assert.ok(!cols('prs').includes(gone), `prs.${gone}`)
+  assert.ok(cols('images').includes('review_label'))
+  assert.ok(cols('images').includes('legacy_labels'))
+  for (const gone of ['claude_label', 'policy_label', 'archive_pre']) assert.ok(!cols('images').includes(gone), `images.${gone}`)
+  assert.ok(!cols('proposals').includes('instruction_id'))
 
-  // The existing rows are still there and still readable -- an ALTER that rewrote a
-  // table wrong would show up here rather than at 3am.
-  const prs = (d.prepare(`SELECT COUNT(*) c FROM prs`).get() as { c: number }).c
-  const updates = (d.prepare(`SELECT COUNT(*) c FROM updates`).get() as { c: number }).c
-  assert.ok(updates > 0, 'the copy should carry real history')
+  const count = (sql: string) => (d.prepare(sql).get() as { c: number }).c
+  assert.equal(count(`SELECT COUNT(*) c FROM events WHERE kind = 'pr'`), 0)
+  assert.equal(count(`SELECT COUNT(*) c FROM updates WHERE state = 'pr_open'`), 0)
+  // The existing rows are still there and still readable -- a table rebuilt wrong would
+  // show up here rather than at 3am.
+  assert.ok(count(`SELECT COUNT(*) c FROM updates`) > 0, 'the copy should carry real history')
   assert.equal(d.prepare(`PRAGMA foreign_key_check`).all().length, 0)
   assert.equal((d.prepare(`PRAGMA integrity_check`).get() as { integrity_check: string }).integrity_check, 'ok')
-
-  // Nothing is held and nothing is outstanding on a database that has never seen this
-  // feature, so no pull request changes behaviour the moment it is deployed.
-  const held = (d.prepare(`SELECT COUNT(*) c FROM prs WHERE hold_reason IS NOT NULL`).get() as { c: number }).c
-  assert.equal(held, 0)
-  assert.equal((d.prepare(`SELECT COUNT(*) c FROM instructions`).get() as { c: number }).c, 0)
-  assert.ok(prs >= 0)
-})
-
-test('the digest barrier arrives with nothing owed', (t) => {
-  if (!have) return t.skip('set SHIPSHAPE_LIVE_DB to an online backup to run this')
-  const d = db.getDb()
-
-  // Empty on arrival, so deploying this cannot make a digest go out early or twice: the
-  // first thing to write the row is the schedule firing.
-  assert.equal((d.prepare(`SELECT COUNT(*) c FROM digest_due`).get() as { c: number }).c, 0)
-
-  // One row, and the database is what enforces it -- two digests owed at once is not a
-  // state the loop knows how to resolve.
-  d.prepare(`INSERT INTO digest_due (id, due_at, deadline) VALUES (1, 'a', 'b')`).run()
-  assert.throws(() =>
-    d.prepare(`INSERT INTO digest_due (id, due_at, deadline) VALUES (2, 'a', 'b')`).run(),
-  )
-  d.prepare(`DELETE FROM digest_due`).run()
-
-  // Pending items from before the upgrade are still pending: the barrier changes when
-  // the digest goes out, never which rows it carries.
-  const pending = (
-    d.prepare(`SELECT COUNT(*) c FROM digest_items WHERE sent_at IS NULL`).get() as { c: number }
-  ).c
-  assert.ok(pending >= 0)
 })
 
 test('the resolution cache learns when to look again', (t) => {
@@ -109,28 +85,4 @@ test('verdicts gain their evidence, and none from before is read again for lack 
     d.prepare(`SELECT COUNT(*) c FROM verdicts WHERE json_extract(evidence, '$.incomplete') = 1`).get() as { c: number }
   ).c
   assert.equal(flagged, 0)
-})
-
-test('services gain a notes link, and no service has one until someone writes it', (t) => {
-  if (!have) return t.skip('set SHIPSHAPE_LIVE_DB to an online backup to run this')
-  const d = db.getDb()
-  const cols = (d.prepare(`PRAGMA table_info(images)`).all() as { name: string }[]).map((c) => c.name)
-  assert.ok(cols.includes('changelog_label'))
-  assert.ok((d.prepare(`SELECT COUNT(*) c FROM images`).get() as { c: number }).c > 0, 'the copy should carry real services')
-  // Filled by the next scan from the compose files, never invented by the migration.
-  assert.equal((d.prepare(`SELECT COUNT(*) c FROM images WHERE changelog_label IS NOT NULL`).get() as { c: number }).c, 0)
-})
-
-test('the rollout watermark is set to now, not to the beginning of time', (t) => {
-  if (!have) return t.skip('set SHIPSHAPE_LIVE_DB to an online backup to run this')
-  const rows = db
-    .getDb()
-    .prepare(`SELECT key, window FROM budgets WHERE key LIKE 'revise.%'`)
-    .all() as { key: string; window: string }[]
-  assert.equal(rows.length, 2)
-  // Months of existing comments on open pull requests sit before this, which is the
-  // point: the first tick after deploying must not work through all of them.
-  for (const r of rows) {
-    assert.ok(Date.parse(r.window) > Date.now() - 5 * 60_000, `${r.key} = ${r.window}`)
-  }
 })

@@ -122,11 +122,6 @@ export function actionsFor(c: ActionContext): Verb[] {
       out.push('ship', 'skip')
       break
 
-    case 'pr_open':
-      // A v1 pull request (removed in migration 034).
-      out.push('skip')
-      break
-
     case 'merged':
       // Either it is waiting for the button, or the last attempt did not land.
       if (deploy === 'ready' || deploy === 'pending') out.push('deploy')

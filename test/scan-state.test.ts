@@ -28,7 +28,7 @@ function reset(): void {
   ).run()
 }
 
-const LIVE = `('detected','pr_open','frozen')`
+const LIVE = `('detected','frozen')`
 
 function live(stack = 'miniflux', service = 'miniflux') {
   return getDb()

@@ -55,7 +55,7 @@ after(() => rmSync(root, { recursive: true, force: true }))
 beforeEach(() => {
   getDb().exec(
     `DELETE FROM deploy_updates; DELETE FROM deploys; DELETE FROM pr_updates; DELETE FROM prs;
-     DELETE FROM updates; DELETE FROM digest_items; DELETE FROM events; DELETE FROM incidents;`,
+     DELETE FROM updates; DELETE FROM events; DELETE FROM incidents;`,
   )
   sent.length = 0
   resolved.length = 0

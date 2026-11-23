@@ -133,7 +133,7 @@ test('the same bump in several stacks is read once, against all of them', () => 
   const ins = db.prepare(
     `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state,
                           detail, detected_at, updated_at, acked_at)
-     VALUES (?, ?, 'img/shared', '9.0.0', '9.1.0', 'minor', 'auto', 'pr_open', NULL, ?, ?, NULL)`,
+     VALUES (?, ?, 'img/shared', '9.0.0', '9.1.0', 'minor', 'auto', 'detected', NULL, ?, ?, NULL)`,
   )
   const a = Number(ins.run('one', 'db', ago(2), ago(2)).lastInsertRowid)
   const b = Number(ins.run('two', 'db', ago(1), ago(1)).lastInsertRowid)

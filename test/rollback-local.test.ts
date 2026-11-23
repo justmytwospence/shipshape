@@ -39,16 +39,16 @@ g(['checkout', '-q', 'main'])
 g(['merge', '--no-ff', '-m', 'chore(deps): web: bump web 1.0.0 -> 1.0.1', 'shipshape/web--web--1.0.1'])
 const mergeSha = g(['rev-parse', 'HEAD'])
 
-function change(kind: string, number: number, sha: string | null = null): number {
+function change(sha: string | null = null): number {
   return Number(
     getDb()
-      .prepare(`INSERT INTO prs (number, branch, head_sha_pushed, state, scope, kind, merge_commit_sha, created_at) VALUES (?, 'b', 'x', 'merged', 'tag-only', ?, ?, 'now')`)
-      .run(number, kind, sha).lastInsertRowid,
+      .prepare(`INSERT INTO prs (number, branch, head_sha_pushed, state, scope, merge_commit_sha, created_at) VALUES (0, 'b', 'x', 'merged', 'tag-only', ?, 'now')`)
+      .run(sha).lastInsertRowid,
   )
 }
 
 test('a local change points at its merge commit', () => {
-  const local = change('local', 0, mergeSha)
+  const local = change(mergeSha)
   assert.equal(changeUrl(local), `https://github.com/me/homelab/commit/${mergeSha}`)
 })
 

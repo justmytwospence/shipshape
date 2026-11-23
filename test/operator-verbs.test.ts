@@ -78,7 +78,7 @@ test('snooze puts the whole decision off for a week and restarts its clock', asy
 
 test('skip dismisses everything the decision covers, and the drafted change that carried it', async () => {
   const ids = [add('a', 'ask'), add('b', 'ask')]
-  const p = Number(getDb().prepare(`INSERT INTO prs (number, branch, head_sha_pushed, state, scope, kind, created_at) VALUES (0, 'b', 'x', 'open', 'proposed', 'local', 'now')`).run().lastInsertRowid)
+  const p = Number(getDb().prepare(`INSERT INTO prs (number, branch, head_sha_pushed, state, scope, created_at) VALUES (0, 'b', 'x', 'open', 'proposed', 'now')`).run().lastInsertRowid)
   getDb().prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(p, ids[0])
   getDb().prepare(`INSERT INTO proposals (pr_id, update_id, ops, notes, created_at) VALUES (?, ?, '[]', '[]', 'now')`).run(p, ids[0])
   const r = await runOperatorVerb(ids[1]!, 'skip')

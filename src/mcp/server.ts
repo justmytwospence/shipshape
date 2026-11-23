@@ -49,7 +49,7 @@ const verbReply = (r: VerbResult) => ({ ...json(r), isError: !r.ok })
 const READ = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
 
 function logged(message: string, r: VerbResult, where: { stack?: string; service?: string } = {}): VerbResult {
-  logEvent({ level: r.ok ? 'info' : 'warn', kind: 'pr', ...where, message, detail: r.message })
+  logEvent({ level: r.ok ? 'info' : 'warn', kind: 'ship', ...where, message, detail: r.message })
   return r
 }
 

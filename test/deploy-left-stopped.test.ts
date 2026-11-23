@@ -34,7 +34,7 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 beforeEach(() => {
   getDb().exec(
     `DELETE FROM deploy_updates; DELETE FROM deploys; DELETE FROM pr_updates; DELETE FROM prs;
-     DELETE FROM updates; DELETE FROM digest_items; DELETE FROM events;`,
+     DELETE FROM updates; DELETE FROM events;`,
   )
 })
 

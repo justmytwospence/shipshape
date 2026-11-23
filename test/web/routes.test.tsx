@@ -122,7 +122,7 @@ test('every fragment returns a bare fragment, never a whole document', async () 
 test('a list page asked by htmx answers with its list alone', async () => {
   // The toolbar's filter asks the page's own URL, so what it pushes reloads whole -- and
   // the fragment it gets back carries the count for the toolbar out of band.
-  for (const path of ['/updates?stage=all', '/services?filter=watched', '/activity?kind=pr']) {
+  for (const path of ['/updates?stage=all', '/services?filter=watched', '/activity?kind=ship']) {
     const res = await app.request(path, { headers: { 'HX-Request': 'true' } })
     assert.equal(res.status, 200, path)
     const html = await res.text()
@@ -371,8 +371,8 @@ test("a drafted change's proposal is the one shown, whatever its number", async 
     const p = Number(
       db
         .prepare(
-          `INSERT INTO prs (number, branch, head_sha_pushed, state, scope, kind, created_at)
-           VALUES (0, ?, 'x', 'open', 'proposed', 'local', ?)`,
+          `INSERT INTO prs (number, branch, head_sha_pushed, state, scope, created_at)
+           VALUES (0, ?, 'x', 'open', 'proposed', ?)`,
         )
         .run(`shipshape/drafts--${service}`, now).lastInsertRowid,
     )

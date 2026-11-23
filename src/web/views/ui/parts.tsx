@@ -44,8 +44,6 @@ export function stageOf(u: UpdateView): { label: string; cls: string; live?: boo
       return { label: 'Shipping', cls: 'badge-info' }
     case 'frozen':
       return { label: 'Frozen', cls: 'badge-ghost' }
-    case 'pr_open':
-      return o('opened')
     case 'merged':
       if (d === 'ready' || d === 'pending') return { label: 'Ready to deploy', cls: 'badge-info' }
       if (d === 'failed' || d === 'error') return o('failed')
@@ -112,17 +110,7 @@ export function verdictLabel(u: UpdateView): {
 
 export const VerdictChip: FC<{ update: UpdateView; long?: boolean }> = ({ update, long }) => {
   const v = verdictLabel(update)
-  if (!v) {
-    // "Reading changelog…" used to show here whenever a pull request had no review --
-    // including when nothing was going to read it: the budget spent, or no key set. It
-    // promised activity that was not happening. Pending says what is true either way.
-    return update.state === 'pr_open' ? (
-      <span class="inline-flex items-center gap-1 text-xs opacity-60">
-        <Icon name="eye" class="size-3.5" />
-        Review pending
-      </span>
-    ) : null
-  }
+  if (!v) return null
   // Only the screen has judged it. Said, because a screened approval rests on narrow
   // answers about the notes rather than a reading of them.
   const screened = update.verdict?.source === 'screen'

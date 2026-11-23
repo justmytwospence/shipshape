@@ -122,7 +122,7 @@ export function draftedAt(updateId: number): string | null {
       `SELECT MAX(pr2.created_at) AS at FROM proposals pr2
          JOIN prs p ON p.id = pr2.pr_id
          JOIN pr_updates pu ON pu.pr_id = p.id
-        WHERE pu.update_id = ? AND p.kind = 'local' AND p.state = 'open' AND p.scope = 'proposed'
+        WHERE pu.update_id = ? AND p.state = 'open' AND p.scope = 'proposed'
           AND pr2.error IS NULL AND pr2.retryable = 0`,
     )
     .get(updateId) as { at: string | null } | undefined
@@ -135,8 +135,8 @@ export function holdsForRow(row: HoldRow, policy: Policy = loadPolicy().policy, 
   const v = verdictFor(row)
   const state = memberVerdict({ ...v, detected_at: row.detected_at }, reviewExpected(policy), now)
   const img = db
-    .prepare(`SELECT claude_label, base_dockerfile FROM images WHERE stack = ? AND service = ?`)
-    .get(row.stack, row.service) as { claude_label: string | null; base_dockerfile: string | null } | undefined
+    .prepare(`SELECT review_label, base_dockerfile FROM images WHERE stack = ? AND service = ?`)
+    .get(row.stack, row.service) as { review_label: string | null; base_dockerfile: string | null } | undefined
   const fix = securityFixFor(row.id, policy)
 
   const verdict: HoldVerdict | null =
@@ -161,7 +161,7 @@ export function holdsForRow(row: HoldRow, policy: Policy = loadPolicy().policy, 
     magnitude: row.magnitude as Magnitude,
     verdict,
     verdictState: state,
-    required: img?.claude_label?.trim().toLowerCase() === 'required',
+    required: img?.review_label?.trim().toLowerCase() === 'required',
     hasSnapshot: canRestore(row.stack, policy),
     restoreError: row.restore_error,
     securityFix: fix !== null,

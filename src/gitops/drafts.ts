@@ -19,7 +19,7 @@ export function draftFor(group: UpdateGroup): { id: number; branch: string } | n
   const row = getDb()
     .prepare(
       `SELECT p.id, p.branch FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id
-        WHERE p.kind = 'local' AND p.state = 'open' AND p.scope = 'proposed' AND pu.update_id IN (${ids.map(() => '?').join(',')})
+        WHERE p.state = 'open' AND p.scope = 'proposed' AND pu.update_id IN (${ids.map(() => '?').join(',')})
         ORDER BY p.id DESC LIMIT 1`,
     )
     .get(...ids) as { id: number; branch: string } | undefined
@@ -34,7 +34,7 @@ export function closeLocalChange(prId: number, why: string): void {
     db.prepare(`UPDATE prs SET state = 'closed' WHERE id = ?`).run(prId)
     db.prepare(`DELETE FROM proposals WHERE pr_id = ?`).run(prId)
   })()
-  logEvent({ level: 'info', kind: 'pr', message: 'a drafted change was closed', detail: `${why} (${now.slice(0, 10)})` })
+  logEvent({ level: 'info', kind: 'ship', message: 'a drafted change was closed', detail: `${why} (${now.slice(0, 10)})` })
 }
 
 const parseList = (raw: string | null): unknown[] => {
@@ -55,7 +55,7 @@ const parseList = (raw: string | null): unknown[] => {
 export async function closeStaleDrafts(): Promise<number> {
   const db = getDb()
   const drafts = db
-    .prepare(`SELECT id, branch FROM prs WHERE kind = 'local' AND state = 'open' AND scope = 'proposed'`)
+    .prepare(`SELECT id, branch FROM prs WHERE state = 'open' AND scope = 'proposed'`)
     .all() as { id: number; branch: string }[]
   const stale: { id: number; branch: string; why: string }[] = []
   for (const d of drafts) {

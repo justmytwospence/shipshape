@@ -24,7 +24,7 @@ export function serviceRows(): ServiceRowData[] {
     getDb()
       .prepare(
         `SELECT stack, service, registry, repository, current_tag, watched, unwatchable,
-                last_status, last_detail, constrained_from, last_seen_at, policy_label, class_label,
+                last_status, last_detail, constrained_from, last_seen_at, legacy_labels, class_label,
                 fork_upstream
            FROM images ORDER BY stack, service`,
       )
@@ -40,7 +40,7 @@ export function serviceRows(): ServiceRowData[] {
       last_detail: string | null
       constrained_from: string | null
       last_seen_at: string | null
-      policy_label: string | null
+      legacy_labels: string | null
       class_label: string | null
       fork_upstream: string | null
     }[]
@@ -55,7 +55,7 @@ export function serviceRows(): ServiceRowData[] {
     lastDetail: r.last_detail,
     constrainedFrom: r.constrained_from,
     lastSeenAt: r.last_seen_at,
-    policy: ((c) => (c === 'normal' ? null : c))(classFor({ classLabel: r.class_label, legacy: !!r.policy_label })),
+    policy: ((c) => (c === 'normal' ? null : c))(classFor({ classLabel: r.class_label, legacy: !!r.legacy_labels })),
     upstream: upstreamState(r),
     fork: !!r.fork_upstream,
   }))
@@ -115,7 +115,7 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
   const db = getDb()
   const image = db
     .prepare(
-      `SELECT compose_file, pattern, tag_include, policy_label, claude_label,
+      `SELECT compose_file, pattern, tag_include, legacy_labels, review_label,
               deploy_label, registry, repository, fork_upstream, fork_waits_on
          FROM images WHERE stack = ? AND service = ?`,
     )
@@ -124,8 +124,8 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
         compose_file: string
         pattern: string | null
         tag_include: string | null
-        policy_label: string | null
-        claude_label: string | null
+        legacy_labels: string | null
+        review_label: string | null
         deploy_label: string | null
         registry: string
         repository: string
@@ -145,7 +145,7 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
     live = undefined
   }
 
-  const legacy = live ? live.legacyLabels : image?.policy_label ? image.policy_label.split(', ') : []
+  const legacy = live ? live.legacyLabels : image?.legacy_labels ? image.legacy_labels.split(', ') : []
   const classLabel = live?.classLabel ?? null
   const isFork = live ? !!live.fork : !!image?.fork_upstream
   const config: ConfigLine[] = []
@@ -224,8 +224,8 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
   if (image?.deploy_label) {
     config.push({ key: 'deploy', value: image.deploy_label, source: 'label' })
   }
-  if (image?.claude_label) {
-    config.push({ key: 'review', value: image.claude_label, source: 'label' })
+  if (image?.review_label) {
+    config.push({ key: 'review', value: image.review_label, source: 'label' })
   }
 
   const fork = isFork ? forkSection(stack, service, live, image) : null

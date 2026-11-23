@@ -258,7 +258,7 @@ export function createApp(): Hono {
       // same one the Inbox page lists.
       inbox: inboxNeedsYou().length,
       updates: one(
-        `SELECT COUNT(*) AS n FROM updates WHERE state IN ('detected','frozen','pr_open','merged')`,
+        `SELECT COUNT(*) AS n FROM updates WHERE state IN ('detected','frozen','merged')`,
       ),
       attention: one(
         `SELECT COUNT(*) AS n FROM images WHERE last_status IS NOT NULL OR constrained_from IS NOT NULL`,

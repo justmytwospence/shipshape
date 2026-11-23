@@ -126,15 +126,15 @@ function ensureChangeRow(c: Candidate, branch: string): number {
   const existing = db
     .prepare(
       `SELECT p.id FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id
-        WHERE pu.update_id = ? AND p.kind = 'local' AND p.state = 'open' ORDER BY p.id DESC LIMIT 1`,
+        WHERE pu.update_id = ? AND p.state = 'open' ORDER BY p.id DESC LIMIT 1`,
     )
     .get(c.updateId) as { id: number } | undefined
   if (existing) return existing.id
   return db.transaction(() => {
     const info = db
       .prepare(
-        `INSERT INTO prs (number, branch, head_sha_pushed, state, group_key, scope, kind, created_at)
-         VALUES (0, ?, '', 'open', NULL, 'tag-only', 'local', ?)`,
+        `INSERT INTO prs (number, branch, head_sha_pushed, state, group_key, scope, created_at)
+         VALUES (0, ?, '', 'open', NULL, 'tag-only', ?)`,
       )
       .run(branch, new Date().toISOString())
     const id = Number(info.lastInsertRowid)
@@ -203,7 +203,7 @@ export function pickCandidate(
               u.to_tag AS toTag, i.compose_file AS composeFile,
               v.recommendation, v.migration_steps,
               (SELECT p.id FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id
-                WHERE pu.update_id = u.id AND p.kind = 'local' AND p.state = 'open'
+                WHERE pu.update_id = u.id AND p.state = 'open'
                 ORDER BY p.id DESC LIMIT 1) AS prId
        FROM updates u
        JOIN images i ON i.stack = u.stack AND i.service = u.service
@@ -318,7 +318,7 @@ async function draftFor(c: Candidate): Promise<boolean> {
       record({ ...c, prId }, result, null, [])
       logEvent({
         level: 'info',
-        kind: 'pr',
+        kind: 'ship',
         stack: c.stack,
         service: c.service,
         message: `${c.stack}/${c.service}: no compose change needed, ${result.notes.length} manual step(s) noted`,
@@ -344,7 +344,7 @@ async function draftFor(c: Candidate): Promise<boolean> {
       record({ ...c, prId }, result, applied.reason, [])
       logEvent({
         level: 'warn',
-        kind: 'pr',
+        kind: 'ship',
         stack: c.stack,
         service: c.service,
         message: `${c.stack}/${c.service}: proposal refused`,
@@ -389,7 +389,7 @@ async function draftFor(c: Candidate): Promise<boolean> {
 
     logEvent({
       level: 'info',
-      kind: 'pr',
+      kind: 'ship',
       stack: c.stack,
       service: c.service,
       message: `${c.stack}/${c.service}: drafted ${applied.changed.length} config change(s)`,

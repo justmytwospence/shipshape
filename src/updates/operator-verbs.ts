@@ -78,7 +78,7 @@ function shipDecision(id: number): VerbResult {
   const members = approve(id)
   logEvent({
     level: 'info',
-    kind: 'pr',
+    kind: 'ship',
     stack: members[0]?.stack,
     message: `ship approved: ${names(members)}`,
   })
@@ -130,12 +130,12 @@ function skipDecision(id: number): VerbResult {
     const open = db
       .prepare(
         `SELECT p.id FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id
-          WHERE pu.update_id = ? AND p.kind = 'local' AND p.state = 'open'`,
+          WHERE pu.update_id = ? AND p.state = 'open'`,
       )
       .all(m.id) as { id: number }[]
     for (const p of open) closeLocalChange(p.id, 'skipped by the operator')
   }
-  logEvent({ level: 'info', kind: 'pr', stack: members[0]?.stack, message: `${names(members)} dismissed by the operator` })
+  logEvent({ level: 'info', kind: 'ship', stack: members[0]?.stack, message: `${names(members)} dismissed by the operator` })
   return { ok: true, message: 'Skipped. It will not be offered again unless you ask for it.' }
 }
 

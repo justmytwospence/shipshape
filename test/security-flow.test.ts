@@ -187,7 +187,7 @@ test('exposures, verified fixes and the gate follow the inventories, not the adv
   const now = new Date().toISOString()
   const ins = db.prepare(
     `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'patch', 'auto', 'pr_open', ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, 'patch', 'auto', 'detected', ?, ?)`,
   )
   const id = Number(ins.run('immich', 'immich-server', 'ghcr.io/immich-app/immich-server:v3.3.3', 'v3.3.3', 'v3.3.5', now, now).lastInsertRowid)
   db.prepare(`INSERT INTO security_candidates (update_id, image_ref, image_id, checked_at) VALUES (?, ?, ?, ?)`).run(

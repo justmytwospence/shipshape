@@ -87,7 +87,7 @@ test('a release feed is ordered by when it turned up, not by how big it is', () 
 
 test('the feed carries every state, not a slice of the pipeline', () => {
   addUpdate({ service: 'shipped', magnitude: 'minor', state: 'verified', detectedAt: ago(3) })
-  addUpdate({ service: 'waiting', magnitude: 'minor', state: 'pr_open', detectedAt: ago(2) })
+  addUpdate({ service: 'waiting', magnitude: 'minor', state: 'detected', detectedAt: ago(2) })
   addUpdate({ service: 'gone-wrong', magnitude: 'minor', state: 'failed', detectedAt: ago(4) })
 
   const services = new Set(listReleases().map((r) => r.service))
@@ -162,7 +162,7 @@ test('a service linked only by its label still links to its release notes', () =
       `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state,
                             detail, detected_at, updated_at)
        VALUES ('openclaw', 'signal-cli', 'registry.gitlab.com/packaging/signal-cli/signal-cli-native:v0-14-7-1',
-               'v0-14-7-1', 'v0-14-8-1', 'minor', 'auto', 'pr_open', NULL, ?, ?)`,
+               'v0-14-7-1', 'v0-14-8-1', 'minor', 'auto', 'detected', NULL, ?, ?)`,
     )
     .run(now, now)
   const [release] = listReleases({ q: 'signal-cli' })

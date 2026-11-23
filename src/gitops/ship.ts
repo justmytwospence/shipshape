@@ -76,7 +76,7 @@ export function eligibleGroups(policy: Policy): UpdateGroup[] {
     for (const r of gone) mark.run(now, r.id)
     logEvent({
       level: 'info',
-      kind: 'pr',
+      kind: 'ship',
       message: `retired ${gone.length} update(s) for services no longer in any compose file`,
       detail: gone.map((r) => `${r.stack}/${r.service}`).join(', ').slice(0, 300),
     })
@@ -460,7 +460,7 @@ export function retireGroup(group: UpdateGroup, reason: string): boolean {
   })()
   logEvent({
     level: 'info',
-    kind: 'pr',
+    kind: 'ship',
     stack: group.members[0]!.stack,
     message: 'update already applied',
     detail: reason,
@@ -471,7 +471,7 @@ export function retireGroup(group: UpdateGroup, reason: string): boolean {
 export function failGroup(group: UpdateGroup, reason: string): boolean {
   logEvent({
     level: 'warn',
-    kind: 'pr',
+    kind: 'ship',
     stack: group.members[0]!.stack,
     message: 'could not build the change',
     detail: reason,
@@ -636,7 +636,7 @@ async function passBody(out: ShipRun): Promise<ShipRun> {
       out.failed++
       logEvent({
         level: 'error',
-        kind: 'pr',
+        kind: 'ship',
         stack: group.members[0]!.stack,
         message: 'failed to ship an update',
         detail: (err as Error).message.slice(0, 300),
@@ -779,7 +779,7 @@ async function mergeAndPush(
   return { ok: false, reason: 'push kept losing a race with origin' }
 }
 
-/** The change record for a branch shipshape merged itself: a `prs` row with `kind = 'local'`. */
+/** The change record for a branch shipshape merged itself: a `prs` row. */
 function recordLocalChange(o: {
   group: UpdateGroup
   branch: string
@@ -798,8 +798,8 @@ function recordLocalChange(o: {
     }
     const info = db
       .prepare(
-        `INSERT INTO prs (number, branch, head_sha_pushed, state, group_key, scope, kind, created_at)
-         VALUES (0, ?, ?, 'open', ?, ?, 'local', ?)`,
+        `INSERT INTO prs (number, branch, head_sha_pushed, state, group_key, scope, created_at)
+         VALUES (0, ?, ?, 'open', ?, ?, ?)`,
       )
       .run(o.branch, o.sha, o.group.key, o.scope, now)
     const id = Number(info.lastInsertRowid)
@@ -845,7 +845,7 @@ export async function recordShipped(prId: number, mergeSha: string, group: Updat
   if (sync.status === 'paused' || sync.status === 'refused') {
     logEvent({
       level: 'warn',
-      kind: 'pr',
+      kind: 'ship',
       stack,
       message: `${title} shipped, but the checkout could not be updated`,
       detail: sync.reason,
@@ -862,7 +862,7 @@ export async function recordShipped(prId: number, mergeSha: string, group: Updat
   }
   logEvent({
     level: 'info',
-    kind: 'pr',
+    kind: 'ship',
     stack,
     message: `shipped ${stack}: ${changeText(members, { named: true })}`,
     detail: `deploying ${names}${restorePointsFor(prId).length > 0 ? ', restore point taken' : ''}`,

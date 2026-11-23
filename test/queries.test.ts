@@ -201,9 +201,9 @@ test('the newest change wins, so a second attempt does not lose the merge commit
   assert.equal(v.change?.url, 'https://github.com/you/repo/commit/cafe123')
 })
 
-test('an update appears once even when it has two pull requests', () => {
-  // The dashboard query joined on open pull requests and duplicated the row.
-  const id = addUpdate({ state: 'pr_open' })
+test('an update appears once even when it has two change records', () => {
+  // The dashboard query joined on open change records and duplicated the row.
+  const id = addUpdate({ state: 'detected' })
   addPr(id, { number: 14 })
   addPr(id, { number: 22 })
   assert.equal(listUpdates({ stage: 'open' }).filter((u) => u.id === id).length, 1)
@@ -348,8 +348,8 @@ test('a left-stopped member still reads left stopped once a later merge overtake
 
 test('a service page shows its whole history, not just what is live', () => {
   addUpdate({ service: 'jelly', state: 'verified', updatedAt: ago(50) })
-  addUpdate({ service: 'jelly', state: 'pr_open' })
-  addUpdate({ service: 'other', state: 'pr_open' })
+  addUpdate({ service: 'jelly', state: 'detected' })
+  addUpdate({ service: 'other', state: 'detected' })
 
   const rows = updatesForService('media', 'jelly')
   assert.equal(rows.length, 2)

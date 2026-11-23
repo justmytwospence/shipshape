@@ -44,7 +44,7 @@ function seed(service: string, o: { policy?: string | null; source?: string | nu
   getDb()
     .prepare(
       `INSERT OR REPLACE INTO images (stack, service, compose_file, image_ref, registry, repository,
-             current_tag, watched, policy_label, source_label, last_seen_at)
+             current_tag, watched, legacy_labels, source_label, last_seen_at)
        VALUES ('media', ?, 'media/docker-compose.yaml', 'jellyfin/jellyfin:10.9.11', 'docker.io',
                'jellyfin/jellyfin', '10.9.11', 1, ?, ?, ?)`,
     )
@@ -57,8 +57,8 @@ beforeEach(() => {
 
 const row = (service: string) =>
   getDb()
-    .prepare(`SELECT policy_label, source_label, watched FROM images WHERE stack = 'media' AND service = ?`)
-    .get(service) as { policy_label: string | null; source_label: string | null; watched: number } | undefined
+    .prepare(`SELECT legacy_labels, source_label, watched FROM images WHERE stack = 'media' AND service = ?`)
+    .get(service) as { legacy_labels: string | null; source_label: string | null; watched: number } | undefined
 
 test("a service's labels are read from the compose file now, not at the next scan", () => {
   writeRepo(`services:
@@ -71,7 +71,7 @@ test("a service's labels are read from the compose file now, not at the next sca
 `)
   seed('jellyfin', { policy: 'auto', source: null })
   assert.equal(refreshServiceLabels('media', 'jellyfin'), true)
-  assert.deepEqual(row('jellyfin'), { policy_label: 'shipshape.policy: manual', source_label: 'jellyfin/jellyfin', watched: 1 })
+  assert.deepEqual(row('jellyfin'), { legacy_labels: 'shipshape.policy: manual', source_label: 'jellyfin/jellyfin', watched: 1 })
 })
 
 test('it touches one row and deletes nothing', () => {
@@ -83,9 +83,9 @@ test('it touches one row and deletes nothing', () => {
 `)
   seed('jellyfin')
   // Not in this compose file. A full inventory sync from here would delete it.
-  seed('elsewhere', { policy: 'manual' })
+  seed('elsewhere', { policy: 'shipshape.policy: manual' })
   refreshServiceLabels('media', 'jellyfin')
-  assert.equal(row('elsewhere')?.policy_label, 'manual')
+  assert.equal(row('elsewhere')?.legacy_labels, 'shipshape.policy: manual')
 })
 
 test('a service that is no longer in the compose file is reported, not invented', () => {

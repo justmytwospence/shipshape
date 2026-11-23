@@ -162,7 +162,7 @@ test('a queued deploy records which updates it carries', () => {
   db.prepare(
     `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state,
                           detected_at, updated_at)
-     VALUES ('linked','svc','img','1.0.0','1.1.0','minor','manual','pr_open',?,?)`,
+     VALUES ('linked','svc','img','1.0.0','1.1.0','minor','manual','detected',?,?)`,
   ).run(new Date().toISOString(), new Date().toISOString())
   const updateId = (db.prepare(`SELECT id FROM updates ORDER BY id DESC LIMIT 1`).get() as { id: number }).id
   db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(prId, updateId)

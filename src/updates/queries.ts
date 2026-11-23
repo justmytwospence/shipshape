@@ -800,7 +800,7 @@ function verifyDetail(json: string | null | undefined): string | null {
 
 /** The stages the Updates page filters by, and which states each covers. */
 export const STAGE_FILTERS = {
-  open: ['detected', 'frozen', 'pr_open', 'merged'],
+  open: ['detected', 'frozen', 'merged'],
   rolling: ['deploying', 'deployed'],
   // Left stopped is merged with nothing more owed by shipshape, so it is finished rather
   // than open -- in Open it would sit in the list and the nav count forever.

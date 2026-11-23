@@ -99,7 +99,7 @@ export async function noteAuthFailure(reason: string): Promise<void> {
   const host = env.gitRemote.host || 'the git remote'
   logEvent({
     level: 'error',
-    kind: 'pr',
+    kind: 'ship',
     message: `${host} is refusing the credentials`,
     detail: reason,
   })
@@ -130,7 +130,7 @@ export async function noteAuthOk(): Promise<void> {
   failing = null
   logEvent({
     level: 'info',
-    kind: 'pr',
+    kind: 'ship',
     message: `${env.gitRemote.host || 'the git remote'} is accepting the credentials again`,
     detail: `refused since ${since}`,
   })

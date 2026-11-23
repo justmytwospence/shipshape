@@ -90,7 +90,7 @@ export async function recordForkConflict(
   )
   logEvent({
     level: 'warn',
-    kind: 'pr',
+    kind: 'ship',
     stack,
     service,
     message: `fork cannot be rebased onto ${c.toTag}`,
@@ -119,7 +119,7 @@ export async function clearForkConflict(stack: string, service: string): Promise
     .get(stack, service) as { fork_conflict: string | null } | undefined
   if (!row?.fork_conflict) return
   db.prepare(`UPDATE images SET fork_conflict = NULL WHERE stack = ? AND service = ?`).run(stack, service)
-  logEvent({ level: 'info', kind: 'pr', stack, service, message: 'fork conflict cleared' })
+  logEvent({ level: 'info', kind: 'ship', stack, service, message: 'fork conflict cleared' })
   await resolveIncident(forkConflictKey(stack, service))
 }
 

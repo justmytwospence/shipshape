@@ -48,8 +48,8 @@ function seed(o: { approvedAt?: string | null; scope?: 'proposed' | 'tag-only'; 
   const pr = Number(
     db
       .prepare(
-        `INSERT INTO prs (number, branch, head_sha_pushed, state, group_key, scope, kind, created_at)
-         VALUES (0, 'shipshape/app', '', 'open', NULL, ?, 'local', ?)`,
+        `INSERT INTO prs (number, branch, head_sha_pushed, state, group_key, scope, created_at)
+         VALUES (0, 'shipshape/app', '', 'open', NULL, ?, ?)`,
       )
       .run(o.scope ?? 'proposed', T1).lastInsertRowid,
   )

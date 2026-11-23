@@ -46,7 +46,7 @@ export function logRetired(retired: Retired[]): void {
   for (const r of retired) {
     logEvent({
       level: 'info',
-      kind: 'pr',
+      kind: 'ship',
       stack: r.stack,
       service: r.service,
       message: `${r.stack}/${r.service} ${r.toTag} retired: overtaken by ${r.byTag}`,

@@ -82,7 +82,7 @@ const MIGRATIONS: { id: string; sql: string }[] = [
       to_tag       TEXT NOT NULL,
       magnitude    TEXT NOT NULL,    -- major | minor | patch | digest
       tier         TEXT NOT NULL,    -- resolved static tier at detection time
-      state        TEXT NOT NULL,    -- detected|pr_open|analyzed|merged|deploying
+      state        TEXT NOT NULL,    -- detected|analyzed|merged|deploying
                                      -- |deployed|verified|superseded|failed|held
       detail       TEXT,
       detected_at  TEXT NOT NULL,
@@ -128,7 +128,7 @@ const MIGRATIONS: { id: string; sql: string }[] = [
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
       at         TEXT NOT NULL,
       level      TEXT NOT NULL,       -- info | warn | error
-      kind       TEXT NOT NULL,       -- scan | sync | pr | analysis | deploy | policy
+      kind       TEXT NOT NULL,       -- scan | sync | ship | analysis | deploy | policy
       stack      TEXT,
       service    TEXT,
       message    TEXT NOT NULL,
@@ -1052,7 +1052,78 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     CREATE INDEX idx_sessions_expires ON sessions(expires_at);
   `,
   },
+  {
+    id: '034-drop-v1',
+    sql: `
+    -- v1 is gone: the pull-request era's tables, columns and states.
+
+    -- Whatever v1 left open is closed. On a database that ran the v2 cutover this matches nothing.
+    UPDATE prs SET state = 'closed' WHERE state = 'open' AND kind = 'github';
+    UPDATE updates SET state = 'detected', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE state = 'pr_open';
+    UPDATE prs SET scope = 'proposed' WHERE scope = 'modified';
+    -- Every tier is a class now. The v1 ladder's words map as they read; anything else
+    -- (manual, gated, model, a typo) asks.
+    UPDATE updates SET tier = CASE tier
+      WHEN 'auto' THEN 'normal' WHEN 'attended' THEN 'lifeline'
+      WHEN 'held' THEN 'frozen' WHEN 'on-request' THEN 'frozen' ELSE 'ask' END
+     WHERE tier NOT IN ('normal', 'stateful', 'ask', 'lifeline', 'frozen', 'skip');
+    UPDATE events SET kind = 'ship' WHERE kind = 'pr';
+    DELETE FROM budgets WHERE key IN ('revise.epoch', 'revise.since', 'cutover.v2');
+
+    -- proposals.instruction_id references instructions, so it cannot be dropped in place.
+    CREATE TABLE proposals_new (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      pr_id           INTEGER NOT NULL REFERENCES prs(id) ON DELETE CASCADE,
+      update_id       INTEGER NOT NULL REFERENCES updates(id) ON DELETE CASCADE,
+      ops             TEXT NOT NULL,
+      notes           TEXT NOT NULL,
+      summary         TEXT,
+      sources         TEXT,
+      changed         TEXT,
+      model           TEXT,
+      error           TEXT,
+      created_at      TEXT NOT NULL,
+      hunks           TEXT,
+      retryable       INTEGER NOT NULL DEFAULT 0,
+      attempts        INTEGER NOT NULL DEFAULT 1,
+      next_attempt_at TEXT
+    );
+    INSERT INTO proposals_new (id, pr_id, update_id, ops, notes, summary, sources, changed, model, error,
+                               created_at, hunks, retryable, attempts, next_attempt_at)
+      SELECT id, pr_id, update_id, ops, notes, summary, sources, changed, model, error,
+             created_at, hunks, retryable, attempts, next_attempt_at
+        FROM proposals
+       WHERE pr_id IN (SELECT id FROM prs) AND update_id IN (SELECT id FROM updates);
+    DROP TABLE proposals;
+    ALTER TABLE proposals_new RENAME TO proposals;
+    CREATE INDEX idx_proposals_pr ON proposals(pr_id);
+
+    DROP TABLE instructions;
+    DROP TABLE prompts;
+    DROP TABLE model_tier_decisions;
+    DROP TABLE digest_items;
+    DROP TABLE digest_due;
+
+    ALTER TABLE prs DROP COLUMN kind;
+    ALTER TABLE prs DROP COLUMN user_owned;
+    ALTER TABLE prs DROP COLUMN scope_sha;
+    ALTER TABLE prs DROP COLUMN hold_reason;
+    ALTER TABLE prs DROP COLUMN hold_at;
+    ALTER TABLE images DROP COLUMN archive_pre;
+    ALTER TABLE security_fixes DROP COLUMN commented;
+
+    ALTER TABLE images RENAME COLUMN claude_label TO review_label;
+    ALTER TABLE images RENAME COLUMN policy_label TO legacy_labels;
+    -- Scans since v1 labels stopped being read write the full "shipshape.policy: x" form. A
+    -- row no scan has rewritten yet holds the bare v1 value.
+    UPDATE images SET legacy_labels = 'shipshape.policy: ' || legacy_labels
+     WHERE legacy_labels IS NOT NULL AND legacy_labels NOT LIKE 'shipshape.%';
+    `,
+  },
 ]
+
+/** The migration list, for tests that need to stop partway (test/migrate-034.test.ts). */
+export const __migrationsForTest: readonly { id: string; sql: string }[] = MIGRATIONS
 
 function migrate(d: Db): void {
   d.exec(`CREATE TABLE IF NOT EXISTS _migrations (id TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`)
@@ -1072,7 +1143,7 @@ function migrate(d: Db): void {
 }
 
 export type EventLevel = 'info' | 'warn' | 'error'
-export type EventKind = 'scan' | 'sync' | 'pr' | 'analysis' | 'deploy' | 'policy' | 'system'
+export type EventKind = 'scan' | 'sync' | 'ship' | 'analysis' | 'deploy' | 'policy' | 'system'
 
 /** Repeats of the same message inside this window bump a counter instead of adding a row. */
 const COALESCE_MS = 24 * 60 * 60 * 1000

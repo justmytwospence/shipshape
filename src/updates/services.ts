@@ -55,7 +55,7 @@ export function serviceRows(): ServiceRowData[] {
     lastDetail: r.last_detail,
     constrainedFrom: r.constrained_from,
     lastSeenAt: r.last_seen_at,
-    policy: ((c) => (c === 'normal' ? null : c))(classFor({ classLabel: r.class_label, policyLabel: r.policy_label, prLabel: null })),
+    policy: ((c) => (c === 'normal' ? null : c))(classFor({ classLabel: r.class_label, legacy: !!r.policy_label })),
     upstream: upstreamState(r),
     fork: !!r.fork_upstream,
   }))
@@ -145,13 +145,12 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
     live = undefined
   }
 
-  const policyLabel = live?.policyLabel ?? image?.policy_label ?? null
+  const legacy = live ? live.legacyLabels : image?.policy_label ? image.policy_label.split(', ') : []
   const classLabel = live?.classLabel ?? null
-  const prLabel = live?.prLabel ?? null
   const isFork = live ? !!live.fork : !!image?.fork_upstream
   const config: ConfigLine[] = []
 
-  const cls = classFor({ classLabel, policyLabel, prLabel, dormant: live?.dormant ?? false })
+  const cls = classFor({ classLabel, legacy: legacy.length > 0, dormant: live?.dormant ?? false })
   const CLASS_NOTE: Record<ServiceClass, string> = {
     normal: 'ships on its own once the review finds nothing to do and the release has aged',
     stateful: 'ships on its own after a restore point; a one-way migration or a jump with no evidence asks',
@@ -163,13 +162,13 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
   config.push({
     key: 'class',
     value: cls,
-    source: live?.dormant ? 'locked' : classLabel ? 'label' : policyLabel || prLabel ? 'label' : 'default',
+    source: live?.dormant ? 'locked' : classLabel || legacy.length ? 'label' : 'default',
     note: live?.dormant
       ? 'the stack is disabled, so nothing moves on its own'
       : isFork
         ? 'a fork: shipping replays our fixes onto the new release, or retires the fork -- FORKS.md'
-        : !classLabel && (policyLabel || prLabel)
-          ? `read from the v1 label ${policyLabel ? `shipshape.policy: ${policyLabel}` : `shipshape.pr: ${prLabel}`}; set shipshape.class to replace it`
+        : legacy.length
+          ? `still carries ${legacy.join(', ')}, which shipshape no longer reads: held to ask until rewritten (npm run convert-v1)`
           : CLASS_NOTE[cls],
   })
   if (image && live?.snapshotLabel) {

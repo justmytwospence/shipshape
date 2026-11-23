@@ -94,7 +94,7 @@ test('a clean file is edited, committed, and the v1 labels go with the class', a
   assert.ok(text.includes('      shipshape.class: ask\n'))
   assert.ok(!text.includes('shipshape.pr'), 'the v1 pr label would have said something else')
   assert.ok(text.includes('# the media server'), 'comments survive')
-  assert.match(r.message, /v1 policy labels/)
+  assert.match(r.message, /old shipshape\.policy and shipshape\.pr labels/)
 
   assert.equal(g(['log', '-1', '--pretty=%s']), 'chore(shipshape): media/jellyfin: shipshape.class=ask')
   assert.equal(g(['log', '-1', '--pretty=%an']), 'shipshape')

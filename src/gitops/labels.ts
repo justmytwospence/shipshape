@@ -10,7 +10,7 @@ import { git, withGitLock } from './repo.ts'
 import { syncMain } from './sync.ts'
 
 /**
- * The write path for a service's labels: splice `shipshape.policy`, `shipshape.watch`,
+ * The write path for a service's labels: splice `shipshape.class`, `shipshape.watch`,
  * `shipshape.source` or `shipshape.changelog` into its compose file, gate the result, commit,
  * publish.
  *
@@ -158,9 +158,8 @@ async function run(o: { stack: string; service: string; changes: LabelChange[] }
     if (!edited.ok) return { ok: false, message: `${rel}: ${edited.reason}` }
     next = edited.text
 
-    // The v1 labels still stand on some services, and a class would sit beside them
-    // saying something else. The class wins when both are read, but a file that says two
-    // things is a file nobody trusts: remove them in the same commit.
+    // A leftover v1 label holds the service to ask whatever the class says, so writing a
+    // class is the way out of that: remove them in the same commit.
     if (c.key === 'class' && c.value !== null) {
       for (const old of ['shipshape.policy', 'shipshape.pr']) {
         const second = setLabel(next, service, old, null)
@@ -239,7 +238,7 @@ async function run(o: { stack: string; service: string; changes: LabelChange[] }
   }
 
   const prNote = removedPr
-    ? ' Also removed the v1 policy labels, which the class replaces.'
+    ? ' Also removed the old shipshape.policy and shipshape.pr labels, which the class replaces.'
     : ''
   logEvent({
     level: 'info',
@@ -247,7 +246,7 @@ async function run(o: { stack: string; service: string; changes: LabelChange[] }
     stack,
     service,
     message: `${stack}/${service}: ${verb}`,
-    detail: `committed ${sha}${removedPr ? ', removed the v1 policy labels' : ''}`,
+    detail: `committed ${sha}${removedPr ? ', removed shipshape.policy and shipshape.pr' : ''}`,
   })
   return {
     ok: true,

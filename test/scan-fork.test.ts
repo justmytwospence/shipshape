@@ -71,7 +71,7 @@ test('a fork is watched despite build:, and its ref is the upstream image', () =
   assert.equal(s.fork?.upstream, 'ghcr.io/grimmory-tools/grimmory:v3.3.3@sha256:fffd0ae0bfccd64ca00441e8fa58a14e286b9115e5df1cb47eecf294ad09e6ff')
   // The other labels still describe the upstream image.
   assert.equal(s.pattern, 'digest')
-  assert.equal(s.policyLabel, 'manual')
+  assert.deepEqual(s.legacyLabels, ['shipshape.policy: manual'])
 })
 
 test('waits-on is split, trimmed, deduplicated, and a malformed entry is reported rather than fatal', () => {

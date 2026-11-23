@@ -3,17 +3,12 @@ import assert from 'node:assert/strict'
 import { classFor, foldGroupClass, foldGroupMagnitude, normaliseClass, repositoryOf, shortRepository } from '../src/policy.ts'
 
 /**
- * Classes replace the v1 ladder. The label is `shipshape.class`; the v1 labels are still
- * read and mapped, so no compose file breaks on the day the model changes, and an
- * unrecognised value narrows to `ask`: a typo must never grant reach.
+ * Classes replaced the v1 ladder. The label is `shipshape.class`; a leftover v1 label is
+ * not read for meaning but holds the service to `ask`, and an unrecognised value narrows
+ * to `ask` too: a typo must never grant reach.
  */
 
-const c = (
-  classLabel: string | null = null,
-  policyLabel: string | null = null,
-  prLabel: string | null = null,
-  dormant = false,
-) => classFor({ classLabel, policyLabel, prLabel, dormant })
+const c = (classLabel: string | null = null, legacy = false, dormant = false) => classFor({ classLabel, legacy, dormant })
 
 test('classFor: no label is a normal service', () => {
   assert.equal(c(), 'normal')
@@ -26,7 +21,7 @@ test('classFor: every v2 class reads as itself', () => {
 
 test('classFor: shipshape.class: skip is not tracked, even on a dormant stack', () => {
   assert.equal(c('skip'), 'skip')
-  assert.equal(c('skip', null, null, true), 'skip')
+  assert.equal(c('skip', false, true), 'skip')
 })
 
 test('classFor: an unrecognised class narrows to ask', () => {
@@ -34,37 +29,23 @@ test('classFor: an unrecognised class narrows to ask', () => {
   assert.equal(c('auto'), 'ask', 'the v1 word is not a v2 class')
 })
 
-test('classFor: the v1 policy labels are mapped', () => {
-  assert.equal(c(null, 'auto'), 'normal')
-  assert.equal(c(null, 'manual'), 'ask')
-  assert.equal(c(null, 'gated'), 'ask')
-  assert.equal(c(null, 'model'), 'ask')
-  assert.equal(c(null, 'attended'), 'lifeline')
-  assert.equal(c(null, 'on-request'), 'frozen')
-  assert.equal(c(null, 'manaul'), 'ask', 'a typo narrows')
-})
-
-test('classFor: the v1 pr label still freezes a service', () => {
-  assert.equal(c(null, null, 'on-request'), 'frozen')
-  assert.equal(c(null, 'manual', 'on-request'), 'ask', 'a policy label is read before the pr label')
-})
-
-test('classFor: the class wins over the v1 labels it replaces', () => {
-  assert.equal(c('normal', 'attended', 'on-request'), 'normal')
+test('classFor: a leftover v1 label holds a service to ask', () => {
+  assert.equal(c(null, true), 'ask')
+  assert.equal(c('normal', true), 'ask')
+  assert.equal(c('lifeline', true), 'lifeline')
+  assert.equal(c('frozen', true), 'frozen')
 })
 
 test('classFor: skip beats everything, and a dormant stack is frozen whatever else applies', () => {
-  assert.equal(c('lifeline', 'skip'), 'skip')
-  assert.equal(c('normal', null, null, true), 'frozen')
-  assert.equal(c(null, 'skip', null, true), 'skip')
+  assert.equal(c('skip', true), 'skip')
+  assert.equal(c('normal', false, true), 'frozen')
 })
 
-test('normaliseClass: rows written before v2 are read in the new words', () => {
-  assert.equal(normaliseClass('auto'), 'normal')
+test('normaliseClass: v2 words read as themselves, anything else as ask', () => {
+  for (const cls of ['normal', 'stateful', 'ask', 'lifeline', 'frozen', 'skip']) assert.equal(normaliseClass(cls), cls)
+  assert.equal(normaliseClass('auto'), 'ask')
   assert.equal(normaliseClass('manual'), 'ask')
-  assert.equal(normaliseClass('attended'), 'lifeline')
-  assert.equal(normaliseClass('held'), 'frozen')
-  assert.equal(normaliseClass('stateful'), 'stateful')
+  assert.equal(normaliseClass(''), 'ask')
   assert.equal(normaliseClass(null), 'ask')
 })
 

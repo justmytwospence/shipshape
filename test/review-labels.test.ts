@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 /**
- * Labels: `shipshape.review` replaces `shipshape.claude` (both read), and a key nothing
- * reads is reported rather than silently ignored.
+ * Labels: `shipshape.review` replaced `shipshape.claude`, which is now a v1 label, and a key
+ * nothing reads is reported rather than silently ignored.
  */
 
 const repo = mkdtempSync(join(tmpdir(), 'shipshape-labels-'))
@@ -24,11 +24,19 @@ function stack(name: string, labels: string[]): string {
   return file
 }
 
-test('shipshape.review: required is read, and shipshape.claude still is', () => {
+test('shipshape.review: required is read; shipshape.claude is a v1 label', () => {
   const a = scanComposeFile(repo, stack('a', ['shipshape.watch: "true"', 'shipshape.review: required']))[0]!
-  assert.equal(a.claudeLabel, 'required')
+  assert.equal(a.reviewLabel, 'required')
   const b = scanComposeFile(repo, stack('b', ['shipshape.watch: "true"', 'shipshape.claude: required']))[0]!
-  assert.equal(b.claudeLabel, 'required')
+  assert.equal(b.reviewLabel, null)
+  assert.deepEqual(b.legacyLabels, ['shipshape.claude: required'])
+  assert.deepEqual(b.unknownLabels, [])
+})
+
+test('v1 labels are reported as such, never as unknown', () => {
+  const s = scanComposeFile(repo, stack('e', ['shipshape.watch: "true"', 'shipshape.policy: auto', 'shipshape.pr: on-request']))[0]!
+  assert.deepEqual(s.legacyLabels, ['shipshape.policy: auto', 'shipshape.pr: on-request'])
+  assert.deepEqual(s.unknownLabels, [])
 })
 
 test('an unknown shipshape key is reported, by name', () => {

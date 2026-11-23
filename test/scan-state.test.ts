@@ -131,18 +131,14 @@ test('frozen rows are live but distinguishable from detected ones', () => {
 })
 
 test('class assignment matches the policy engine for the real backlog shapes', () => {
-  const c = (classLabel: string | null, policyLabel: string | null, prLabel: string | null) =>
-    classFor({ classLabel, policyLabel, prLabel })
+  const c = (classLabel: string | null, legacy = false) => classFor({ classLabel, legacy })
 
   // miniflux 2.2.19 -> 2.3.3, ordinary service: ships on its own, whatever the jump
-  assert.equal(c(null, null, null), 'normal')
-  // authelia and friends: infrastructure the v1 ladder pinned off the auto rung
-  assert.equal(c(null, 'attended', null), 'lifeline')
-  assert.equal(c(null, 'gated', null), 'ask')
-  // postgres sidecar, dashboard-only
-  assert.equal(c(null, null, 'on-request'), 'frozen')
-  // the v2 label wins over the v1 ones
-  assert.equal(c('stateful', 'manual', null), 'stateful')
+  assert.equal(c(null), 'normal')
+  // a leftover v1 label holds a service to ask, or narrower
+  assert.equal(c(null, true), 'ask')
+  assert.equal(c('stateful', true), 'ask')
+  assert.equal(c('lifeline', true), 'lifeline')
 })
 
 test('rolling movement is recorded as a digest row that can never become a PR', () => {
@@ -195,7 +191,7 @@ test('a label change retiers an outstanding update on the next scan', () => {
   assert.equal(before.tier, 'ask')
   assert.equal(before.state, 'detected')
 
-  const nowFrozen = classFor({ classLabel: 'frozen', policyLabel: null, prLabel: null })
+  const nowFrozen = classFor({ classLabel: 'frozen' })
   assert.equal(nowFrozen, 'frozen')
 
   getDb()

@@ -40,9 +40,9 @@ export type Confidence = 'low' | 'medium' | 'high'
  *   frozen    -- tracked, nothing happens until you ask (disabled stacks, parked updates)
  *   skip      -- not tracked at all (`shipshape.class: skip`)
  *
- * The old ladder is still read: `shipshape.policy: auto|manual|attended|on-request` and
- * `shipshape.pr: on-request` map onto these, so no compose file breaks on the day the
- * labels change.
+ * The v1 labels (`shipshape.policy`, `shipshape.pr`, `shipshape.claude`) are no longer
+ * read. A service still carrying one is held to `ask` (or narrower) until it is rewritten
+ * (`npm run convert-v1`), so a leftover can never loosen it.
  */
 export type ServiceClass = 'normal' | 'stateful' | 'ask' | 'lifeline' | 'frozen' | 'skip'
 
@@ -52,10 +52,8 @@ export const CLASS_LABELS = ['normal', 'stateful', 'ask', 'lifeline', 'frozen', 
 export interface ClassInput {
   /** `shipshape.class`. */
   classLabel: string | null
-  /** `shipshape.policy`, the v1 ladder: read and mapped. */
-  policyLabel: string | null
-  /** `shipshape.pr`: on-request. Deprecated, still read. */
-  prLabel: string | null
+  /** The service still carries a v1 label (ScannedService.legacyLabels). */
+  legacy?: boolean
   /** The service carries a `disabled`/`standby` profile (see ScannedService.dormant). */
   dormant?: boolean
 }
@@ -68,31 +66,20 @@ function clean(v: string | null | undefined): string | null {
 /** First match wins. An unrecognised value narrows to `ask`: a typo must never grant reach. */
 export function classFor(i: ClassInput): ServiceClass {
   const cls = clean(i.classLabel)
-  const policy = clean(i.policyLabel)
-  const pr = clean(i.prLabel)
-
-  if (policy === 'skip' || cls === 'skip') return 'skip'
+  if (cls === 'skip') return 'skip'
   // A disabled stack is watched so its updates are known, but nothing moves on its own.
   if (i.dormant) return 'frozen'
-  if (cls !== null) return (CLASS_LABELS as readonly string[]).includes(cls) ? (cls as ServiceClass) : 'ask'
-  if (policy !== null) {
-    if (policy === 'auto') return 'normal'
-    if (policy === 'attended') return 'lifeline'
-    if (policy === 'on-request') return 'frozen'
-    // manual, gated and model (all read as manual before), and anything unrecognised.
-    return 'ask'
-  }
-  if (pr === 'on-request') return 'frozen'
-  return 'normal'
+  const named: ServiceClass | null =
+    cls === null ? null : (CLASS_LABELS as readonly string[]).includes(cls) ? (cls as ServiceClass) : 'ask'
+  // A v1 label nothing reads any more: never let it loosen a service. ask, or narrower.
+  if (i.legacy) return named === 'lifeline' || named === 'frozen' ? named : 'ask'
+  return named ?? 'normal'
 }
 
-/** Anything stored in `updates.tier` is a class; an older row's value narrows to `ask`. */
+/** Anything stored in `updates.tier` is a class; anything else narrows to `ask`. */
 export function normaliseClass(v: string | null | undefined): ServiceClass {
   const s = clean(v)
   if (s === 'normal' || s === 'stateful' || s === 'ask' || s === 'lifeline' || s === 'frozen' || s === 'skip') return s
-  if (s === 'auto') return 'normal'
-  if (s === 'attended') return 'lifeline'
-  if (s === 'held' || s === 'on-request') return 'frozen'
   return 'ask'
 }
 

@@ -535,7 +535,7 @@ const RungDialog: FC<{ svc: ServiceRowData; ctx?: string }> = ({ svc, ctx }) => 
     <div class="modal-box pb-safe">
       <h3 class="text-base font-semibold">How much this service asks of you</h3>
       <p class="mt-1 text-xs opacity-70">
-        {svc.stack}/{svc.service}. Writes shipshape.class, and removes the v1 policy labels it replaces.
+        {svc.stack}/{svc.service}. Writes shipshape.class into the compose file and commits it.
       </p>
       <form
         class="mt-3 flex flex-col gap-1.5"

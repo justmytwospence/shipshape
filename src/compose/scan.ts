@@ -92,8 +92,7 @@ export interface ScannedService {
   /** shipshape.* label values, already split out. */
   pattern: string | null
   tagInclude: string | null
-  policyLabel: string | null
-  /** `shipshape.class`: normal | stateful | ask | lifeline | frozen. Wins over `policy`. */
+  /** `shipshape.class`: normal | stateful | ask | lifeline | frozen | skip. */
   classLabel: string | null
   /**
    * `shipshape.snapshot`: a command that prints a dump of this service's data to stdout,
@@ -105,30 +104,24 @@ export interface ScannedService {
   sourceLabel: string | null
   /** `shipshape.changelog`: where the release notes are when GitHub releases do not have them. */
   changelogLabel: string | null
-  /**
-   * `shipshape.review: required` -- fail closed without a review. Read from the older
-   * `shipshape.claude` too, because the label restricts what may merge and dropping it on
-   * a rename would quietly loosen a service.
-   */
-  claudeLabel: string | null
+  /** `shipshape.review: required` -- fail closed without a review. */
+  reviewLabel: string | null
   deployLabel: string | null
   /** Port this service serves HTTP on, per its own traefik loadbalancer label. */
   probePort: number | null
-  /** The stack's nightly dump command, if it declares one. Suggested, never run. */
-  archivePre: string | null
   /** `service:<name>` when this service shares another container's network namespace. */
   networkMode: string | null
-  /**
-   * `shipshape.pr: on-request`, the older spelling of `shipshape.policy: on-request`.
-   * Still read -- see `claudeLabel` for why a restricting label is never dropped.
-   */
-  prLabel: string | null
   /** `shipshape.propose` -- how far a drafted config change may reach. See propose/paths. */
   proposeLabel: string | null
   /** `shipshape.group: <name>` -- forces services into one PR when the heuristic misses. */
   groupLabel: string | null
   /** `shipshape.*` keys nothing reads: a typo, or a label left over from a retired one. */
   unknownLabels: string[]
+  /**
+   * v1 labels still present, as `shipshape.<key>: <value>`. Never read for meaning: their
+   * presence narrows the class (policy.ts classFor).
+   */
+  legacyLabels: string[]
   /**
    * A label that was read but could not be used, in words: a `fork.waits-on` entry that is
    * not `owner/repo#N`, a `fork.upstream` that is not an image reference. Reported like
@@ -192,22 +185,22 @@ export const KNOWN_LABELS = new Set([
   'watch',
   'pattern',
   'tag.include',
-  'policy',
   'class',
   'snapshot',
   'backup-job',
   'source',
   'changelog',
   'review',
-  'claude',
   'deploy',
   'probe',
-  'pr',
   'propose',
   'group',
   'fork.upstream',
   'fork.waits-on',
 ])
+
+/** The labels of the pull-request era (v1): reported as such, and they narrow the class. */
+export const LEGACY_LABELS = ['policy', 'pr', 'claude'] as const
 
 /** Every `<stack>/<compose file>` plus the root compose file. */
 export function findComposeFiles(repoRoot: string): string[] {
@@ -276,11 +269,13 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
     const unknownLabels = Object.keys(labels)
       .filter((k) => k.startsWith('shipshape.'))
       .map((k) => k.slice('shipshape.'.length))
-      .filter((k) => !KNOWN_LABELS.has(k))
+      .filter((k) => !KNOWN_LABELS.has(k) && !(LEGACY_LABELS as readonly string[]).includes(k))
+    const legacyLabels = LEGACY_LABELS.filter((k) => labels[`shipshape.${k}`] !== undefined).map(
+      (k) => `shipshape.${k}: ${labels[`shipshape.${k}`]}`,
+    )
 
     const pattern = label('pattern')
     const tagInclude = label('tag.include')
-    const policyLabel = label('policy')
     const classLabel = label('class')
     // The file is read raw, so compose's `$$` escape is undone here: the command runs
     // inside the container, where the shell must see a single `$`.
@@ -288,7 +283,7 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
     const backupJobLabel = label('backup-job')
     const sourceLabel = label('source')
     const changelogLabel = label('changelog')
-    const claudeLabel = label('review') ?? label('claude')
+    const reviewLabel = label('review')
     const deployLabel = label('deploy')
     // Traefik already knows which port each service answers on -- 76 of them declare it.
     // Reusing that beats inventing a shipshape-specific one nobody would fill in, and it
@@ -301,9 +296,7 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
         : /^\d+$/.test(probeLabel ?? '')
           ? Number(probeLabel)
           : traefikPort(labels)
-    const archivePre = labels['docker-volume-backup.archive-pre'] ?? null
     const networkMode = typeof svc.network_mode === 'string' ? svc.network_mode : null
-    const prLabel = label('pr')
     const proposeLabel = label('propose')
     const groupLabel = label('group')
     const watchLabel = label('watch')
@@ -371,21 +364,19 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
       unwatchable,
       pattern,
       tagInclude,
-      policyLabel,
       classLabel,
       snapshotLabel,
       backupJobLabel,
       sourceLabel,
       changelogLabel,
-      claudeLabel,
+      reviewLabel,
       deployLabel,
       probePort,
-      archivePre,
       networkMode,
-      prLabel,
       proposeLabel,
       groupLabel,
       unknownLabels,
+      legacyLabels,
       labelProblems,
       fork,
       base,

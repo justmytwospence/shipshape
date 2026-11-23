@@ -236,16 +236,16 @@ function syncInventory(services: ScannedService[]): void {
         watched: s.watched ? 1 : 0,
         pattern: s.pattern,
         tag_include: s.tagInclude,
-        policy_label: s.policyLabel,
+        policy_label: s.legacyLabels.length ? s.legacyLabels.join(', ') : null,
         class_label: s.classLabel,
         snapshot_label: s.snapshotLabel,
         backup_job_label: s.backupJobLabel,
         source_label: s.sourceLabel,
         changelog_label: s.changelogLabel ?? null,
-        claude_label: s.claudeLabel,
+        claude_label: s.reviewLabel,
         deploy_label: s.deployLabel,
         probe_port: s.probePort,
-        archive_pre: s.archivePre,
+        archive_pre: null,
         network_mode: s.networkMode,
         unwatchable: s.unwatchable,
         fork_upstream: s.fork?.upstream ?? null,
@@ -281,13 +281,13 @@ export function refreshServiceLabels(stack: string, service: string): boolean {
     )
     .run(
       svc.watched ? 1 : 0,
-      svc.policyLabel,
+      svc.legacyLabels.length ? svc.legacyLabels.join(', ') : null,
       svc.classLabel,
       svc.snapshotLabel,
       svc.backupJobLabel,
       svc.sourceLabel,
       svc.changelogLabel ?? null,
-      svc.claudeLabel,
+      svc.reviewLabel,
       svc.deployLabel,
       stack,
       service,
@@ -457,8 +457,7 @@ async function persist(
 
       const tier = classFor({
         classLabel: svc.classLabel,
-        policyLabel: svc.policyLabel,
-        prLabel: svc.prLabel,
+        legacy: svc.legacyLabels.length > 0,
         dormant: svc.dormant,
       })
 
@@ -469,7 +468,7 @@ async function persist(
         // But the tier is re-derived every scan rather than frozen at insert time.
         // Labels live in the compose files precisely so that editing one takes effect
         // without recreating anything; if the tier were only ever set on insert, adding
-        // `shipshape.pr: on-request` to a service with an outstanding update would
+        // `shipshape.class: frozen` to a service with an outstanding update would
         // silently do nothing until that update happened to be superseded.
         if (same.tier !== tier) {
           const nextState = tier === 'frozen' ? 'frozen' : same.state === 'frozen' ? 'detected' : same.state
@@ -598,8 +597,7 @@ function persistDigest(svc: ScannedService, c: DigestCheck, policy: Policy): str
       const toTag = `${tag}@${c.to}`
       const tier = classFor({
         classLabel: svc.classLabel,
-        policyLabel: svc.policyLabel,
-        prLabel: svc.prLabel,
+        legacy: svc.legacyLabels.length > 0,
         dormant: svc.dormant,
       })
       const existing = liveRows(svc.stack, svc.service)
@@ -732,9 +730,20 @@ function recordTelemetry(counts: Record<string, number>, durationS: number): voi
  * repeats into a count, so a label left in place is one row rather than one a night.
  */
 function reportUnknownLabels(
-  services: { stack: string; service: string; unknownLabels: string[]; labelProblems: string[] }[],
+  services: { stack: string; service: string; unknownLabels: string[]; legacyLabels: string[]; labelProblems: string[] }[],
 ): void {
   for (const s of services) {
+    const n = s.legacyLabels.length
+    if (n > 0) {
+      logEvent({
+        level: 'warn',
+        kind: 'scan',
+        stack: s.stack,
+        service: s.service,
+        message: `${s.stack}/${s.service} carries ${n === 1 ? 'a v1 label' : 'v1 labels'} shipshape no longer reads`,
+        detail: `${s.legacyLabels.join(', ')}: held to class ask (or narrower) until rewritten. Run npm run convert-v1 -- --write (in the container: node dist/bin/convert-v1.js --write).`,
+      })
+    }
     if (s.unknownLabels.length > 0) {
       logEvent({
         level: 'warn',

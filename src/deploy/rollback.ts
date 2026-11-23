@@ -2,7 +2,7 @@ import { authorArgs, git, withGitLock } from '../gitops/repo.ts'
 import { env, gitBranch, loadPolicy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { notify } from '../notify/index.ts'
-import { changeLabel, changeUrl, mergeMethodFor } from '../gitops/change.ts'
+import { changeUrl } from '../gitops/change.ts'
 import { changeText } from '../gitops/body.ts'
 import { restorePointsFor } from '../restore/index.ts'
 import { deploy, manualCommand, realIo, type DeployIo, type DeployTarget } from './run.ts'
@@ -54,7 +54,6 @@ export function rollbackPlan(opts: {
   mode: 'auto' | 'suggest' | 'off'
   scope: string
   mergeSha: string | null
-  mergeMethod: string
   verdict: Verdict
 }): RollbackPlan | null {
   if (opts.mode === 'off') return null
@@ -65,20 +64,25 @@ export function rollbackPlan(opts: {
     return { action: 'suggest', reason: 'the merge commit was not recorded' }
   }
   if (opts.scope !== 'tag-only') {
-    // A drafted or hand-edited pull request carries work nobody asked shipshape to
-    // undo. Reverting it unattended would throw away someone's afternoon.
-    return { action: 'suggest', reason: 'the pull request carried more than an image line' }
+    // A drafted change carries work nobody asked shipshape to undo. Reverting it
+    // unattended would throw away someone's afternoon.
+    return { action: 'suggest', reason: 'the change carried more than an image line' }
   }
   return { action: opts.mode === 'auto' ? 'auto' : 'suggest', reason: 'verification failed' }
 }
 
-/** The revert invocation for a given merge style. */
-export function revertCommand(sha: string, mergeMethod: string): string[] {
-  // A true merge commit has two parents, so git has to be told which side to keep.
-  // Squash and rebase merges are ordinary single-parent commits.
-  return mergeMethod === 'merge'
-    ? ['revert', '--no-edit', '-m', '1', sha]
-    : ['revert', '--no-edit', sha]
+/** The revert invocation for a commit with this many parents. */
+export function revertCommand(sha: string, parents: number): string[] {
+  // A true merge commit has two parents, so git has to be told which side to keep. Any
+  // other commit (an older squash, a hand-made one) is reverted as it is.
+  return parents > 1 ? ['revert', '--no-edit', '-m', '1', sha] : ['revert', '--no-edit', sha]
+}
+
+/** The revert for this commit as the repository has it: `-m 1` exactly when it is a merge. */
+export async function revertArgs(repo: string, sha: string): Promise<string[]> {
+  const r = await git(repo, ['rev-list', '--parents', '-n', '1', sha], { allowFail: true })
+  const parents = r.exitCode === 0 && r.stdout.trim() ? r.stdout.trim().split(/\s+/).length - 1 : 1
+  return revertCommand(sha, parents)
 }
 
 export interface RollbackResult {
@@ -104,7 +108,6 @@ export interface RollbackResult {
 export async function performRollback(
   target: DeployTarget,
   mergeSha: string,
-  mergeMethod: string,
   opts: { carried?: ReadonlySet<string>; record?: (p: RecordedPlan) => void; io?: DeployIo } = {},
 ): Promise<RollbackResult> {
   const repo = env.repoDir
@@ -116,7 +119,7 @@ export async function performRollback(
     if (contains.exitCode !== 0) {
       return { ok: false, detail: `the checkout does not contain ${mergeSha.slice(0, 8)}` }
     }
-    const rv = await git(repo, [...authorArgs(), ...revertCommand(mergeSha, mergeMethod)], {
+    const rv = await git(repo, [...authorArgs(), ...(await revertArgs(repo, mergeSha))], {
       allowFail: true,
     })
     if (rv.exitCode !== 0) {
@@ -177,7 +180,6 @@ export async function performRollback(
  * caller whether the update should be tombstoned as failed.
  */
 export async function handleFailure(opts: {
-  prNumber: number
   prId: number
   target: DeployTarget
   verdict: Verdict
@@ -197,13 +199,12 @@ export async function handleFailure(opts: {
     mode: policy.deploy.rollback,
     scope: row?.scope ?? 'tag-only',
     mergeSha: row?.merge_commit_sha ?? null,
-    mergeMethod: mergeMethodFor(opts.prId),
     verdict: opts.verdict,
   })
 
   const tail = opts.logs ? `\n\n${opts.target.stack} log:\n${opts.logs.split('\n').slice(-15).join('\n')}` : ''
   const url = changeUrl(opts.prId)
-  const what = changeLabel(opts.prId, opts.prNumber)
+  const what = 'the change'
 
   if (!plan || plan.action === 'suggest') {
     await notify({
@@ -212,7 +213,7 @@ export async function handleFailure(opts: {
       body:
         `${what}: ${opts.verdict.detail}\n\n` +
         (plan ? `Not rolled back automatically — ${plan.reason}.\n\n` : '') +
-        `Roll back by hand:\n  git revert ${row?.merge_commit_sha?.slice(0, 8) ?? '<merge>'}\n  ${manualCommand(opts.target).split('\n').join('\n  ')}` +
+        `Roll back by hand:\n  ${row?.merge_commit_sha ? `git ${(await revertArgs(env.repoDir, row.merge_commit_sha)).join(' ')}` : 'git revert <merge>'}\n  ${manualCommand(opts.target).split('\n').join('\n  ')}` +
         tail,
       priority: 5,
       tags: ['rotating_light'],
@@ -222,12 +223,7 @@ export async function handleFailure(opts: {
     return { rolledBack: false }
   }
 
-  const result = await performRollback(
-    opts.target,
-    row!.merge_commit_sha!,
-    mergeMethodFor(opts.prId),
-    { carried: opts.carry },
-  )
+  const result = await performRollback(opts.target, row!.merge_commit_sha!, { carried: opts.carry })
 
   if (result.ok) {
     logEvent({

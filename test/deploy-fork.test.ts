@@ -113,7 +113,7 @@ test('a failed build is a deploy failure that touched nothing', async () => {
 
 test('a rollback recreates the previous build without building', async () => {
   const io = fakeIo({ grimmory: 'running' }, { buildable: () => ['grimmory'] })
-  const r = await performRollback({ stack: 'books', services: ['grimmory'], strategy: 'up', build: ['grimmory'] }, merge, 'squash', { io })
+  const r = await performRollback({ stack: 'books', services: ['grimmory'], strategy: 'up', build: ['grimmory'] }, merge, { io })
   assert.ok(r.ok, r.detail)
   assert.deepEqual(composeCalls(io.calls), ['compose -f books/docker-compose.yaml up -d --no-deps grimmory'])
 })

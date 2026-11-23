@@ -31,7 +31,6 @@ const base = {
   mode: 'auto' as const,
   scope: 'tag-only',
   mergeSha: 'abc1234',
-  mergeMethod: 'squash',
   verdict: failed,
 }
 
@@ -75,8 +74,8 @@ test('a passing or merely degraded deploy is left alone', () => {
 })
 
 test('a true merge commit needs its mainline named', () => {
-  assert.deepEqual(revertCommand('abc', 'merge'), ['revert', '--no-edit', '-m', '1', 'abc'])
-  assert.deepEqual(revertCommand('abc', 'squash'), ['revert', '--no-edit', 'abc'])
+  assert.deepEqual(revertCommand('abc', 2), ['revert', '--no-edit', '-m', '1', 'abc'])
+  assert.deepEqual(revertCommand('abc', 1), ['revert', '--no-edit', 'abc'])
 })
 
 test('rollback defaults to acting, and the key exists to turn it down', () => {

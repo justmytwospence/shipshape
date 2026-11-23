@@ -21,7 +21,7 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 
 const { getDb } = await import('../src/db.ts')
 const { performRollback } = await import('../src/deploy/rollback.ts')
-const { changeKind, mergeMethodFor, changeUrl, changeLabel } = await import('../src/gitops/change.ts')
+const { changeKind, changeUrl, changeLabel } = await import('../src/gitops/change.ts')
 const { fakeIo, composeCalls } = await import('./helpers/deploy-io.ts')
 
 const g = (args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: live, encoding: 'utf8' }).trim()
@@ -47,14 +47,6 @@ function change(kind: string, number: number, sha: string | null = null): number
   )
 }
 
-test('a local change is reverted as a merge, a v1 pull request as a squash', () => {
-  const local = change('local', 0, mergeSha)
-  const v1 = change('github', 41)
-  assert.deepEqual([changeKind(local), mergeMethodFor(local)], ['local', 'merge'])
-  assert.deepEqual([changeKind(v1), mergeMethodFor(v1)], ['github', 'squash'])
-  assert.equal(mergeMethodFor(null), 'squash', 'no record: the v1 behaviour')
-})
-
 test('a local change points at its merge commit, a pull request at its page', () => {
   const local = change('local', 0, mergeSha)
   const v1 = change('github', 41)
@@ -66,7 +58,7 @@ test('a local change points at its merge commit, a pull request at its page', ()
 
 test('rolling back a merge commit reverts it with -m 1 and brings the old version up', async () => {
   const io = fakeIo({ web: 'running' })
-  const r = await performRollback({ stack: 'web', services: ['web'], strategy: 'up' }, mergeSha, mergeMethodFor(change('local', 0, mergeSha)), { io })
+  const r = await performRollback({ stack: 'web', services: ['web'], strategy: 'up' }, mergeSha, { io })
   assert.equal(r.ok, true, r.detail)
   assert.equal(readFileSync(join(live, 'web', 'docker-compose.yaml'), 'utf8'), COMPOSE('1.0.0'))
   assert.match(g(['log', '-1', '--format=%s']), /^Revert "chore\(deps\): web: bump web 1\.0\.0 -> 1\.0\.1"/)
@@ -74,12 +66,11 @@ test('rolling back a merge commit reverts it with -m 1 and brings the old versio
   assert.deepEqual(composeCalls(io.calls), ['compose -f web/docker-compose.yaml up -d --no-deps web'])
 })
 
-test('the same revert without -m is refused by git, which is why the method matters', async () => {
-  // Reset to the merge and try the squash form: a merge commit cannot be reverted without
-  // naming its mainline.
-  g(['reset', '-q', '--hard', mergeSha])
-  const r = await performRollback({ stack: 'web', services: ['web'], strategy: 'up' }, mergeSha, 'squash', { io: fakeIo({ web: 'running' }) })
-  assert.equal(r.ok, false)
-  assert.match(r.detail, /revert failed/)
-  assert.equal(readFileSync(join(live, 'web', 'docker-compose.yaml'), 'utf8'), COMPOSE('1.0.1'), 'nothing half-applied')
+test('a single-parent commit is reverted without -m', async () => {
+  writeFileSync(join(live, 'web', 'docker-compose.yaml'), COMPOSE('1.0.2'))
+  g(['commit', '-qam', 'chore(deps): web: bump web 1.0.0 -> 1.0.2'])
+  const plain = g(['rev-parse', 'HEAD'])
+  const r = await performRollback({ stack: 'web', services: ['web'], strategy: 'up' }, plain, { io: fakeIo({ web: 'running' }) })
+  assert.equal(r.ok, true, r.detail)
+  assert.equal(readFileSync(join(live, 'web', 'docker-compose.yaml'), 'utf8'), COMPOSE('1.0.0'))
 })

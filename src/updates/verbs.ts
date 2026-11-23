@@ -2,8 +2,8 @@ import { getDb, logEvent } from '../db.ts'
 import { setState, type UpdateState } from './state.ts'
 import { actionsFor, refusalFor, type ActionContext, type Verb } from './actions.ts'
 import { carriedFor, claimJob, linkDeployUpdates, runDeployJob } from '../deploy/queue.ts'
-import { performRollback, revertCommand } from '../deploy/rollback.ts'
-import { mergeMethodFor } from '../gitops/change.ts'
+import { performRollback, revertArgs } from '../deploy/rollback.ts'
+import { env } from '../config.ts'
 import { holdsForRow, type HoldRow } from './holds.ts'
 import { stackPeers, withNamespacePeers, type DeployIo, type DeployTarget } from '../deploy/run.ts'
 import { syncMain } from '../gitops/sync.ts'
@@ -395,7 +395,7 @@ async function rollback(row: UpdateRow, ctx: ActionContext, prId: number | null,
 
   void detach(
     (async () => {
-      const result = await performRollback(target, sha, mergeMethodFor(prId), {
+      const result = await performRollback(target, sha, {
         carried,
         io,
         record: (p) => {
@@ -431,7 +431,7 @@ async function rollback(row: UpdateRow, ctx: ActionContext, prId: number | null,
           stack: row.stack,
           service: row.service,
           message: `rollback of ${row.stack} failed`,
-          detail: `${result.detail}. Undo it by hand: ${revertCommand(sha, mergeMethodFor(prId)).join(' ')}`,
+          detail: `${result.detail}. Undo it by hand: git ${(await revertArgs(env.repoDir, sha)).join(' ')}`,
         })
       }
     })(),

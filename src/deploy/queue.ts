@@ -327,7 +327,6 @@ export async function runDeployJob(
           job.id,
         )
         const { rolledBack } = await handleFailure({
-          prNumber: job.pr_number ?? 0,
           prId: prIdFor(job.id),
           target: upTarget,
           verdict: outcome.verdict,

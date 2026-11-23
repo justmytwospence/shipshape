@@ -265,7 +265,7 @@ test('a deploy builds the watched build; an unwatched build is still never built
 
 test('a rollback rebuilds on the old base, because the image name never moved', async () => {
   const io = fakeIo({ 'obsidian-sync': 'running' }, { rebuildable: (s, svcs) => buildableServices(s, svcs, policy, live, { forks: false }) })
-  const r = await performRollback({ stack: 'obsidian', services: ['obsidian-sync'], strategy: 'up', build: ['obsidian-sync'] }, merge, 'squash', { io })
+  const r = await performRollback({ stack: 'obsidian', services: ['obsidian-sync'], strategy: 'up', build: ['obsidian-sync'] }, merge, { io })
   assert.ok(r.ok, r.detail)
   assert.match(readFileSync(join(live, 'obsidian', 'Dockerfile'), 'utf8'), new RegExp(OLD))
   assert.deepEqual(composeCalls(io.calls), [

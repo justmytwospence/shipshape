@@ -16,11 +16,6 @@ export function changeKind(prId: number | null | undefined): ChangeKind {
   return row?.kind === 'local' ? 'local' : 'github'
 }
 
-/** How the change landed on main, which decides how it is reverted. */
-export function mergeMethodFor(prId: number | null | undefined): 'merge' | 'squash' {
-  return changeKind(prId) === 'local' ? 'merge' : 'squash'
-}
-
 /** Where to read the change: a pull request page, or the merge commit. */
 export function changeUrl(prId: number | null | undefined): string | undefined {
   if (prId == null) return undefined

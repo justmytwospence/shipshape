@@ -131,39 +131,17 @@ test('a docker that could not be asked says nothing was touched', () => {
   assert.doesNotMatch(s, /DOWN/)
 })
 
-test('the old pair of knobs folds into one switch, conservatively', () => {
-  // `merge.auto` and `deploy.mode` asked one question twice and could disagree. The
-  // reading is: nothing runs unattended unless the file said so in both places.
-  const paused = (p: Record<string, unknown>) => PolicySchema.parse(p).paused
-
-  assert.equal(paused({}), true, 'a file that says nothing is paused')
-  assert.equal(paused({ merge: { auto: false }, deploy: { mode: 'manual' } }), true)
-  assert.equal(paused({ merge: { auto: true }, deploy: { mode: 'manual' } }), true)
-  assert.equal(paused({ merge: { auto: false }, deploy: { mode: 'auto' } }), true)
-  assert.equal(paused({ merge: { auto: true }, deploy: { mode: 'auto' } }), false)
-  // `off` was only ever a third name for manual, and still is.
-  assert.equal(paused({ merge: { auto: true }, deploy: { mode: 'off' } }), true)
-  // An explicit switch always wins over whatever the old keys said.
-  assert.equal(paused({ paused: false, merge: { auto: false } }), false)
-  assert.equal(paused({ paused: true, merge: { auto: true }, deploy: { mode: 'auto' } }), true)
-})
-
-test('the superseded keys are gone from the policy every consumer sees', () => {
-  // Left in place they would read plausibly and mean nothing, which is worse than a
-  // compile error.
-  const p = PolicySchema.parse({ merge: { auto: true }, deploy: { mode: 'auto' } })
-  assert.ok(!('auto' in p.merge))
-  assert.ok(!('mode' in p.deploy))
-  assert.equal(p.merge.max_per_run, 3, 'the keys that still mean something survive')
+test('the policy every consumer sees has no v1 keys, and is paused until it says otherwise', () => {
+  const p = PolicySchema.parse({})
+  assert.equal(p.paused, true, 'a file that says nothing is paused')
+  assert.ok(!('merge' in p))
+  assert.ok(!('prs' in p))
+  assert.equal(p.ship.max_per_run, 3)
   assert.equal(p.deploy.soak_s, 1800)
 })
 
-test('the verify window defaults long, and the old spelling still sets it', () => {
+test('the verify window defaults long', () => {
   // Returns as soon as every signal is good, so only a bad deploy pays the wait -- which
   // is what lets it be long enough for a service that migrates on first start.
   assert.equal(PolicySchema.parse({}).deploy.verify_window_s, 300)
-  assert.equal(
-    PolicySchema.parse({ deploy: { health_window_s: 90 } }).deploy.verify_window_s,
-    90,
-  )
 })

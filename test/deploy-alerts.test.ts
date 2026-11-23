@@ -28,7 +28,8 @@ process.env.REPO_DIR = repo
 process.env.GITHUB_REPO = 'you/repo'
 process.env.NOTIFY_URL = 'http://n8n.invalid/webhook/notify'
 process.env.NOTIFY_TOKEN = 'test'
-delete process.env.POLICY_FILE
+process.env.POLICY_FILE = join(root, 'policy.yaml')
+writeFileSync(process.env.POLICY_FILE, 'notify:\n  sinks:\n    - { type: webhook }\n')
 delete process.env.SMTP_URL
 
 const sent: { title: string; body: string; priority: string; key?: string; status: string }[] = []

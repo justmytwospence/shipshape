@@ -17,25 +17,12 @@ let settings: typeof import('../src/settings.ts')
 let config: typeof import('../src/config.ts')
 
 const POLICY = `# shipshape policy -- the single place update semantics are declared.
-merge_method: squash
 
 sync:
   # Kill-switch.
   push_main: true
 
-defaults:
-  patch: auto
-  minor: auto
-  major: manual
-  digest: manual
-
-merge:
-  # The only path that changes the repository with nobody watching.
-  auto: false
-  max_per_run: 3
-
 deploy:
-  mode: manual
   soak_s: 1800
 `
 
@@ -60,8 +47,7 @@ before(async () => {
 
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-test('an old file reads as paused, without saying so', () => {
-  // merge.auto: false + deploy.mode: manual is this deployment's posture today.
+test('a file that never says paused reads as paused', () => {
   assert.equal(config.loadPolicy().policy.paused, true)
 })
 
@@ -72,9 +58,9 @@ test('the switch can be written into a file that has never carried it', async ()
   const text = readFileSync(join(repo, 'shipshape', 'config', 'policy.yaml'), 'utf8')
   assert.match(text, /^paused: false$/m, 'the key is written at the top level')
   assert.match(text, /# Kill-switch\./, 'the comments around it survive')
-  assert.match(text, /^merge_method: squash$/m)
+  assert.match(text, /^  soak_s: 1800$/m)
 
-  // And it is what the running policy now says, overriding the legacy pair.
+  // And it is what the running policy now says, the written value wins.
   assert.equal(config.loadPolicy().policy.paused, false)
 })
 

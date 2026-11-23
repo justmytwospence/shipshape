@@ -22,7 +22,7 @@ process.env.SHIPSHAPE_ALLOWED_ORIGIN = 'https://shipshape.example'
 delete process.env.REPO_DIR
 delete process.env.ANTHROPIC_API_KEY
 delete process.env.OPENROUTER_API_KEY
-writeFileSync(process.env.POLICY_FILE, 'paused: false\n')
+writeFileSync(process.env.POLICY_FILE, 'paused: false\nnotify:\n  sinks:\n    - { type: webhook }\n')
 after(() => rmSync(root, { recursive: true, force: true }))
 
 const wire: any[] = []
@@ -52,7 +52,7 @@ beforeEach(() => {
   getDb().exec(`DELETE FROM updates; DELETE FROM images; DELETE FROM verdicts; DELETE FROM proposals; DELETE FROM incidents; DELETE FROM prs`)
   wire.length = 0
   resetDecisionCards()
-  writeFileSync(process.env.POLICY_FILE!, 'paused: false\n')
+  writeFileSync(process.env.POLICY_FILE!, 'paused: false\nnotify:\n  sinks:\n    - { type: webhook }\n')
 })
 
 test('nineteen services on one bump are one decision, and one card', () => {
@@ -104,7 +104,7 @@ test('a decision is P3, and P4 once it has waited past the escalation delay', ()
   const long = new Date(Date.now() - 8 * 86_400_000).toISOString()
   getDb().exec(`UPDATE updates SET decision_since = '${long}'`)
   assert.equal(cardFor(currentDecisions()[0]!).priority, 4, 'after seven days')
-  writeFileSync(process.env.POLICY_FILE!, 'paused: false\nnotify:\n  escalate_after_days: 30\n')
+  writeFileSync(process.env.POLICY_FILE!, 'paused: false\nnotify:\n  sinks:\n    - { type: webhook }\n  escalate_after_days: 30\n')
   assert.equal(cardFor(currentDecisions()[0]!).priority, 3, 'the delay is policy')
 })
 

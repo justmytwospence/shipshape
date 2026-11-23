@@ -218,7 +218,7 @@ test('shipStatus: the cooldown waits, then pause waits', () => {
   assert.deepEqual(shipStatus(ship({ paused: true })), { status: 'waiting', why: 'paused' })
 })
 
-test('the policy schema accepts rules and sinks, and folds the v1 keys', () => {
+test('the policy schema accepts rules and sinks', () => {
   const p = PolicySchema.parse({
     rules: [{ id: 'r1', match: { image: 'x/y' }, waive: ['ask'], because: 'b' }],
     notify: { sinks: [{ type: 'ntfy', url: 'https://ntfy.example', topic: 't', events: ['decision'] }] },
@@ -228,12 +228,9 @@ test('the policy schema accepts rules and sinks, and folds the v1 keys', () => {
   assert.equal(PolicySchema.safeParse({ rules: [{ id: 'r1', match: {}, waive: ['ask'] }] }).success, false, 'an empty match is refused')
   assert.equal(PolicySchema.safeParse({ rules: [{ id: 'r1', match: { image: 'x' }, waive: ['lifeline'] }] }).success, false, 'lifeline is not waivable')
 
-  const v1 = PolicySchema.parse({ merge: { cooldown_days: 3, max_per_run: 5 }, notify: { incidents: 'alerts', email: 'all' } })
-  assert.equal(v1.ship.cooldown_days, 3)
-  assert.equal(v1.ship.max_per_run, 5)
-  assert.deepEqual(v1.notify.sinks.map((s) => s.type), ['webhook', 'email'])
-  assert.deepEqual(PolicySchema.parse({ notify: { incidents: 'off' } }).notify.sinks, [])
   assert.equal(PolicySchema.parse({}).ship.cooldown_days, 7)
+  assert.equal(PolicySchema.parse({}).ship.max_per_run, 3)
+  assert.deepEqual(PolicySchema.parse({}).notify.sinks, [])
 })
 
 // ---------------------------------------------------------------------------- drafts

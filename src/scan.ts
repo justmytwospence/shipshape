@@ -1,5 +1,4 @@
-import { readFileSync } from 'node:fs'
-import { configured, env, loadPolicy, paths, retiredKeys, type Policy } from './config.ts'
+import { configured, env, loadPolicy, type Policy } from './config.ts'
 import { getDb, logEvent } from './db.ts'
 import { scanRepo, type ScannedService } from './compose/scan.ts'
 import { discoverCompose } from './compose/files.ts'
@@ -46,7 +45,7 @@ export async function runScan(trigger: 'cron' | 'manual'): Promise<ScanResult> {
   const bump = (k: string) => (counts[k] = (counts[k] ?? 0) + 1)
 
   try {
-    const { policy } = loadPolicy()
+    const { policy, error: policyError } = loadPolicy()
     const discovery = discoverCompose(env.repoDir)
     recordComposeFiles(discovery.files.length)
     for (const d of discovery.shadowed) {
@@ -75,7 +74,7 @@ export async function runScan(trigger: 'cron' | 'manual'): Promise<ScanResult> {
     const services = scanRepo(env.repoDir, policy.exclude_stacks)
     syncInventory(services)
     reportUnknownLabels(services)
-    reportRetiredPolicyKeys()
+    reportPolicyError(policyError)
     // Before detection, so a service that stopped being a fork since the last scan has
     // its incident closed even if everything after this fails.
     await reconcileForks(services)
@@ -165,21 +164,9 @@ export async function scanOne(svc: ScannedService, policy: Policy): Promise<stri
 }
 
 /** policy.yaml keys v2 no longer reads. They load fine; saying so keeps them from being believed. */
-function reportRetiredPolicyKeys(): void {
-  let raw: string
-  try {
-    raw = readFileSync(paths.policy, 'utf8')
-  } catch {
-    return
-  }
-  const keys = retiredKeys(raw)
-  if (keys.length === 0) return
-  logEvent({
-    level: 'warn',
-    kind: 'policy',
-    message: 'policy.yaml carries retired keys that nothing reads',
-    detail: keys.join(', '),
-  })
+/** A policy file that did not load is said once per scan, beside what the scan found. */
+function reportPolicyError(error: string | undefined): void {
+  if (error) logEvent({ level: 'error', kind: 'policy', message: 'policy.yaml was not applied', detail: error })
 }
 
 function summarise(counts: Record<string, number>, durationS: number): string {

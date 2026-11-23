@@ -41,13 +41,19 @@ beforeEach(() => {
   wire.length = 0
   resetNtfySink()
   resetEmailSink()
-  policy('')
+  policy('notify:\n  sinks:\n    - { type: webhook }\n')
 })
 
 const action = { emoji: '🚀', label: 'ship', do: { target: 'shipshape' as const, verb: 'ship', update: 7 } }
 const card = { key: 'shipshape:decision:x', title: 'x 1 -> 2', body: 'Ship? this service always asks', priority: 3 as const, eventClass: 'decision' as const, actions: [action] }
 
-test('the default sink is the webhook, with the payload the router has always been sent', async () => {
+test('no sinks are configured by default: nothing is sent', async () => {
+  policy('')
+  await notify({ key: 'shipshape:deploy:app', title: 'deploy failed', body: 'x', priority: 4, eventClass: 'broken' })
+  assert.equal(wire.length, 0)
+})
+
+test('a webhook sink gets the payload the router has always been sent', async () => {
   await notify({ key: 'shipshape:deploy:app', title: 'deploy failed', body: 'x', priority: 4, eventClass: 'broken' })
   assert.deepEqual(wire.map((w) => w.body), [
     {

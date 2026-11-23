@@ -14,7 +14,7 @@ process.env.DATA_DIR = root
 process.env.NOTIFY_URL = 'http://n8n.invalid/webhook/notify'
 process.env.NOTIFY_TOKEN = 'k'
 process.env.POLICY_FILE = join(root, 'policy.yaml')
-writeFileSync(process.env.POLICY_FILE, '')
+writeFileSync(process.env.POLICY_FILE, 'notify:\n  sinks:\n    - { type: webhook }\n')
 delete process.env.SMTP_URL
 
 let up = true
@@ -67,14 +67,14 @@ test('a sink only hears the events it asks for', async () => {
   await notify({ key: 'shipshape:decision:x', title: 'x 1 -> 2', body: 'Ship?', priority: 3, eventClass: 'decision' })
   assert.equal(wire.length, 1)
   assert.equal(wire[0]!.key, 'shipshape:decision:x')
-  writeFileSync(process.env.POLICY_FILE!, '')
+  writeFileSync(process.env.POLICY_FILE!, 'notify:\n  sinks:\n    - { type: webhook }\n')
 })
 
 test('with no sinks configured nothing is sent', async () => {
   writeFileSync(process.env.POLICY_FILE!, 'notify:\n  sinks: []\n')
   await notify({ key: 'shipshape:sync', title: 'sync blocked', body: 'why' })
   assert.equal(wire.length, 0)
-  writeFileSync(process.env.POLICY_FILE!, '')
+  writeFileSync(process.env.POLICY_FILE!, 'notify:\n  sinks:\n    - { type: webhook }\n')
 })
 
 test('a send the router cannot take is retried on the next tick, latest state winning', async () => {

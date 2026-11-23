@@ -24,7 +24,7 @@ delete process.env.MCP_PORT
 
 function writePolicy(security: string): void {
   mkdirSync(join(repo, 'shipshape', 'config'), { recursive: true })
-  writeFileSync(join(repo, 'shipshape', 'config', 'policy.yaml'), `paused: false\nsecurity:\n${security}\n`)
+  writeFileSync(join(repo, 'shipshape', 'config', 'policy.yaml'), `paused: false\nnotify:\n  sinks:\n    - { type: webhook }\nsecurity:\n${security}\n`)
 }
 writePolicy('  mode: on\n  auto_merge: true')
 mkdirSync(join(repo, 'immich'), { recursive: true })

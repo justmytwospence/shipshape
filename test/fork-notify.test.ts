@@ -1,6 +1,6 @@
 import { test, beforeEach, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -19,7 +19,8 @@ process.env.GITHUB_TOKEN = 'test-token'
 process.env.NOTIFY_URL = 'http://n8n.invalid/webhook/notify'
 process.env.NOTIFY_TOKEN = 'k'
 delete process.env.REPO_DIR
-delete process.env.POLICY_FILE
+process.env.POLICY_FILE = join(dir, 'policy.yaml')
+writeFileSync(process.env.POLICY_FILE, 'notify:\n  sinks:\n    - { type: webhook }\n')
 delete process.env.SMTP_URL
 
 const { getDb } = await import('../src/db.ts')

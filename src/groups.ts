@@ -29,13 +29,8 @@ export interface UpdateGroup {
   /** null for a singleton; otherwise the branch-safe group identity. */
   key: string | null
   /**
-   * The same identity without the target tag, or null for a singleton.
-   *
-   * The two differ in exactly one way and it is load-bearing. `key` decides what travels
-   * together, so it carries the target tag: two services drifting to different versions
-   * must never share a commit. The branch name must not carry it -- a name that changed
-   * with the target could never be reused, and that is precisely what forced an overtaken
-   * pull request to be closed and replaced instead of retargeted.
+   * The group identity without the target tag, or null for a singleton. `shipBranchFor`
+   * (gitops/ship.ts) names the local branch from it.
    */
   branchKey: string | null
   members: GroupMember[]
@@ -108,40 +103,6 @@ export function sanitise(s: string): string {
     .replace(/[^A-Za-z0-9._@-]/g, '-')
     .replace(/-{2,}/g, '-')
     .replace(/^-|-$/g, '')
-}
-
-/**
- * Branch name for a group or singleton -- deliberately without the target tag.
- *
- * The name identifies the *service*, not the version it is being moved to, so when a
- * target is overtaken the successor wants the branch the open pull request already sits
- * on and can be retargeted onto it in place. GitHub cannot change a pull request's head
- * branch, so this naming is the whole reason retargeting is possible rather than closing
- * one pull request and opening another.
- *
- * Safe because at most one live update exists per (stack, service): every scan path that
- * records a new target first supersedes the live rows for that service, and eligibility
- * excludes updates already attached to an open pull request. Two shipshape pull requests
- * can therefore never both want this name. For the one case where a stale one lingers on
- * it -- a branch someone has pushed to, left open on purpose -- `resolveBranch` in pr.ts
- * falls back to `taggedBranchFor` rather than contending for it.
- */
-export function branchFor(g: UpdateGroup): string {
-  if (g.branchKey) return `shipshape/${g.branchKey}`
-  const m = g.members[0]!
-  return `shipshape/${m.stack}--${sanitise(m.service)}`
-}
-
-/**
- * The tag-suffixed form: unique per target, and therefore never reusable.
- *
- * This was the only naming scheme before retargeting existed, which is why every pull
- * request open at the time of that change migrates itself once -- its branch matches no
- * successor's name, so it takes the close-and-replace path a final time. It survives as
- * the fallback for the two pull requests that genuinely have to coexist on one service.
- */
-export function taggedBranchFor(g: UpdateGroup): string {
-  return `${branchFor(g)}--${sanitise(g.members[0]!.to_tag)}`
 }
 
 /** Lookup helpers backed by the resolution cache plus the live compose labels. */

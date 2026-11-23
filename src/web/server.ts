@@ -88,11 +88,6 @@ function missing(): { name: string; why: string }[] {
   return s.ok ? [] : s.missing
 }
 
-function repoParts(): { owner: string; repo: string } {
-  const [owner, repo] = env.githubRepo.split('/') as [string, string]
-  return { owner, repo }
-}
-
 /**
  * A toast, delivered in a header.
  *
@@ -757,13 +752,12 @@ export function createApp(): Hono {
     const rows = activityRows(query)
     if (c.req.header('HX-Request')) {
       return c.html(
-        ActivityList({ rows, repo: env.githubRepo, more: moreLink(c, rows) }) as string,
+        ActivityList({ rows, more: moreLink(c, rows) }) as string,
       )
     }
     return c.html(
       ActivityPage({
         rows,
-        repo: env.githubRepo,
         more: moreLink(c, rows),
         ...query,
         chrome: chrome(c),
@@ -773,7 +767,7 @@ export function createApp(): Hono {
 
   app.get('/fragments/activity', (c) => {
     const rows = activityRows({ ...activityQuery(c), before: c.req.query('before') })
-    return c.html(ActivityList({ rows, repo: env.githubRepo, more: moreLink(c, rows) }) as string)
+    return c.html(ActivityList({ rows, more: moreLink(c, rows) }) as string)
   })
 
   /**
@@ -1083,10 +1077,10 @@ function diffFragment(id: number): string {
     const db = getDb()
     const pr = db
       .prepare(
-        `SELECT p.number, p.scope FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id
-         WHERE pu.update_id = ? AND p.state = 'open'`,
+        `SELECT p.id FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id
+         WHERE pu.update_id = ? AND p.state = 'open' ORDER BY p.id DESC LIMIT 1`,
       )
-      .get(id) as { number: number; scope: string } | undefined
+      .get(id) as { id: number } | undefined
 
     // Links point at the TARGET tag: this panel is where the merge decision happens.
     const row = db
@@ -1109,9 +1103,9 @@ function diffFragment(id: number): string {
       ? (db
           .prepare(
             `SELECT summary, notes, changed, error, model, hunks FROM proposals
-             WHERE pr_id = (SELECT id FROM prs WHERE number = ?) ORDER BY id DESC LIMIT 1`,
+             WHERE pr_id = ? ORDER BY id DESC LIMIT 1`,
           )
-          .get(pr.number) as
+          .get(pr.id) as
           | {
               summary: string
               notes: string
@@ -1128,9 +1122,6 @@ function diffFragment(id: number): string {
         result,
         links: row && ref ? refLinks(ref, row.to_tag, source?.repo ?? null) : undefined,
         service: row ? { stack: row.stack, service: row.service } : undefined,
-        prNumber: pr?.number ?? null,
-        prUrl: pr && env.githubRepo ? `https://github.com/${env.githubRepo}/pull/${pr.number}` : null,
-        prScope: pr?.scope ?? null,
         proposal: proposal
           ? {
               summary: proposal.summary,
@@ -1141,7 +1132,6 @@ function diffFragment(id: number): string {
               hunks: JSON.parse(proposal.hunks ?? '[]') as DiffHunk[],
             }
           : undefined,
-        canPropose: !!pr && pr.scope === 'tag-only',
       }) as string
   )
 }

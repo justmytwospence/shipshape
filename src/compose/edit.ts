@@ -18,7 +18,7 @@ const refuse = (reason: string): SetLabelResult => ({ ok: false, reason })
 /**
  * Set, replace, or (`value === null`) remove `services.<service>.labels.<key>`.
  * Removing a key that is not there returns the text unchanged: idempotent, so a caller
- * cleaning up `shipshape.pr` does not have to check whether the line exists first.
+ * cleaning up `shipshape.policy` does not have to check whether the line exists first.
  */
 export function setLabel(
   text: string,

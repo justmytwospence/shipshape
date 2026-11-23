@@ -104,12 +104,6 @@ test('a change links to its merge commit on the remote', () => {
       .run(sha).lastInsertRowid,
   )
   assert.equal(changeUrl(id), `https://git.example.test:3000/me/compose/commit/${sha}`)
-  const v1 = Number(
-    getDb()
-      .prepare(`INSERT INTO prs (number, branch, head_sha_pushed, state, scope, kind, created_at) VALUES (4, 'b', 'x', 'merged', 'tag-only', 'github', 'now')`)
-      .run().lastInsertRowid,
-  )
-  assert.equal(changeUrl(v1), undefined)
 })
 
 test('resolveBranch: GIT_BRANCH wins, then origin/HEAD, then main', () => {

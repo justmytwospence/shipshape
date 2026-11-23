@@ -1,5 +1,5 @@
 import type { FC } from 'hono/jsx'
-import { ExtLink, EmptyState, Relative, Search, Tabs } from './parts.tsx'
+import { EmptyState, Relative, Search, Tabs } from './parts.tsx'
 import { GroupHeader } from './update.tsx'
 
 /**
@@ -66,25 +66,6 @@ export const ActivityToolbar: FC<{ kind: string; problems: boolean; q: string }>
   </form>
 )
 
-/** `#41` becomes a link, because it is the only thing in a log line worth clicking. */
-function linkify(message: string, repo: string): unknown[] {
-  if (!repo) return [message]
-  const parts: unknown[] = []
-  let last = 0
-  for (const m of message.matchAll(/#(\d+)/g)) {
-    const at = m.index ?? 0
-    if (at > last) parts.push(message.slice(last, at))
-    parts.push(
-      <ExtLink href={`https://github.com/${repo}/pull/${m[1]}`} class="link link-hover">
-        {m[0]}
-      </ExtLink>,
-    )
-    last = at + m[0].length
-  }
-  if (last < message.length) parts.push(message.slice(last))
-  return parts
-}
-
 function dayOf(iso: string): string {
   return iso.slice(0, 10)
 }
@@ -113,7 +94,7 @@ function clock(iso: string): string {
 const LINE =
   'hover:bg-base-200/60 grid min-h-12 grid-cols-[0.5rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 px-3 py-1.5 lg:min-h-8 lg:grid-cols-[0.5rem_3rem_4.5rem_minmax(0,10rem)_minmax(0,1fr)_2.5rem] lg:gap-x-3 lg:py-0'
 
-const ActivityLine: FC<{ row: ActivityRow; repo: string }> = ({ row: r, repo }) => {
+const ActivityLine: FC<{ row: ActivityRow }> = ({ row: r }) => {
   const cells = (
     <>
       <span class={`size-2 rounded-full ${LEVEL_DOT[r.level] ?? 'bg-base-300'}`} />
@@ -144,7 +125,7 @@ const ActivityLine: FC<{ row: ActivityRow; repo: string }> = ({ row: r, repo }) 
         ) : null}
       </span>
       <span class="col-span-2 flex min-w-0 items-center gap-1 text-sm lg:col-span-1">
-        <span class="truncate">{linkify(r.message, repo)}</span>
+        <span class="truncate">{r.message}</span>
         {r.detail ? <span class="text-xs opacity-50 group-open/line:hidden">…</span> : null}
       </span>
       <span class="hidden text-right lg:block">
@@ -171,9 +152,8 @@ const ActivityLine: FC<{ row: ActivityRow; repo: string }> = ({ row: r, repo }) 
   )
 }
 
-export const ActivityList: FC<{ rows: ActivityRow[]; repo: string; more?: string | null }> = ({
+export const ActivityList: FC<{ rows: ActivityRow[]; more?: string | null }> = ({
   rows,
-  repo,
   more,
 }) => {
   if (rows.length === 0) {
@@ -193,7 +173,7 @@ export const ActivityList: FC<{ rows: ActivityRow[]; repo: string; more?: string
           <GroupHeader title={dayLabel(day)} count={list.length} />
           <div class="divide-base-300 divide-y">
             {list.map((r) => (
-              <ActivityLine row={r} repo={repo} />
+              <ActivityLine row={r} />
             ))}
           </div>
         </section>

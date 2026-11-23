@@ -2,38 +2,17 @@ import { env } from '../config.ts'
 import { getDb } from '../db.ts'
 
 /**
- * A change record is a `prs` row. v1 rows are GitHub pull requests (`kind = 'github'`,
- * squash-merged); v2 rows are branches shipshape merged into main itself
- * (`kind = 'local'`, `number = 0`, merged with a merge commit). These helpers are the one
- * place that knows the difference, so callers never test `number` or `kind` themselves.
+ * A change record is a `prs` row: a branch shipshape merged into the published branch
+ * itself, with a merge commit. (The table keeps its v1 name.)
  */
 
-export type ChangeKind = 'github' | 'local'
-
-export function changeKind(prId: number | null | undefined): ChangeKind {
-  if (prId == null) return 'github'
-  const row = getDb().prepare(`SELECT kind FROM prs WHERE id = ?`).get(prId) as { kind: string } | undefined
-  return row?.kind === 'local' ? 'local' : 'github'
-}
-
-/** Where to read the change: a pull request page, or the merge commit. */
+/** Where to read the change: its merge commit on the remote's web page, when there is one. */
 export function changeUrl(prId: number | null | undefined): string | undefined {
   if (prId == null) return undefined
-  const row = getDb().prepare(`SELECT kind, number, merge_commit_sha FROM prs WHERE id = ?`).get(prId) as
-    | { kind: string; number: number; merge_commit_sha: string | null }
+  const row = getDb().prepare(`SELECT merge_commit_sha FROM prs WHERE id = ?`).get(prId) as
+    | { merge_commit_sha: string | null }
     | undefined
-  if (!row) return undefined
-  if (row.kind === 'local') {
-    // `/commit/<sha>` resolves on GitHub, Gitea, Forgejo and, by redirect, GitLab.
-    const web = env.gitRemote.webUrl
-    return web && row.merge_commit_sha ? `${web}/commit/${row.merge_commit_sha}` : undefined
-  }
-  // A v1 pull request page exists only on GitHub.
-  return env.githubRepo && env.gitRemote.host === 'github.com' ? `https://github.com/${env.githubRepo}/pull/${row.number}` : undefined
-}
-
-/** `#12` for a pull request, `the change` for a local one. */
-export function changeLabel(prId: number | null | undefined, number?: number | null): string {
-  if (changeKind(prId) === 'local') return 'the change'
-  return number ? `#${number}` : 'the change'
+  // `/commit/<sha>` resolves on GitHub, Gitea, Forgejo and, by redirect, GitLab.
+  const web = env.gitRemote.webUrl
+  return web && row?.merge_commit_sha ? `${web}/commit/${row.merge_commit_sha}` : undefined
 }

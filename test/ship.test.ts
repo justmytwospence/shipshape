@@ -106,8 +106,8 @@ test('a ready update lands on main as a merge commit with the branch as its seco
   assert.equal((getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(id) as { state: string }).state, 'merged')
 
   // The deploy is queued, and the live checkout has caught up.
-  const dep = getDb().prepare(`SELECT status, pr_number, stack FROM deploys`).get() as Record<string, unknown>
-  assert.deepEqual([dep.status, dep.pr_number, dep.stack], ['pending', 0, 'web'])
+  const dep = getDb().prepare(`SELECT status, stack FROM deploys`).get() as Record<string, unknown>
+  assert.deepEqual([dep.status, dep.stack], ['pending', 'web'])
   assert.equal(g(live, ['rev-parse', 'HEAD']), g(origin, ['rev-parse', 'main']))
   assert.match(readFileSync(join(live, 'web', 'docker-compose.yaml'), 'utf8'), /example\/web:1\.0\.1/)
 })

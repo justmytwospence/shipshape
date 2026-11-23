@@ -36,14 +36,10 @@ export interface Retired {
   stack: string
   service: string
   toTag: string
-  /** The pull request that carried the overtaken update. */
-  prNumber: number | null
-  /** The pull request that overtook it. */
-  byPrNumber: number
+  /** The update that overtook it, and the tag it carries the service to. */
+  byUpdateId: number
+  byTag: string
 }
-
-/** `#79` for a v1 pull request, `a later change` for a local one (number 0). */
-const by = (n: number): string => (n ? `#${n}` : 'a later change')
 
 /** Say what was retired, once each, where the rest of the change story is told. */
 export function logRetired(retired: Retired[]): void {
@@ -53,8 +49,8 @@ export function logRetired(retired: Retired[]): void {
       kind: 'pr',
       stack: r.stack,
       service: r.service,
-      message: `${r.prNumber ? `#${r.prNumber}` : `${r.stack}/${r.service} ${r.toTag}`} retired: overtaken by ${by(r.byPrNumber)}`,
-      detail: `${r.toTag} can no longer deploy on its own; ${by(r.byPrNumber)} carries the service past it`,
+      message: `${r.stack}/${r.service} ${r.toTag} retired: overtaken by ${r.byTag}`,
+      detail: `${r.toTag} can no longer deploy on its own; ${r.byTag} carries the service past it`,
     })
   }
 }
@@ -68,9 +64,6 @@ export function retireOvertaken(now = new Date().toISOString()): Retired[] {
   const candidates = db
     .prepare(
       `SELECT u.id, u.stack, u.service, u.to_tag,
-              (SELECT p.number FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
-                WHERE pu.update_id = u.id AND p.state = 'merged'
-                ORDER BY p.merged_at DESC LIMIT 1) AS pr_number,
               (SELECT MAX(p.merged_at) FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
                 WHERE pu.update_id = u.id AND p.state = 'merged') AS merged_at
        FROM updates u
@@ -85,12 +78,11 @@ export function retireOvertaken(now = new Date().toISOString()): Retired[] {
     stack: string
     service: string
     to_tag: string
-    pr_number: number | null
     merged_at: string | null
   }[]
 
   const overtaker = db.prepare(
-    `SELECT p.number FROM updates v
+    `SELECT v.id, v.to_tag FROM updates v
      JOIN pr_updates pu ON pu.update_id = v.id
      JOIN prs p ON p.id = pu.pr_id
      WHERE v.stack = ? AND v.service = ? AND v.id != ?
@@ -107,16 +99,16 @@ export function retireOvertaken(now = new Date().toISOString()): Retired[] {
     for (const c of candidates) {
       // No merge time means no evidence of order, and order is the whole question.
       if (!c.merged_at) continue
-      const by = overtaker.get(c.stack, c.service, c.id, c.merged_at) as { number: number } | undefined
+      const by = overtaker.get(c.stack, c.service, c.id, c.merged_at) as { id: number; to_tag: string } | undefined
       if (!by) continue
-      if (retire.run(`overtaken by ${by.number ? `#${by.number}` : 'a later change'}`, now, c.id).changes === 0) continue
+      if (retire.run(`overtaken by ${by.to_tag}`, now, c.id).changes === 0) continue
       out.push({
         updateId: c.id,
         stack: c.stack,
         service: c.service,
         toTag: c.to_tag,
-        prNumber: c.pr_number,
-        byPrNumber: by.number,
+        byUpdateId: by.id,
+        byTag: by.to_tag,
       })
     }
   })()

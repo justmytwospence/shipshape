@@ -1,7 +1,7 @@
 import { getDb, logEvent } from '../db.ts'
 import { env, gitBranch, loadPolicy } from '../config.ts'
 import { notify } from '../notify/index.ts'
-import { deployForPr, type DeployIo, type DeployTarget } from './run.ts'
+import { deployChange, type DeployIo, type DeployTarget } from './run.ts'
 import { handleFailure } from './rollback.ts'
 import { readRecordedPlan, recheckServices } from './runstate.ts'
 import {
@@ -51,7 +51,6 @@ export type DeployTrigger = 'queue' | 'operator' | 'redeploy' | 'retry' | 'rollb
 
 export interface DeployJob {
   id: number
-  pr_number: number | null
   stack: string
   services: string
   strategy: 'up' | 'rm-first'
@@ -78,7 +77,7 @@ export function claimJob(id: number): DeployJob | null {
   if (claimed.changes === 0) return null
   return db
     .prepare(
-      `SELECT id, pr_number, stack, services, strategy, attempts, trigger FROM deploys WHERE id = ?`,
+      `SELECT id, stack, services, strategy, attempts, trigger FROM deploys WHERE id = ?`,
     )
     .get(id) as DeployJob
 }
@@ -91,7 +90,6 @@ export function claimJob(id: number): DeployJob | null {
  */
 export function enqueueDeploy(opts: {
   prId: number
-  prNumber: number
   target: DeployTarget
   now: string
   /** `ready` waits for the operator; `pending` is picked up by the next drain. */
@@ -105,20 +103,19 @@ export function enqueueDeploy(opts: {
   db.transaction(() => {
     // An older intent for the same services is not work to do later, it is work that was
     // replaced: bringing the stack up runs against whatever the checkout says now, so
-    // the earlier job would deploy this content under the wrong pull request number.
+    // the earlier job would deploy this content under the wrong change.
     db.prepare(
       `UPDATE deploys SET status = 'superseded', detail = ?, finished_at = ?
          WHERE stack = ? AND services = ? AND status IN ('pending', 'ready')`,
-    ).run(`overtaken by #${opts.prNumber}`, opts.now, opts.target.stack, services)
+    ).run(`replaced by a newer deploy of ${opts.target.stack}`, opts.now, opts.target.stack, services)
 
     const info = db
       .prepare(
-        `INSERT INTO deploys (pr_number, pr_id, stack, services, strategy, ok, healthy,
+        `INSERT INTO deploys (pr_id, stack, services, strategy, ok, healthy,
                               status, attempts, created_at, trigger)
-         VALUES (?, ?, ?, ?, ?, 0, 0, ?, 0, ?, ?)`,
+         VALUES (?, ?, ?, ?, 0, 0, ?, 0, ?, ?)`,
       )
       .run(
-        opts.prNumber,
         opts.prId,
         opts.target.stack,
         services,
@@ -171,8 +168,8 @@ function reclaimStale(): void {
   const db = getDb()
   const cutoff = new Date(Date.now() - STALE_MS).toISOString()
   const stuck = db
-    .prepare(`SELECT id, pr_number, attempts FROM deploys WHERE status = 'running' AND started_at < ?`)
-    .all(cutoff) as { id: number; pr_number: number | null; attempts: number }[]
+    .prepare(`SELECT id, stack, attempts FROM deploys WHERE status = 'running' AND started_at < ?`)
+    .all(cutoff) as { id: number; stack: string; attempts: number }[]
 
   for (const row of stuck) {
     if (row.attempts >= MAX_ATTEMPTS) {
@@ -191,7 +188,7 @@ function reclaimStale(): void {
       logEvent({
         level: 'warn',
         kind: 'deploy',
-        message: `deploy for #${row.pr_number} was interrupted; retrying`,
+        message: `deploy #${row.id} of ${row.stack} was interrupted; retrying`,
       })
     }
   }
@@ -201,7 +198,7 @@ function reclaimStale(): void {
 export function dueJobs(limit = MAX_PER_TICK): DeployJob[] {
   return getDb()
     .prepare(
-      `SELECT id, pr_number, stack, services, strategy, attempts, trigger
+      `SELECT id, stack, services, strategy, attempts, trigger
        FROM deploys WHERE status = 'pending' ORDER BY created_at, id LIMIT ?`,
     )
     .all(limit) as DeployJob[]
@@ -286,7 +283,7 @@ export async function runDeployJob(
     markUpdates(job.id, 'deploying')
 
     try {
-      const outcome = await deployForPr(job.pr_number ?? 0, target, job.id, {
+      const outcome = await deployChange(target, job.id, {
         carried,
         io: opts.io,
         trigger: job.trigger,
@@ -366,7 +363,7 @@ export async function runDeployJob(
         level: 'error',
         kind: 'deploy',
         stack: job.stack,
-        message: `deploy attempt for #${job.pr_number} threw`,
+        message: `deploy attempt for ${job.stack} threw`,
         detail: (err as Error).message.slice(0, 300),
       })
       if (job.attempts >= MAX_ATTEMPTS) {
@@ -417,12 +414,11 @@ export async function runRechecks(
   const db = getDb()
   const due = db
     .prepare(
-      `SELECT id, pr_number, stack, services, snapshot FROM deploys
+      `SELECT id, stack, services, snapshot FROM deploys
        WHERE recheck_at IS NOT NULL AND recheck_at <= ? AND status = 'deployed'`,
     )
     .all(new Date(now()).toISOString()) as {
     id: number
-    pr_number: number | null
     stack: string
     services: string
     snapshot: string | null
@@ -502,7 +498,7 @@ export async function runRechecks(
       key: `shipshape:deploy:${row.stack}`,
       title: `shipshape: ${row.stack} degraded after deploying`,
       body:
-        `#${row.pr_number} passed its verify window and has since stopped being healthy.\n\n${detail}\n\n` +
+        `The deploy of ${row.stack} passed its verify window and has since stopped being healthy.\n\n${detail}\n\n` +
         `Not rolled back: it has been running long enough to have changed state, so undoing it is your call.`,
       priority: 4,
       tags: ['rotating_light'],

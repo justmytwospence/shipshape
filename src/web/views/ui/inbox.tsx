@@ -26,7 +26,7 @@ const GROUPS: Record<AttentionKind, { title: string; hint: string; icon: IconNam
   },
   'ready-to-deploy': {
     title: 'Ready to deploy',
-    hint: 'merged by v1, and waiting for the button',
+    hint: 'shipped, waiting for you to press Deploy',
     icon: 'rocket',
   },
   'rolling-moved': {

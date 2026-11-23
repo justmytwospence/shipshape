@@ -654,7 +654,7 @@ export const ActionBar: FC<{
                 <li>
                   <ExtLink href={update.change.url} class="tap">
                     <Icon name="external" />
-                    {update.change.kind === 'local' ? 'Open the merge commit on GitHub' : `Open #${update.change.number} on GitHub`}
+                    Open the merge commit
                   </ExtLink>
                 </li>
               ) : null}
@@ -715,7 +715,7 @@ export const UpdateDetail: FC<{
         <span class="text-xs">
           {update.change?.url ? (
             <ExtLink href={update.change.url} class="link link-hover mr-2">
-              {update.change.kind === 'local' ? 'commit' : `#${update.change.number}`} ↗
+              commit ↗
             </ExtLink>
           ) : null}
           <a

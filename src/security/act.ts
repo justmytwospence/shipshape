@@ -256,7 +256,7 @@ interface CardLine {
   stack: string
   service: string
   pkgs: string
-  fix: { id: number; to: string; pr: number | null } | null
+  fix: { id: number; to: string; state: string } | null
 }
 
 /** Bring the exposure cards in line with the exposures table. Only in `on`. */
@@ -268,12 +268,10 @@ export async function syncSecurityCards(policy: Policy): Promise<number> {
   const exposures = db.prepare(`SELECT * FROM exposures ORDER BY slug, stack, service`).all() as Exposure[]
   const fixes = db
     .prepare(
-      `SELECT f.update_id, f.slug, f.verified_at, u.stack, u.service, u.to_tag, p.number AS pr
-         FROM security_fixes f JOIN updates u ON u.id = f.update_id
-         LEFT JOIN pr_updates pu ON pu.update_id = u.id
-         LEFT JOIN prs p ON p.id = pu.pr_id AND p.state = 'open'`,
+      `SELECT f.update_id, f.slug, f.verified_at, u.stack, u.service, u.to_tag, u.state
+         FROM security_fixes f JOIN updates u ON u.id = f.update_id`,
     )
-    .all() as { update_id: number; slug: string; verified_at: string; stack: string; service: string; to_tag: string; pr: number | null }[]
+    .all() as { update_id: number; slug: string; verified_at: string; stack: string; service: string; to_tag: string; state: string }[]
 
   const bySlug = new Map<string, Map<string, CardLine>>()
   for (const e of exposures) {
@@ -296,7 +294,7 @@ export async function syncSecurityCards(policy: Policy): Promise<number> {
     for (const l of lines.values()) {
       const f = fixes.find((x) => x.slug === slug && x.stack === l.stack && x.service === l.service)
       if (f) {
-        l.fix = { id: f.update_id, to: f.to_tag, pr: f.pr }
+        l.fix = { id: f.update_id, to: f.to_tag, state: f.state }
         if (policy.security.auto_merge && Date.now() - Date.parse(f.verified_at) < FIX_GRACE_MS) continue
       }
       waiting++
@@ -310,13 +308,14 @@ export async function syncSecurityCards(policy: Policy): Promise<number> {
     const body = all
       .map((l) => {
         const name = l.stack === l.service ? l.service : `${l.stack}/${l.service}`
-        const fix = l.fix ? `fix: ${l.fix.to}${l.fix.pr ? ` (#${l.fix.pr})` : ''}` : 'no fix available yet'
+        const fix = l.fix ? `fix: ${l.fix.to}` : 'no fix available yet'
         return `- ${name}${isPublic(svc(l.stack, l.service)) ? ' (public)' : ''}: ${l.pkgs} · ${fix}`
       })
       .join('\n')
     const actions: IncidentAction[] | undefined = mcpEnabled()
       ? all
-          .filter((l) => l.fix?.pr)
+          // A fix still waiting to ship: one tap ships it.
+          .filter((l) => l.fix && (l.fix.state === 'detected' || l.fix.state === 'frozen'))
           .slice(0, 3)
           .map((l) => ({ emoji: '🚀', label: `ship ${l.service}`, do: { target: 'shipshape' as const, verb: 'ship', update: l.fix!.id } }))
       : undefined

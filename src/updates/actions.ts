@@ -67,7 +67,6 @@ export interface ActionContext {
   holds?: Hold[]
   /** Put off by a Snooze that has not run out. */
   snoozed?: boolean
-  prScope?: 'tag-only' | 'proposed' | 'modified' | null
   mergeCommitSha?: string | null
   deployStatus?: DeployStatus | null
   verdictError?: boolean

@@ -352,3 +352,41 @@ test('an exception in a handler is a styled 500, logged, and never leaks the err
     console.error = original
   }
 })
+
+test("a drafted change's proposal is the one shown, whatever its number", async () => {
+  // Every local change has number 0, so looking a proposal up by number found the first
+  // drafted change's for every update.
+  const { getDb } = await import('../../src/db.ts')
+  const db = getDb()
+  const now = new Date().toISOString()
+  const draft = (service: string, summary: string): number => {
+    const u = Number(
+      db
+        .prepare(
+          `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at)
+           VALUES ('drafts', ?, 'example/app', '1.0.0', '1.1.0', 'minor', 'normal', 'detected', ?, ?)`,
+        )
+        .run(service, now, now).lastInsertRowid,
+    )
+    const p = Number(
+      db
+        .prepare(
+          `INSERT INTO prs (number, branch, head_sha_pushed, state, scope, kind, created_at)
+           VALUES (0, ?, 'x', 'open', 'proposed', 'local', ?)`,
+        )
+        .run(`shipshape/drafts--${service}`, now).lastInsertRowid,
+    )
+    db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(p, u)
+    db.prepare(
+      `INSERT INTO proposals (pr_id, update_id, ops, notes, summary, changed, model, created_at)
+       VALUES (?, ?, '[]', '[]', ?, '[]', 'm', ?)`,
+    ).run(p, u, summary, now)
+    return u
+  }
+  draft('first', 'the first draft')
+  const second = draft('second', 'the second draft')
+
+  const html = await (await app.request(`/updates/${second}/panel?list=updates`)).text()
+  assert.match(html, /the second draft/)
+  assert.doesNotMatch(html, /the first draft/)
+})

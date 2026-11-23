@@ -20,7 +20,7 @@ export interface PresentFacts {
   fromTag: string
   toTag: string
   /** `proposed` when the change carries drafted config edits. */
-  scope: 'tag-only' | 'proposed' | 'modified' | null
+  scope: 'tag-only' | 'proposed' | null
   /** Every live update the decision covers, this one included. */
   members: { stack: string; service: string; cls: ServiceClass }[]
   /** A restore point will be taken first. */

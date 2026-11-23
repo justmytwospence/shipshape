@@ -190,15 +190,15 @@ test('a failure leaves the inbox after a fortnight', () => {
   assert.equal(inboxNeedsYou().filter((i) => i.update.id === id).length, 0)
 })
 
-test('the newest pull request wins, so a second attempt does not lose the merge commit', () => {
+test('the newest change wins, so a second attempt does not lose the merge commit', () => {
   const id = addUpdate({ state: 'merged' })
   addPr(id, { number: 14, state: 'closed' })
-  addPr(id, { number: 22, state: 'merged', sha: 'cafe123' })
+  const second = addPr(id, { number: 22, state: 'merged', sha: 'cafe123' })
 
   const v = updateView(id)!
-  assert.equal(v.change?.number, 22)
+  assert.equal(v.change?.id, second)
   assert.equal(v.change?.mergeCommitSha, 'cafe123')
-  assert.equal(v.change?.url, 'https://github.com/you/repo/pull/22')
+  assert.equal(v.change?.url, 'https://github.com/you/repo/commit/cafe123')
 })
 
 test('an update appears once even when it has two pull requests', () => {
@@ -224,10 +224,10 @@ test('the timeline tells the whole story, including what has not happened yet', 
   )
 
   const kinds = updateTimeline(id).map((m) => m.kind)
-  assert.deepEqual(kinds, ['detected', 'pr', 'review', 'merged', 'deploying', 'deployed', 'verified'])
+  assert.deepEqual(kinds, ['detected', 'review', 'merged', 'deploying', 'deployed', 'verified'])
   const future = updateTimeline(id).at(-1)!
   assert.equal(future.future, true, 'the soak is shown before it finishes')
-  assert.match(updateTimeline(id)[2]!.label, /caution at medium confidence/)
+  assert.match(updateTimeline(id)[1]!.label, /caution at medium confidence/)
 })
 
 test('recent activity spans the merge, the deploy and the dismissal', () => {

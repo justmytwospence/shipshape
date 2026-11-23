@@ -48,14 +48,11 @@ export interface UpdateView {
   detectedAt: string
   updatedAt: string
   ackedAt: string | null
-  /** What landed (or will land) on main for this update: a merge commit, or a v1 pull request. */
+  /** What landed (or will land) on the published branch for this update: a merge commit. */
   change: {
     id: number
-    kind: 'github' | 'local'
-    /** The pull request number; 0 for a local change. */
-    number: number
     state: string
-    scope: 'tag-only' | 'proposed' | 'modified'
+    scope: 'tag-only' | 'proposed'
     branch: string
     mergeCommitSha: string | null
     /** The merge commit or pull request page, when there is one to point at. */
@@ -208,20 +205,18 @@ interface RawUpdate {
 function changeFor(updateId: number): UpdateView['change'] {
   const row = getDb()
     .prepare(
-      `SELECT p.id, p.kind, p.number, p.state, p.scope, p.branch, p.merge_commit_sha
+      `SELECT p.id, p.state, p.scope, p.branch, p.merge_commit_sha
          FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id
         WHERE pu.update_id = ? ORDER BY p.id DESC LIMIT 1`,
     )
     .get(updateId) as
-    | { id: number; kind: string; number: number; state: string; scope: string; branch: string; merge_commit_sha: string | null }
+    | { id: number; state: string; scope: string; branch: string; merge_commit_sha: string | null }
     | undefined
   if (!row) return null
   return {
     id: row.id,
-    kind: row.kind === 'local' ? 'local' : 'github',
-    number: row.number,
     state: row.state,
-    scope: (row.scope ?? 'tag-only') as 'tag-only' | 'proposed' | 'modified',
+    scope: row.scope === 'proposed' ? 'proposed' : 'tag-only',
     branch: row.branch,
     mergeCommitSha: row.merge_commit_sha,
     url: changeUrl(row.id) ?? null,
@@ -356,7 +351,6 @@ function toView(u: RawUpdate, _repo?: string): UpdateView {
     cls,
     holds: held?.holds ?? [],
     snoozed,
-    prScope: change?.scope ?? null,
     mergeCommitSha: change?.mergeCommitSha ?? null,
     deployStatus: (deploy?.status as ActionContext['deployStatus']) ?? null,
     verdictError: !!verdict?.error,
@@ -559,7 +553,6 @@ export interface RecentItem {
   fromTag: string
   toTag: string
   updateId: number
-  prNumber: number | null
   detail: string | null
 }
 
@@ -571,7 +564,7 @@ export function inboxRecent(hours = 24, limit = 20): RecentItem[] {
   const opened = db
     .prepare(
       `SELECT p.created_at AS at, 'opened' AS kind, u.stack, u.service, u.from_tag AS fromTag, u.to_tag AS toTag,
-              u.id AS updateId, NULLIF(p.number, 0) AS prNumber, NULL AS detail
+              u.id AS updateId, NULL AS detail
          FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id JOIN updates u ON u.id = pu.update_id
         WHERE p.created_at >= ?`,
     )
@@ -580,7 +573,7 @@ export function inboxRecent(hours = 24, limit = 20): RecentItem[] {
   const merged = db
     .prepare(
       `SELECT p.merged_at AS at, 'merged' AS kind, u.stack, u.service, u.from_tag AS fromTag, u.to_tag AS toTag,
-              u.id AS updateId, NULLIF(p.number, 0) AS prNumber, NULL AS detail
+              u.id AS updateId, NULL AS detail
          FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id JOIN updates u ON u.id = pu.update_id
         WHERE p.merged_at >= ?`,
     )
@@ -613,7 +606,7 @@ export function inboxRecent(hours = 24, limit = 20): RecentItem[] {
                    WHEN d.status = 'rolled-back' THEN 'rolled-back' WHEN d.status = 'deployed' THEN 'deployed'
                    ELSE 'failed' END AS kind,
               u.stack, u.service, u.from_tag AS fromTag, u.to_tag AS toTag,
-              u.id AS updateId, NULLIF(d.pr_number, 0) AS prNumber, d.detail
+              u.id AS updateId, d.detail
          FROM deploys d JOIN deploy_updates du ON du.deploy_id = d.id
          JOIN updates u ON u.id = du.update_id
         WHERE d.finished_at >= ? AND d.status NOT IN ('pending','ready','running','superseded')`,
@@ -625,7 +618,7 @@ export function inboxRecent(hours = 24, limit = 20): RecentItem[] {
       `SELECT u.updated_at AS at,
               CASE u.state WHEN 'skipped' THEN 'skipped' ELSE 'superseded' END AS kind,
               u.stack, u.service, u.from_tag AS fromTag, u.to_tag AS toTag,
-              u.id AS updateId, NULL AS prNumber, u.detail
+              u.id AS updateId, u.detail
          FROM updates u
         WHERE u.updated_at >= ? AND u.state IN ('skipped','superseded')`,
     )
@@ -672,16 +665,8 @@ export function updateTimeline(id: number): Milestone[] {
     const c = getDb()
       .prepare(`SELECT created_at, merged_at, state FROM prs WHERE id = ?`)
       .get(v.change.id) as { created_at: string; merged_at: string | null; state: string } | undefined
-    const proposed = v.change.scope === 'proposed'
-    if (v.change.kind === 'github') {
-      out.push({
-        at: c?.created_at ?? null,
-        kind: 'pr',
-        label: `pull request #${v.change.number} opened`,
-        detail: v.change.scope === 'tag-only' ? null : `carries ${proposed ? 'drafted config changes' : 'edits'}`,
-      })
-    } else if (proposed) {
-      out.push({ at: c?.created_at ?? null, kind: 'pr', label: 'config changes drafted', detail: 'shipping it merges them too' })
+    if (v.change.scope === 'proposed') {
+      out.push({ at: c?.created_at ?? null, kind: 'drafted', label: 'config changes drafted', detail: 'shipping it merges them too' })
     }
   }
 
@@ -716,9 +701,9 @@ export function updateTimeline(id: number): Milestone[] {
       .get(v.change.id) as { merged_at: string | null; state: string } | undefined
     for (const p of v.restorePoints) out.push({ at: p.createdAt, kind: 'restore', label: `restore point: ${p.service}`, detail: p.path })
     if (c?.merged_at) {
-      out.push({ at: c.merged_at, kind: 'merged', label: v.change.kind === 'local' ? `shipped: merged into ${gitBranch()}` : `merged into ${gitBranch()}` })
+      out.push({ at: c.merged_at, kind: 'merged', label: `shipped: merged into ${gitBranch()}` })
     } else if (c?.state === 'closed') {
-      out.push({ at: null, kind: 'closed', label: v.change.kind === 'github' ? 'pull request closed without merging' : 'drafted change closed' })
+      out.push({ at: null, kind: 'closed', label: 'drafted change closed' })
     }
   }
 

@@ -52,7 +52,7 @@ function pr(number: number): number {
 beforeEach(reset)
 
 test('an enqueued deploy survives as pending work', () => {
-  enqueueDeploy({ prId: pr(1), prNumber: 1, target: target(), now: new Date().toISOString() })
+  enqueueDeploy({ prId: pr(1), target: target(), now: new Date().toISOString() })
   const jobs = dueJobs()
   assert.equal(jobs.length, 1)
   assert.equal(jobs[0]!.stack, 'jellyfin')
@@ -68,7 +68,7 @@ test('the enqueue commits with the merge, or not at all', () => {
   assert.throws(() => {
     db.transaction(() => {
       db.prepare(`UPDATE prs SET state = 'merged' WHERE id = ?`).run(id)
-      enqueueDeploy({ prId: id, prNumber: 2, target: target(), now: new Date().toISOString() })
+      enqueueDeploy({ prId: id, target: target(), now: new Date().toISOString() })
       throw new Error('crash between merge and deploy')
     })()
   })
@@ -78,8 +78,8 @@ test('the enqueue commits with the merge, or not at all', () => {
 })
 
 test('jobs drain oldest first', () => {
-  enqueueDeploy({ prId: pr(3), prNumber: 3, target: target({ stack: 'a' }), now: '2026-01-01T00:00:00Z' })
-  enqueueDeploy({ prId: pr(4), prNumber: 4, target: target({ stack: 'b' }), now: '2026-01-02T00:00:00Z' })
+  enqueueDeploy({ prId: pr(3), target: target({ stack: 'a' }), now: '2026-01-01T00:00:00Z' })
+  enqueueDeploy({ prId: pr(4), target: target({ stack: 'b' }), now: '2026-01-02T00:00:00Z' })
   assert.deepEqual(dueJobs().map((j) => j.stack), ['a', 'b'])
 })
 
@@ -89,7 +89,6 @@ test('a tick takes a bounded slice, leaving the rest queued', () => {
   for (let i = 10; i < 16; i++) {
     enqueueDeploy({
       prId: pr(i),
-      prNumber: i,
       target: target({ stack: `stack-${i}` }),
       now: `2026-01-0${i - 9}T00:00:00Z`,
     })
@@ -105,29 +104,31 @@ test('a tick takes a bounded slice, leaving the rest queued', () => {
 test('a newer intent for the same services retires the older one', () => {
   // Two pending intents for one stack are not two deploys: bringing it up runs against
   // whatever the checkout says now, so the older job would deploy this content and
-  // record it under the wrong pull request.
+  // record it under the wrong change.
   const now = new Date().toISOString()
-  enqueueDeploy({ prId: pr(20), prNumber: 20, target: target({ stack: 'immich' }), now })
-  enqueueDeploy({ prId: pr(21), prNumber: 21, target: target({ stack: 'immich' }), now })
+  const first = pr(20)
+  const second = pr(21)
+  enqueueDeploy({ prId: first, target: target({ stack: 'immich' }), now })
+  enqueueDeploy({ prId: second, target: target({ stack: 'immich' }), now })
 
   const rows = getDb()
-    .prepare(`SELECT pr_number, status, detail FROM deploys WHERE stack = 'immich' ORDER BY id`)
-    .all() as { pr_number: number; status: string; detail: string | null }[]
+    .prepare(`SELECT pr_id, status, detail FROM deploys WHERE stack = 'immich' ORDER BY id`)
+    .all() as { pr_id: number; status: string; detail: string | null }[]
   assert.deepEqual(
-    rows.map((r) => [r.pr_number, r.status]),
+    rows.map((r) => [r.pr_id, r.status]),
     [
-      [20, 'superseded'],
-      [21, 'pending'],
+      [first, 'superseded'],
+      [second, 'pending'],
     ],
   )
-  assert.match(rows[0]!.detail!, /overtaken by #21/)
+  assert.match(rows[0]!.detail!, /replaced by a newer deploy of immich/)
   assert.equal(dueJobs().filter((j) => j.stack === 'immich').length, 1)
 })
 
 test('a claim can only be won once', () => {
   // The drain and an operator pressing Deploy must never both run compose on one stack.
   const now = new Date().toISOString()
-  enqueueDeploy({ prId: pr(30), prNumber: 30, target: target({ stack: 'claimed' }), now })
+  enqueueDeploy({ prId: pr(30), target: target({ stack: 'claimed' }), now })
   const id = (
     getDb().prepare(`SELECT id FROM deploys WHERE stack = 'claimed'`).get() as { id: number }
   ).id
@@ -143,7 +144,6 @@ test('a ready job waits for the operator but can still be claimed', () => {
   const now = new Date().toISOString()
   enqueueDeploy({
     prId: pr(31),
-    prNumber: 31,
     target: target({ stack: 'ready-stack' }),
     now,
     status: 'ready',
@@ -169,7 +169,6 @@ test('a queued deploy records which updates it carries', () => {
 
   enqueueDeploy({
     prId,
-    prNumber: 40,
     target: target({ stack: 'linked' }),
     now: new Date().toISOString(),
   })
@@ -185,7 +184,6 @@ test('a queued deploy records which updates it carries', () => {
 test('services are deduped into the queued row', () => {
   enqueueDeploy({
     prId: pr(5),
-    prNumber: 5,
     target: target({ services: ['n8n', 'n8n', 'n8n-import'] }),
     now: new Date().toISOString(),
   })
@@ -193,7 +191,7 @@ test('services are deduped into the queued row', () => {
 })
 
 test('nothing is pending once the queue is worked off', () => {
-  enqueueDeploy({ prId: pr(6), prNumber: 6, target: target(), now: new Date().toISOString() })
+  enqueueDeploy({ prId: pr(6), target: target(), now: new Date().toISOString() })
   getDb().exec(`UPDATE deploys SET status = 'deployed'`)
   assert.equal(dueJobs().length, 0)
   assert.ok(!hasPendingDeploys())
@@ -212,7 +210,7 @@ test('lifecycle states reach every update behind the deploy', () => {
   getDb()
     .prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`)
     .run(prId, Number(u.lastInsertRowid))
-  enqueueDeploy({ prId, prNumber: 7, target: target(), now })
+  enqueueDeploy({ prId, target: target(), now })
 
   markUpdates(dueJobs()[0]!.id, 'deploying')
   const row = getDb()
@@ -267,7 +265,6 @@ function n8nGroup(): { prId: number; deployId: number; importId: number; n8nId: 
   link.run(prId, n8nId)
   enqueueDeploy({
     prId,
-    prNumber: 8,
     target: target({ stack: 'n8n', services: ['n8n-import', 'n8n'] }),
     now: new Date().toISOString(),
   })
@@ -355,7 +352,7 @@ test('a deploy knows the versions of what it carried, and only that', () => {
 test('claimed jobs know who asked for them', () => {
   // A redeploy that does not land leaves its update somewhere different from a merge that
   // does not, so the job has to carry who asked for it.
-  enqueueDeploy({ prId: pr(50), prNumber: 50, target: target({ stack: 'asked' }), now: new Date().toISOString() })
+  enqueueDeploy({ prId: pr(50), target: target({ stack: 'asked' }), now: new Date().toISOString() })
   const id = (getDb().prepare(`SELECT id FROM deploys WHERE stack = 'asked'`).get() as { id: number }).id
   assert.equal(dueJobs().find((j) => j.id === id)!.trigger, 'queue')
   assert.equal(claimJob(id)!.trigger, 'queue')

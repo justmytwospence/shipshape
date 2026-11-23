@@ -83,7 +83,7 @@ export interface DeployTarget {
    * Services built from source before `up`: the forks (FORKS.md). Their `image:` is a
    * local name compose cannot pull, so the pull passes `--ignore-buildable` and an explicit
    * `compose build` runs first -- a failed build then touches no container and is reported
-   * as a deploy failure. Resolved from the compose file when absent (`deployForPr`); a
+   * as a deploy failure. Resolved from the compose file when absent (`deployChange`); a
    * rollback passes an empty list, because the image it puts back is already on disk.
    */
   build?: string[]
@@ -790,9 +790,8 @@ export function nextStep(
   return `Retry with:\n${manualCommand(target)}`
 }
 
-/** Run a deploy for a merged pull request and record what happened. */
-export async function deployForPr(
-  prNumber: number,
+/** Run a deploy for a shipped change and record what happened. */
+export async function deployChange(
   target: DeployTarget,
   deployId?: number,
   opts: {
@@ -841,12 +840,11 @@ export async function deployForPr(
     // finished history rather than inventing a job nobody will drain.
     getDb()
       .prepare(
-        `INSERT INTO deploys (pr_number, stack, services, strategy, ok, healthy, detail,
+        `INSERT INTO deploys (stack, services, strategy, ok, healthy, detail,
                               status, started_at, finished_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
-        prNumber,
         target.stack,
         [...new Set(target.services)].join(' '),
         target.strategy,
@@ -879,7 +877,7 @@ export async function deployForPr(
       level: 'error',
       kind: 'deploy',
       stack: target.stack,
-      message: `deploy of ${target.stack} failed after ${prNumber ? `#${prNumber}` : 'the change'} shipped`,
+      message: `deploy of ${target.stack} failed after the change shipped`,
       detail: `${outcome.reason}${outcome.stderr ? `\n${outcome.stderr}` : ''}`,
     })
     const down = downAfter(outcome, target.strategy)
@@ -895,7 +893,7 @@ export async function deployForPr(
       title: down
         ? `shipshape: ${target.stack} is DOWN — deploy failed`
         : `shipshape: deploy failed — ${target.stack}`,
-      body: `${prNumber ? `#${prNumber}` : 'The change'} shipped but ${named.join(', ')} did not deploy.\n\n${outcome.reason}\n\n${failureState(outcome, target.strategy)}\n\n${next}`,
+      body: `The change shipped but ${named.join(', ')} did not deploy.\n\n${outcome.reason}\n\n${failureState(outcome, target.strategy)}\n\n${next}`,
       priority: down ? 5 : 4,
       tags: ['rotating_light'],
     })
@@ -936,7 +934,7 @@ export async function deployForPr(
       eventClass: 'broken',
       key: `shipshape:deploy:${target.stack}`,
       title: `shipshape: ${target.stack} unhealthy after deploy`,
-      body: `#${prNumber}: ${outcome.detail}\n\nThe new image is running and failing. Roll back with git revert and redeploy if it does not recover.`,
+      body: `${target.stack}: ${outcome.detail}\n\nThe new image is running and failing. Roll back with git revert and redeploy if it does not recover.`,
       priority: 5,
       tags: ['rotating_light'],
     })

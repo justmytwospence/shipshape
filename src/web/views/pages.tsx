@@ -243,13 +243,12 @@ export const ServicesPage: FC<{
 
 export const ActivityPage: FC<{
   rows: ActivityRow[]
-  repo: string
   kind: string
   problems: boolean
   q: string
   more?: string | null
   chrome: PageChrome
-}> = ({ rows, repo, kind, problems, q, more, chrome }) => (
+}> = ({ rows, kind, problems, q, more, chrome }) => (
   <Layout
     title="Activity"
     nav="activity"
@@ -261,7 +260,7 @@ export const ActivityPage: FC<{
       variant="wide"
       list={
         <div id="activity-list">
-          <ActivityList rows={rows} repo={repo} more={more} />
+          <ActivityList rows={rows} more={more} />
         </div>
       }
     />

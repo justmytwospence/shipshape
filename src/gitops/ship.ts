@@ -43,7 +43,7 @@ import { notify } from '../notify/index.ts'
  * Exported for the tests, which check what never reaches it rather than what does.
  *
  * Detected updates, and frozen ones the operator has approved. Never a rolling tag (there
- * is nothing to change in git) and never one a legacy pull request still carries.
+ * is nothing to change in git).
  */
 export function eligibleGroups(policy: Policy): UpdateGroup[] {
   const db = getDb()
@@ -54,8 +54,6 @@ export function eligibleGroups(policy: Policy): UpdateGroup[] {
        FROM updates u
        WHERE (u.state = 'detected' OR (u.state = 'frozen' AND u.approved_at IS NOT NULL))
          AND COALESCE(u.detail, '') != 'rolling'
-         AND NOT EXISTS (SELECT 1 FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
-                         WHERE pu.update_id = u.id AND p.state = 'open' AND p.kind = 'github')
        ORDER BY u.id`,
     )
     .all() as (GroupMember & { detail: string | null })[]
@@ -258,7 +256,7 @@ export async function buildBranch(
     if (!edit.ok) return { ok: false, alreadyApplied: edit.alreadyApplied, reason: edit.reason }
   }
 
-  await git(repoDir, [...authorArgs(), 'commit', '-am', prTitle(group, forks, bases)])
+  await git(repoDir, [...authorArgs(), 'commit', '-am', changeTitle(group, forks, bases)])
   return { ok: true, sha: (await git(repoDir, ['rev-parse', 'HEAD'])).stdout, forks, bases }
 }
 
@@ -487,7 +485,7 @@ export function describe(g: UpdateGroup): string {
   return changeText(g.members, { named: true }) ?? ''
 }
 
-export function prTitle(g: UpdateGroup, forks?: Map<number, ForkPrInfo>, bases?: Map<number, BasePrInfo>): string {
+export function changeTitle(g: UpdateGroup, forks?: Map<number, ForkPrInfo>, bases?: Map<number, BasePrInfo>): string {
   const m = g.members[0]!
   const names = g.members.map((x) => x.service).join(', ')
   // A stack shipped from one card: each service names its own move.
@@ -696,7 +694,7 @@ async function shipGroup(group: UpdateGroup, policy: Policy): Promise<boolean> {
     const draft = draftFor(group)
     let branch = draft?.branch ?? shipBranchFor(group)
     let built: { forks: Map<number, ForkPrInfo>; bases: Map<number, BasePrInfo> } = { forks: new Map(), bases: new Map() }
-    let title = prTitle(group)
+    let title = changeTitle(group)
 
     const hasDraft =
       draft &&
@@ -715,7 +713,7 @@ async function shipGroup(group: UpdateGroup, policy: Policy): Promise<boolean> {
         return null
       }
       built = b
-      title = prTitle(group, b.forks, b.bases)
+      title = changeTitle(group, b.forks, b.bases)
     }
 
     const merged = await mergeAndPush(repoDir, branch, title, commitBody(group, built, statuses), group, hasDraft ? undefined : async () => (await buildBranch(repoDir, group, branch)).ok)
@@ -837,7 +835,7 @@ export async function recordShipped(prId: number, mergeSha: string, group: Updat
     const mark = db.prepare(`UPDATE updates SET state = 'merged', updated_at = ? WHERE id = ?`)
     for (const m of members) mark.run(now, m.id)
     retired = retireOvertaken(now)
-    enqueueDeploy({ prId, prNumber: 0, target, now, status: 'pending' })
+    enqueueDeploy({ prId, target, now, status: 'pending' })
   })()
   logRetired(retired)
 

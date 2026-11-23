@@ -210,7 +210,7 @@ test('an update whose pull request merged is still read once a later merge passe
     service: 'merged-then-passed',
     magnitude: 'minor',
     state: 'superseded',
-    detail: 'overtaken by #66',
+    detail: 'overtaken by 1.2.3',
   })
   mergedPrFor(id, 66)
   const picked = pendingAnalysis(50).map((p) => p.service)

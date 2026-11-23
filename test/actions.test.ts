@@ -126,7 +126,7 @@ test('every state names exactly one button, and names it first', () => {
     ctx({ state: 'detected' }),
     ctx({ state: 'detected', detail: 'rolling' }),
     ctx({ state: 'frozen' }),
-    ctx({ state: 'pr_open', prScope: 'tag-only' }),
+    ctx({ state: 'pr_open' }),
     ctx({ state: 'merged', deployStatus: 'ready' }),
     ctx({ state: 'merged', deployStatus: 'failed' }),
     ctx({ state: 'deploying' }),

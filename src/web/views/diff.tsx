@@ -155,14 +155,10 @@ const Ext: FC<{ href: string; children?: unknown }> = ({ href, children }) => (
 export const DiffView: FC<{
   result: DiffResult
   links?: RefLinks
-  prUrl?: string | null
-  prNumber?: number | null
-  prScope?: string | null
   proposal?: ProposalSummary
-  canPropose?: boolean
   /** Whose service this is, so a missing upstream can be linked from here. */
   service?: { stack: string; service: string }
-}> = ({ result, links, prUrl, prNumber, prScope, proposal, service }) => (
+}> = ({ result, links, proposal, service }) => (
   <div class="text-sm">
     {'error' in result ? (
       <p class="text-xs opacity-60">{result.error}</p>
@@ -210,14 +206,7 @@ export const DiffView: FC<{
       </div>
     ) : null}
 
-    {prScope === 'modified' && prUrl ? (
-      <p class="text-warning my-2 text-xs">
-        This branch has been edited since shipshape wrote it — the preview above is no
-        longer the whole change. <Ext href={`${prUrl}/files`}>See the pull request’s own diff</Ext>
-      </p>
-    ) : null}
-
-    {/* Everything you might want to check before merging, one click away. */}
+    {/* Everything you might want to check before shipping, one click away. */}
     <p class="-mx-2 flex flex-wrap gap-x-1 gap-y-1 py-1">
       {links?.image && <Ext href={links.image}>image</Ext>}
       {links?.tag && <Ext href={links.tag}>new tag</Ext>}
@@ -225,7 +214,6 @@ export const DiffView: FC<{
       {links?.source && <Ext href={links.source}>project</Ext>}
       {/* How the *image* is configured, which the project's own README rarely covers. */}
       {links?.docs && <Ext href={links.docs}>image docs</Ext>}
-      {prUrl && prNumber ? <Ext href={prUrl}>pull request #{prNumber}</Ext> : null}
       {/* No project means no release notes; the service's page is where that is fixed. */}
       {links && !links.source && service ? (
         <a href={`/services/${service.stack}/${service.service}`} class="btn btn-ghost btn-xs tap font-normal">

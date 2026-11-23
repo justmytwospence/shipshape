@@ -14,7 +14,7 @@ export interface ExposureView {
     service: string
     packages: { type: string; name: string; installed: string; fixed: string | null }[]
     since: string
-    fix: { updateId: number; toTag: string; state: string; pr: number | null } | null
+    fix: { updateId: number; toTag: string; state: string } | null
   }[]
 }
 
@@ -41,11 +41,10 @@ export function exposureViews(slug?: string): ExposureView[] {
   }[]
   const fixes = db
     .prepare(
-      `SELECT f.slug, f.update_id, u.stack, u.service, u.to_tag, u.state, p.number AS pr
-         FROM security_fixes f JOIN updates u ON u.id = f.update_id
-         LEFT JOIN pr_updates pu ON pu.update_id = u.id LEFT JOIN prs p ON p.id = pu.pr_id AND p.state = 'open'`,
+      `SELECT f.slug, f.update_id, u.stack, u.service, u.to_tag, u.state
+         FROM security_fixes f JOIN updates u ON u.id = f.update_id`,
     )
-    .all() as { slug: string; update_id: number; stack: string; service: string; to_tag: string; state: string; pr: number | null }[]
+    .all() as { slug: string; update_id: number; stack: string; service: string; to_tag: string; state: string }[]
 
   const out = new Map<string, ExposureView>()
   for (const r of rows) {
@@ -70,7 +69,7 @@ export function exposureViews(slug?: string): ExposureView[] {
         service: r.service,
         packages: [],
         since: r.first_seen_at,
-        fix: f ? { updateId: f.update_id, toTag: f.to_tag, state: f.state, pr: f.pr } : null,
+        fix: f ? { updateId: f.update_id, toTag: f.to_tag, state: f.state } : null,
       }
       v.services.push(s)
     }

@@ -213,7 +213,7 @@ export const UPDATES: Record<string, UpdateView> = {
   verified: update({
     id: 13,
     state: 'verified',
-    change: { id: 22, kind: 'github' as const, number: 22, state: 'merged', scope: 'tag-only' as const, branch: 'b22', mergeCommitSha: 'abc1234', url: 'https://github.com/you/repo/pull/22' },
+    change: { id: 22, state: 'merged', scope: 'tag-only' as const, branch: 'b22', mergeCommitSha: 'abc1234', url: 'https://github.com/you/repo/commit/abc1234' },
     holds: [],
     shipStatus: null,
     deploy: {
@@ -237,7 +237,7 @@ export const UPDATES: Record<string, UpdateView> = {
     fromTag: '1.37.2',
     toTag: '1.37.3',
     state: 'left-stopped',
-    change: { id: 101, kind: 'github' as const, number: 101, state: 'merged', scope: 'tag-only' as const, branch: 'b101', mergeCommitSha: 'abc1234', url: 'https://github.com/you/repo/pull/101' },
+    change: { id: 101, state: 'merged', scope: 'tag-only' as const, branch: 'b101', mergeCommitSha: 'abc1234', url: 'https://github.com/you/repo/commit/abc1234' },
     holds: [],
     shipStatus: null,
     deploy: {
@@ -256,7 +256,7 @@ export const UPDATES: Record<string, UpdateView> = {
 
 export const MILESTONES: Milestone[] = [
   { at: ago(30), kind: 'detected', label: 'minor update detected', detail: '10.9.11 → 10.10.3' },
-  { at: ago(29), kind: 'pr', label: 'pull request #41 opened' },
+  { at: ago(29), kind: 'drafted', label: 'config changes drafted' },
   {
     at: ago(20),
     kind: 'review',
@@ -494,7 +494,7 @@ const ACTIVITY = [
     kind: 'pr',
     stack: null,
     service: null,
-    message: 'opened #41: jellyfin 10.9.11 -> 10.10.3',
+    message: 'shipped jellyfin 10.9.11 -> 10.10.3',
     detail: null,
   },
 ]
@@ -515,7 +515,6 @@ const INBOX = {
       fromTag: '10.9.10',
       toTag: '10.9.11',
       updateId: 13,
-      prNumber: 22,
       detail: null,
     },
   ],
@@ -623,7 +622,6 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
     'activity-page': String(
       ActivityPage({
         rows: ACTIVITY,
-        repo: 'you/repo',
         kind: 'all',
         problems: false,
         q: '',
@@ -743,9 +741,6 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
             waitsOn: [{ ref: 'grimmory-tools/grimmory#2952', state: 'merged-unreleased', releasedIn: null }],
           },
         },
-        prNumber: 52,
-        prUrl: 'https://github.com/me/homelab/pull/52',
-        prScope: 'tag-only',
       }),
     ),
     'service-detail-fork': String(
@@ -777,7 +772,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
     ),
     'link-preview': String(LinkPreviewPane({ preview: LINK_PREVIEW as never, ctx: 'list=services' })),
     'link-preview-refused': String(LinkPreviewPane({ preview: LINK_PREVIEW_REFUSED as never, ctx: 'list=services' })),
-    activity: String(ActivityList({ rows: ACTIVITY, repo: 'you/repo', more: null })),
+    activity: String(ActivityList({ rows: ACTIVITY, more: null })),
     settings: String(SettingsForm({ groups: SETTING_GROUPS, readyCount: 2 })),
     status: String(StatusBody({ data: STATUS })),
     layout: String(Layout({ title: 'Inbox', nav: 'inbox', chrome: CH, children: 'x' })),

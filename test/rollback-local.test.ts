@@ -21,7 +21,7 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 
 const { getDb } = await import('../src/db.ts')
 const { performRollback } = await import('../src/deploy/rollback.ts')
-const { changeKind, changeUrl, changeLabel } = await import('../src/gitops/change.ts')
+const { changeUrl } = await import('../src/gitops/change.ts')
 const { fakeIo, composeCalls } = await import('./helpers/deploy-io.ts')
 
 const g = (args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: live, encoding: 'utf8' }).trim()
@@ -47,13 +47,9 @@ function change(kind: string, number: number, sha: string | null = null): number
   )
 }
 
-test('a local change points at its merge commit, a pull request at its page', () => {
+test('a local change points at its merge commit', () => {
   const local = change('local', 0, mergeSha)
-  const v1 = change('github', 41)
   assert.equal(changeUrl(local), `https://github.com/me/homelab/commit/${mergeSha}`)
-  assert.equal(changeUrl(v1), 'https://github.com/me/homelab/pull/41')
-  assert.equal(changeLabel(local), 'the change')
-  assert.equal(changeLabel(v1, 41), '#41')
 })
 
 test('rolling back a merge commit reverts it with -m 1 and brings the old version up', async () => {

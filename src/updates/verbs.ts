@@ -95,7 +95,6 @@ export function contextFor(id: number): { row: UpdateRow; ctx: ActionContext; pr
       cls: held?.cls,
       holds: held?.holds ?? [],
       snoozed: !!row.snoozed_until && Date.parse(row.snoozed_until) > Date.now(),
-      prScope: (change?.scope as ActionContext['prScope']) ?? null,
       mergeCommitSha: change?.merge_commit_sha ?? null,
       deployStatus: (deploy?.status as ActionContext['deployStatus']) ?? null,
       verdictError: !!verdict?.error,
@@ -281,9 +280,9 @@ async function startRedeploy(row: UpdateRow, io?: DeployIo): Promise<VerbResult>
 
   const info = db
     .prepare(
-      `INSERT INTO deploys (pr_number, pr_id, stack, services, strategy, ok, healthy,
+      `INSERT INTO deploys (pr_id, stack, services, strategy, ok, healthy,
                             status, attempts, created_at, trigger)
-       VALUES (NULL, NULL, ?, ?, ?, 0, 0, 'pending', 0, ?, 'redeploy')`,
+       VALUES (NULL, ?, ?, ?, 0, 0, 'pending', 0, ?, 'redeploy')`,
     )
     .run(target.stack, target.services.join(' '), target.strategy, now)
   const deployId = Number(info.lastInsertRowid)
@@ -329,11 +328,11 @@ async function retry(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Promise
     const target = targetFor(row.stack, [...new Set(members.map((m) => m.service))])
     const info = db
       .prepare(
-        `INSERT INTO deploys (pr_number, pr_id, stack, services, strategy, ok, healthy,
+        `INSERT INTO deploys (pr_id, stack, services, strategy, ok, healthy,
                               status, attempts, created_at, trigger)
-         VALUES (?, ?, ?, ?, ?, 0, 0, 'pending', 0, ?, 'retry')`,
+         VALUES (?, ?, ?, ?, 0, 0, 'pending', 0, ?, 'retry')`,
       )
-      .run(0, prId?.pr_id ?? null, target.stack, target.services.join(' '), target.strategy, now)
+      .run(prId?.pr_id ?? null, target.stack, target.services.join(' '), target.strategy, now)
     const deployId = Number(info.lastInsertRowid)
     linkDeployUpdates(deployId, prId?.pr_id ?? null, members.map((m) => m.id))
     const job = claimJob(deployId)
@@ -377,11 +376,11 @@ async function rollback(row: UpdateRow, ctx: ActionContext, prId: number | null,
   const now = new Date().toISOString()
   const info = db
     .prepare(
-      `INSERT INTO deploys (pr_number, pr_id, stack, services, strategy, ok, healthy,
+      `INSERT INTO deploys (pr_id, stack, services, strategy, ok, healthy,
                             status, attempts, created_at, started_at, trigger)
-       VALUES (?, NULL, ?, ?, ?, 0, 0, 'running', 1, ?, ?, 'rollback')`,
+       VALUES (NULL, ?, ?, ?, 0, 0, 'running', 1, ?, ?, 'rollback')`,
     )
-    .run(null, target.stack, target.services.join(' '), target.strategy, now, now)
+    .run(target.stack, target.services.join(' '), target.strategy, now, now)
   const deployId = Number(info.lastInsertRowid)
   linkDeployUpdates(
     deployId,

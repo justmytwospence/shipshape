@@ -42,7 +42,7 @@ const merge = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 
 
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const { buildableServices, deploy, deployForPr, failureState, manualCommand, pullArgs } = await import('../src/deploy/run.ts')
+const { buildableServices, deploy, deployChange, failureState, manualCommand, pullArgs } = await import('../src/deploy/run.ts')
 const { performRollback } = await import('../src/deploy/rollback.ts')
 const { PolicySchema } = await import('../src/config.ts')
 const { composeCalls, fakeIo } = await import('./helpers/deploy-io.ts')
@@ -80,7 +80,7 @@ test('the pasted command builds the fork first and never pulls its local image',
 
 test('a merge deploy reads the build set from the file, builds before up, and only the running fork', async () => {
   const io = fakeIo({ grimmory: 'running', mariadb: 'running' }, { buildable: (s, svcs) => buildableServices(s, svcs, policy) })
-  const out = await deployForPr(7, target, undefined, { io })
+  const out = await deployChange(target, undefined, { io })
   assert.ok(out.ok)
   assert.deepEqual(composeCalls(io.calls), [
     'compose -f books/docker-compose.yaml build grimmory',
@@ -89,7 +89,7 @@ test('a merge deploy reads the build set from the file, builds before up, and on
 
   // A fork that is not running is left stopped and not built either.
   const stopped = fakeIo({ grimmory: 'exited', mariadb: 'running' }, { buildable: () => ['grimmory'] })
-  const left = await deployForPr(7, target, undefined, { io: stopped })
+  const left = await deployChange(target, undefined, { io: stopped })
   assert.ok(left.ok)
   assert.deepEqual(composeCalls(stopped.calls), ['compose -f books/docker-compose.yaml up -d --no-deps mariadb'])
 })

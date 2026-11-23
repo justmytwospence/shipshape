@@ -75,7 +75,6 @@ function mergedAndClaimed(
   })
   enqueueDeploy({
     prId,
-    prNumber: number,
     target: { stack, services: updates.map((u) => u.service), strategy: 'up' },
     now: now(),
   })
@@ -90,17 +89,15 @@ function insertDeploy(o: {
   healthy?: number
   snapshot?: string | null
   trigger?: string
-  prNumber?: number | null
   prId?: number | null
 }): number {
   const info = db()
     .prepare(
-      `INSERT INTO deploys (pr_number, pr_id, stack, services, strategy, ok, healthy, status, attempts,
+      `INSERT INTO deploys (pr_id, stack, services, strategy, ok, healthy, status, attempts,
                             created_at, trigger, snapshot)
-       VALUES (?, ?, ?, ?, 'up', ?, ?, ?, 0, ?, ?, ?)`,
+       VALUES (?, ?, ?, 'up', ?, ?, ?, 0, ?, ?, ?)`,
     )
     .run(
-      o.prNumber ?? null,
       o.prId ?? null,
       o.stack,
       o.stack,
@@ -249,9 +246,9 @@ test('a retry puts back what the failed attempt took down', async () => {
   db().prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(prId, updateId)
 
   // The attempt that removed the old container and failed mid-Recreate, leaving it DOWN.
-  insertDeploy({ stack: 'minuspod', status: 'failed', prNumber: 93, prId, snapshot: planJson(['minuspod']) })
+  insertDeploy({ stack: 'minuspod', status: 'failed', prId, snapshot: planJson(['minuspod']) })
   // Try again on the alert.
-  const retryId = insertDeploy({ stack: 'minuspod', status: 'pending', trigger: 'retry', prNumber: 93, prId })
+  const retryId = insertDeploy({ stack: 'minuspod', status: 'pending', trigger: 'retry', prId })
   linkDeployUpdates(retryId, prId, [updateId])
   assert.ok(carriedFor('minuspod', ['minuspod'], retryId).has('minuspod'))
 
@@ -381,5 +378,5 @@ test('a docker that cannot be asked records a failure, and no plan', async () =>
   assert.equal(row.snapshot, null, 'a guess is never recorded as a plan')
   assert.match(row.detail, /^could not ask docker whether bitwarden is running: permission denied/)
   assert.equal(stateOf(ids[0]!), 'merged', 'still merged, so Try again is offered')
-  assert.deepEqual(lastEvent().message, 'deploy of bitwarden failed after #101 shipped')
+  assert.deepEqual(lastEvent().message, 'deploy of bitwarden failed after the change shipped')
 })

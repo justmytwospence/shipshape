@@ -43,7 +43,7 @@ globalThis.fetch = (async (_url: unknown, init: { body: unknown }) => {
 const resolved: string[] = []
 
 const { getDb } = await import('../src/db.ts')
-const { deployForPr } = await import('../src/deploy/run.ts')
+const { deployChange } = await import('../src/deploy/run.ts')
 const { claimJob, dueJobs, enqueueDeploy, linkDeployUpdates, runDeployJob } = await import('../src/deploy/queue.ts')
 const { contextFor } = await import('../src/updates/verbs.ts')
 const { actionsFor } = await import('../src/updates/actions.ts')
@@ -71,7 +71,7 @@ const pullFails = (c: string) => (c.includes(' pull ') ? 1 : 0)
 
 test('a pull that fails under rm-first removed nothing and is not DOWN', async () => {
   const io = fakeIo({ actual: 'running' }, { exitCode: pullFails })
-  const out = await deployForPr(0, { ...actual, services: ['actual'], strategy: 'rm-first' }, undefined, { io })
+  const out = await deployChange({ ...actual, services: ['actual'], strategy: 'rm-first' }, undefined, { io })
 
   assert.ok(!out.ok)
   assert.equal(out.phase, 'pull')
@@ -85,7 +85,7 @@ test('a pull that fails under rm-first removed nothing and is not DOWN', async (
 
 test('a pull that fails names only what it meant to bring up', async () => {
   const io = fakeIo({ actual: 'running', 'actual-sync': 'exited' }, { exitCode: pullFails })
-  await deployForPr(0, actual, undefined, { io })
+  await deployChange(actual, undefined, { io })
 
   assert.deepEqual(composeCalls(io.calls), ['compose -f actual/docker-compose.yaml pull actual'])
   assert.equal(sent.length, 1)
@@ -102,7 +102,7 @@ test('a pull that fails names only what it meant to bring up', async () => {
 
 test('an orphan container says how to clear it, not to wait for docker', async () => {
   const io = fakeIo({ bitwarden: 'absent' }, { foreign: async () => 'compose project "bw-old" (bitwarden)' })
-  await deployForPr(101, { stack: 'bitwarden', services: ['bitwarden'], strategy: 'up' }, undefined, { io })
+  await deployChange({ stack: 'bitwarden', services: ['bitwarden'], strategy: 'up' }, undefined, { io })
 
   assert.equal(sent.length, 1)
   assert.doesNotMatch(sent[0]!.body, /once docker answers/)
@@ -148,7 +148,7 @@ test('a Redeploy that could not ask docker names the button a rolling update off
 
 test('a plain up that fails after recreating pages that the service is DOWN', async () => {
   const io = fakeIo({ app: ['running', 'created'] }, { exitCode: (c) => (c.includes(' up ') ? 1 : 0) })
-  await deployForPr(7, { stack: 'scratch', services: ['app'], strategy: 'up' }, undefined, { io })
+  await deployChange({ stack: 'scratch', services: ['app'], strategy: 'up' }, undefined, { io })
 
   assert.equal(sent.length, 1)
   // One incident per stack: a later message about it edits this one, a good deploy closes it.
@@ -162,7 +162,7 @@ test('a plain up that fails after recreating pages that the service is DOWN', as
 
 test('a plain up that fails before recreating is not DOWN', async () => {
   const io = fakeIo({ app: 'running' }, { exitCode: (c) => (c.includes(' up ') ? 1 : 0) })
-  await deployForPr(7, { stack: 'scratch', services: ['app'], strategy: 'up' }, undefined, { io })
+  await deployChange({ stack: 'scratch', services: ['app'], strategy: 'up' }, undefined, { io })
 
   assert.equal(sent.length, 1)
   assert.equal(sent[0]!.title, 'shipshape: deploy failed — scratch')
@@ -192,7 +192,7 @@ test('a failed verdict alerts once, from the rollback, not also "roll back by ha
       .run(now, now).lastInsertRowid,
   )
   db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(prId, updateId)
-  enqueueDeploy({ prId, prNumber: 44, target: { stack: 'scratch', services: ['app'], strategy: 'up' }, now })
+  enqueueDeploy({ prId, target: { stack: 'scratch', services: ['app'], strategy: 'up' }, now })
   const { id } = db.prepare(`SELECT MAX(id) id FROM deploys`).get() as { id: number }
 
   const io = fakeIo(
@@ -210,7 +210,7 @@ test('a failed verdict alerts once, from the rollback, not also "roll back by ha
 
 test('a verifier that could not see still alerts, because nothing else will', async () => {
   const io = fakeIo({ app: 'running' }, { verify: async () => ({ kind: 'error' as const, detail: 'could not see' }) })
-  await deployForPr(45, { stack: 'scratch', services: ['app'], strategy: 'up' }, undefined, { io })
+  await deployChange({ stack: 'scratch', services: ['app'], strategy: 'up' }, undefined, { io })
 
   assert.equal(sent.length, 1)
   assert.equal(sent[0]!.title, 'shipshape: scratch unhealthy after deploy')
@@ -229,7 +229,7 @@ test('an attempt that throws is retried once before anyone is told', async () =>
       )
       .run(now).lastInsertRowid,
   )
-  enqueueDeploy({ prId, prNumber: 46, target: { stack: 'minuspod', services: ['minuspod'], strategy: 'rm-first' }, now })
+  enqueueDeploy({ prId, target: { stack: 'minuspod', services: ['minuspod'], strategy: 'rm-first' }, now })
   const { id } = db.prepare(`SELECT MAX(id) id FROM deploys`).get() as { id: number }
 
   /** A docker that removes the old container and then dies before the up can report. */

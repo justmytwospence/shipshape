@@ -11,7 +11,7 @@ import { getDb } from '../db.ts'
 export const UPDATE_STATES = [
   'detected', // seen in a registry, nothing opened yet
   'frozen', // a frozen service: listed, waiting to be asked for
-  'pr_open', // legacy: a GitHub pull request exists (v1; the v2 cutover closes them)
+  'pr_open', // legacy: a v1 pull request (removed in migration 034)
   'merged', // merged; the deploy is queued, ready, or already running
   'deploying', // compose is running right now
   'deployed', // up and healthy, inside the soak window

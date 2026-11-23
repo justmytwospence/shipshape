@@ -124,7 +124,7 @@ export function actionsFor(c: ActionContext): Verb[] {
       break
 
     case 'pr_open':
-      // A v1 pull request the cutover has not closed yet. Nothing to do but skip it.
+      // A v1 pull request (removed in migration 034).
       out.push('skip')
       break
 

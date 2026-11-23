@@ -5,7 +5,6 @@ import { runReviewPass } from './analyze/run.ts'
 import { runProposePass } from './propose/run.ts'
 import { drainDeployQueue, hasDueRechecks, hasPendingDeploys, runRechecks } from './deploy/queue.ts'
 import { runShipPass } from './gitops/ship.ts'
-import { runCutover } from './gitops/cutover.ts'
 import { runScan } from './scan.ts'
 import { checkRemoteAuth } from './health/github-auth.ts'
 import { retryPendingIncidents } from './notify/index.ts'
@@ -83,8 +82,6 @@ function startLoop(): void {
       // working, which is a fault rather than a choice, and the state it reports is
       // exactly what the operator would otherwise have to infer from a silent backlog.
       await checkRemoteAuth()
-      // One-time: close the pull requests v1 left open (src/gitops/cutover.ts).
-      await runCutover()
       // Incidents the router could not take earlier: at least once, latest state wins.
       await retryPendingIncidents()
       // Which stacks the offsite backup can cover (hourly, local config read on its side):

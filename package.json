@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --import ./test/setup.ts --test 'test/**/*.test.ts' 'test/web/*.test.tsx'",
     "resolve-report": "tsx src/bin/resolve-report.ts",
+    "convert-v1": "tsx src/bin/convert-v1.ts",
     "jev-replay": "tsx src/bin/jev-replay.ts",
     "dev:ui": "node bin/dev-ui.mjs",
     "shots": "node bin/shots.mjs",

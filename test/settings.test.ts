@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parse } from 'yaml'
-import { spliceValue, setValue, SETTINGS, SECTIONS } from '../src/settings.ts'
+import { removeValue, spliceValue, setValue, SETTINGS, SECTIONS } from '../src/settings.ts'
 
 /**
  * A trimmed copy of the real policy.yaml, keeping what makes splicing risky: comments
@@ -252,4 +252,58 @@ test('an enum default is always one of its own options', () => {
       `${def.path}: default "${def.defaultValue}" is not an option`,
     )
   }
+})
+
+const REMOVE = `# header
+paused: false
+
+# the old pair
+merge:
+  # whether it merged
+  auto: true
+  max_per_run: 3
+
+deploy:
+  # the old mode
+  mode: auto
+  soak_s: 1800 # half an hour
+`
+
+test('removeValue drops a key, its nested block and the comment above it', () => {
+  const out = removeValue(REMOVE, 'merge')!
+  assert.equal(out, `# header
+paused: false
+
+deploy:
+  # the old mode
+  mode: auto
+  soak_s: 1800 # half an hour
+`)
+  const nested = removeValue(REMOVE, 'deploy.mode')!
+  assert.ok(!nested.includes('mode: auto'))
+  assert.ok(!nested.includes('# the old mode'))
+  assert.ok(nested.includes('  soak_s: 1800 # half an hour\n'))
+})
+
+test('removeValue removes a parent left empty', () => {
+  const once = removeValue(REMOVE, 'merge.auto')!
+  const out = removeValue(once, 'merge.max_per_run')!
+  assert.ok(!/^merge:/m.test(out), out)
+  assert.ok(!out.includes('# the old pair'))
+  assert.deepEqual(parse(out), { paused: false, deploy: { mode: 'auto', soak_s: 1800 } })
+})
+
+test('removeValue keeps a file header that sits directly above the key', () => {
+  const text = '# shipshape policy\n# second line\nmerge_method: squash\npaused: true\n'
+  assert.equal(removeValue(text, 'merge_method'), '# shipshape policy\n# second line\npaused: true\n')
+})
+
+test('removeValue of an absent key returns the text unchanged', () => {
+  assert.equal(removeValue(REMOVE, 'claude'), REMOVE)
+  assert.equal(removeValue(REMOVE, 'deploy.health_window_s'), REMOVE)
+})
+
+test('removeValue rejects an unusable path', () => {
+  assert.equal(removeValue(REMOVE, ''), null)
+  assert.equal(removeValue(REMOVE, 'deploy..mode'), null)
 })

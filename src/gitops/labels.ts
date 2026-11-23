@@ -186,24 +186,11 @@ async function run(o: { stack: string; service: string; changes: LabelChange[] }
     await git(env.repoDir, ['checkout', '--', rel], { allowFail: true })
   }
 
-  // Gate A: compose must still accept the file. `--no-interpolate` because validity of
-  // the structure is the question, not whether every ${VAR} resolves right now. The
-  // probe first: tests (and any host without the compose plugin) skip the gate rather
-  // than failing every edit on a missing binary.
-  const probe = await execa('docker', ['compose', 'version'], { reject: false, timeout: 15_000 })
-  if ((probe.exitCode ?? 1) === 0) {
-    const cfg = await execa('docker', ['compose', '-f', abs, 'config', '--no-interpolate', '-q'], {
-      reject: false,
-      timeout: 60_000,
-      cwd: env.repoDir,
-    })
-    if ((cfg.exitCode ?? 1) !== 0) {
-      await restore()
-      return {
-        ok: false,
-        message: `Compose rejected the edited file, so it was restored: ${String(cfg.stderr ?? '').slice(0, 200)}`,
-      }
-    }
+  // Gate A: compose must still accept the file.
+  const rejected = await composeRejects(abs)
+  if (rejected !== null) {
+    await restore()
+    return { ok: false, message: `Compose rejected the edited file, so it was restored: ${rejected}` }
   }
 
   // Gate B: the textual diff must contain nothing but shipshape label lines (plus the
@@ -267,4 +254,22 @@ async function run(o: { stack: string; service: string; changes: LabelChange[] }
     sha,
     message: `${rel}: ${verb}, committed as ${sha}.${prNote}${publishNote}`,
   }
+}
+
+/**
+ * `docker compose config` on an edited file; the reason when compose refuses it, null when
+ * it is accepted or compose is not installed. `--no-interpolate` because validity of the
+ * structure is the question, not whether every ${VAR} resolves right now. The probe first:
+ * tests (and any host without the compose plugin) skip the gate rather than failing every
+ * edit on a missing binary.
+ */
+export async function composeRejects(abs: string): Promise<string | null> {
+  const probe = await execa('docker', ['compose', 'version'], { reject: false, timeout: 15_000 })
+  if ((probe.exitCode ?? 1) !== 0) return null
+  const cfg = await execa('docker', ['compose', '-f', abs, 'config', '--no-interpolate', '-q'], {
+    reject: false,
+    timeout: 60_000,
+    cwd: env.repoDir,
+  })
+  return (cfg.exitCode ?? 1) === 0 ? null : String(cfg.stderr ?? '').slice(0, 200)
 }

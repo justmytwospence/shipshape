@@ -612,6 +612,50 @@ export function spliceValue(text: string, path: string, formatted: string): stri
   return lines.join('\n')
 }
 
+/**
+ * Remove a key and everything nested under it, with the comment lines directly above it
+ * at the same indent (they describe the key). A parent left with no keys goes too.
+ * Returns the text unchanged when the key is absent, null when the path is unusable.
+ *
+ * A run of comments that reaches the top of the file is the file's header, not the key's
+ * description, so it stays.
+ */
+export function removeValue(text: string, path: string): string | null {
+  const parts = path.split('.')
+  if (parts.length === 0 || parts.some((p) => p === '')) return null
+
+  const lines = text.split('\n')
+  const found = locate(lines, parts)
+  if (!found) return text
+
+  const depth = parts.length - 1
+  const end = Math.max(found.line + 1, backUpOverBlanks(lines, blockEnd(lines, found.line, depth)))
+  const comment = new RegExp(`^${'  '.repeat(depth)}#`)
+  let start = found.line
+  while (start > 0 && comment.test(lines[start - 1]!)) start--
+  if (start === 0) start = found.line
+
+  lines.splice(start, end - start)
+  // Removing a block that had a blank line on each side would leave two in a row.
+  if (start > 0 && start < lines.length && lines[start - 1]!.trim() === '' && lines[start]!.trim() === '') {
+    lines.splice(start, 1)
+  }
+  const out = lines.join('\n')
+  if (parts.length === 1) return out
+
+  const parent = parts.slice(0, -1)
+  const after = out.split('\n')
+  const p = locate(after, parent)
+  if (!p) return out
+  if (!/:\s*(#.*)?$/.test(after[p.line]!)) return out
+  const stop = blockEnd(after, p.line, depth - 1)
+  for (let i = p.line + 1; i < stop; i++) {
+    const l = after[i]!.trim()
+    if (l !== '' && !l.startsWith('#')) return out
+  }
+  return removeValue(out, parent.join('.'))
+}
+
 /** Where a dotted path's final key sits, or null when any segment is absent. */
 function locate(
   lines: string[],

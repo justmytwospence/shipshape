@@ -101,6 +101,12 @@ test('a clean file is edited, committed, and the v1 labels go with the class', a
   assert.equal(g(['status', '--porcelain']), '', 'the working tree is clean after the commit')
 })
 
+test('class skip can be written', async () => {
+  const r = await setServiceLabel({ stack: 'media', service: 'jellyfin', key: 'class', value: 'skip' })
+  assert.equal(r.ok, true, r.message)
+  assert.ok(readFileSync(FILE, 'utf8').includes('      shipshape.class: skip\n'))
+})
+
 test('a dirty target file is refused with nothing written', async () => {
   const dirtied = COMPOSE + '# a hand edit in flight\n'
   writeFileSync(FILE, dirtied)

@@ -38,7 +38,7 @@ export type Confidence = 'low' | 'medium' | 'high'
  *   lifeline  -- always asks, and no rule can waive it: the way back in (traefik,
  *                authelia, wireguard, pihole)
  *   frozen    -- tracked, nothing happens until you ask (disabled stacks, parked updates)
- *   skip      -- not tracked at all
+ *   skip      -- not tracked at all (`shipshape.class: skip`)
  *
  * The old ladder is still read: `shipshape.policy: auto|manual|attended|on-request` and
  * `shipshape.pr: on-request` map onto these, so no compose file breaks on the day the
@@ -47,7 +47,7 @@ export type Confidence = 'low' | 'medium' | 'high'
 export type ServiceClass = 'normal' | 'stateful' | 'ask' | 'lifeline' | 'frozen' | 'skip'
 
 /** What an operator may write in `shipshape.class`. */
-export const CLASS_LABELS = ['normal', 'stateful', 'ask', 'lifeline', 'frozen'] as const
+export const CLASS_LABELS = ['normal', 'stateful', 'ask', 'lifeline', 'frozen', 'skip'] as const
 
 export interface ClassInput {
   /** `shipshape.class`. */
@@ -71,7 +71,7 @@ export function classFor(i: ClassInput): ServiceClass {
   const policy = clean(i.policyLabel)
   const pr = clean(i.prLabel)
 
-  if (policy === 'skip') return 'skip'
+  if (policy === 'skip' || cls === 'skip') return 'skip'
   // A disabled stack is watched so its updates are known, but nothing moves on its own.
   if (i.dormant) return 'frozen'
   if (cls !== null) return (CLASS_LABELS as readonly string[]).includes(cls) ? (cls as ServiceClass) : 'ask'

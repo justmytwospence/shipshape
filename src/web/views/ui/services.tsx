@@ -280,13 +280,14 @@ const SOURCE_CLS: Record<Provenance, string> = {
   none: 'badge-ghost',
 }
 
-/** The five classes, in the order a service usually moves between them. */
+/** The six classes, in the order a service usually moves between them. */
 const RUNGS = [
   { value: 'normal', label: 'normal', what: 'ships on its own once the review finds nothing to do and the release has aged' },
   { value: 'stateful', label: 'stateful', what: 'ships on its own after a restore point; a one-way migration or a jump with no evidence asks' },
   { value: 'ask', label: 'ask', what: 'always asks before shipping' },
   { value: 'lifeline', label: 'lifeline', what: 'always asks, and no rule can waive it — the way back in' },
   { value: 'frozen', label: 'frozen', what: 'tracked; nothing happens until you ask' },
+  { value: 'skip', label: 'skip', what: 'not tracked at all: no updates are looked for' },
 ]
 
 /** What the radio should show as chosen: no class at all is a normal service. */

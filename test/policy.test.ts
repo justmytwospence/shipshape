@@ -20,8 +20,13 @@ test('classFor: no label is a normal service', () => {
 })
 
 test('classFor: every v2 class reads as itself', () => {
-  for (const cls of ['normal', 'stateful', 'ask', 'lifeline', 'frozen'] as const) assert.equal(c(cls), cls)
+  for (const cls of ['normal', 'stateful', 'ask', 'lifeline', 'frozen', 'skip'] as const) assert.equal(c(cls), cls)
   assert.equal(c(' Stateful '), 'stateful', 'spelled loosely')
+})
+
+test('classFor: shipshape.class: skip is not tracked, even on a dormant stack', () => {
+  assert.equal(c('skip'), 'skip')
+  assert.equal(c('skip', null, null, true), 'skip')
 })
 
 test('classFor: an unrecognised class narrows to ask', () => {

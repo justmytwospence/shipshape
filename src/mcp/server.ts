@@ -25,6 +25,7 @@ import { version } from '../web/version.ts'
 import { exposureViews, findPackage, incidentViews } from '../security/queries.ts'
 import { securityStatus } from '../security/loop.ts'
 import { apiUsage, registerContext, USAGE } from './context.ts'
+import { background } from '../lifecycle.ts'
 
 /**
  * Shipshape for agents: the dashboard's reads and the operator's verbs, over MCP.
@@ -197,7 +198,7 @@ export function createServer(): McpServer {
     },
     async () => {
       if (isScanning()) return verbReply({ ok: true, message: 'A scan is already running.' })
-      void runScanNow().catch(() => {})
+      background(runScanNow(), 'scan requested via MCP', 'scan')
       return verbReply(logged('scan requested via MCP', { ok: true, message: 'Scanning. Poll scan_status for the result.' }))
     },
   )

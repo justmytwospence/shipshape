@@ -9,6 +9,7 @@ import { actionsFor, refusalFor, type Verb } from './actions.ts'
 import { decisionMembers, type HoldRow } from './holds.ts'
 import { setState } from './state.ts'
 import { contextFor, runVerb, type VerbResult } from './verbs.ts'
+import { background } from '../lifecycle.ts'
 
 /**
  * Every verb an operator can apply to one update, from any front door: the dashboard,
@@ -110,7 +111,7 @@ async function alwaysShip(id: number): Promise<VerbResult> {
   } catch (err) {
     return { ok: false, message: (err as Error).message }
   }
-  void publishRule()
+  background(publishRule(), 'publishing a rule', 'policy')
   const members = approve(id)
   return {
     ok: true,

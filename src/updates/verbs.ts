@@ -9,6 +9,7 @@ import { stackPeers, withNamespacePeers, type DeployIo, type DeployTarget } from
 import { syncMain } from '../gitops/sync.ts'
 import { withGitLock } from '../gitops/repo.ts'
 import { runAnalysisPass } from '../analyze/run.ts'
+import { background } from '../lifecycle.ts'
 
 /**
  * The things a person can do to an update.
@@ -247,7 +248,7 @@ function rerunReview(row: UpdateRow): VerbResult {
   getDb()
     .prepare(`UPDATE updates SET review_requested_at = ? WHERE image = ? AND from_tag = ? AND to_tag = ?`)
     .run(new Date().toISOString(), row.image, row.from_tag, row.to_tag)
-  void detach(runAnalysisPass(1), 'rerun-review')
+  background(runAnalysisPass(1), 'rerun-review', 'analysis')
   return { ok: true, message: 'Reading the changelog…' }
 }
 
@@ -258,7 +259,7 @@ async function startQueuedDeploy(row: UpdateRow, io?: DeployIo): Promise<VerbRes
   const job = claimJob(latest.id)
   if (!job) return { ok: false, message: 'that deploy is already running' }
 
-  void detach(runDeployJob(job, { io }), `deploy of ${row.stack}`)
+  background(runDeployJob(job, { io }), `deploy of ${row.stack}`, 'deploy')
   // Said before the outcome is known, so it states the rule rather than promising a start
   // that may not happen.
   return {
@@ -291,7 +292,7 @@ async function startRedeploy(row: UpdateRow, io?: DeployIo): Promise<VerbResult>
   const job = claimJob(deployId)
   if (!job) return { ok: false, message: 'that deploy is already running' }
 
-  void detach(runDeployJob(job, { pull: true, io }), `redeploy of ${row.stack}`)
+  background(runDeployJob(job, { pull: true, io }), `redeploy of ${row.stack}`, 'deploy')
   return {
     ok: true,
     transient: true,
@@ -337,7 +338,7 @@ async function retry(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Promise
     linkDeployUpdates(deployId, prId?.pr_id ?? null, members.map((m) => m.id))
     const job = claimJob(deployId)
     if (!job) return { ok: false, message: 'that deploy is already running' }
-    void detach(runDeployJob(job, { io }), `retry of ${row.stack}`)
+    background(runDeployJob(job, { io }), `retry of ${row.stack}`, 'deploy')
     return { ok: true, transient: true, message: `Deploying ${row.stack} again.` }
   }
 
@@ -392,7 +393,7 @@ async function rollback(row: UpdateRow, ctx: ActionContext, prId: number | null,
   // goes back up. Read now, before this row records a plan of its own.
   const carried = carriedFor(target.stack, target.services, deployId)
 
-  void detach(
+  background(
     (async () => {
       const result = await performRollback(target, sha, {
         carried,
@@ -435,6 +436,7 @@ async function rollback(row: UpdateRow, ctx: ActionContext, prId: number | null,
       }
     })(),
     `rollback of ${row.stack}`,
+    'deploy',
   )
 
   return {
@@ -447,25 +449,5 @@ async function rollback(row: UpdateRow, ctx: ActionContext, prId: number | null,
 function acknowledge(row: UpdateRow): VerbResult {
   getDb().prepare(`UPDATE updates SET acked_at = ? WHERE id = ?`).run(new Date().toISOString(), row.id)
   return { ok: true, message: 'Acknowledged.' }
-}
-
-/**
- * Start work the request must not wait for.
- *
- * A deploy takes minutes; a browser request cannot hold that open, and an unhandled
- * rejection in a detached promise would take the process down with it.
- */
-function detach(work: Promise<unknown>, what: string): Promise<void> {
-  return work.then(
-    () => undefined,
-    (err: unknown) => {
-      logEvent({
-        level: 'error',
-        kind: 'deploy',
-        message: `${what} threw`,
-        detail: (err as Error).message?.slice(0, 300) ?? String(err),
-      })
-    },
-  )
 }
 

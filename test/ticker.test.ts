@@ -174,3 +174,44 @@ test('nextAt reports the arming, and nothing before the first start', () => {
   t.stop()
   assert.ok(at > 4_000 && at <= 5_000, `armed in ${at}ms`)
 })
+
+test('idle resolves at once when nothing is running', async () => {
+  const t = createTicker(async () => {}, () => 60_000)
+  await t.idle()
+  t.start(60_000)
+  await t.idle()
+  t.stop()
+})
+
+test('idle waits for the tick in flight, and stop does not cut it short', async () => {
+  const gate = deferred()
+  let finished = false
+  const t = createTicker(async () => {
+    await gate.promise
+    finished = true
+  }, () => 60_000)
+  t.start(0)
+  await waitFor('the tick to start', () => t.runningSince() !== null)
+  t.stop()
+  let idled = false
+  const waiting = t.idle().then(() => {
+    idled = true
+  })
+  await new Promise((r) => setTimeout(r, 20))
+  assert.equal(idled, false, 'idle must wait for the running tick')
+  gate.resolve()
+  await waiting
+  assert.equal(finished, true)
+})
+
+test('runningSince is set only while a tick runs', async () => {
+  const gate = deferred()
+  const t = createTicker(() => gate.promise, () => 60_000)
+  assert.equal(t.runningSince(), null)
+  t.start(0)
+  await waitFor('the tick to start', () => t.runningSince() !== null)
+  assert.match(t.runningSince()!, /^\d{4}-\d\d-\d\dT/)
+  gate.resolve()
+  await waitFor('the tick to finish', () => t.runningSince() === null)
+  t.stop()
+})

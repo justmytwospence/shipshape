@@ -26,8 +26,12 @@ export interface Ticker {
   wake(): void
   /** When the next tick is due, ISO, or null before the first `start`. */
   nextAt(): string | null
-  /** Stop rescheduling. */
+  /** Stop rescheduling. A tick in flight still finishes. */
   stop(): void
+  /** Resolves at once when no tick is running, otherwise when the one in flight has settled. */
+  idle(): Promise<void>
+  /** When the tick in flight started, ISO, or null between ticks. */
+  runningSince(): string | null
 }
 
 /** Used when the interval callback throws or answers nonsense. */
@@ -39,6 +43,8 @@ export function createTicker(run: () => Promise<void>, interval: () => number): 
   let woken = false
   let stopped = false
   let nextAt: string | null = null
+  let current: Promise<void> | null = null
+  let startedAt: string | null = null
 
   const arm = (waitMs: number): void => {
     if (stopped) return
@@ -60,13 +66,21 @@ export function createTicker(run: () => Promise<void>, interval: () => number): 
 
   const tick = async (): Promise<void> => {
     ticking = true
+    startedAt = new Date().toISOString()
+    current = (async () => {
+      try {
+        await run()
+      } catch {
+        // The caller logs its own failures. Swallowed here so a throw can never reach the
+        // reschedule below, which is the only thing keeping the loop alive.
+      }
+    })()
     try {
-      await run()
-    } catch {
-      // The caller logs its own failures. Swallowed here so a throw can never reach the
-      // reschedule below, which is the only thing keeping the loop alive.
+      await current
     } finally {
       ticking = false
+      current = null
+      startedAt = null
       // A wake that arrived mid-tick is honoured now rather than dropped, and only
       // once: the tick after a woken one goes back to the normal cadence.
       arm(woken ? 0 : nextWait())
@@ -92,5 +106,7 @@ export function createTicker(run: () => Promise<void>, interval: () => number): 
       timer = null
       nextAt = null
     },
+    idle: (): Promise<void> => current ?? Promise.resolve(),
+    runningSince: (): string | null => startedAt,
   }
 }

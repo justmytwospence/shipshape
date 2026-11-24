@@ -29,6 +29,12 @@
  *   node bin/shots.mjs --base https://shipshape.example.org --cdp http://127.0.0.1:9222 --label prod
  *   node bin/shots.mjs --routes / /updates --vp phone --scheme dark --full
  *   node bin/shots.mjs --label after --compare baseline
+ *   node bin/shots.mjs --out .shots/landing --vp desktop-hidpi --scheme light \
+ *     --routes '/updates/2?list=inbox' --before "document.getElementById('confirm-ship-2').showModal()" \
+ *     --name ship-confirm-light.png
+ *
+ * --before <js> runs in the page once it has loaded (open a dialog), then the capture waits
+ * 400 ms. --name <file> names the PNG; it needs exactly one route, viewport and scheme.
  *
  * Zero dependencies: Node 22 ships fetch and WebSocket.
  */
@@ -42,6 +48,8 @@ const VIEWPORTS = {
   phone: { width: 390, height: 844, deviceScaleFactor: 3, mobile: true, touch: true },
   tablet: { width: 820, height: 1180, deviceScaleFactor: 2, mobile: true, touch: true },
   desktop: { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false, touch: false },
+  // Landing images, sharp on a retina screen.
+  'desktop-hidpi': { width: 1440, height: 900, deviceScaleFactor: 2, mobile: false, touch: false },
   wide: { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false, touch: false },
 }
 
@@ -61,6 +69,8 @@ function parseArgs(argv) {
     compare: null,
     probe: null,
     outDir: null,
+    before: null,
+    name: null,
   }
   const list = (v) => String(v).split(',').filter(Boolean)
   for (let i = 2; i < argv.length; i++) {
@@ -82,6 +92,8 @@ function parseArgs(argv) {
     else if (a === '--compare') out.compare = next()
     else if (a === '--probe') out.probe = next()
     else if (a === '--out') out.outDir = next()
+    else if (a === '--before') out.before = next()
+    else if (a === '--name') out.name = next()
     else if (a === '--routes') {
       out.routes = []
       while (i + 1 < argv.length && !argv[i + 1].startsWith('--')) out.routes.push(argv[++i])
@@ -91,6 +103,9 @@ function parseArgs(argv) {
     } else throw new Error(`unknown argument: ${a}`)
   }
   for (const v of out.vp) if (!VIEWPORTS[v]) throw new Error(`unknown viewport: ${v}`)
+  if (out.name && (out.routes.length !== 1 || out.vp.length !== 1 || out.scheme.length !== 1)) {
+    throw new Error('--name needs exactly one route, viewport and scheme')
+  }
   return out
 }
 
@@ -209,7 +224,7 @@ const PROBE_JS = `(() => {
   }
 })()`
 
-async function shoot(sess, { url, viewport, scheme, theme, full }) {
+async function shoot(sess, { url, viewport, scheme, theme, full, before }) {
   await sess.send('Emulation.setDeviceMetricsOverride', {
     width: viewport.width,
     height: viewport.height,
@@ -234,6 +249,10 @@ async function shoot(sess, { url, viewport, scheme, theme, full }) {
     await sess.evaluate('document.fonts ? document.fonts.ready.then(() => true) : true')
   } catch {}
   await sleep(200)
+  if (before) {
+    await sess.evaluate(before)
+    await sleep(400)
+  }
 
   const probes = await sess.evaluate(PROBE_JS)
   // Two rules are phone rules. On a desktop the list and the pane are meant to be two
@@ -336,7 +355,7 @@ for (const route of args.routes) {
       await sess.send('Page.enable')
       await sess.send('Runtime.enable')
 
-      const file = `${slug(route)}__${vpName}__${scheme}.png`
+      const file = args.name ?? `${slug(route)}__${vpName}__${scheme}.png`
       let result
       try {
         result = await shoot(sess, {
@@ -345,6 +364,7 @@ for (const route of args.routes) {
           scheme,
           theme: args.theme,
           full: args.full,
+          before: args.before,
         })
         if (result.png) writeFileSync(join(outDir, file), result.png)
         if (args.probe) result.custom = await sess.evaluate(args.probe)

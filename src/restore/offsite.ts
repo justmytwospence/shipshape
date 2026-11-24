@@ -1,4 +1,5 @@
 import type { Policy } from '../config.ts'
+import { logEvent } from '../db.ts'
 
 /**
  * The optional offsite half of a restore point: ask any MCP server to take a backup.
@@ -172,7 +173,11 @@ export async function refreshOffsiteJobs(
   }
   if (!force && jobs && Date.now() - jobs.at < JOBS_TTL_MS) return
   const r = await callTool(cfg.url, cfg.list_tool, {}, doFetch)
-  if (!r.ok) return // keep what we had
+  if (!r.ok) {
+    // Keep what we had, and say so: a backup check that cannot list jobs looks like none exist.
+    logEvent({ level: 'warn', kind: 'system', message: 'offsite backup jobs could not be listed', detail: `${cfg.url}: ${r.detail}` })
+    return
+  }
   const list = parse(r.text)?.jobs
   if (!Array.isArray(list)) return
   const names = list

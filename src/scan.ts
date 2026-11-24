@@ -1,6 +1,6 @@
 import { configured, env, loadPolicy, type Policy } from './config.ts'
 import { getDb, logEvent } from './db.ts'
-import { scanRepo, type ScannedService } from './compose/scan.ts'
+import { scanRepo, unreadableComposeFiles, type ScannedService } from './compose/scan.ts'
 import { discoverCompose } from './compose/files.ts'
 import { detect, type Detection } from './detect.ts'
 import { checkDigest, shortDigest, type DigestCheck } from './digests.ts'
@@ -268,8 +268,14 @@ function syncInventory(services: ScannedService[]): void {
         last_seen_at: now,
       })
     }
+    // A file that did not parse keeps its services as last read.
+    const keep = db.prepare(`UPDATE images SET last_seen_at = ? WHERE compose_file = ?`)
+    for (const rel of unreadableComposeFiles().keys()) keep.run(now, rel)
     db.prepare(`DELETE FROM images WHERE last_seen_at < ?`).run(now)
   })()
+  for (const [rel, reason] of unreadableComposeFiles()) {
+    logEvent({ level: 'warn', kind: 'scan', message: `compose file could not be read: ${rel}`, detail: reason })
+  }
 }
 
 /**

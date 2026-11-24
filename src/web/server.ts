@@ -162,7 +162,16 @@ export async function checkService(stack: string, service: string): Promise<bool
     await sourceFor(
       { registry: svc.ref.registry, repository: svc.ref.repository },
       { service: { stack, service }, ownLabel: svc.sourceLabel, allowBilled: false },
-    ).catch(() => undefined)
+    ).catch((err: unknown) =>
+      logEvent({
+        level: 'warn',
+        kind: 'scan',
+        stack,
+        service,
+        message: 'looking up the upstream failed',
+        detail: `${stack}/${service}: ${(err as Error).message.slice(0, 300)}`,
+      }),
+    )
   }
   if (svc.watched) await scanOne(svc, policy)
   return true
@@ -277,7 +286,8 @@ export function createApp(): Hono {
     try {
       const html = diffFragment(id)
       return html ? raw(html) : null
-    } catch {
+    } catch (err) {
+      logEvent({ level: 'warn', kind: 'system', message: 'a diff could not be shown', detail: `update ${id}: ${(err as Error).message.slice(0, 300)}` })
       return null
     }
   }

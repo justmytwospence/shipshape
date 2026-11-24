@@ -231,6 +231,17 @@ function toStringArray(raw: unknown): string[] {
   return []
 }
 
+/**
+ * Compose files the last read could not parse, by repo-relative path, with the parser's
+ * first line. The scan keeps their services as last read rather than forgetting them: a
+ * typo must not look like a stack that was taken down.
+ */
+const unreadable = new Map<string, string>()
+
+export function unreadableComposeFiles(): ReadonlyMap<string, string> {
+  return unreadable
+}
+
 export function scanComposeFile(repoRoot: string, file: string, excludeStacks: string[] = []): ScannedService[] {
   const rel = relative(repoRoot, file)
   // `<stack>/docker-compose.yaml` -> `<stack>`; the root file is the infrastructure
@@ -240,9 +251,11 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
   let doc: unknown
   try {
     doc = parseYaml(readFileSync(file, 'utf8'))
-  } catch {
+  } catch (err) {
+    unreadable.set(rel, ((err as Error).message ?? String(err)).split('\n')[0]!.slice(0, 200))
     return []
   }
+  unreadable.delete(rel)
   if (!doc || typeof doc !== 'object') return []
   const services = (doc as { services?: Record<string, unknown> }).services
   if (!services || typeof services !== 'object') return []
@@ -445,5 +458,8 @@ export function baseFor(
 }
 
 export function scanRepo(repoRoot: string, excludeStacks: string[] = []): ScannedService[] {
+  // A whole-repo read starts the unreadable list afresh: a broken file that was then
+  // deleted must not keep its services forever.
+  unreadable.clear()
   return findComposeFiles(repoRoot).flatMap((f) => scanComposeFile(repoRoot, f, excludeStacks))
 }

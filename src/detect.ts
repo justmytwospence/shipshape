@@ -7,6 +7,7 @@ import {
   type TagInfo,
 } from './registry/index.ts'
 import { probeByReleases } from './registry/probe.ts'
+import { logEvent } from './db.ts'
 import { sourceFor, guessFromImagePath } from './resolver/index.ts'
 import { isPackagingRepo } from './resolver/guards.ts'
 import { releaseIndex, type IndexedRelease } from './upstream/releases.ts'
@@ -229,7 +230,16 @@ async function prereleaseExclusionsFor(
       excluded: prereleaseExclusions(tags, releases, s),
       basis: s.stream === 'unknown' ? undefined : `${s.stream} stream (${s.basis})`,
     }
-  } catch {
+  } catch (err) {
+    // Fail open on purpose: failing closed would hold back every update for the service.
+    logEvent({
+      level: 'warn',
+      kind: 'scan',
+      stack: svc.stack,
+      service: svc.service,
+      message: 'could not tell which release stream this service follows',
+      detail: (err as Error).message.slice(0, 300),
+    })
     return { excluded: new Set() }
   }
 }

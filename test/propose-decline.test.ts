@@ -232,3 +232,25 @@ test('a refused draft is final, for the button too', () => {
   assert.equal(pickCandidate('auto').candidate, null)
   assert.equal(pickCandidate('auto', idOf.pihole).candidate, null)
 })
+
+// ----------------------------------------------------------- a ship still being confirmed
+
+test('the drafting pass skips an update whose ship is still pushing', () => {
+  writeStack('pihole')
+  seed({ stack: 'pihole', recommendation: 'caution', migrationSteps: ['migrate X'] })
+  const db = getDb()
+  const pr = Number(
+    db
+      .prepare(
+        `INSERT INTO prs (number, branch, head_sha_pushed, state, scope, created_at)
+         VALUES (0, 'shipshape/pihole', 'x', 'pushing', 'tag-only', 'now')`,
+      )
+      .run().lastInsertRowid,
+  )
+  db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(pr, idOf.pihole)
+
+  const r = pickCandidate('auto')
+  assert.equal(r.candidate, null, 'a second change for an update already being shipped')
+  assert.equal(r.declined, null)
+  assert.equal(pickCandidate('off', idOf.pihole).candidate, null, 'the button does not bypass it either')
+})

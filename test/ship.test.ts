@@ -27,7 +27,7 @@ delete process.env.OPENROUTER_API_KEY
 after(() => rmSync(dir, { recursive: true, force: true }))
 
 const { getDb } = await import('../src/db.ts')
-const { runShipPass } = await import('../src/gitops/ship.ts')
+const { runShipPass, reconcilePushing, shipHooks } = await import('../src/gitops/ship.ts')
 
 const g = (cwd: string, args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd, encoding: 'utf8' }).trim()
 
@@ -294,4 +294,94 @@ test('a draft still justified by its review waits for you', async () => {
   assert.equal(g(origin, ['rev-parse', 'main']), before)
   assert.equal((getDb().prepare(`SELECT state FROM prs WHERE id = ?`).get(pr) as { state: string }).state, 'open')
   assert.ok((getDb().prepare(`SELECT decision_since FROM updates WHERE id = ?`).get(id) as { decision_since: string | null }).decision_since)
+})
+
+// ------------------------------------------------------------------ crash between push and record
+
+function crashAfterPush<T>(run: () => Promise<T>): Promise<T> {
+  shipHooks.afterPush = () => {
+    throw new Error('simulated crash')
+  }
+  return run().finally(() => {
+    shipHooks.afterPush = null
+  })
+}
+
+const prState = () => getDb().prepare(`SELECT id, state, scope FROM prs`).all() as { id: number; state: string; scope: string }[]
+
+/** A `pushing` row for `updateId` whose merge commit is `sha`, as a crash would leave it. */
+function pushingRow(updateId: number, sha: string, scope = 'tag-only'): number {
+  const db = getDb()
+  const id = Number(
+    db
+      .prepare(
+        `INSERT INTO prs (number, branch, head_sha_pushed, state, group_key, scope, created_at, merge_commit_sha)
+         VALUES (0, 'shipshape/app--app--1.0.1', 'x', 'pushing', NULL, ?, '2026-01-02T00:00:00Z', ?)`,
+      )
+      .run(scope, sha).lastInsertRowid,
+  )
+  db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(id, updateId)
+  return id
+}
+
+test('a crash after the push is reconciled into a shipped change and a queued deploy', async () => {
+  setup([{ name: 'web' }])
+  const id = seed('web')
+  const r = await crashAfterPush(() => runShipPass())
+  assert.equal(r.failed, 1)
+  assert.deepEqual(prState().map((p) => p.state), ['pushing'])
+  assert.equal((getDb().prepare(`SELECT COUNT(*) c FROM deploys`).get() as { c: number }).c, 0)
+
+  const out = await reconcilePushing()
+  assert.deepEqual(out, { landed: 1, dropped: 0, unknown: 0 })
+  assert.deepEqual(prState().map((p) => p.state), ['merged'])
+  assert.equal((getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(id) as { state: string }).state, 'merged')
+  const dep = getDb().prepare(`SELECT status, stack FROM deploys`).get() as { status: string; stack: string }
+  assert.deepEqual([dep.status, dep.stack], ['pending', 'web'])
+  assert.deepEqual(await reconcilePushing(), { landed: 0, dropped: 0, unknown: 0 }, 'and a second look has nothing to do')
+})
+
+test('an update whose ship is being confirmed is never retired as applied elsewhere', async () => {
+  setup([{ name: 'web' }])
+  const id = seed('web')
+  await crashAfterPush(() => runShipPass())
+  const again = await runShipPass()
+  assert.deepEqual([again.shipped, again.failed], [0, 0])
+  const u = getDb().prepare(`SELECT state, detail FROM updates WHERE id = ?`).get(id) as { state: string; detail: string | null }
+  assert.equal(u.state, 'detected')
+  assert.notEqual(u.detail, 'applied elsewhere')
+})
+
+test('a ship that never reached origin is dropped and ships again', async () => {
+  setup([{ name: 'web' }])
+  const id = seed('web')
+  const pr = pushingRow(id, '0'.repeat(40))
+  assert.deepEqual(await reconcilePushing(), { landed: 0, dropped: 1, unknown: 0 })
+  assert.equal(prState().find((p) => p.id === pr)!.state, 'closed')
+  const r = await runShipPass()
+  assert.equal(r.shipped, 1)
+})
+
+test('a drafted change whose push did not land goes back to open', async () => {
+  setup([{ name: 'web' }])
+  const id = seed('web')
+  const pr = pushingRow(id, '0'.repeat(40), 'proposed')
+  assert.equal((await reconcilePushing()).dropped, 1)
+  assert.equal(prState().find((p) => p.id === pr)!.state, 'open')
+})
+
+test('a failed push closes the change it recorded', async () => {
+  setup([{ name: 'web' }])
+  seed('web')
+  const hook = join(origin, 'hooks', 'pre-receive')
+  mkdirSync(join(origin, 'hooks'), { recursive: true })
+  writeFileSync(hook, '#!/bin/sh\necho no >&2\nexit 1\n', { mode: 0o755 })
+  try {
+    const r = await runShipPass()
+    assert.equal(r.shipped, 0)
+  } finally {
+    rmSync(hook, { force: true })
+  }
+  assert.equal(prState().filter((p) => p.state === 'pushing').length, 0)
+  assert.deepEqual(prState().map((p) => p.state), ['closed'])
 })

@@ -54,6 +54,10 @@ export function eligibleGroups(policy: Policy): UpdateGroup[] {
        FROM updates u
        WHERE (u.state = 'detected' OR (u.state = 'frozen' AND u.approved_at IS NOT NULL))
          AND COALESCE(u.detail, '') != 'rolling'
+         -- A ship of it was being pushed when shipshape last stopped: reconcilePushing says
+         -- whether it landed, and until it has, shipping it again could land it twice.
+         AND NOT EXISTS (SELECT 1 FROM pr_updates pu2 JOIN prs p2 ON p2.id = pu2.pr_id
+                         WHERE pu2.update_id = u.id AND p2.state = 'pushing')
        ORDER BY u.id`,
     )
     .all() as (GroupMember & { detail: string | null })[]
@@ -451,6 +455,25 @@ export async function upstreamRefAt(
 export function retireGroup(group: UpdateGroup, reason: string): boolean {
   const db = getDb()
   const now = new Date().toISOString()
+  // "Already applied" is exactly what a ship that was pushed and not yet recorded looks
+  // like. Retiring it would lose the deploy that goes with it.
+  const ids = group.members.map((m) => m.id)
+  const pushing = db
+    .prepare(
+      `SELECT 1 FROM pr_updates pu JOIN prs p ON p.id = pu.pr_id
+        WHERE p.state = 'pushing' AND pu.update_id IN (${ids.map(() => '?').join(',')}) LIMIT 1`,
+    )
+    .get(...ids)
+  if (pushing) {
+    logEvent({
+      level: 'warn',
+      kind: 'ship',
+      stack: group.members[0]!.stack,
+      message: 'already applied, but a ship of it is still being confirmed',
+      detail: reason,
+    })
+    return false
+  }
   const stmt = db.prepare(
     `UPDATE updates SET state = 'superseded', detail = 'applied elsewhere', updated_at = ?
      WHERE id = ?`,
@@ -716,22 +739,43 @@ async function shipGroup(group: UpdateGroup, policy: Policy): Promise<boolean> {
       title = changeTitle(group, b.forks, b.bases)
     }
 
-    const merged = await mergeAndPush(repoDir, branch, title, commitBody(group, built, statuses), group, hasDraft ? undefined : async () => (await buildBranch(repoDir, group, branch)).ok)
+    // Written down before the push, so a crash between the push and the record leaves a
+    // `pushing` row for the next tick to reconcile instead of a ship nobody remembers.
+    let prId: number | null = null
+    const merged = await mergeAndPush(
+      repoDir,
+      branch,
+      title,
+      commitBody(group, built, statuses),
+      group,
+      hasDraft ? undefined : async () => (await buildBranch(repoDir, group, branch)).ok,
+      (mergeSha, branchSha) => {
+        prId = recordIntent({
+          group,
+          branch,
+          branchSha,
+          mergeSha,
+          draftId: hasDraft ? draft!.id : null,
+          existingId: prId,
+          scope: hasDraft ? 'proposed' : 'tag-only',
+          restore: restoreIds !== null,
+        })
+      },
+    )
     if (!merged.ok) {
+      if (prId !== null) abandonIntent(prId, !!hasDraft)
       failGroup(group, merged.reason)
       return null
     }
-
-    const prId = recordLocalChange({ group, branch, sha: merged.branchSha, draftId: hasDraft ? draft!.id : null, scope: hasDraft ? 'proposed' : 'tag-only' })
+    shipHooks.afterPush?.()
+    const recorded = prId as number | null
+    if (recorded === null) throw new Error('a ship was pushed without an intent record')
     const rules = statuses.flatMap((s) => s.waived.map((h) => h.waivedBy!))
     if (rules.length > 0) {
       const mark = getDb().prepare(`UPDATE updates SET waived_by = ? WHERE id = ?`)
       for (const s of statuses) mark.run([...new Set(s.waived.map((h) => h.waivedBy!))].join(','), s.row.id)
     }
-    if (restoreIds !== null) {
-      getDb().prepare(`UPDATE restore_points SET pr_id = ? WHERE pr_id IS NULL AND stack = ? AND created_at >= ?`).run(prId, stack, new Date(Date.now() - 3 * 60 * 60_000).toISOString())
-    }
-    return { prId, mergeSha: merged.mergeSha, title }
+    return { prId: recorded, mergeSha: merged.mergeSha, title }
   })
   if (!shipped) return false
 
@@ -753,6 +797,7 @@ async function mergeAndPush(
   body: string,
   _group: UpdateGroup,
   rebuild?: () => Promise<boolean>,
+  beforePush?: (mergeSha: string, branchSha: string) => void,
 ): Promise<{ ok: true; mergeSha: string; branchSha: string } | { ok: false; reason: string }> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const branchSha = (await git(repoDir, ['rev-parse', branch])).stdout
@@ -764,6 +809,7 @@ async function mergeAndPush(
       return { ok: false, reason: `merging ${branch} failed: ${(merge.stderr || merge.stdout).slice(0, 200)}` }
     }
     const mergeSha = (await git(repoDir, ['rev-parse', 'HEAD'])).stdout
+    beforePush?.(mergeSha, branchSha)
     const push = await git(repoDir, ['push', httpsUrl(), `${gitBranch()}:${gitBranch()}`], { remote: true, allowFail: true })
     if (push.exitCode === 0) {
       await git(repoDir, ['branch', '-D', branch], { allowFail: true })
@@ -779,34 +825,157 @@ async function mergeAndPush(
   return { ok: false, reason: 'push kept losing a race with origin' }
 }
 
-/** The change record for a branch shipshape merged itself: a `prs` row. */
-function recordLocalChange(o: {
+/**
+ * A test seam: called right after a ship was pushed, before anything is recorded. Tests
+ * throw from it to stand in for a crash in the window `reconcilePushing` exists to close.
+ * Always null in production.
+ */
+export const shipHooks: { afterPush: (() => void) | null } = { afterPush: null }
+
+/**
+ * The change record for a branch shipshape is about to publish: a `prs` row in state
+ * `pushing`, carrying the merge commit's sha so a restart can ask origin whether it
+ * landed. `recordShipped` moves it to `merged`.
+ */
+function recordIntent(o: {
   group: UpdateGroup
   branch: string
-  sha: string
+  branchSha: string
+  mergeSha: string
   draftId: number | null
+  existingId: number | null
   scope: 'tag-only' | 'proposed'
+  restore: boolean
 }): number {
   const db = getDb()
   const now = new Date().toISOString()
   return db.transaction(() => {
-    if (o.draftId !== null) {
-      db.prepare(`UPDATE prs SET head_sha_pushed = ?, group_key = ? WHERE id = ?`).run(o.sha, o.group.key, o.draftId)
+    let id: number
+    if (o.existingId !== null) {
+      // A second attempt in the same push: the merge was rebuilt on a newer origin.
+      db.prepare(`UPDATE prs SET head_sha_pushed = ?, merge_commit_sha = ? WHERE id = ?`).run(o.branchSha, o.mergeSha, o.existingId)
+      id = o.existingId
+    } else if (o.draftId !== null) {
+      db.prepare(
+        `UPDATE prs SET state = 'pushing', head_sha_pushed = ?, merge_commit_sha = ?, group_key = ? WHERE id = ?`,
+      ).run(o.branchSha, o.mergeSha, o.group.key, o.draftId)
       const link = db.prepare(`INSERT OR IGNORE INTO pr_updates (pr_id, update_id) VALUES (?, ?)`)
       for (const m of o.group.members) link.run(o.draftId, m.id)
-      return o.draftId
+      id = o.draftId
+    } else {
+      const info = db
+        .prepare(
+          `INSERT INTO prs (number, branch, head_sha_pushed, state, group_key, scope, created_at, merge_commit_sha)
+           VALUES (0, ?, ?, 'pushing', ?, ?, ?, ?)`,
+        )
+        .run(o.branch, o.branchSha, o.group.key, o.scope, now, o.mergeSha)
+      id = Number(info.lastInsertRowid)
+      const link = db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`)
+      for (const m of o.group.members) link.run(id, m.id)
     }
-    const info = db
-      .prepare(
-        `INSERT INTO prs (number, branch, head_sha_pushed, state, group_key, scope, created_at)
-         VALUES (0, ?, ?, 'open', ?, ?, ?)`,
+    if (o.restore) {
+      db.prepare(`UPDATE restore_points SET pr_id = ? WHERE pr_id IS NULL AND stack = ? AND created_at >= ?`).run(
+        id,
+        o.group.members[0]!.stack,
+        new Date(Date.now() - 3 * 60 * 60_000).toISOString(),
       )
-      .run(o.branch, o.sha, o.group.key, o.scope, now)
-    const id = Number(info.lastInsertRowid)
-    const link = db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`)
-    for (const m of o.group.members) link.run(id, m.id)
+    }
     return id
   })()
+}
+
+/** The push did not happen: a drafted change goes back to being read, any other record is closed. */
+function abandonIntent(prId: number, draft: boolean): void {
+  const db = getDb()
+  if (draft) db.prepare(`UPDATE prs SET state = 'open', merge_commit_sha = NULL WHERE id = ?`).run(prId)
+  else db.prepare(`UPDATE prs SET state = 'closed' WHERE id = ?`).run(prId)
+}
+
+/**
+ * Settle every ship that was being pushed when shipshape last stopped.
+ *
+ * A `pushing` row means shipshape meant to publish a merge commit and did not get as far
+ * as recording that it had. Origin knows which: if the commit is an ancestor of the
+ * published branch it landed, and the rest of the ship (the record, the retired updates,
+ * the queued deploy) is done now; if not, the row is abandoned and the update ships again.
+ * Run first in every tick, never at boot: boot must not depend on the network.
+ */
+export async function reconcilePushing(): Promise<{ landed: number; dropped: number; unknown: number }> {
+  const db = getDb()
+  const rows = db
+    .prepare(`SELECT id, scope, branch, merge_commit_sha AS sha, group_key FROM prs WHERE state = 'pushing'`)
+    .all() as { id: number; scope: string; branch: string; sha: string | null; group_key: string | null }[]
+  const out = { landed: 0, dropped: 0, unknown: 0 }
+  if (rows.length === 0) return out
+
+  const verdicts = new Map<number, 'landed' | 'dropped' | 'unknown'>()
+  try {
+    await withGitLock('reconcile', async () => {
+      const repo = await ensureWorkRepo()
+      for (const r of rows) {
+        if (!r.sha) {
+          verdicts.set(r.id, 'dropped')
+          continue
+        }
+        const known = await git(repo, ['cat-file', '-e', `${r.sha}^{commit}`], { allowFail: true })
+        if (known.exitCode !== 0) {
+          verdicts.set(r.id, 'dropped')
+          continue
+        }
+        const anc = await git(repo, ['merge-base', '--is-ancestor', r.sha, `origin/${gitBranch()}`], { allowFail: true })
+        if (anc.exitCode === 0) {
+          verdicts.set(r.id, 'landed')
+          await git(repo, ['branch', '-D', r.branch], { allowFail: true })
+        } else verdicts.set(r.id, anc.exitCode === 1 ? 'dropped' : 'unknown')
+      }
+    })
+  } catch (err) {
+    logEvent({
+      level: 'warn',
+      kind: 'sync',
+      message: 'could not confirm a ship that was being pushed when shipshape stopped',
+      detail: (err as Error).message.slice(0, 300),
+    })
+    out.unknown = rows.length
+    return out
+  }
+
+  for (const r of rows) {
+    const verdict = verdicts.get(r.id) ?? 'unknown'
+    if (verdict === 'unknown') {
+      out.unknown++
+      continue
+    }
+    if (verdict === 'dropped') {
+      abandonIntent(r.id, r.scope === 'proposed')
+      out.dropped++
+      logEvent({
+        level: 'info',
+        kind: 'ship',
+        message: 'a ship that was interrupted before it was pushed did not land; it ships again on the next pass',
+      })
+      continue
+    }
+    // Landed: finish what recordShipped would have done.
+    const members = db
+      .prepare(
+        `SELECT u.id, u.stack, u.service, u.image, u.from_tag, u.to_tag, u.magnitude, u.tier
+           FROM pr_updates pu JOIN updates u ON u.id = pu.update_id WHERE pu.pr_id = ? ORDER BY u.id`,
+      )
+      .all(r.id) as GroupMember[]
+    const group: UpdateGroup = { key: r.group_key, branchKey: null, members }
+    const title = changeTitle(group)
+    await recordShipped(r.id, r.sha!, group, title)
+    out.landed++
+    logEvent({
+      level: 'warn',
+      kind: 'ship',
+      stack: members[0]?.stack,
+      message: 'a ship that was interrupted after it was pushed has been recorded',
+      detail: title,
+    })
+  }
+  return out
 }
 
 /**

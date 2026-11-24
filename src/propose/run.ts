@@ -219,6 +219,12 @@ export function pickCandidate(
                AND (${only === undefined ? `pr2.next_attempt_at IS NOT NULL AND pr2.next_attempt_at <= ?` : '1'})
              )
          )
+         -- Its ship is being confirmed (it may already be on origin): drafting a second change
+         -- for it now would be two changes for one update.
+         AND NOT EXISTS (
+           SELECT 1 FROM pr_updates pu3 JOIN prs p3 ON p3.id = pu3.pr_id
+            WHERE pu3.update_id = u.id AND p3.state = 'pushing'
+         )
          ${only === undefined ? '' : 'AND u.id = ?'}
        ORDER BY u.id`,
     )

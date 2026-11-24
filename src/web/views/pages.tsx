@@ -54,7 +54,7 @@ export const InboxPage: FC<{
   >
     <Split
       list={<InboxList data={data} selectedId={selectedId} />}
-      pane={detail?.pane ?? <InboxAside data={data} paused={chrome.paused} />}
+      pane={detail?.pane ?? <InboxAside data={data} />}
       mode={detail ? 'detail' : 'list'}
     />
   </Layout>
@@ -100,13 +100,22 @@ export const UpdatesToolbar: FC<{ stage: StageFilter; q: string; magnitude: stri
   </form>
 )
 
-export const UpdatesList: FC<{ updates: UpdateView[]; ctx: string; selectedId?: number }> = ({
+export const UpdatesList: FC<{ updates: UpdateView[]; ctx: string; selectedId?: number; total: number }> = ({
   updates,
   ctx,
   selectedId,
+  total,
 }) => {
   if (updates.length === 0) {
-    return <EmptyState icon="check" title="Nothing here." hint="Try another filter." />
+    return total === 0 ? (
+      <EmptyState
+        icon="updates"
+        title="No updates yet."
+        hint="They appear here after a scan finds a newer tag for a watched service."
+      />
+    ) : (
+      <EmptyState icon="search" title="Nothing matches." hint="Try another stage or size, or clear the search." />
+    )
   }
   return (
     <div class="divide-base-300 divide-y">
@@ -123,10 +132,11 @@ export const UpdatesPage: FC<{
   q: string
   magnitude: string
   ctx: string
+  total: number
   chrome: PageChrome
   selectedId?: number
   detail?: Detail
-}> = ({ updates, stage, q, magnitude, ctx, chrome, selectedId, detail }) => (
+}> = ({ updates, stage, q, magnitude, ctx, total, chrome, selectedId, detail }) => (
   <Layout
     title={detail?.title ?? 'Updates'}
     section="Updates"
@@ -140,13 +150,16 @@ export const UpdatesPage: FC<{
     <Split
       list={
         <div id="updates-list">
-          <UpdatesList updates={updates} ctx={ctx} selectedId={selectedId} />
+          <UpdatesList updates={updates} ctx={ctx} selectedId={selectedId} total={total} />
         </div>
       }
       pane={
-        detail?.pane ?? (
+        detail?.pane ??
+        (updates.length === 0 ? (
+          <div />
+        ) : (
           <EmptyState icon="updates" title="Select an update" hint="What the review said, and what you can do about it, shows here." />
-        )
+        ))
       }
       mode={detail ? 'detail' : 'list'}
     />
@@ -188,13 +201,16 @@ export const ReleasesPage: FC<{
         </div>
       }
       pane={
-        detail?.pane ?? (
+        detail?.pane ??
+        (releases.length === 0 ? (
+          <div />
+        ) : (
           <EmptyState
             icon="updates"
             title="Select a release"
             hint="What the review said, and what you can do about it, shows here."
           />
-        )
+        ))
       }
       mode={detail ? 'detail' : 'list'}
     />
@@ -209,10 +225,11 @@ export const ServicesPage: FC<{
   q: string
   grouped: boolean
   ctx: string
+  total: number
   chrome: PageChrome
   selected?: { stack: string; service: string } | null
   detail?: Detail
-}> = ({ services, filter, q, grouped, ctx, chrome, selected, detail }) => (
+}> = ({ services, filter, q, grouped, ctx, total, chrome, selected, detail }) => (
   <Layout
     title={detail?.title ?? 'Services'}
     section="Services"
@@ -226,13 +243,16 @@ export const ServicesPage: FC<{
     <Split
       list={
         <div id="services-list">
-          <ServicesList services={services} grouped={grouped} ctx={ctx} selected={selected} />
+          <ServicesList services={services} grouped={grouped} ctx={ctx} selected={selected} total={total} />
         </div>
       }
       pane={
-        detail?.pane ?? (
+        detail?.pane ??
+        (services.length === 0 ? (
+          <div />
+        ) : (
           <EmptyState icon="services" title="Select a service" hint="Where each of its settings came from, and its history, show here." />
-        )
+        ))
       }
       mode={detail ? 'detail' : 'list'}
     />
@@ -260,7 +280,7 @@ export const ActivityPage: FC<{
       variant="wide"
       list={
         <div id="activity-list">
-          <ActivityList rows={rows} more={more} />
+          <ActivityList rows={rows} more={more} filtered={kind !== 'all' || problems || q !== ''} />
         </div>
       }
     />

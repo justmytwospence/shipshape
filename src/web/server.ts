@@ -8,6 +8,9 @@ import { configured, env, gitBranch, gitCredentialName, loadPolicy, policyFileSt
 import { getDb, logEvent } from '../db.ts'
 import { serverHandle, type ServerHandle } from '../lifecycle.ts'
 import { version } from './version.ts'
+import { setupSteps } from './onboarding.ts'
+import { describeCron } from './views/ui/settings.tsx'
+import { reviewOffReason } from '../analyze/review-state.ts'
 import { health } from '../health/liveness.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'
 import { buildUpdateDiff, type DiffHunk } from '../diff.ts'
@@ -26,6 +29,7 @@ import { ErrorPage, notFoundCopy, serverErrorCopy } from './views/ui/errors.tsx'
 import {
   inboxNeedsYou,
   inboxParked,
+  inboxPausedOnly,
   inboxRecent,
   listUpdates,
   listReleases,
@@ -292,12 +296,36 @@ export function createApp(): Hono {
     }
   }
 
+  const updatesTotal = (): number =>
+    (getDb().prepare(`SELECT COUNT(*) AS n FROM updates`).get() as { n: number }).n
+
   const inboxData = (): InboxData => {
     const info = scanInfo()
+    const { policy } = loadPolicy()
+    const pausedOnly = inboxPausedOnly()
+    const counts = getDb()
+      .prepare(`SELECT COUNT(*) AS services, COUNT(DISTINCT stack) AS stacks, SUM(watched) AS watched FROM images`)
+      .get() as { services: number; stacks: number; watched: number | null }
+    const cron = scheduleInfo().scan.cron
     return {
       needsYou: inboxNeedsYou(),
       recent: inboxRecent(24),
       parked: inboxParked(),
+      pausedOnly,
+      setup: setupSteps({
+        missing: missing(),
+        repoDir: env.repoDir,
+        composeFiles: info.composeFiles,
+        services: counts.services,
+        stacks: counts.stacks,
+        watched: counts.watched ?? 0,
+        lastScanAt: info.lastAt,
+        schedule: describeCron(cron) ?? cron,
+        reviewOff: reviewOffReason(policy),
+        reader: policy.review.model,
+        paused: policy.paused,
+        wouldShip: pausedOnly.length,
+      }),
       scan: {
         lastAt: info.lastAt ? Date.parse(info.lastAt) : null,
         nextAt: scheduleInfo().scan.nextAt,
@@ -344,6 +372,7 @@ export function createApp(): Hono {
     const updates = listUpdates({ stage: ctx.stage, q: ctx.q, magnitude: ctx.magnitude })
     return UpdatesPage({
       updates,
+      total: updatesTotal(),
       stage: ctx.stage,
       q: ctx.q,
       magnitude: ctx.magnitude,
@@ -359,9 +388,11 @@ export function createApp(): Hono {
     ctx: ListCtx,
     detail?: { selected: { stack: string; service: string }; d: Detail },
   ) => {
-    const services = filterServiceRows(serviceRows(), { filter: ctx.filter, q: ctx.q })
+    const all = serviceRows()
+    const services = filterServiceRows(all, { filter: ctx.filter, q: ctx.q })
     return ServicesPage({
       services,
+      total: all.length,
       filter: ctx.filter,
       q: ctx.q,
       grouped: ctx.grouped,
@@ -389,7 +420,7 @@ export function createApp(): Hono {
       }
       const updates = listUpdates({ stage: ctx.stage, q: ctx.q, magnitude: ctx.magnitude })
       return c.html(
-        (UpdatesList({ updates, ctx: ctxString({ ...ctx, list: 'updates' }) }) as string) +
+        (UpdatesList({ updates, ctx: ctxString({ ...ctx, list: 'updates' }), total: updatesTotal() }) as string) +
           (ListCount({ n: updates.length, oob: true }) as string),
       )
     }
@@ -470,10 +501,12 @@ export function createApp(): Hono {
   app.get('/services', (c) => {
     const ctx = ctxOf(c, 'services')
     if (c.req.header('HX-Request')) {
-      const services = filterServiceRows(serviceRows(), { filter: ctx.filter, q: ctx.q })
+      const all = serviceRows()
+      const services = filterServiceRows(all, { filter: ctx.filter, q: ctx.q })
       return c.html(
         (ServicesList({
           services,
+          total: all.length,
           grouped: ctx.grouped,
           ctx: ctxString({ ...ctx, list: 'services' }),
         }) as string) + (ListCount({ n: services.length, oob: true }) as string),
@@ -750,6 +783,9 @@ export function createApp(): Hono {
     q: c.req.query('q') ?? '',
   })
 
+  const activityFiltered = (q: { kind: string; problems: boolean; q: string }) =>
+    q.kind !== 'all' || q.problems || q.q !== ''
+
   /** The link that fetches the next page, or nothing when this was the last one. */
   const moreLink = (c: Context, rows: ActivityRow[]): string | null => {
     if (rows.length < 100) return null
@@ -768,7 +804,7 @@ export function createApp(): Hono {
     const rows = activityRows(query)
     if (c.req.header('HX-Request')) {
       return c.html(
-        ActivityList({ rows, more: moreLink(c, rows) }) as string,
+        ActivityList({ rows, more: moreLink(c, rows), filtered: activityFiltered(query) }) as string,
       )
     }
     return c.html(
@@ -782,8 +818,9 @@ export function createApp(): Hono {
   })
 
   app.get('/fragments/activity', (c) => {
-    const rows = activityRows({ ...activityQuery(c), before: c.req.query('before') })
-    return c.html(ActivityList({ rows, more: moreLink(c, rows) }) as string)
+    const query = activityQuery(c)
+    const rows = activityRows({ ...query, before: c.req.query('before') })
+    return c.html(ActivityList({ rows, more: moreLink(c, rows), filtered: activityFiltered(query) }) as string)
   })
 
   /**

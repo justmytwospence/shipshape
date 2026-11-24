@@ -1,9 +1,10 @@
 import { OUTCOMES } from '../../../updates/vocabulary.ts'
 import type { FC } from 'hono/jsx'
 import { Icon, type IconName } from './icon.tsx'
-import { Change, EmptyState, Relative, ServiceName } from './parts.tsx'
+import { Change, EmptyState, ExtLink, Relative, ServiceName } from './parts.tsx'
 import { GroupHeader, UpdateRow } from './update.tsx'
 import type { AttentionItem, AttentionKind, RecentItem, UpdateView } from '../../../updates/queries.ts'
+import type { SetupState } from '../../onboarding.ts'
 
 /**
  * The first screen: what is waiting on you, then what happened without you.
@@ -20,7 +21,7 @@ const GROUPS: Record<AttentionKind, { title: string; hint: string; icon: IconNam
     icon: 'alert',
   },
   decision: {
-    title: 'Waiting for you',
+    title: 'Waiting on you',
     hint: 'one question each: ship, snooze, always ship or skip',
     icon: 'rocket',
   },
@@ -45,6 +46,9 @@ export interface InboxData {
   needsYou: AttentionItem[]
   recent: RecentItem[]
   parked: UpdateView[]
+  /** Nothing holds these but Pause. */
+  pausedOnly: UpdateView[]
+  setup: SetupState
   scan: { lastAt: number | null; nextAt: string | null; running: boolean; watched: number }
 }
 
@@ -70,6 +74,60 @@ export const ScanControls: FC<{ scan: InboxData['scan'] }> = ({ scan }) => (
   </button>
 )
 
+/** What a new install still needs, in order; it ticks itself off on the Inbox's poll. */
+export const SetupChecklist: FC<{ setup: SetupState }> = ({ setup }) => (
+  <section aria-labelledby="setup-title" class="border-base-300 border-b px-3 py-3">
+    <h2 id="setup-title" class="text-sm font-semibold">
+      Getting started
+    </h2>
+    <p class="text-xs opacity-70">
+      {setup.done} of {setup.required} done
+    </p>
+    <ol class="mt-2 flex flex-col gap-2">
+      {setup.steps.map((s, i) => (
+        <li class={s.done ? 'flex gap-2.5 opacity-70' : 'flex gap-2.5'}>
+          {s.done ? (
+            <>
+              <Icon name="check" class="text-success mt-0.5 size-4 shrink-0" />
+              <span class="sr-only">Done:</span>
+            </>
+          ) : (
+            <span class="badge badge-sm badge-ghost mt-0.5 shrink-0 font-mono">{i + 1}</span>
+          )}
+          <div class="min-w-0">
+            <p class="text-sm font-medium">
+              {s.title}
+              {s.optional ? <span class="badge badge-xs badge-ghost ml-1.5 align-middle">optional</span> : null}
+            </p>
+            <p class="text-xs opacity-70">{s.body}</p>
+            {s.done || !s.action ? null : s.action.kind === 'scan' ? (
+              <button
+                type="button"
+                class="btn btn-primary btn-xs tap mt-1"
+                hx-post="/scan"
+                hx-target="#scan-status"
+                hx-swap="innerHTML"
+                hx-disabled-elt="this"
+                hx-indicator="#busy"
+              >
+                {s.action.label}
+              </button>
+            ) : s.action.href.startsWith('https://') ? (
+              <ExtLink href={s.action.href} class="link link-primary tap inline-flex items-center text-xs">
+                {s.action.label} →
+              </ExtLink>
+            ) : (
+              <a href={s.action.href} class="link link-primary tap inline-flex items-center text-xs">
+                {s.action.label} →
+              </a>
+            )}
+          </div>
+        </li>
+      ))}
+    </ol>
+  </section>
+)
+
 /** The list: groups of rows, worst first, with sticky headers. */
 export const InboxList: FC<{ data: InboxData; selectedId?: number }> = ({ data, selectedId }) => {
   const groups = new Map<AttentionKind, AttentionItem[]>()
@@ -86,7 +144,8 @@ export const InboxList: FC<{ data: InboxData; selectedId?: number }> = ({ data, 
       hx-trigger="every 60s, scan-progress from:body"
       hx-swap="innerHTML"
     >
-      {groups.size === 0 ? (
+      {data.setup.complete ? null : <SetupChecklist setup={data.setup} />}
+      {groups.size > 0 ? null : !data.setup.complete || data.pausedOnly.length > 0 ? null : (
         <EmptyState
           icon="check"
           title="Nothing needs you."
@@ -96,8 +155,8 @@ export const InboxList: FC<{ data: InboxData; selectedId?: number }> = ({ data, 
               : 'Everything tracked is current or on its way.'
           }
         />
-      ) : (
-        [...groups].map(([kind, items]) => (
+      )}
+      {[...groups].map(([kind, items]) => (
           <section>
             <GroupHeader
               title={GROUPS[kind].title}
@@ -111,8 +170,23 @@ export const InboxList: FC<{ data: InboxData; selectedId?: number }> = ({ data, 
               ))}
             </div>
           </section>
-        ))
-      )}
+        ))}
+
+      {data.pausedOnly.length > 0 ? (
+        <section>
+          <GroupHeader
+            title="Ships when you unpause"
+            count={data.pausedOnly.length}
+            hint="nothing holds these; Pause does"
+            icon="pause"
+          />
+          <div class="divide-base-300 divide-y">
+            {data.pausedOnly.map((u) => (
+              <UpdateRow update={u} ctx={ctx} selected={u.id === selectedId} />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {data.parked.length > 0 ? (
         <details class="group/parked">
@@ -177,7 +251,7 @@ const RecentList: FC<{ recent: RecentItem[]; hint?: string }> = ({ recent, hint 
 )
 
 /** What the pane shows when nothing is selected: the night's history and the clocks. */
-export const InboxAside: FC<{ data: InboxData; paused?: boolean }> = ({ data, paused }) => (
+export const InboxAside: FC<{ data: InboxData }> = ({ data }) => (
   <div class="lg:max-w-4xl">
     <RecentList recent={data.recent} hint="what happened without you, last 24 hours" />
   </div>

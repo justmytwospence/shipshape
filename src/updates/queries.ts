@@ -545,6 +545,18 @@ export function inboxParked(): UpdateView[] {
   return rows.map((r) => toView(r))
 }
 
+/** Live updates nothing holds but Pause: what would ship the moment Pause is off. */
+export function inboxPausedOnly(): UpdateView[] {
+  const rows = getDb()
+    .prepare(
+      `${SELECT_UPDATE}
+        WHERE u.state = 'detected' AND COALESCE(u.detail, '') != 'rolling'
+        ORDER BY u.stack, u.service`,
+    )
+    .all() as RawUpdate[]
+  return rows.map((r) => toView(r)).filter((v) => v.shipStatus === 'waiting' && v.shipWhy === 'paused')
+}
+
 export interface RecentItem {
   at: string
   kind: Outcome

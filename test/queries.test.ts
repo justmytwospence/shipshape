@@ -355,3 +355,14 @@ test('a service page shows its whole history, not just what is live', () => {
   assert.equal(rows.length, 2)
   assert.ok(rows.every((r) => r.service === 'jelly'))
 })
+
+test('an update held only by pause is listed apart from decisions', async () => {
+  const { inboxPausedOnly } = await import('../src/updates/queries.ts')
+  const id = addUpdate({ service: 'paused-only', state: 'detected', tier: 'normal', fromTag: '2.0.0', toTag: '2.0.1', magnitude: 'patch' })
+  // Past the cooldown, so Pause is the only thing left holding it.
+  getDb().prepare(`UPDATE updates SET detected_at = ? WHERE id = ?`).run(ago(24 * 30), id)
+  const v = updateView(id)!
+  assert.equal(v.shipWhy, 'paused', JSON.stringify({ status: v.shipStatus, why: v.shipWhy }))
+  assert.deepEqual(inboxPausedOnly().map((u) => u.id), [id])
+  assert.ok(!inboxNeedsYou().some((i) => i.update.id === id))
+})

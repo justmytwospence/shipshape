@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderAll, classesOf, builtCss, STATUS } from './fixtures.tsx'
 import { StatusBody } from '../../src/web/views/ui/status.tsx'
+import { UpdatesList } from '../../src/web/views/pages.tsx'
 
 /**
  * What the markup has to be true of, independent of how it looks.
@@ -33,6 +34,8 @@ const PAGES = [
 ]
 const FRAGMENTS = [
   'inbox',
+  'inbox-setup',
+  'inbox-paused',
   'inbox-aside',
   'update-detail',
   'update-row',
@@ -526,4 +529,26 @@ test('the inbox scan poll needs no eval', () => {
   const html = VIEWS['inbox-page'] ?? VIEWS['inbox']!
   assert.match(html, /hx-trigger="every 60s, scan-progress from:body"/)
   assert.doesNotMatch(html, /\[document/)
+})
+
+test('a new install is told what to do next, in order', () => {
+  const html = VIEWS['inbox-setup']!
+  assert.match(html, /Getting started/)
+  assert.match(html, /1 of 3 done/)
+  assert.match(html, /href="\/services\?filter=unwatched"/)
+  assert.doesNotMatch(html, /Nothing needs you/)
+})
+
+test('a finished setup shows no checklist', () => {
+  assert.doesNotMatch(VIEWS.inbox!, /Getting started/)
+})
+
+test('updates held only by pause are listed under their own heading', () => {
+  assert.match(VIEWS['inbox-paused']!, /Ships when you unpause/)
+  assert.doesNotMatch(VIEWS['inbox-paused']!, /Nothing needs you/)
+})
+
+test('an empty list says why it is empty', () => {
+  assert.match(String(UpdatesList({ updates: [], ctx: 'list=updates', total: 0 })), /No updates yet/)
+  assert.match(String(UpdatesList({ updates: [], ctx: 'list=updates', total: 3 })), /Nothing matches/)
 })

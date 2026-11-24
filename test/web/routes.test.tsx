@@ -156,6 +156,7 @@ test('the unconfigured deployment gets setup instructions, not a crash', async (
   const html = await (await app.request('/')).text()
   assert.match(html, /shipshape is not configured yet/)
   assert.match(html, /REPO_DIR/)
+  assert.match(html, /Getting started/)
 })
 
 test('the old addresses still land somewhere', async () => {

@@ -152,12 +152,21 @@ const ActivityLine: FC<{ row: ActivityRow }> = ({ row: r }) => {
   )
 }
 
-export const ActivityList: FC<{ rows: ActivityRow[]; more?: string | null }> = ({
+export const ActivityList: FC<{ rows: ActivityRow[]; more?: string | null; filtered: boolean }> = ({
   rows,
   more,
+  filtered,
 }) => {
   if (rows.length === 0) {
-    return <EmptyState icon="activity" title="Nothing logged for this filter." />
+    return filtered ? (
+      <EmptyState icon="activity" title="Nothing logged for this filter." />
+    ) : (
+      <EmptyState
+        icon="activity"
+        title="Nothing has happened yet."
+        hint="Scans, ships, deploys and reviews are written here as they happen."
+      />
+    )
   }
   const days = new Map<string, ActivityRow[]>()
   for (const r of rows) {

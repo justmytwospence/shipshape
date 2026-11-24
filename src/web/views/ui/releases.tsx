@@ -159,7 +159,7 @@ export const ReleaseList: FC<{
     <EmptyState
       icon="updates"
       title="No releases yet"
-      hint="every version shipshape has seen turns up here, newest first"
+      hint="Every version shipshape has seen turns up here, newest first."
     />
   ) : (
     <div>

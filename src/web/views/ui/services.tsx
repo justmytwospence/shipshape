@@ -187,9 +187,19 @@ export const ServicesList: FC<{
   grouped: boolean
   ctx: string
   selected?: { stack: string; service: string } | null
-}> = ({ services, grouped, ctx, selected }) => {
+  /** Services before filtering, so an empty list can say why it is empty. */
+  total: number
+}> = ({ services, grouped, ctx, selected, total }) => {
   if (services.length === 0) {
-    return <EmptyState icon="services" title="No services match." hint="Try another filter." />
+    return total === 0 ? (
+      <EmptyState
+        icon="services"
+        title="No compose services found."
+        hint="shipshape reads services from the compose files in REPO_DIR. Status shows what the last scan found."
+      />
+    ) : (
+      <EmptyState icon="services" title="No services match." hint="Try another filter, or clear the search." />
+    )
   }
   const isSel = (s: ServiceRowData) =>
     !!selected && s.stack === selected.stack && s.service === selected.service

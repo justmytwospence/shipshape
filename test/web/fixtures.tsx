@@ -18,6 +18,7 @@ import {
 } from '../../src/web/views/pages.tsx'
 import type { UpdateView, Milestone } from '../../src/updates/queries.ts'
 import { present } from '../../src/updates/present.ts'
+import { setupSteps } from '../../src/web/onboarding.ts'
 import { PolicySchema } from '../../src/config.ts'
 
 /**
@@ -500,6 +501,8 @@ const ACTIVITY = [
 ]
 
 const INBOX = {
+  setup: { complete: true, done: 3, required: 3, steps: [] },
+  pausedOnly: [] as UpdateView[],
   needsYou: [
     { kind: 'decision' as const, update: UPDATES.waiting! },
     { kind: 'rolling-moved' as const, update: UPDATES.rolling! },
@@ -572,6 +575,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
         q: '',
         magnitude: 'all',
         ctx: 'list=updates&stage=open',
+        total: 3,
         chrome: CH,
       }),
     ),
@@ -582,6 +586,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
         q: '',
         magnitude: 'all',
         ctx: 'list=updates&stage=open',
+        total: 3,
         chrome: CH,
         selectedId: 7,
         detail: {
@@ -600,6 +605,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
         q: '',
         grouped: false,
         ctx: 'list=services',
+        total: 1,
         chrome: CH,
       }),
     ),
@@ -610,6 +616,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
         q: '',
         grouped: false,
         ctx: 'list=services',
+        total: 1,
         chrome: CH,
         selected: { stack: 'media', service: 'jellyfin' },
         detail: {
@@ -641,6 +648,29 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
     ),
     // fragments
     inbox: String(InboxList({ data: inbox })),
+    'inbox-setup': String(
+      InboxList({
+        data: {
+          ...inbox,
+          needsYou: [],
+          setup: setupSteps({
+            missing: [],
+            repoDir: '/srv/compose',
+            composeFiles: 3,
+            services: 4,
+            stacks: 2,
+            watched: 0,
+            lastScanAt: null,
+            schedule: 'Every day at 03:00',
+            reviewOff: 'no model provider is set',
+            reader: 'claude-sonnet-5-5',
+            paused: true,
+            wouldShip: 0,
+          }),
+        },
+      }),
+    ),
+    'inbox-paused': String(InboxList({ data: { ...inbox, needsYou: [], pausedOnly: [UPDATES.waiting!] } })),
     'inbox-aside': String(InboxAside({ data: inbox })),
     'update-detail': String(detail(UPDATES.waiting!, 'list=updates&stage=open', '/updates')),
     'update-detail-hold': String(
@@ -687,7 +717,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
     'update-review-failed': String(
       detail(UPDATES.reviewFailed!, 'list=updates&stage=open', '/updates'),
     ),
-    services: String(ServicesList({ services: [SERVICE, FORK_SERVICE], grouped: false, ctx: 'list=services' })),
+    services: String(ServicesList({ services: [SERVICE, FORK_SERVICE], grouped: false, ctx: 'list=services', total: 2 })),
     'service-detail-fork-conflict': String(
       ServiceDetail({
         data: {
@@ -765,14 +795,14 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
       }),
     ),
     'services-grouped': String(
-      ServicesList({ services: [SERVICE], grouped: true, ctx: 'list=services&group=stack' }),
+      ServicesList({ services: [SERVICE], grouped: true, ctx: 'list=services&group=stack', total: 1 }),
     ),
     'service-detail': String(
       ServiceDetail({ data: serviceData, ctx: 'list=services', listHref: '/services' }),
     ),
     'link-preview': String(LinkPreviewPane({ preview: LINK_PREVIEW as never, ctx: 'list=services' })),
     'link-preview-refused': String(LinkPreviewPane({ preview: LINK_PREVIEW_REFUSED as never, ctx: 'list=services' })),
-    activity: String(ActivityList({ rows: ACTIVITY, more: null })),
+    activity: String(ActivityList({ rows: ACTIVITY, more: null, filtered: false })),
     settings: String(SettingsForm({ groups: SETTING_GROUPS, readyCount: 2 })),
     status: String(StatusBody({ data: STATUS })),
     layout: String(Layout({ title: 'Inbox', nav: 'inbox', chrome: CH, children: 'x' })),

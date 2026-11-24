@@ -297,7 +297,7 @@ test('a verb pressed in the pane redraws the pane, not the row', () => {
   }
 })
 
-test('shipping and rolling back ask twice', () => {
+test('shipping, rolling back and skipping ask twice', () => {
   // Both change a running host. The confirm writes out what will happen.
   const html = VIEWS['update-detail']!
   assert.match(html, /data-open="#confirm-ship-7"/)
@@ -308,6 +308,8 @@ test('shipping and rolling back ask twice', () => {
   assert.match(html, /look again 30 minutes later/)
   const verified = VIEWS['update-verified']!
   assert.match(verified, /data-open="#confirm-rollback-13"/)
+  assert.match(html, /data-open="#confirm-skip-7"/)
+  assert.match(html, /id="confirm-skip-7"/)
 })
 
 test('the screen quotes the notes, links them, and says when nothing acted on it', () => {

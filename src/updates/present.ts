@@ -42,13 +42,19 @@ export function spoken(seconds: number): string {
   return hours === 1 ? 'an hour' : `${hours} hours`
 }
 
+/** The other services a decision covers, in words; null when it covers only this one. */
+function othersOf(f: PresentFacts): string | null {
+  const others = f.members.filter((m) => !(m.stack === f.stack && m.service === f.service))
+  if (others.length === 0) return null
+  return others.length > 4
+    ? `${others.slice(0, 4).map((m) => m.service).join(', ')} and ${others.length - 4} more`
+    : others.map((m) => m.service).join(', ')
+}
+
 function shipSteps(f: PresentFacts, policy: Policy): string[] {
   const steps = [`merge it into ${gitBranch()} with a merge commit`]
-  const others = f.members.filter((m) => !(m.stack === f.stack && m.service === f.service))
-  if (others.length > 0) {
-    const names = others.length > 4 ? `${others.slice(0, 4).map((m) => m.service).join(', ')} and ${others.length - 4} more` : others.map((m) => m.service).join(', ')
-    steps.push(`which also updates ${names}`)
-  }
+  const others = othersOf(f)
+  if (others) steps.push(`which also updates ${others}`)
   if (f.restorePoint) steps.push('take a restore point of the data first')
   steps.push('sync the checkout on this host')
   const d = policy.deploy
@@ -90,6 +96,16 @@ export function present(verbs: Verb[], f: PresentFacts, policy: Policy): Partial
       out[verb] = { label: 'Snooze 1 week' }
     } else if (verb === 'rollback') {
       out[verb] = { label: 'Roll back', steps: rollbackSteps(f) }
+    } else if (verb === 'skip') {
+      const others = othersOf(f)
+      out[verb] = {
+        label: 'Skip',
+        steps: [
+          `dismiss ${f.toTag} for ${f.service} for good: no scan offers it again`,
+          ...(others ? [`and for ${others}, which this decision covers too`] : []),
+          'close the drafted change that carried it, if there is one',
+        ],
+      }
     }
   }
   return out

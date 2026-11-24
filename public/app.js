@@ -8,6 +8,11 @@
 ;(function () {
   'use strict'
 
+  // Storage can throw (Safari private mode, storage disabled, a full quota); a theme
+  // preference is never worth an exception that stops the rest of this file.
+  function load(k) { try { return localStorage.getItem(k) } catch (e) { return null } }
+  function save(k, v) { try { localStorage.setItem(k, v) } catch (e) {} }
+
   if ('serviceWorker' in navigator) {
     addEventListener('load', function () {
       navigator.serviceWorker.register('/sw.js').catch(function () {})
@@ -20,24 +25,20 @@
   // anything else pins it. The same resolution runs inline in <head> before first paint,
   // because doing it here would show a white flash first.
   var THEME_KEY = 'shipshape-theme'
-  var COLORS = { light: '#fbfbfa', dark: '#16171a' }
-
-  function resolved() {
-    var stored = localStorage.getItem(THEME_KEY) || 'auto'
-    if (stored !== 'auto') return stored
-    return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-  }
+  // --color-base-100 of bridge and bridge-dark.
+  var COLORS = { light: '#fbfcfd', dark: '#13161c' }
 
   function applyTheme() {
     var root = document.documentElement
-    // A `?theme=` preview is pinned by the server. Without this the stored preference
-    // would immediately overwrite it, and the two candidate looks would render the same.
-    if (root.hasAttribute('data-theme-pinned')) return
-    var stored = localStorage.getItem(THEME_KEY) || 'auto'
+    var stored = load(THEME_KEY) || 'auto'
     if (stored === 'auto') root.removeAttribute('data-theme')
     else root.setAttribute('data-theme', stored === 'dark' ? 'bridge-dark' : 'bridge')
-    var meta = document.querySelector('meta[name=theme-color]:not([media])')
-    if (meta) meta.setAttribute('content', COLORS[resolved()])
+    // Both metas carry a media query; a pinned theme sets both to its own colour, so the
+    // address bar follows the theme rather than the OS.
+    document.querySelectorAll('meta[name=theme-color]').forEach(function (m) {
+      var scheme = (m.getAttribute('media') || '').indexOf('dark') !== -1 ? 'dark' : 'light'
+      m.setAttribute('content', stored === 'auto' ? COLORS[scheme] : COLORS[stored])
+    })
     document.querySelectorAll('[data-set-theme]').forEach(function (el) {
       el.setAttribute('aria-pressed', String(el.getAttribute('data-set-theme') === stored))
     })
@@ -46,7 +47,7 @@
   document.addEventListener('click', function (e) {
     var btn = e.target.closest('[data-set-theme]')
     if (!btn) return
-    localStorage.setItem(THEME_KEY, btn.getAttribute('data-set-theme'))
+    save(THEME_KEY, btn.getAttribute('data-set-theme'))
     applyTheme()
   })
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme)
@@ -221,15 +222,19 @@
   // ---------------------------------------------------------------- keyboard
   //
   // A backlog of eight is a lot of pointing. j/k move a cursor through the rows and, on
-  // a desktop, fill the pane with the row it lands on; Enter opens it; m does the thing
-  // the pane's button says, s skips. Nothing here fires while typing.
+  // a desktop, fill the pane with the row it lands on; Enter opens it (the browser does
+  // that for a focused link); m does the thing the pane's button says, s asks to skip.
+  // Nothing here fires while typing. Only the list's rows: the pane has rows of its own
+  // (a service's history), and the cursor must not wander into them.
   function rows() {
-    return Array.prototype.slice.call(document.querySelectorAll('[data-row]'))
+    return Array.prototype.slice.call(document.querySelectorAll('#list [data-row]')).filter(function (r) {
+      return r.offsetParent !== null
+    })
   }
   function cursor() {
     var el = document.activeElement
-    if (el && el.hasAttribute && el.hasAttribute('data-row')) return el
-    return document.querySelector('[data-row][aria-current="true"]')
+    if (el && el.hasAttribute && el.hasAttribute('data-row') && el.closest('#list')) return el
+    return document.querySelector('#list [data-row][aria-current="true"]')
   }
   var loadTimer = null
   function focus(el) {
@@ -288,12 +293,6 @@
       case 'k':
         e.preventDefault()
         move(-1)
-        break
-      case 'Enter':
-        if (cursor()) {
-          e.preventDefault()
-          cursor().click()
-        }
         break
       case 'm':
         e.preventDefault()

@@ -188,6 +188,12 @@ test('checking one service answers even when it has been removed', async () => {
   assert.match(res.headers.get('HX-Trigger') ?? '', /no longer here/)
 })
 
+test('a theme preview parameter is ignored', async () => {
+  const html = await (await app.request('/?theme=dark')).text()
+  assert.doesNotMatch(html, /data-theme-pinned/)
+  assert.doesNotMatch(html, /<html lang="en" data-theme=/)
+})
+
 test('watching everything shown answers with the list and a sentence', async () => {
   const res = await app.request('/services/watch', {
     method: 'POST',

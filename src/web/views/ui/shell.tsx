@@ -51,8 +51,6 @@ const HTMX_CONFIG =
 export interface Chrome {
   paused: boolean
   missing: { name: string; why: string }[]
-  /** A `?theme=` preview, overriding the stored preference. Nothing writes it. */
-  theme?: string
   /** What the sidebar counts beside each destination. */
   counts?: { inbox: number; updates: number; attention: number }
   scan?: { lastAt: string | null; nextAt: string | null; running: boolean }
@@ -95,23 +93,22 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
   detail,
   children,
 }) => {
-  const theme = chrome?.theme
   const paused = !!chrome?.paused
   const missing = chrome?.missing ?? []
   return (
-  <html lang="en" data-theme={theme} data-theme-pinned={theme ? 'true' : undefined}>
+  <html lang="en">
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       <title>{title} · shipshape</title>
-      {theme ? null : <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />}
+      <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       <link rel="stylesheet" href="/static/app.css" />
       <meta name="htmx-config" content={HTMX_CONFIG} />
       {/* Fetched with credentials or Authelia's redirect makes the app silently
           non-installable while still answering 200. */}
       <link rel="manifest" href="/static/manifest.webmanifest" crossorigin="use-credentials" />
-      <meta name="theme-color" content="#fbfbfa" media="(prefers-color-scheme: light)" />
-      <meta name="theme-color" content="#16171a" media="(prefers-color-scheme: dark)" />
+      <meta name="theme-color" content="#fbfcfd" media="(prefers-color-scheme: light)" />
+      <meta name="theme-color" content="#13161c" media="(prefers-color-scheme: dark)" />
       <meta name="apple-mobile-web-app-capable" content="yes" />
       <meta name="apple-mobile-web-app-title" content="shipshape" />
       <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
@@ -424,9 +421,9 @@ const SetupBanner: FC<{ missing: { name: string; why: string }[] }> = ({ missing
 
 const KEYS: [string, string][] = [
   ['j / k', 'move through the list'],
-  ['Enter', 'open the update'],
+  ['Enter', 'open the row you are on'],
   ['m', 'do the thing the button says'],
-  ['s', 'skip this version'],
+  ['s', 'skip this version (asks first)'],
   ['/', 'search'],
   ['g then i / u / s / a / , / t', 'go to Inbox, Updates, Services, Activity, Settings, Status'],
   ['?', 'this list'],

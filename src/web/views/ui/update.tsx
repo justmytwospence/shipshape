@@ -37,7 +37,7 @@ const VERB: Record<
   rollback: { label: 'Roll back', icon: 'undo', style: 'btn-error btn-outline', confirm: true },
   'rerun-review': { label: 'Read the changelog', short: 'Read', icon: 'eye', style: 'btn-primary' },
   propose: { label: 'Draft config changes', icon: 'plus', style: 'btn-ghost' },
-  skip: { label: 'Skip', icon: 'skip', style: 'btn-ghost' },
+  skip: { label: 'Skip', icon: 'skip', style: 'btn-ghost', confirm: true },
   ack: { label: 'Acknowledge', short: 'Ack', icon: 'check', style: 'btn-ghost' },
 }
 

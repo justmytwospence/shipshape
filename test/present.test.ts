@@ -73,3 +73,13 @@ test('durations read the way a person says them', () => {
   assert.equal(spoken(1800), '30 minutes')
   assert.equal(spoken(7200), '2 hours')
 })
+
+test('skip says it is for good and names what else it dismisses', () => {
+  const members = [
+    { stack: 'media', service: 'jellyfin', cls: 'normal' as const },
+    { stack: 'media', service: 'jellyfin-web', cls: 'normal' as const },
+  ]
+  const steps = present(['skip'], facts({ members }), policy).skip!.steps!
+  assert.ok(steps.some((s) => /for good/.test(s)))
+  assert.ok(steps.some((s) => /^and for jellyfin-web/.test(s)))
+})

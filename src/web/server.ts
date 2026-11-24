@@ -255,9 +255,6 @@ export function createApp(): Hono {
       paused: loadPolicy().policy.paused,
       missing: missing(),
       signOut: auth.mode === 'password',
-      // `?theme=logbook` renders one page in a candidate look without changing anyone's
-      // preference, so two directions can be compared on real rows.
-      theme: c?.req.query('theme'),
       counts: navCounts(),
       scan: { lastAt: info.lastAt, nextAt: scheduleInfo().scan.nextAt, running: info.running },
     }

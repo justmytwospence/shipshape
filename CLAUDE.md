@@ -71,6 +71,13 @@ docker run -d --rm --name ss-chrome --network host --shm-size=1g \
 (The fonts file matters: without it the image resolves every family to a CJK face and
 the text renders letter-spaced, which looks like a layout bug and is not.)
 
+Use `--demo` for screenshots. It is the only sandbox whose pages all have rows, and its
+update ids are fixed (2 is a decision with breaking changes, 8 a rollback). `--before <js>`
+runs in the page before the capture (open a dialog with
+`document.getElementById('confirm-ship-2').showModal()`), and `--name <file>` names a single
+shot. The landing set lives in `docs/src/assets/screenshots/`; regenerate it with the
+commands in that directory's README.
+
 Stop it when the shots are done (`docker stop ss-chrome`; `--rm` removes it). Left running,
 an idle headless Chrome burns ~10% of a core: the last one sat there for six weeks.
 
@@ -134,6 +141,9 @@ daisyUI 5 on Tailwind v4 (`src/styles/app.css` → `public/app.css`, built by `n
   `env(safe-area-inset-*)` honoured at the bottom (dock, action bar) and the sides in
   landscape, and no information that exists only in a `title` attribute — touch has no
   hover.
+- Text is never fainter than `opacity-70` (AA on both themes); icons may be. Times are
+  `<time datetime data-format>` and `app.js` renders them in the server's zone
+  (`<html data-tz>`).
 - The theme is resolved before first paint by a small inline script from
   `localStorage['shipshape-theme']` (`auto | light | dark`); `auto` removes `data-theme`
   and lets daisyUI's `--prefersdark` follow the OS.
@@ -155,6 +165,8 @@ before touching views. The load-bearing ones:
   a verb's `hx-target` is whichever it sits in.
 - Polling attributes are only rendered while the thing is actually in flight, so the poll
   stops itself.
+- A request a poll made (`hx-trigger` with `every`) never raises a toast. A failure shows the
+  connection banner (`#conn`), which the next successful request hides.
 - htmx does not swap on a 4xx: an action that fails returns 200 with the unchanged
   fragment and a warning toast (`HX-Trigger`).
 

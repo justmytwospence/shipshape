@@ -12,7 +12,7 @@ delete process.env.REPO_DIR
 delete process.env.POLICY_FILE
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const { applySettings } = await import('../src/settings.ts')
+const { applySettings } = await import('../src/settings/apply.ts')
 
 test('without REPO_DIR nothing is ever created', async () => {
   const res = await applySettings({ paused: 'false' })

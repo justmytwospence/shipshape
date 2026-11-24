@@ -13,7 +13,7 @@ import { execFileSync } from 'node:child_process'
 
 let dir: string
 let repo: string
-let settings: typeof import('../src/settings.ts')
+let settings: typeof import('../src/settings/apply.ts')
 let config: typeof import('../src/config.ts')
 
 const POLICY = `# shipshape policy -- the single place update semantics are declared.
@@ -42,7 +42,7 @@ before(async () => {
   process.env.REPO_DIR = repo
   process.env.GITHUB_REPO = 'you/repo'
   config = await import('../src/config.ts')
-  settings = await import('../src/settings.ts')
+  settings = await import('../src/settings/apply.ts')
 })
 
 after(() => rmSync(dir, { recursive: true, force: true }))

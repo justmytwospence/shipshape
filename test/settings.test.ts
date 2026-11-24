@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parse } from 'yaml'
-import { removeValue, spliceValue, setValue, SETTINGS, SECTIONS } from '../src/settings.ts'
+import { SETTINGS, SECTIONS } from '../src/settings/defs.ts'
+import { removeValue, spliceValue, setValue } from '../src/settings/yaml.ts'
 
 /**
  * A trimmed copy of the real policy.yaml, keeping what makes splicing risky: comments
@@ -309,7 +310,7 @@ test('removeValue rejects an unusable path', () => {
 })
 
 test('a saved setting is named in words', async () => {
-  const { savedText } = await import('../src/settings.ts')
+  const { savedText } = await import('../src/settings/apply.ts')
   assert.equal(savedText(['paused', 'scan.cron'], 'a3f9c1'), 'Saved Pause and Schedule, committed as a3f9c1.')
   assert.equal(savedText(['paused'], null), 'Saved Pause.')
 })

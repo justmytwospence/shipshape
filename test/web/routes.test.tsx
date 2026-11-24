@@ -67,7 +67,7 @@ const FRAGMENTS = ['/fragments/inbox', '/fragments/activity', '/scan/status']
 test('settings is one page, and every section explains itself on it', async () => {
   // It was General and Advanced, and Deploys -- with nothing on General -- once rendered
   // its explanation nowhere at all, including the only account of Left stopped.
-  const { SECTIONS } = await import('../../src/settings.ts')
+  const { SECTIONS } = await import('../../src/settings/defs.ts')
   const html = await (await app.request('/settings')).text()
   for (const [title, tagline] of SECTIONS) {
     assert.ok(html.includes(`id="${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}"`), title)

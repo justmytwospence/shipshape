@@ -711,7 +711,7 @@ test('Status lists recent deploys in words', () => {
 
 test('a setting that was refused says why beside itself', async () => {
   const { SettingsForm } = await import('../../src/web/views/ui/settings.tsx')
-  const { SETTINGS } = await import('../../src/settings.ts')
+  const { SETTINGS } = await import('../../src/settings/defs.ts')
   const def = SETTINGS.find((d) => d.kind === 'int' && !d.locked)!
   const html = String(
     SettingsForm({
@@ -725,7 +725,7 @@ test('a setting that was refused says why beside itself', async () => {
 
 test('number settings are number inputs with a floor', async () => {
   const { SettingsForm } = await import('../../src/web/views/ui/settings.tsx')
-  const { SETTINGS } = await import('../../src/settings.ts')
+  const { SETTINGS } = await import('../../src/settings/defs.ts')
   const def = SETTINGS.find((d) => d.kind === 'int' && !d.locked && d.min !== undefined)!
   const html = String(SettingsForm({ groups: [{ title: 'X', tagline: 'x', items: [{ def, value: '3', changed: false }], more: [] }] as never }))
   assert.match(html, /type="number"[^>]*min="\d/)

@@ -1,6 +1,6 @@
 import { parse as parseYaml } from 'yaml'
 import { retiredKeys, validatePolicyText } from '../config.ts'
-import { removeValue, setValue, spliceValue } from '../settings.ts'
+import { removeValue, setValue, spliceValue } from '../settings/yaml.ts'
 
 /**
  * What it takes to bring a v1 compose repository up to date: the labels and policy keys

@@ -1,6 +1,6 @@
 import type { FC } from 'hono/jsx'
 import { Icon } from './icon.tsx'
-import type { SettingDef } from '../../../settings.ts'
+import type { SettingDef } from '../../../settings/defs.ts'
 import { ZONE } from '../../time.ts'
 import { ThemeToggle } from './shell.tsx'
 import { SignOutForm } from './auth.tsx'

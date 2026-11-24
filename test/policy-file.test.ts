@@ -27,7 +27,8 @@ const ROOT = g(['rev-parse', 'HEAD'])
 
 const { resolvePolicyPath, loadPolicy, PolicySchema } = await import('../src/config.ts')
 const { POLICY_STARTER } = await import('../src/policy-starter.ts')
-const { applySettings, SETTINGS, currentValue } = await import('../src/settings.ts')
+const { applySettings } = await import('../src/settings/apply.ts')
+const { SETTINGS, currentValue } = await import('../src/settings/defs.ts')
 const { appendRule } = await import('../src/rules.ts')
 const { overridePath } = await import('../src/prompts/index.ts')
 

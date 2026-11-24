@@ -1,4 +1,4 @@
-import type { SectionName } from '../settings.ts'
+import type { SectionName } from './defs.ts'
 import { gitBranch } from '../config.ts'
 
 /**

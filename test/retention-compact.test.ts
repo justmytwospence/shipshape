@@ -20,7 +20,8 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 test('an old database is compacted once', () => {
   mkdirSync(join(paths.db, '..'), { recursive: true })
   const old = new Database(paths.db)
-  old.exec(`CREATE TABLE leftover (x TEXT)`)
+  // Existing and not incremental, with no schema yet: getDb builds the baseline into it.
+  old.exec(`CREATE TABLE _migrations (id TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`)
   old.close()
 
   assert.equal(getDb().pragma('auto_vacuum', { simple: true }), 0)

@@ -18,6 +18,7 @@ npm run dev:ui -- --demo   # examples/demo and a seeded history: every page has 
 npm test            # node --test via tsx; needs git and the `docker compose` CLI on PATH
 npm run typecheck   # tsc --noEmit over src/ and test/
 npm run shots       # screenshot matrix, see "Look at it"
+npm run db:baseline # after adding a migration to src/db/legacy.ts
 ```
 
 `npm run dev:ui` (`bin/dev-ui.mjs`) builds a throwaway world in `.dev/`. By default that is an

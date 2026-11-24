@@ -14,7 +14,8 @@ const dir = mkdtempSync(join(tmpdir(), 'shipshape-migrate-034-'))
 process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 
-const { getDb, __migrationsForTest } = await import('../src/db/index.ts')
+const { getDb } = await import('../src/db/index.ts')
+const { MIGRATIONS } = await import('../src/db/legacy.ts')
 
 after(() => rmSync(dir, { recursive: true, force: true }))
 
@@ -40,9 +41,9 @@ test('a fresh database migrates through 034 with v1 gone', () => {
 test('034 rewrites what a v1 row left behind', () => {
   const d = new Database(join(dir, 'v1.db'))
   d.pragma('foreign_keys = ON')
-  const at = __migrationsForTest.findIndex((m) => m.id === '034-drop-v1')
+  const at = MIGRATIONS.findIndex((m) => m.id === '034-drop-v1')
   assert.ok(at > 0)
-  for (const m of __migrationsForTest.slice(0, at)) d.exec(m.sql)
+  for (const m of MIGRATIONS.slice(0, at)) d.exec(m.sql)
 
   const now = '2026-01-01T00:00:00Z'
   const update = Number(
@@ -84,7 +85,7 @@ test('034 rewrites what a v1 row left behind', () => {
      VALUES ('media', 'jellyfin', 'media/docker-compose.yaml', 'jellyfin/jellyfin:10.9.11', 'docker.io', 'jellyfin/jellyfin', 'manual', 'required', ?)`,
   ).run(now)
 
-  d.exec(__migrationsForTest[at]!.sql)
+  d.exec(MIGRATIONS[at]!.sql)
 
   const u = d.prepare(`SELECT state, tier FROM updates WHERE id = ?`).get(update) as { state: string; tier: string }
   assert.deepEqual(u, { state: 'detected', tier: 'ask' })

@@ -17,6 +17,7 @@
     "resolve-report": "tsx src/bin/resolve-report.ts",
     "convert-v1": "tsx src/bin/convert-v1.ts",
     "demo:seed": "tsx src/bin/seed-demo.ts",
+    "db:baseline": "tsx src/db/baseline.ts",
     "jev-replay": "tsx src/bin/jev-replay.ts",
     "dev:ui": "node bin/dev-ui.mjs",
     "shots": "node bin/shots.mjs",

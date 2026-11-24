@@ -26,7 +26,7 @@ globalThis.fetch = (async (_url: unknown, init: { body: unknown; headers: Record
   return new Response('ok', { status: 200 })
 }) as unknown as typeof fetch
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { notify, resolveIncident, retryPendingIncidents } = await import('../src/notify/index.ts')
 
 after(() => rmSync(root, { recursive: true, force: true }))

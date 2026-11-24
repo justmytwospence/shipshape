@@ -3,7 +3,7 @@ import { llmClient, llmConfigured, llmProvider, missingKeyMessage } from './clie
 import { loadPolicy } from '../config.ts'
 import { type Policy } from '../policy-schema.ts'
 import { env } from '../env.ts'
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { logEvent } from '../events.ts'
 import { prompt } from '../prompts/index.ts'
 import { costOf, estimateInputCost, reportUnknownModels, unpricedCost } from './pricing.ts'

@@ -40,7 +40,7 @@ globalThis.fetch = (async (_url: unknown, init: { body: unknown }) => {
   return new Response('ok', { status: 200 })
 }) as unknown as typeof fetch
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { loadPolicy } = await import('../src/config.ts')
 const { parseIndex, storeIncidents } = await import('../src/security/feed.ts')
 const { syncSecurityCards } = await import('../src/security/act.ts')

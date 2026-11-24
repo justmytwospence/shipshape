@@ -1,6 +1,6 @@
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/server'
 import { z } from 'zod'
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { llmProvider } from '../analyze/client.ts'
 import { loadPolicy } from '../config.ts'
 import { scheduleInfo } from '../scheduler.ts'

@@ -19,7 +19,7 @@ process.env.GITHUB_REPO = 'me/homelab'
 delete process.env.NOTIFY_URL
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { performRollback } = await import('../src/deploy/rollback.ts')
 const { changeUrl } = await import('../src/gitops/change.ts')
 const { fakeIo, composeCalls } = await import('./helpers/deploy-io.ts')

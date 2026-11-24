@@ -12,7 +12,7 @@ process.env.MCP_PORT = '18099'
 delete process.env.MCP_TOKEN
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { startMcpServer } = await import('../src/mcp/listen.ts')
 const { mcpEnabled } = await import('../src/env.ts')
 

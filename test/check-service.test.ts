@@ -29,7 +29,7 @@ writeFileSync(
 `,
 )
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { checkService } = await import('../src/scan/index.ts')
 
 after(() => rmSync(dir, { recursive: true, force: true }))

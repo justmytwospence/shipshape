@@ -1,5 +1,5 @@
 import { env } from '../env.ts'
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 
 /**
  * A change record is a `prs` row: a branch shipshape merged into the published branch

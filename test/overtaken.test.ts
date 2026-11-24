@@ -16,7 +16,7 @@ const dir = mkdtempSync(join(tmpdir(), 'shipshape-overtaken-'))
 process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { retireOvertaken } = await import('../src/updates/overtaken.ts')
 const { actionsFor } = await import('../src/updates/actions.ts')
 

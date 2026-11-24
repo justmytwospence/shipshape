@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { inferPattern, parseTag } from '../versions/patterns.ts'
 import { registryFetch } from './http.ts'
 

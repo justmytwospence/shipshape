@@ -7,7 +7,7 @@ import { join } from 'node:path'
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'shipshape-test-'))
 
 const { rollbackPlan, revertCommand } = await import('../src/deploy/rollback.ts')
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { failedTarget } = await import('../src/scan/persist.ts')
 const { PolicySchema } = await import('../src/policy-schema.ts')
 import type { Verdict } from '../src/deploy/verify.ts'

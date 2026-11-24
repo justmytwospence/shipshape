@@ -1,5 +1,5 @@
 import { type Policy } from '../policy-schema.ts'
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { logEvent } from '../events.ts'
 import { type ScannedService } from '../compose/scan.ts'
 import { type Detection } from '../detect.ts'

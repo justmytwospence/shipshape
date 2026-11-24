@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { gitBranch } from '../env.ts'
 import { VERDICT_LABEL } from './vocabulary.ts'
 import { readRecordedPlan } from '../deploy/runstate.ts'

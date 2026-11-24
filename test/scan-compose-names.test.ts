@@ -16,7 +16,7 @@ process.env.POLICY_FILE = join(dir, 'policy.yaml')
 writeFileSync(process.env.POLICY_FILE, 'paused: true\n')
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { runScan } = await import('../src/scan/index.ts')
 
 const composeFiles = () =>

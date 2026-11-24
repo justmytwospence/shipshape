@@ -1,7 +1,7 @@
 import { loadPolicy } from '../../config.ts'
 import { env } from '../../env.ts'
 import { composeFileOfStack } from '../../compose/files.ts'
-import { getDb } from '../../db.ts'
+import { getDb } from '../../db/index.ts'
 import { logEvent } from '../../events.ts'
 import { parseImageRef } from '../../images/ref.ts'
 import { assembleNotes, notesInRange } from '../../notes/assemble.ts'

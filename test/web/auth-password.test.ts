@@ -16,7 +16,7 @@ const HOST = 'shipshape.lan:8080'
 const ORIGIN = `http://${HOST}`
 let dir = ''
 let createApp: typeof import('../../src/web/server.ts').createApp
-let getDb: typeof import('../../src/db.ts').getDb
+let getDb: typeof import('../../src/db/index.ts').getDb
 
 before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'shipshape-auth-password-'))
@@ -24,7 +24,7 @@ before(async () => {
   process.env.SHIPSHAPE_ACTION_SECRET = 'a-long-enough-action-secret-0123456789'
   for (const k of ['REPO_DIR', 'SHIPSHAPE_TRUSTED_PROXY', 'SHIPSHAPE_ALLOWED_USER', 'SHIPSHAPE_PASSWORD_FILE', 'SHIPSHAPE_ALLOWED_ORIGIN']) delete process.env[k]
   ;({ createApp } = await import('../../src/web/server.ts'))
-  ;({ getDb } = await import('../../src/db.ts'))
+  ;({ getDb } = await import('../../src/db/index.ts'))
 })
 after(() => rmSync(dir, { recursive: true, force: true }))
 

@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { parseImageRef, type ImageRef } from '../images/ref.ts'
 import { ghRequest, rawFile, type GhFailure } from '../upstream/github.ts'
 import { releaseIndex, type IndexedRelease } from '../upstream/releases.ts'

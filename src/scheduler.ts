@@ -1,7 +1,7 @@
 import { Cron } from 'croner'
 import { loadPolicy } from './config.ts'
 import { configured, env } from './env.ts'
-import { getDb } from './db.ts'
+import { getDb } from './db/index.ts'
 import { logEvent } from './events.ts'
 import { runReviewPass } from './analyze/run.ts'
 import { runProposePass } from './propose/run.ts'

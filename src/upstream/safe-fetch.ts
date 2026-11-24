@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { readCache, writeCache, type CacheRow } from '../registry/http.ts'
 import { htmlToText } from '../notes/html.ts'
 import { checkUrl, publicAddress } from './hosts.ts'

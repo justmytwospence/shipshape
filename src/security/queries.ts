@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import type { Target } from './match.ts'
 
 /** Read models for the MCP and the web UI. */

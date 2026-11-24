@@ -13,7 +13,7 @@ delete process.env.NOTIFY_URL
 delete process.env.NOTIFY_TOKEN
 delete process.env.SMTP_URL
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { runRechecks } = await import('../src/deploy/queue.ts')
 const { DockerUnreadable, missing } = await import('../src/deploy/probe.ts')
 const { updateTimeline } = await import('../src/updates/timeline.ts')

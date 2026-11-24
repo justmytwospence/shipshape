@@ -16,7 +16,7 @@ process.env.DATA_DIR = dir
 process.env.GITHUB_REPO = 'you/repo'
 delete process.env.REPO_DIR
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { listUpdates, updatesForService } = await import('../src/updates/queries.ts')
 const { updateTimeline } = await import('../src/updates/timeline.ts')
 const { inboxNeedsYou, inboxRecent } = await import('../src/updates/inbox.ts')

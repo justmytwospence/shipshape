@@ -13,7 +13,7 @@
  * `--without-overrides` shows what the automatic tiers find for images the curated map
  * answers today, which is how to tell which entries the map still needs.
  */
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { sourceFor, sourceForSync } from '../resolver/index.ts'
 import { lookUpImage } from '../resolver/tiers.ts'
 import { type Lookup, type SourceInfo } from '../resolver/types.ts'

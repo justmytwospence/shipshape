@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { getDb } from '../../db.ts'
+import { getDb } from '../../db/index.ts'
 
 /**
  * Sessions for password mode: a random 32-byte token in a cookie, stored only as its

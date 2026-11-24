@@ -16,7 +16,7 @@ process.env.DATA_DIR = dir
 process.env.GITHUB_TOKEN = 'test-token'
 delete process.env.REPO_DIR
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { setMinSpacingForTests, readCache } = await import('../src/registry/http.ts')
 const { releaseIndex } = await import('../src/upstream/releases.ts')
 const { versionKey } = await import('../src/versions/key.ts')

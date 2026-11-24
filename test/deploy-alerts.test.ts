@@ -42,7 +42,7 @@ globalThis.fetch = (async (_url: unknown, init: { body: unknown }) => {
 }) as unknown as typeof fetch
 const resolved: string[] = []
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { deployChange } = await import('../src/deploy/run.ts')
 const { claimJob, dueJobs, enqueueDeploy, linkDeployUpdates, runDeployJob } = await import('../src/deploy/queue.ts')
 const { contextFor } = await import('../src/updates/verbs.ts')

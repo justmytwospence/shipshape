@@ -20,7 +20,7 @@
  * counted. It never touches verdicts or screens.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { screenBump } from '../analyze/screen/run.ts'
 import { decideScreen, flagsOf, THRESHOLDS, type Thresholds } from '../analyze/screen/decide.ts'
 import type { Answer } from '../analyze/jev.ts'

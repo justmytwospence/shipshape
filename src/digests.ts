@@ -1,5 +1,5 @@
 import type { ScannedService } from './compose/scan.ts'
-import { getDb } from './db.ts'
+import { getDb } from './db/index.ts'
 import { headDigest } from './registry/index.ts'
 import { registryFetch } from './registry/http.ts'
 

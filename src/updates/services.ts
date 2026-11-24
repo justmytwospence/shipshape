@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { loadPolicy } from '../config.ts'
 import { env } from '../env.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'

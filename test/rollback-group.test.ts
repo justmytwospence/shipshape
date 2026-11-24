@@ -53,7 +53,7 @@ g('add', '-A')
 g('commit', '-q', '-m', 'chore(deps): n8n 2.38.7 (#91)')
 const mergeSha = g('rev-parse', 'HEAD')
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { runVerb } = await import('../src/updates/verbs.ts')
 const { withGitLock } = await import('../src/gitops/repo.ts')
 const { composeCalls, fakeIo } = await import('./helpers/deploy-io.ts')

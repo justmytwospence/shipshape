@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 
 /** The Dockerfile of our own build watched through its base image, or null (compose/scan.ts). */
 export function baseDockerfileFor(stack: string, service: string): string | null {

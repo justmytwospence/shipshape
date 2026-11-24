@@ -14,7 +14,7 @@ process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 delete process.env.GITHUB_TOKEN
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { setMinSpacingForTests } = await import('../src/registry/http.ts')
 const { externalNotes, githubLink } = await import('../src/notes/external.ts')
 const { assembleNotes, notesInRange } = await import('../src/notes/assemble.ts')

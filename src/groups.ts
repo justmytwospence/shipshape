@@ -1,4 +1,4 @@
-import { getDb } from './db.ts'
+import { getDb } from './db/index.ts'
 import { sourceForSync } from './resolver/index.ts'
 
 /**

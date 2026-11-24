@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { Policy } from '../policy-schema.ts'
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { logEvent } from '../events.ts'
 import { safeHref } from '../links.ts'
 

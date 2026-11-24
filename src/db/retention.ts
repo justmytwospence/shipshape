@@ -1,6 +1,6 @@
 import { existsSync, statSync } from 'node:fs'
 import { paths } from '../env.ts'
-import { getDb } from '../db.ts'
+import { getDb } from './index.ts'
 import { logEvent } from '../events.ts'
 
 /**

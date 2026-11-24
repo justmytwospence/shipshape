@@ -14,7 +14,7 @@ const dir = mkdtempSync(join(tmpdir(), 'shipshape-runner-'))
 process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { launchDeploy, stackBusy, deploysIdle, inFlightDeployIds } = await import('../src/deploy/runner.ts')
 const { drainDeployQueue } = await import('../src/deploy/queue.ts')
 const { beginShutdown } = await import('../src/lifecycle.ts')

@@ -12,7 +12,7 @@ process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 
 const { paths } = await import('../src/env.ts')
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { compactOnce } = await import('../src/db/retention.ts')
 
 after(() => rmSync(dir, { recursive: true, force: true }))

@@ -22,7 +22,7 @@ delete process.env.ANTHROPIC_API_KEY
 delete process.env.OPENROUTER_API_KEY
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { runShipPass } = await import('../src/gitops/ship.ts')
 const { syncMain } = await import('../src/gitops/sync.ts')
 const { setServiceLabel } = await import('../src/gitops/labels.ts')

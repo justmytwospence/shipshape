@@ -23,7 +23,7 @@ process.env.POLICY_FILE = join(dir, 'policy.yaml')
 writeFileSync(process.env.POLICY_FILE, 'notify:\n  sinks:\n    - { type: webhook }\n')
 delete process.env.SMTP_URL
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { setMinSpacingForTests } = await import('../src/registry/http.ts')
 const { checkFork, reconcileForks, forkRefs, forkVerdict, forkIncidentKey, newestUpstreamTag, recordForkConflict, forkConflictFor, forkConflictKey } =
   await import('../src/forks.ts')

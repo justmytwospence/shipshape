@@ -24,7 +24,7 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 const cfg = await import('../src/env.ts')
 const { parseRemote, resolveGitCredentials, credentialProblem, missingSettings, resolveBranch, validBranch, env } = cfg
 const { credentialArgs } = await import('../src/gitops/credentials.ts')
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { changeUrl } = await import('../src/gitops/change.ts')
 
 test('parseRemote: github default from owner/repo', () => {

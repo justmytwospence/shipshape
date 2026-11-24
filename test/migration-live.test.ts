@@ -17,7 +17,7 @@ const LIVE = process.env.SHIPSHAPE_LIVE_DB ?? ''
 const have = !!LIVE && existsSync(LIVE)
 
 let dir: string
-let db: typeof import('../src/db.ts')
+let db: typeof import('../src/db/index.ts')
 
 before(async () => {
   if (!have) return
@@ -25,7 +25,7 @@ before(async () => {
   copyFileSync(LIVE, join(dir, 'shipshape.db'))
   process.env.DATA_DIR = dir
   delete process.env.REPO_DIR
-  db = await import('../src/db.ts')
+  db = await import('../src/db/index.ts')
 })
 
 after(() => {

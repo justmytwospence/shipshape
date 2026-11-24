@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { fetchLinked } from '../notes/external.ts'
 import { sectionize } from '../notes/sectionize.ts'
 import { getRepo } from '../upstream/github.ts'

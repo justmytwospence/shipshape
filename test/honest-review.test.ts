@@ -21,7 +21,7 @@ process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 delete process.env.ANTHROPIC_API_KEY
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { normalise, renderPrompt } = await import('../src/analyze/claude.ts')
 const { pendingAnalysis, recordFailure, recordVerdict } = await import('../src/analyze/run.ts')
 const { contextFor, runVerb } = await import('../src/updates/verbs.ts')

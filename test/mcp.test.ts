@@ -14,7 +14,7 @@ const dir = mkdtempSync(join(tmpdir(), 'shipshape-mcp-'))
 process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { createMcpApp } = await import('../src/mcp/listen.ts')
 const { OPERATOR_VERBS } = await import('../src/updates/operator-verbs.ts')
 

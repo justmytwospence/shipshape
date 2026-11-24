@@ -13,7 +13,7 @@ const dir = mkdtempSync(join(tmpdir(), 'shipshape-verbs-'))
 process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { contextFor, runVerb } = await import('../src/updates/verbs.ts')
 const { actionsFor } = await import('../src/updates/actions.ts')
 

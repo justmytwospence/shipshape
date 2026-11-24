@@ -1,5 +1,5 @@
 import type { Policy } from '../policy-schema.ts'
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { budgetExhausted } from '../analyze/claude.ts'
 import { llmConfigured } from '../analyze/client.ts'
 import { reviewMode } from '../policy.ts'

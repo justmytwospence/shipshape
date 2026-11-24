@@ -22,7 +22,7 @@ delete process.env.REPO_DIR
 delete process.env.NOTIFY_URL
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { buildBranch, upstreamRefAt } = await import('../src/gitops/build.ts')
 const { changeTitle } = await import('../src/gitops/body.ts')
 const { carriedFixesSection } = await import('../src/gitops/body.ts')

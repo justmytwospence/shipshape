@@ -6,7 +6,7 @@ import { join } from 'node:path'
 
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'shipshape-test-'))
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { reclaimInterrupted, drainDeployQueue } = await import('../src/deploy/queue.ts')
 const {
   carriedUpdates,

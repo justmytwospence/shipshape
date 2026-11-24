@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { backoffUntil } from '../backoff.ts'
 import { isPackagingRepo } from './guards.ts'
 import { pickLabel, type LabelRow, pickChangelog, sameService } from './labels.ts'

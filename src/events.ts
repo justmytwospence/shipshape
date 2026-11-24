@@ -1,4 +1,4 @@
-import { getDb } from './db.ts'
+import { getDb } from './db/index.ts'
 
 export const EVENT_KINDS = ['scan', 'policy', 'ship', 'analysis', 'deploy', 'sync', 'system'] as const
 

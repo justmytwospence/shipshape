@@ -363,7 +363,7 @@ test('a 404 or 500 asked by htmx has an empty body and a toast', async () => {
 
 test('an exception in a handler is a styled 500, logged, and never leaks the error', async () => {
   const { createApp } = await import('../../src/web/server.ts')
-  const { getDb } = await import('../../src/db.ts')
+  const { getDb } = await import('../../src/db/index.ts')
   const s = createApp()
   s.get('/boom', () => {
     throw new Error('secret-detail')
@@ -391,7 +391,7 @@ test('an exception in a handler is a styled 500, logged, and never leaks the err
 test("a drafted change's proposal is the one shown, whatever its number", async () => {
   // Every local change has number 0, so looking a proposal up by number found the first
   // drafted change's for every update.
-  const { getDb } = await import('../../src/db.ts')
+  const { getDb } = await import('../../src/db/index.ts')
   const db = getDb()
   const now = new Date().toISOString()
   const draft = (service: string, summary: string): number => {

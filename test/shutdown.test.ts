@@ -12,7 +12,7 @@ delete process.env.REPO_DIR
 
 const { createShutdown } = await import('../src/shutdown.ts')
 const { isStopping } = await import('../src/lifecycle.ts')
-const { getDb, closeDb } = await import('../src/db.ts')
+const { getDb, closeDb } = await import('../src/db/index.ts')
 
 after(() => rmSync(dir, { recursive: true, force: true }))
 

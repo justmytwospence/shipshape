@@ -13,7 +13,7 @@ process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 delete process.env.GITHUB_TOKEN
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { setMinSpacingForTests } = await import('../src/registry/http.ts')
 const { assembleNotes, evidenceOf, notesInRange, fileVersion } = await import('../src/notes/assemble.ts')
 const { mockFetch, assertAllMocked, json, text, status } = await import('./helpers/http.ts')

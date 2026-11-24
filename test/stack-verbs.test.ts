@@ -17,7 +17,7 @@ process.env.MCP_PORT = '8082'
 process.env.MCP_TOKEN = 'a'.repeat(32)
 delete process.env.REPO_DIR
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { runStackVerb } = await import('../src/updates/stack-verbs.ts')
 const { linkDeployUpdates } = await import('../src/deploy/queue.ts')
 const { latestDeployUpdates } = await import('../src/updates/stack-verbs.ts')

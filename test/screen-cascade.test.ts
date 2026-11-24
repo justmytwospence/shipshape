@@ -15,7 +15,7 @@ process.env.OPENROUTER_API_KEY = 'test-key'
 delete process.env.ANTHROPIC_API_KEY
 delete process.env.REPO_DIR
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { readerWanted, isAudit, recordFailure } = await import('../src/analyze/run.ts')
 const { applyScreen } = await import('../src/analyze/screen/run.ts')
 const { askJev, jevFamilyOk, refusalOf } = await import('../src/analyze/jev.ts')

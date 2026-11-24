@@ -21,7 +21,7 @@ process.env.REPO_DIR = repo
 delete process.env.GITHUB_REPO
 delete process.env.GITHUB_TOKEN
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { setServiceLabel, setServiceLabels, setLabelsForServices } = await import('../src/gitops/labels.ts')
 
 after(() => {

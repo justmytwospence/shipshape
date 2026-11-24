@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { verifiedFix, type SecurityFix } from '../security/act.ts'
 import { forkConflictFor } from '../forks.ts'
 import { loadPolicy } from '../config.ts'

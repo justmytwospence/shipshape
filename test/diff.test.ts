@@ -9,7 +9,7 @@ const REPO = mkdtempSync(join(tmpdir(), 'shipshape-repo-'))
 process.env.DATA_DIR = DATA
 process.env.REPO_DIR = REPO
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { buildUpdateDiff } = await import('../src/diff.ts')
 
 /**

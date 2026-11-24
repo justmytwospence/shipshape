@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { sqlIn, type UpdateState } from './state.ts'
 import { refLinks, registryName, type RefLinks } from '../links.ts'
 import { parseImageRef } from '../images/ref.ts'

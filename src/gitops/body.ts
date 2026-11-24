@@ -1,7 +1,7 @@
 import { type UpdateGroup } from '../groups.ts'
 import { FORKS_GUIDE_URL } from '../links.ts'
 import { short, changeText } from '../updates/vocabulary.ts'
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { parseImageRef, displayName } from '../images/ref.ts'
 import { type UpdateHolds } from '../updates/holds.ts'
 

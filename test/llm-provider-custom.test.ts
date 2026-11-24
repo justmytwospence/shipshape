@@ -21,7 +21,7 @@ const { readerOn } = await import('../src/policy.ts')
 const { listModels } = await import('../src/analyze/models.ts')
 const { recordCost, recordSpend, budgetExhausted } = await import('../src/analyze/claude.ts')
 const { toolChoiceFor, systemPrompt, webEnabled } = await import('../src/analyze/tools.ts')
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { mockFetch, assertAllMocked, json } = await import('./helpers/http.ts')
 
 const message = () =>

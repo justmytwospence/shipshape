@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { logEvent } from '../events.ts'
 import { loadPolicy } from '../config.ts'
 import { env, gitBranch } from '../env.ts'

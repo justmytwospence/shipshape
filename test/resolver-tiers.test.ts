@@ -15,7 +15,7 @@ process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 delete process.env.GITHUB_TOKEN
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { setMinSpacingForTests } = await import('../src/registry/http.ts')
 const { resolveWatched, sourceFor, sourceForSync, resetResolverMemo } = await import('../src/resolver/index.ts')
 const { lookUpImage } = await import('../src/resolver/tiers.ts')

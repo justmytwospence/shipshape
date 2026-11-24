@@ -10,7 +10,7 @@ process.env.SHIPSHAPE_ACTION_SECRET = 'short'
 process.env.SHIPSHAPE_ALLOWED_ORIGIN = 'https://shipshape.example.test'
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { actionUrl } = await import('../src/notify/links.ts')
 
 test('a short action secret makes no links, and says so once', () => {

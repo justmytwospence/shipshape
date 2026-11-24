@@ -13,7 +13,7 @@
  */
 
 import { checkUrl } from '../upstream/hosts.ts'
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { type ImageKey, type SourceOpts, type ChangelogLabelInfo, type InvalidLabel, type ServiceKey, type SourceLabelInfo } from './types.ts'
 
 export type ParsedSource = { ok: true; repo: string } | { ok: false; reason: string }

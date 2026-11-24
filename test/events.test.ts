@@ -11,14 +11,14 @@ import { join } from 'node:path'
  */
 
 let dir: string
-let db: typeof import('../src/db.ts')
+let db: typeof import('../src/db/index.ts')
 let events: typeof import('../src/events.ts')
 
 before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'shipshape-events-'))
   process.env.DATA_DIR = dir
   delete process.env.REPO_DIR
-  db = await import('../src/db.ts')
+  db = await import('../src/db/index.ts')
   events = await import('../src/events.ts')
 })
 

@@ -8,7 +8,7 @@ import { join } from 'node:path'
 // directory before anything is imported.
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'shipshape-test-'))
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { classFor } = await import('../src/policy.ts')
 
 /**

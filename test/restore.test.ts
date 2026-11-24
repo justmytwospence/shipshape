@@ -15,7 +15,7 @@ process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { takeRestorePoint, stackHasSnapshot } = await import('../src/restore/index.ts')
 const { runOffsite, offsiteJob, runOffsiteAndWait, refreshOffsiteJobs, setOffsiteJobs, hasOffsiteJob } = await import('../src/restore/offsite.ts')
 const { canRestore } = await import('../src/restore/index.ts')

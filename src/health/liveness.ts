@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { logEvent } from '../events.ts'
 import { loopStalled, scheduleInfo } from '../scheduler.ts'
 import { version } from '../version.ts'

@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { readLabels, pickLabel } from './labels.ts'
 import type { ImageKey, SourceOpts, SourceInfo } from './types.ts'
 import { resetLsioMemo } from './lsio.ts'

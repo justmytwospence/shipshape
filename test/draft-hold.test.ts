@@ -15,7 +15,7 @@ process.env.POLICY_FILE = join(dir, 'policy.yaml')
 writeFileSync(process.env.POLICY_FILE, 'paused: false\nship:\n  cooldown_days: 0\n')
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { holdsForUpdate } = await import('../src/updates/holds.ts')
 
 const T0 = '2026-01-01T00:00:00.000Z'

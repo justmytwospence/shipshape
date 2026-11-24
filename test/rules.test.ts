@@ -21,7 +21,7 @@ delete process.env.OPENROUTER_API_KEY
 delete process.env.GITHUB_REPO
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { appendRule, describeRule, fallbackRule, inferRule, nextRuleId, validateDraft } = await import('../src/rules.ts')
 const { PolicySchema } = await import('../src/policy-schema.ts')
 const { ruleMatches } = await import('../src/policy.ts')

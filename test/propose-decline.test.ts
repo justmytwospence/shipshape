@@ -9,7 +9,7 @@ const repoDir = mkdtempSync(join(tmpdir(), 'shipshape-decline-repo-'))
 process.env.DATA_DIR = dataDir
 process.env.REPO_DIR = repoDir
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { pickCandidate } = await import('../src/propose/run.ts')
 
 after(() => {

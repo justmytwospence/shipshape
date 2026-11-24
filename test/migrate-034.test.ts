@@ -14,7 +14,7 @@ const dir = mkdtempSync(join(tmpdir(), 'shipshape-migrate-034-'))
 process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 
-const { getDb, __migrationsForTest } = await import('../src/db.ts')
+const { getDb, __migrationsForTest } = await import('../src/db/index.ts')
 
 after(() => rmSync(dir, { recursive: true, force: true }))
 

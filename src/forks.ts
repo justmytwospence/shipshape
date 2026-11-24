@@ -1,5 +1,5 @@
 import type { ScannedService } from './compose/scan.ts'
-import { getDb } from './db.ts'
+import { getDb } from './db/index.ts'
 import { logEvent } from './events.ts'
 import { notify, resolveIncident } from './notify/index.ts'
 import {

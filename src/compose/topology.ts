@@ -1,7 +1,7 @@
 import { type Policy } from '../policy-schema.ts'
 import { env } from '../env.ts'
 import { includedStacks, scanRepo } from './scan.ts'
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { composeFileOfStack } from './files.ts'

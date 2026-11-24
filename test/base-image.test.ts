@@ -23,7 +23,7 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 
 const { parseFroms, finalBase, rewriteFroms } = await import('../src/compose/dockerfile.ts')
 const { scanRepo } = await import('../src/compose/scan.ts')
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { buildBranch } = await import('../src/gitops/build.ts')
 const { changeTitle } = await import('../src/gitops/body.ts')
 const { baseImageSection } = await import('../src/gitops/body.ts')

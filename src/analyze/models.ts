@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { llmProvider, modelsEndpoint } from './client.ts'
 
 /**

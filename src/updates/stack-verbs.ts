@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { actionsFor, refusalFor } from './actions.ts'
 import { contextFor, runVerb, type VerbResult } from './verbs.ts'
 

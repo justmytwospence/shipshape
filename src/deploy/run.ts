@@ -7,7 +7,7 @@ import { projectName, stackPeers, buildableServices } from '../compose/topology.
 import { scanRepo } from '../compose/scan.ts'
 import { DEFAULT_VERIFY, runVerify, type Verdict } from './verify.ts'
 import { dockerEnvOptions } from '../docker/env.ts'
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { logEvent } from '../events.ts'
 import { notify, resolveIncident } from '../notify/index.ts'
 import type { DeployTrigger } from './queue.ts'

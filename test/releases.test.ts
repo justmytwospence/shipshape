@@ -16,7 +16,7 @@ process.env.DATA_DIR = dir
 process.env.GITHUB_REPO = 'you/repo'
 delete process.env.REPO_DIR
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { listReleases } = await import('../src/updates/queries.ts')
 
 after(() => rmSync(dir, { recursive: true, force: true }))

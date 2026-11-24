@@ -1,5 +1,5 @@
 import { loadPolicy } from '../config.ts'
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { allowedOrigin, env, mcpEnabled } from '../env.ts'
 import { short } from '../updates/vocabulary.ts'
 import { shortRepository } from '../policy.ts'

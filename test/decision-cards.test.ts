@@ -31,7 +31,7 @@ globalThis.fetch = (async (_u: unknown, init: { body: string }) => {
   return new Response('ok', { status: 200 })
 }) as unknown as typeof fetch
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { currentDecisions, cardFor, syncDecisionCards, resetDecisionCards, DECISION_PREFIX } = await import('../src/notify/decisions.ts')
 
 const AG = 'ghcr.io/agentgateway/agentgateway'

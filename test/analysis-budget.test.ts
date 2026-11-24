@@ -7,7 +7,7 @@ import { join } from 'node:path'
 const dir = mkdtempSync(join(tmpdir(), 'shipshape-budget-'))
 process.env.DATA_DIR = dir
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { classifyBudget, resumesOn, mergedUnreviewedSince, budgetHealth, resetBudgetHealth } =
   await import('../src/health/analysis-budget.ts')
 

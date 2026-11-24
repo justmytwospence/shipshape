@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import { existsSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { paths } from './env.ts'
+import { paths } from '../env.ts'
 
 /**
  * Runtime state only. Policy is tracked YAML in the watched repository; per-service config is
@@ -11,8 +11,12 @@ import { paths } from './env.ts'
 
 export type Db = Database.Database
 
+
 let db: Db | null = null
+
+
 let closed = false
+
 
 export function getDb(): Db {
   if (db) return db
@@ -30,6 +34,7 @@ export function getDb(): Db {
   return db
 }
 
+
 /** Close the database for good: the last step of shutdown. */
 export function closeDb(): void {
   closed = true
@@ -38,6 +43,7 @@ export function closeDb(): void {
     db = null
   }
 }
+
 
 const MIGRATIONS: { id: string; sql: string }[] = [
   {
@@ -1146,8 +1152,10 @@ const MIGRATIONS: { id: string; sql: string }[] = [
   },
 ]
 
+
 /** The migration list, for tests that need to stop partway (test/migrate-034.test.ts). */
 export const __migrationsForTest: readonly { id: string; sql: string }[] = MIGRATIONS
+
 
 function migrate(d: Db): void {
   d.exec(`CREATE TABLE IF NOT EXISTS _migrations (id TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`)

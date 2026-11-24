@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { type Outcome } from './vocabulary.ts'
 import { LIVE_STATES, sqlIn } from './state.ts'
 import { type UpdateView, SELECT_UPDATE, type RawUpdate, toView } from './view.ts'

@@ -4,7 +4,7 @@ import { budgetExhausted, isTimeout, recordCost, recordUnanswered } from './anal
 import { toolChoiceFor } from './analyze/tools.ts'
 import { loadPolicy } from './config.ts'
 import { RuleSchema, WAIVABLE, type Rule, type Waivable } from './policy-schema.ts'
-import { getDb } from './db.ts'
+import { getDb } from './db/index.ts'
 import { logEvent } from './events.ts'
 import { commitPolicyFile } from './gitops/policy-file.ts'
 import { withGitLock } from './gitops/repo.ts'

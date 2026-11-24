@@ -13,7 +13,7 @@ const dir = mkdtempSync(join(tmpdir(), 'shipshape-services-filter-'))
 process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 
-const { getDb } = await import('../src/db.ts')
+const { getDb } = await import('../src/db/index.ts')
 const { serviceRows, filterServices } = await import('../src/updates/services.ts')
 const { RESOLVER_VERSION } = await import('../src/resolver/types.ts')
 

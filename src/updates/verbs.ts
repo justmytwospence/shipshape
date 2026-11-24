@@ -1,4 +1,4 @@
-import { getDb } from '../db.ts'
+import { getDb } from '../db/index.ts'
 import { logEvent } from '../events.ts'
 import { setState, type UpdateState } from './state.ts'
 import { actionsFor, refusalFor, type ActionContext, type Verb } from './actions.ts'

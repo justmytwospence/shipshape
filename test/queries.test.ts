@@ -366,3 +366,13 @@ test('an update held only by pause is listed apart from decisions', async () => 
   assert.deepEqual(inboxPausedOnly().map((u) => u.id), [id])
   assert.ok(!inboxNeedsYou().some((i) => i.update.id === id))
 })
+
+test('a ship is not also reported as drafted', () => {
+  const id = addUpdate({ service: 'no-phantom-draft', state: 'merged' })
+  addPr(id, { number: 0, state: 'merged', scope: 'tag-only' })
+  const kinds = inboxRecent(24).filter((r) => r.updateId === id).map((r) => r.kind)
+  assert.ok(!kinds.includes('opened'), kinds.join(','))
+  const drafted = addUpdate({ service: 'real-draft', state: 'detected' })
+  addPr(drafted, { number: 0, state: 'open', scope: 'proposed' })
+  assert.ok(inboxRecent(24).some((r) => r.updateId === drafted && r.kind === 'opened'))
+})

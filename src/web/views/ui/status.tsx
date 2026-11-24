@@ -246,27 +246,27 @@ const SecurityBlock: FC<{ s: SecurityPanel }> = ({ s }) => (
       <div class="divide-base-300 border-base-300 mt-2 divide-y border-y text-xs">
         {s.exposures.map((e) => (
           <div class="py-1.5">
-            <div class="flex items-baseline gap-2">
+            <div class="flex items-center gap-2">
               <span class={`badge badge-xs badge-soft ${e.severity === 'critical' ? 'badge-error' : 'badge-warning'}`}>
                 {e.severity ?? 'unrated'}
               </span>
               {e.exploited ? <span class="badge badge-xs badge-soft badge-error">exploited</span> : null}
               {e.url ? (
-                <ExtLink href={e.url} class="link min-w-0 flex-1 truncate">
-                  {e.title}
+                <ExtLink href={e.url} class="link tap flex min-w-0 flex-1 items-center">
+                  <span class="truncate">{e.title}</span>
                 </ExtLink>
               ) : (
                 <span class="min-w-0 flex-1 truncate">{e.title}</span>
               )}
             </div>
             {e.services.map((sv) => (
-              <div class="mt-0.5 flex flex-wrap gap-x-2 pl-2 opacity-80">
-                <a href={`/services/${sv.stack}/${sv.service}`} class="link font-mono">
+              <div class="mt-0.5 flex flex-wrap items-center gap-x-2 pl-2 opacity-80">
+                <a href={`/services/${sv.stack}/${sv.service}`} class="link tap inline-flex items-center font-mono">
                   {sv.stack === sv.service ? sv.service : `${sv.stack}/${sv.service}`}
                 </a>
                 <span class="font-mono">{sv.packages.map((p) => `${p.name} ${p.installed}`).join(', ')}</span>
                 {sv.fix ? (
-                  <a href={`/updates/${sv.fix.updateId}`} class="link">
+                  <a href={`/updates/${sv.fix.updateId}`} class="link tap inline-flex items-center">
                     fixed by {sv.fix.toTag}
                   </a>
                 ) : (

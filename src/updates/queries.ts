@@ -582,7 +582,9 @@ export function inboxRecent(hours = 24, limit = 20): RecentItem[] {
       `SELECT p.created_at AS at, 'opened' AS kind, u.stack, u.service, u.from_tag AS fromTag, u.to_tag AS toTag,
               u.id AS updateId, NULL AS detail
          FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id JOIN updates u ON u.id = pu.update_id
-        WHERE p.created_at >= ?`,
+        -- Only a drafted change was "drafted": a ship's own record is created as it ships,
+        -- and reading that as a draft put a phantom "drafted" line beside every "shipped".
+        WHERE p.created_at >= ? AND p.scope = 'proposed'`,
     )
     .all(since) as RecentItem[]
 
@@ -717,7 +719,7 @@ export function updateTimeline(id: number): Milestone[] {
       .get(v.change.id) as { merged_at: string | null; state: string } | undefined
     for (const p of v.restorePoints) out.push({ at: p.createdAt, kind: 'restore', label: `restore point: ${p.service}`, detail: p.path })
     if (c?.merged_at) {
-      out.push({ at: c.merged_at, kind: 'merged', label: `shipped: merged into ${gitBranch()}` })
+      out.push({ at: c.merged_at, kind: 'merged', label: `shipped: a merge commit on ${gitBranch()}` })
     } else if (c?.state === 'closed') {
       out.push({ at: null, kind: 'closed', label: 'drafted change closed' })
     }

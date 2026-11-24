@@ -162,7 +162,7 @@ export const ServiceRow: FC<{
         {/* phone, line 1 right: the status */}
         <span class="flex items-center gap-1 lg:hidden">
           {svc.fork ? <ForkBadge /> : null}
-          <span class={`badge badge-xs badge-soft ${st.cls}`}>{st.label}</span>
+          <span class={`badge badge-xs badge-soft whitespace-nowrap ${st.cls}`}>{st.label}</span>
         </span>
         {/* The fork badge sits by the image rather than the status: the status cell is
             5rem, and the thing it qualifies is the image, which is not the one running. */}
@@ -176,7 +176,7 @@ export const ServiceRow: FC<{
           {svc.fork ? <ForkBadge /> : null}
         </span>
         <span class="hidden min-w-0 items-center gap-1.5 lg:flex">
-          <span class={`badge badge-xs badge-soft ${st.cls}`}>{st.label}</span>
+          <span class={`badge badge-xs badge-soft whitespace-nowrap ${st.cls}`}>{st.label}</span>
         </span>
         <span class="hidden truncate font-mono text-xs opacity-70 lg:block">{svc.policy ?? ''}</span>
         <span class="hidden text-right lg:block">
@@ -359,7 +359,7 @@ const RUNGS = [
   { value: 'ask', label: 'ask', what: 'always asks before shipping' },
   { value: 'lifeline', label: 'lifeline', what: 'always asks, and no rule can waive it — the way back in' },
   { value: 'frozen', label: 'frozen', what: 'tracked; nothing happens until you ask' },
-  { value: 'skip', label: 'skip', what: 'not tracked at all: no updates are looked for' },
+  { value: 'skip', label: 'skip', what: 'not tracked at all: shipshape ignores this service' },
 ]
 
 /** What the radio should show as chosen: no class at all is a normal service. */

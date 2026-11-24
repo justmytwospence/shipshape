@@ -32,7 +32,10 @@ import type { ReleaseView } from '../../../updates/queries.ts'
  * anything ever read this release. The copy does not promise a changelog, because for an
  * image with no resolved project the only honest link is its registry.
  */
-const NO_REVIEW = 'No review — this shipped without being read.'
+const NO_REVIEW_SHIPPED = 'No review — this shipped without being read.'
+const NO_REVIEW = 'No review.'
+/** States in which the release reached the compose file. */
+const SHIPPED: ReadonlySet<string> = new Set(['merged', 'deploying', 'deployed', 'verified', 'left-stopped', 'degraded', 'failed', 'rolled-back'])
 
 /*
  * inline-flex, not inline: `.tap` works by min-height, and an inline box ignores it. As
@@ -94,7 +97,7 @@ export const ReleaseRow: FC<{
             : 'mt-1 text-xs leading-relaxed opacity-70'
         }
       >
-        {summary ?? NO_REVIEW}
+        {summary ?? (SHIPPED.has(release.state) ? NO_REVIEW_SHIPPED : NO_REVIEW)}
       </p>
 
       {l.releases || l.source || l.docs || l.tag || l.image || !l.source ? (

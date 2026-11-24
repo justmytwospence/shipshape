@@ -24,7 +24,7 @@ export const AuthShell: FC<PropsWithChildren<{ title: string }>> = ({ title, chi
     </head>
     <body class="bg-base-100 text-base-content flex min-h-dvh items-center justify-center p-4">
       <main class="w-full max-w-xl">
-        <div class="mb-4">
+        <div class="mb-6 flex justify-center">
           <Wordmark />
         </div>
         {children}

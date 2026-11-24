@@ -1,6 +1,101 @@
 ---
-title: "Commands"
-description: "Commands that ship in the image."
+title: Commands
+description: Commands that ship in the image.
 ---
+These are small programs next to the application. Each runs from a checkout of the source as
+`npm run <name>`, and from the image as `node dist/bin/<name>.js`.
 
-This page is being written.
+## Running one in the container
+
+`docker exec` does not run through the image's entrypoint, so a process started that way
+has no `safe.directory` trust for your checkout. Any `docker exec shipshape ...` that runs
+git, and that includes every `node dist/bin/*.js` below, must go through the entrypoint
+when the container user does not own the checkout, or git refuses it with "dubious
+ownership":
+
+```sh
+docker exec shipshape shipshape-entrypoint node dist/bin/convert-v1.js
+```
+
+or use `docker compose run --rm shipshape node dist/bin/convert-v1.js`, which goes through
+the entrypoint on its own. If the container user does own the checkout, plain `docker exec
+shipshape node dist/bin/convert-v1.js` works. Without this, the branch lookup can fall back
+to `main` without saying why.
+
+## convert-v1
+
+Rewrites the labels and policy keys of the pull-request era in the words shipshape reads
+now. A dry run by default.
+
+```sh
+npm run convert-v1                      # list what would change
+npm run convert-v1 -- --write           # one commit in the live checkout
+node dist/bin/convert-v1.js [--write]   # the same, in the container
+```
+
+Stop shipshape before `--write`. The exit code is 0 when nothing is left to convert, 1 when
+something is (always after a dry run that found work), and 2 when it refused or failed with
+nothing changed. [Migrating from v1](/shipshape/guides/migrating-from-v1/) has the full
+walk-through.
+
+## resolve-report
+
+Shows where each watched image's release notes come from: what shipshape has now, and what a
+fresh look would find.
+
+```sh
+npm run resolve-report -- --snapshot
+npm run resolve-report -- --dry-run [--allow-billed] [--only <text>] [--without-overrides] [--why]
+npm run resolve-report -- --write [--allow-billed] [--only <text>]
+node dist/bin/resolve-report.js --dry-run --why        # in the container
+```
+
+- `--snapshot` prints the stored answer for every watched image and looks nothing up.
+- `--dry-run` looks everything up and writes no answers. It still spends what a lookup
+  spends: GitHub requests, and with `--allow-billed`, Docker Hub pulls. `--why` lists the
+  candidates and why each was accepted or rejected, and `--without-overrides` ignores the
+  built-in map of known images to show what the automatic lookup finds by itself.
+- `--write` stores the new answers.
+- `--only <text>` limits it to images whose name contains the text (comma-separated for
+  several).
+
+Run it against an online copy of the database, not the one in use:
+`sqlite3 /data/shipshape.db ".backup /tmp/copy.db"`, then point `DATA_DIR` at a directory
+holding the copy as `shipshape.db`.
+
+## jev-replay
+
+Replays updates the reader has already judged through the [screen](/shipshape/concepts/review/),
+to calibrate its thresholds. It prints how the screen's decision compares with the reader's
+recommendation, a sweep of the thresholds, and every update the screen called routine that
+the reader found work in. It needs `OPENROUTER_API_KEY`, spends what the screen costs, and
+writes only ledger rows.
+
+```sh
+npm run jev-replay -- [--since 2026-07-01] [--limit 60] [--dump answers.json]
+npm run jev-replay -- --from-dump answers.json     # re-sweep without calling the screen again
+node dist/bin/jev-replay.js ...                    # in the container
+```
+
+## seed-demo
+
+Fills an **empty** database with a fortnight of invented history, so every page has rows. It
+refuses a database that already has any, so it cannot touch real data. It is meant for a
+public demo instance pointed at a copy of `examples/demo`; to look at the interface while
+developing, use `npm run dev:ui -- --demo`, which does this in a sandbox.
+
+```sh
+npm run demo:seed
+node dist/bin/seed-demo.js              # in the container
+```
+
+## Backing up the database
+
+The image carries `sqlite3`, so a consistent copy of the database can be taken while
+shipshape runs:
+
+```sh
+docker exec shipshape sqlite3 /data/shipshape.db ".backup /data/shipshape-backup.db"
+```
+
+See [Backup](/shipshape/guides/backup/).

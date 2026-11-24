@@ -1,6 +1,83 @@
 ---
-title: "The image"
-description: "Tags, platforms, contents and how to verify an image."
+title: The image
+description: Tags, platforms, contents and how to verify an image.
 ---
+shipshape is published as `ghcr.io/justmytwospence/shipshape`.
 
-This page is being written.
+## Tags
+
+| Tag | What it is |
+|---|---|
+| `0.2.0` | That exact release. |
+| `0.2` | The latest patch release of 0.2. This is what the examples use. |
+| `latest` | The newest stable release. |
+| `edge` | Every commit on `main` that passes CI. |
+| `sha-<7>` | One commit, as `edge` built it. |
+
+There is no `0` tag while the version is 0.x, because a minor release may change
+configuration: pin `0.2`, read the notes, and move to `0.3` on purpose. shipshape never
+updates itself; see [Upgrading](/shipshape/guides/upgrading/).
+
+## Platforms
+
+`linux/amd64` and `linux/arm64`. Every build on both is started and has to report healthy
+before `edge` is published; the arm64 build is exercised under emulation in CI. It has not
+yet been tested on real Raspberry Pi hardware, and 32-bit arm is not built. If it does not
+work on yours, [open an issue](https://github.com/justmytwospence/shipshape/issues).
+
+## Size
+
+About 135 MB to pull (compressed) and about 380 MB on disk on linux/amd64.
+
+## Contents
+
+Node 26 on Alpine 3.24, with:
+
+- git, which does all the repository work;
+- the `sqlite3` command line, so you can [take a consistent backup](/shipshape/guides/backup/)
+  of the database from inside the container;
+- tini as the init process (`init: true` in compose is unnecessary and harmless);
+- the Docker CLI 29.9.3 with the Compose 5.7.0 and Buildx 0.38.1 plugins, pinned to the
+  versions shipshape was tested with. Compose in particular has refused files an earlier
+  release accepted, so a new version is a decision, not a drift.
+
+npm is removed: the application never runs it. The application's files are owned by root
+and not writable by the user it runs as.
+
+## How it runs
+
+- **User.** `node` (user ID 1000) by default, and any user ID that `user:` names. Set it to
+  the owner of your compose checkout; see
+  [Docker permissions](/shipshape/guides/docker-permissions/).
+- **Entrypoint.** tini, then `shipshape-entrypoint`, which tells git to trust exactly
+  `REPO_DIR` and `<DATA_DIR>/repo` whatever user it runs as, then starts the application.
+  Nothing is written to disk for this, so the root filesystem can be read-only.
+- **Health check.** `GET /health` every 30 seconds, with a 60-second start period so a
+  one-time database compaction after an upgrade does not read as a failure. `docker ps`
+  shows `healthy` or `unhealthy`.
+- **Port.** 8080 (`PORT`).
+- **Environment.** `DATA_DIR=/data`, `HOME=/tmp`, `DOCKER_CONFIG=/data/docker`; see
+  [Set by the image](/shipshape/reference/environment/#set-by-the-image).
+- **Read-only.** `read_only: true` with `tmpfs: [/tmp]` works. The one-time compaction after
+  an upgrade from a large pre-0.2 database needs space in `/tmp` about the size of the
+  database.
+
+## Verify an image
+
+Every image has SLSA provenance and a software bill of materials attached by BuildKit, and a
+GitHub attestation that says which workflow built it from which commit:
+
+```sh
+gh attestation verify oci://ghcr.io/justmytwospence/shipshape:0.2.0 --repo justmytwospence/shipshape
+```
+
+Scanners report a handful of HIGH findings in the Go dependencies of the Docker Compose and
+Buildx plugins, most with no upstream fix; when this was measured, 7 with the pinned
+versions. They belong to those projects, and Dependabot proposes each plugin release.
+
+## Which version is running
+
+The sidebar shows `v<version>`; an edge build shows `v0.2.0+edge.<sha>`. Status shows the
+version with the commit it was built from. `GET /health` returns it too. Every request
+shipshape makes to another host carries `User-Agent: shipshape/<version>
+(+https://github.com/justmytwospence/shipshape)`.

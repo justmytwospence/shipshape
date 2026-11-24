@@ -12,7 +12,7 @@
  * through; every value a compose file interpolates comes from that stack's `.env`, as it
  * does on the host.
  */
-const PASSTHROUGH = [
+export const PASSTHROUGH = [
   'PATH',
   'HOME',
   'DOCKER_HOST',

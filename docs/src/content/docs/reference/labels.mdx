@@ -1,6 +1,111 @@
 ---
-title: "Labels"
-description: "Every shipshape.* label, read from your compose files."
+title: Labels
+description: Every shipshape.* label, read from your compose files.
 ---
+Per-service settings are Docker labels on the service in your compose file. shipshape reads
+them **from the files in git, not from running containers**, so a label you edit always
+takes effect on the next scan, and an old value can never survive in a container that was
+cloned from another. Labels are strings: write `"true"`, not `true`. A `shipshape.*` key the
+scanner does not know is reported as a warning on every scan and ignored, so a typo shows
+up instead of silently doing nothing.
 
-This page is being written.
+In the interface, **Watch this service** and **Stop watching** write `shipshape.watch` for
+you as one commit; the rest you edit in the file or from a service's page.
+
+| Label | Values | Default | What it does |
+|---|---|---|---|
+| `shipshape.watch` | `"true"`, `"false"` | not watched | Only a service labelled `"true"` is looked at. `"false"` is what **Stop watching** writes. Services with no label show under **Not watched**. |
+| `shipshape.pattern` | one of the pattern names below | inferred from the running tag | How to read this image's tags as versions. Unset, shipshape infers it from the tag in use (a digest pin is `digest`, `latest` is rolling). A tag it cannot read shows under Needs attention until you set this. |
+| `shipshape.tag.include` | a regular expression | none | Only tags that match are candidates. Use it to stay on one series, or with `pattern: regex` for tags of an odd shape. An expression that does not compile stops updates for that service rather than widening them. |
+| `shipshape.class` | `normal`, `stateful`, `ask`, `lifeline`, `frozen`, `skip` | `normal` | How much this service asks of you. See [Classes and holds](/shipshape/concepts/classes-and-holds/). An unrecognised value is treated as `ask`: a typo never grants reach. |
+| `shipshape.snapshot` | a shell command | none | A command that prints a dump of this service's data to standard output. It runs **inside the service's own container** before a stateful update. Write `$$` for a literal `$`. See [Restore points](/shipshape/concepts/restore-points/). |
+| `shipshape.backup-job` | a job name | none | The offsite backup job to run alongside the dump, or as the restore point when there is no dump command. Needs `restore_points.offsite` in the [policy file](/shipshape/reference/policy/). |
+| `shipshape.source` | `owner/repo` or a github.com URL | found automatically | The GitHub repository the image comes from, when shipshape cannot find it. A value that does not parse is reported with the reason. |
+| `shipshape.changelog` | an `https://` link, or a path inside the source repository such as `CHANGELOG.md` | none | Where the release notes are when the repository's GitHub releases do not have them. A link must be https on a public host. |
+| `shipshape.review` | `required` | none | This service would rather stall than ship unread: with no release notes read, its update waits for you. |
+| `shipshape.deploy` | `rm-first` | none | Remove the old container before creating the new one, so an environment variable baked into the old image is read again. |
+| `shipshape.probe` | `off`, or a port number | the port a Traefik router declares | Which port the HTTP probe asks during verification, or `off` for none. |
+| `shipshape.propose` | `none`, `service`, `compose-file`, `compose-dir`, `repo` | `service` | How far a [drafted change](/shipshape/concepts/drafted-changes/) may reach. |
+| `shipshape.group` | a name | none | Services in one stack with the same group name and the same target version ship together in one commit and one deploy. |
+| `shipshape.fork.upstream` | an image reference | none | Marks a build as a [fork](/shipshape/guides/forks/): the upstream image it stands in for, which is what gets polled. |
+| `shipshape.fork.waits-on` | `owner/repo#N`, comma-separated | none | The upstream issues or changes the fork exists for. Needs `shipshape.fork.upstream`. |
+
+## Pattern names
+
+`shipshape.pattern` takes one of these.
+
+| Name | Reads tags like |
+|---|---|
+| `semver` | `2.17.0` |
+| `v-semver` | `v3.11.3` |
+| `semver-minor` | `12.4` (stays two components: `v3.7` moves to `v3.8`, never `v3.8.0`) |
+| `v-semver-minor` | `v3.7` |
+| `semver-quad` | `3.3.1.0` |
+| `major-only` | `17` |
+| `v-major-only` | `v2` |
+| `semver-variant` | `4.5.4-full`, `2.83.3-cpu` |
+| `semver-minor-variant` | `12.4-ubuntu` |
+| `major-variant` | `16-alpine` |
+| `lsio-ls` | `2.2.0-ls374` |
+| `lsio-r-ls` | `5.1.4-r3-ls453` |
+| `date` | `2026.04.1`, `2026-07-28` |
+| `digest` | a digest pin: movement is detected by digest |
+| `latest` | a rolling tag such as `latest` or `stable`: movement is detected by digest |
+| `regex` | tags shaped by `shipshape.tag.include` |
+
+A variant (`-alpine`, `-full`) must match exactly between the tag in use and any candidate:
+an `-alpine` pin never drifts onto a plain tag. The major number is limited to three digits,
+so a date such as `2021.12.16` is never read as a version 2021.
+
+## Examples
+
+A database that dumps itself before it moves, pinned to one major version:
+
+```yaml
+services:
+  db:
+    image: postgres:16.4-alpine
+    labels:
+      shipshape.watch: "true"
+      shipshape.class: stateful
+      shipshape.pattern: semver-minor-variant
+      shipshape.tag.include: '^16\.'
+      shipshape.snapshot: pg_dump -U app app | gzip
+```
+
+An application that always asks, with its release notes pointed out:
+
+```yaml
+services:
+  nextcloud:
+    image: nextcloud:30.0.4
+    labels:
+      shipshape.watch: "true"
+      shipshape.class: ask
+      shipshape.source: nextcloud/server
+      shipshape.review: required
+```
+
+A reverse proxy that must never move on its own:
+
+```yaml
+services:
+  proxy:
+    image: traefik:v3.2
+    labels:
+      shipshape.watch: "true"
+      shipshape.class: lifeline
+```
+
+## Removed labels
+
+These labels of the pull-request era are no longer read. A service that still carries one
+is held to the class `ask` (or `lifeline`, `frozen`, `skip` if `shipshape.class` says so),
+and each scan logs a line saying so. [Migrating from v1](/shipshape/guides/migrating-from-v1/)
+rewrites them.
+
+| Label | Replaced by |
+|---|---|
+| `shipshape.policy` | `shipshape.class`: `auto` becomes `normal`, `attended` becomes `lifeline`, `on-request` becomes `frozen`, `skip` stays `skip`, anything else becomes `ask` |
+| `shipshape.pr` | `shipshape.class: frozen` for `on-request`; otherwise nothing, because updates ship as merge commits |
+| `shipshape.claude` | `shipshape.review` |

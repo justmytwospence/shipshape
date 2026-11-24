@@ -1,6 +1,180 @@
 ---
-title: "Policy file"
-description: "Every key of the policy file, its type, default and meaning."
+title: Policy file
+description: Every key of the policy file, its type, default and meaning.
 ---
+import { Code } from '@astrojs/starlight/components'
+import { POLICY_STARTER } from '../../../../../src/policy-starter.ts'
 
-This page is being written.
+The policy file is one YAML file in your compose repository that holds everything that is
+not a per-service [label](/shipshape/reference/labels/). The **Settings** page edits it, and
+each save is a commit; you can edit it by hand too. A key you leave out takes its default,
+so a file can be as short as `paused: false`.
+
+## Where it lives
+
+The first of these that applies:
+
+1. the file `POLICY_FILE` names (a relative path is resolved against `REPO_DIR`);
+2. `shipshape.yaml` at the root of `REPO_DIR`, if it exists;
+3. the older `<SELF_STACK>/config/policy.yaml` in `REPO_DIR`, if it exists;
+4. otherwise `shipshape.yaml` at the root, which the first Settings save or Always ship
+   creates as a commit.
+
+Until a file exists, the defaults apply and shipshape is paused. A file that does not parse,
+or that fails validation, is not applied: shipshape keeps running on the last version that
+loaded (or the defaults), and Activity says `the policy file is invalid; running on the last
+version that loaded, or the defaults (paused) if none did`, with the reason, until it is fixed. A change in the file takes effect without a restart.
+
+## The starter file
+
+This is what the first save writes: every key the Settings page edits, at its default.
+
+<Code code={POLICY_STARTER} lang="yaml" title="shipshape.yaml" />
+
+## `paused`
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `paused` | boolean | `true` | While true, nothing ships or deploys on its own. Scanning and release-note reviews carry on; a ship you press still deploys. The first thing to change once you trust it. |
+
+## `sync`
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `sync.push_main` | boolean | `true` | Publish the branch shipshape ships to (`GIT_BRANCH`). Off, shipshape never pushes and degrades to alert-only: it cannot ship. |
+| `sync.poll_active_s` | integer | `60` | Seconds between loop ticks while something is detected, shipping or deploying. Settings enforces a minimum of 15. |
+| `sync.poll_idle_s` | integer | `600` | Seconds between loop ticks when nothing is in flight. Settings enforces a minimum of 30. |
+
+## `scan`
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `scan.cron` | cron expression | `0 0 3 * * *` | When the nightly scan runs, in `TZ`. Seconds come first; five fields also work. An expression that is not a schedule invalidates the file. |
+
+## `review`
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `review.screen` | `off`, `shadow`, `on` | `off` | The [screen](/shipshape/concepts/review/): a small classifier that looks at every update. `shadow` records what it finds and acts on none of it; `on` lets it decide which updates the reader reads. Needs `OPENROUTER_API_KEY`. |
+| `review.model` | model id, or `off` | the provider's reader model | The reader. `claude-sonnet-5-5` with an Anthropic key, `anthropic/claude-sonnet-5.5` through OpenRouter. A custom endpoint has no default and needs one set. `off` turns the reader off and spends nothing. |
+| `review.code_model` | model id | the provider's drafting model | Drafts config changes and picks the scope of an Always ship rule. `claude-opus-5-5`, or `anthropic/claude-opus-5.5` through OpenRouter; none by default on a custom endpoint. |
+| `review.monthly_budget_usd` | number above 0 | `15` | A hard stop on what every model call costs together, per UTC calendar month. Reaching it pauses the reader, drafting, rule scoping and security extraction; updates keep shipping on the evidence that is left. Settings enforces a minimum of 0.01. To spend nothing, set `review.model: off`. Calls to a custom endpoint are not priced and never count. |
+| `review.web` | `auto`, `off` | `auto` | Whether the reader and the drafter may search and fetch on the web, confined to github.com, docs.linuxserver.io and api.linuxserver.io. Never on a custom endpoint. Off, they read only what shipshape fetched. |
+
+## `propose`
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `propose.mode` | `auto`, `off` | `auto` | `auto` drafts a [change](/shipshape/concepts/drafted-changes/) whenever the review names steps this deployment has to take; `off` only when you press **Draft config changes**. |
+| `propose.never` | list of paths | `[]` | Repository-relative paths no draft may write, whatever its scope. Use it for configuration that is hot-reloaded (a file provider's directory, an auth policy the proxy re-reads), where a merged edit goes live with no deploy, no verification and no rollback. |
+
+## `notify`
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `notify.sinks` | list of sinks | `[]` | Where decisions and failures go. None by default: nothing is sent until you say where. Every type is on the [notification reference](/shipshape/reference/notifications/). |
+| `notify.escalate_after_days` | integer, 1 to 60 | `7` | A decision still waiting after this long is announced once more, louder. |
+
+## `deploy`
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `deploy.verify_window_s` | integer above 0 | `300` | How long a deploy has to prove itself. It returns the moment every signal is good, so only a bad deploy pays the wait. Settings enforces a minimum of 30. |
+| `deploy.probe` | `auto`, `off` | `auto` | Ask each service over HTTP during verification, on the port its Traefik router declares or `shipshape.probe` names. Any answer below 500 counts. It can only warn, never fail a deploy by itself. |
+| `deploy.soak_s` | integer, 0 or more | `1800` | A second look this long after a deploy passes its window. Only after it does an update read **Verified**. `0` skips it. |
+| `deploy.rollback` | `auto`, `suggest`, `off` | `auto` | What happens when verification fails. `auto` makes exactly one attempt to put the previous version back; `suggest` sends the alert with the commands and changes nothing; `off` never mentions rolling back. |
+
+## `security`
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `security.mode` | `off`, `shadow`, `on` | `off` | `off` fetches and scans nothing. `shadow` matches incidents and records what would happen, acting on none of it. `on` also posts exposure cards. |
+| `security.auto_merge` | boolean | `false` | Let a verified fix ship past an `ask` or `no-evidence` hold. It never passes a `lifeline`, an `unsafe` verdict, a pending review, a dormant service or `paused`. |
+| `security.fix_cooldown_days` | number, 0 to 90 | `2` | How long a verified fix for a non-critical incident waits instead of the full cooldown. A fix for a critical, KEV-listed or exploited incident does not wait. |
+| `security.feed` | URL | `https://pwn.watch/incidents.json` | The incident index. |
+| `security.categories` | list of `patch`, `supply-chain`, `breach` | `[patch, supply-chain]` | Which categories to follow. `breach` has nothing to match an image against. |
+| `security.interval_m` | integer, 5 to 1440 | `15` | Minutes between feed reads. |
+| `security.sbom_per_pass` | integer, 1 to 50 | `6` | Image inventories taken per pass, at most. Each is 20 to 60 seconds of syft. |
+| `security.syft_image` | image reference | a pinned `anchore/syft` | The scanner, run as its own short-lived container. |
+| `security.private_middlewares` | list of names | `[]` | Traefik middleware names (with or without `@provider`) that keep a router off the internet. A service whose router uses none of them, and has no `ClientIP(...)` in its rule, counts as public, which makes its exposure cards louder. |
+
+## `ship`
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `ship.cooldown_days` | number, 0 to 90 | `7` | How old a release must be before it ships on its own, so a broken or hijacked release can be noticed and pulled. A ship you press does not wait. |
+| `ship.max_per_run` | integer, 1 to 50 | `3` | Ships per pass, so a mistake ships a few things and not the backlog. |
+
+## `restore_points`
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `restore_points.keep` | integer, 1 to 20 | `3` | Dumps kept per service. |
+| `restore_points.offsite` | object or `null` | `null` | An MCP server that can run a backup job, asked for an offsite copy beside the dump, or used as the restore point for a stack with no dump command. |
+| `restore_points.offsite.type` | `mcp` | required | The only type. |
+| `restore_points.offsite.url` | URL | required | The MCP endpoint. shipshape sends it unauthenticated `tools/call` requests. |
+| `restore_points.offsite.tool` | string | required | The tool that starts a job; it is called with a `job` argument. |
+| `restore_points.offsite.job` | string | `{stack}` | The job name; `{stack}` is replaced by the stack. A service's `shipshape.backup-job` label wins. |
+| `restore_points.offsite.status_tool` | string | `run_status` | The tool that reports whether the run finished. |
+| `restore_points.offsite.list_tool` | string | `list_jobs` | The tool that lists the jobs that exist. |
+| `restore_points.offsite.wait_minutes` | integer, 1 to 240 | `30` | How long to wait for a backup that is the restore point. |
+| `restore_points.offsite.poll_seconds` | integer, 1 to 300 | `10` | How often to ask whether it finished. |
+
+## `forks`
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `forks.branch` | git branch name | `shipshape` | The branch on a [fork](/shipshape/guides/forks/) that shipshape moves, with a lease, to each replay of your carried fixes. |
+| `forks.tag_prefix` | git tag prefix | `shipshape/` | Each replay is tagged `<tag_prefix><upstream tag>-<short sha>`, so a rollback can rebuild it. |
+
+## `rules`
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `rules` | list of rules | `[]` | Standing **Always ship** decisions. shipshape writes them; you may edit or delete them. |
+| `rules[].id` | `r` and a number | written for you | The rule's name. |
+| `rules[].match.image` | image repository | none | The image, registry included, without tag or digest. |
+| `rules[].match.stack` | string | none | A stack. |
+| `rules[].match.service` | string | none | A service. |
+| `rules[].match.base_build` | `true` | none | One of your own builds, watched through its base image. |
+| `rules[].waive` | list of `ask`, `no-evidence`, `irreversible`, `no-restore-point` | required | The holds the rule lifts. A `lifeline`, an `unsafe` verdict, a `needs-action` list and a `draft` are never in the list: no rule can remove them. |
+| `rules[].because` | string | empty | Your note. |
+
+A rule matches only when every `match` key it names matches, and it must name at least one.
+
+## `exclude_stacks`
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `exclude_stacks` | list of stack names | `[]` | Stacks shipshape never touches. Its own stack (`SELF_STACK`) is always excluded. |
+
+## Keys that are refused
+
+A file that carries any of these keys from the pull-request era is refused as a whole,
+rather than half-read: the error names them, the last good policy or the defaults (paused)
+apply, and Activity reports the refusal until the file is fixed.
+
+`merge_method`, `defaults`, `merge`, `prs`, `revise`, `claude`, `model_tier`,
+`sync.blackout`, `deploy.mode`, `deploy.health_window_s`, `notify.routine`, `notify.cron`,
+`notify.incidents` and `notify.email`. `propose.mode: manual` is refused too: use `off`.
+
+`npm run convert-v1 -- --write` rewrites them; see
+[Migrating from v1](/shipshape/guides/migrating-from-v1/).
+
+## Prompt overrides
+
+The instructions behind the reader and the drafter are files in your repository that you may
+override. Put a Markdown file named for the prompt beside the policy file:
+
+| File | Used for |
+|---|---|
+| `verdict.md` | The reader's verdict on a release. |
+| `proposal.md` | Drafting a config change. |
+| `rule.md` | Choosing how wide an Always ship rule is. |
+| `security.md` | Extracting affected packages from an incident. |
+
+The directory is `prompts/` next to a policy file named `policy.yaml`, and otherwise
+`<name>-prompts/` next to the file: `shipshape-prompts/` for a root `shipshape.yaml`, and
+`ops/foo-prompts/` for a `POLICY_FILE` of `ops/foo.yml`. Deleting an override restores the
+default. A [drafted change](/shipshape/concepts/drafted-changes/) can never write to the
+policy file or to these directories.

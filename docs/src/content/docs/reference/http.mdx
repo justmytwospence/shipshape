@@ -1,6 +1,48 @@
 ---
-title: "HTTP endpoints"
-description: "The endpoints a proxy, a health check or an agent calls."
+title: HTTP endpoints
+description: The endpoints a proxy, a health check or an agent calls.
 ---
+The pages of the interface are the interface, not an API, and they change without notice:
+agents use the [MCP server](/shipshape/guides/mcp/). These are the endpoints with a
+contract.
 
-This page is being written.
+## Endpoints
+
+| Endpoint | Sign-in | What it is |
+|---|---|---|
+| `GET /health` | none | The container health check. `200 {"ok":true,"version":"..."}`, or `503 {"ok":false,"version":"..."}` when the database cannot be read or the main loop has stopped doing its job (no tick due for three idle intervals, or one tick running for over two hours). The body never says why, because it answers without sign-in; the reason is in Activity as `main loop stalled`. |
+| `GET /static/<file>`, `HEAD` | none | The files directly in the image's `public/` directory (the stylesheet, scripts and icons). Nothing else under `/static/` answers, and nothing is served from a subdirectory. Every one of these files is in the public repository. |
+| `GET /login`, `POST /login` | none | The sign-in page and the form's target. **Password mode only.** A wrong password answers 401 with the page again; a body over 4 KB answers `413 Too large`. |
+| `POST /logout` | session | Ends the session. Password mode only. |
+| `GET /act/<token>`, `POST /act/<token>` | session | The [signed link](/shipshape/reference/notifications/#signed-action-links) from a notification: the GET asks, the POST does it. An invalid or expired token answers 404 with a page that says so. |
+| `/mcp` on `MCP_PORT` | bearer token | The [MCP server](/shipshape/guides/mcp/), Streamable HTTP. Every request needs `Authorization: Bearer <MCP_TOKEN>`; without it the answer is `401 {"error":"unauthorized"}`. |
+| `GET /health` on `MCP_PORT` | none | The same health check, on the MCP listener. |
+
+Everything else needs a signed-in user, including `/sw.js`.
+
+## Headers
+
+Every response carries these, denials and static files included:
+
+- `Content-Security-Policy`: `default-src 'none'`; scripts only from the site itself plus
+  one hashed inline script that sets the theme; no `eval`; no inline styles;
+  `frame-ancestors 'none'`; `form-action 'self'`; `base-uri 'none'`.
+- `X-Frame-Options: DENY`
+- `X-Content-Type-Options: nosniff`
+- `Referrer-Policy: no-referrer`
+
+## Status codes
+
+| Code | When |
+|---|---|
+| 302 | A browser navigation without a session, in password mode: to `/login?next=...`. |
+| 401 | No session, in password mode. With `HX-Redirect` to the sign-in page for an htmx request, and with the plain body `Unauthorized` for any other request. |
+| 403 | A missing or mismatched `Origin` on a request that changes something, or, in proxy mode, a request whose peer, header or user the proxy settings do not allow. The body is `Forbidden`. |
+| 404 | An invalid or expired `/act/<token>`. |
+| 413 | A sign-in body over 4 KB. |
+| 429 | Too many failed sign-ins, with `Retry-After` in seconds. |
+| 503 | The setup page, when no sign-in method is configured or the settings contradict each other. |
+| 503 | In proxy mode, a request that changes something when `SHIPSHAPE_ALLOWED_ORIGIN` is missing or invalid. The body is `CSRF protection unavailable`. |
+
+htmx does not swap a 4xx answer into the page, so a verb that fails returns 200 with the page
+unchanged and a warning toast.

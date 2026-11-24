@@ -1,6 +1,150 @@
 ---
-title: "Environment variables"
-description: "Every environment variable shipshape reads."
+title: Environment variables
+description: Every environment variable shipshape reads.
 ---
+Change one and recreate the container for it to apply. Start it with nothing set and it will not crash-loop: every page
+explains what is missing instead. What shipshape does by default, and what a policy key
+overrides, is on the [policy reference](/shipshape/reference/policy/); the
+[example compose files](/shipshape/start/quick-start/) set the variables that matter.
 
-This page is being written.
+## Where your compose files are
+
+`REPO_DIR` and one of `GITHUB_REPO` or `GIT_REMOTE_URL` are required. With neither, the
+setup page lists what is missing.
+
+| Variable | Default | What it is |
+|---|---|---|
+| `REPO_DIR` | none (required) | The checkout of your compose repository, as an absolute path. It must be mounted at the **same path** inside the container as on the host, because `docker compose` resolves relative volume paths and project names on the client. |
+| `GITHUB_REPO` | none | The repository as `owner/repo`, when it lives on github.com. A value that is not `owner/repo` is a setup item. Ignored for the compose repository when `GIT_REMOTE_URL` names another host. |
+| `GIT_REMOTE_URL` | `https://github.com/<GITHUB_REPO>.git` | Where the repository is published, for any git host. It must be an `https://` URL: a plain `http://` remote or an ssh remote is refused with a setup item. It wins over `GITHUB_REPO`. |
+| `GIT_BRANCH` | the branch `origin/HEAD` names in `REPO_DIR`, else `main` | The branch shipshape publishes to. The live checkout must be on it; an unusable name is a setup item. |
+| `GIT_TOKEN` | none | The token for the compose repository, sent only to that remote's host. Required off github.com. On github.com it defaults to `GITHUB_TOKEN`. The token needs permission to push (on GitHub, *Contents: read and write*). |
+| `GIT_USERNAME` | `x-access-token` on github.com; none elsewhere | The username that goes with `GIT_TOKEN`. Required for any host other than github.com. |
+| `GITHUB_TOKEN` | none | Used for three things, and sent only to github.com: the git credential for a github.com remote (unless `GIT_TOKEN` is set), reads of upstream projects' releases through `api.github.com` (which are rate-limited without it), and pushes of [forks](/shipshape/guides/forks/). |
+| `BOT_EMAIL` | `shipshape@localhost` | The author email of the commits shipshape makes. The author name is `shipshape`. |
+| `POLICY_FILE` | see below | Where the [policy file](/shipshape/reference/policy/) is. A relative path is resolved against `REPO_DIR`. |
+| `SELF_STACK` | `shipshape` | The stack directory that holds shipshape itself. It is never updated or deployed, so shipshape cannot recreate its own container. |
+
+The policy file is the first that applies of: `POLICY_FILE`; `shipshape.yaml` in
+`REPO_DIR`, if it exists; the older `<SELF_STACK>/config/policy.yaml` in `REPO_DIR`, if it
+exists; otherwise `shipshape.yaml` in `REPO_DIR`, which the first Settings save or Always
+ship creates.
+
+## Signing in
+
+Exactly one of the password and the trusted proxy must be configured; see
+[Sign-in](/shipshape/guides/sign-in/).
+
+| Variable | Default | What it is |
+|---|---|---|
+| `SHIPSHAPE_PASSWORD` | none | Password mode: the password of the one user, 12 to 1024 characters. Wrap it in single quotes in a `.env` file if it contains `$`, `#` or a space. |
+| `SHIPSHAPE_PASSWORD_FILE` | none | The same password, read from a file such as a Docker secret. One trailing newline is stripped. Setting this and `SHIPSHAPE_PASSWORD` together is a setup error. |
+| `SHIPSHAPE_TRUSTED_PROXY` | none | Proxy mode: the address of your reverse proxy, or a comma-separated list of addresses and CIDR ranges (prefix length 1 to 32, or 1 to 128 for IPv6; `/0` and empty entries are refused). Only a request whose socket peer matches may name a user. List the proxy's own address: a wide range lets every container in it claim any identity. |
+| `SHIPSHAPE_ALLOWED_USER` | none | Proxy mode: the usernames allowed in, comma-separated and case-sensitive. Required with `SHIPSHAPE_TRUSTED_PROXY`. |
+| `SHIPSHAPE_USER_HEADER` | `Remote-User` | Proxy mode: the header your proxy puts the username in. |
+| `SHIPSHAPE_ALLOWED_ORIGIN` | none | The one origin you open shipshape at, as `scheme://host[:port]` with no path or trailing slash. In proxy mode it is required for any button to work: without a valid one every change answers 503, and an invalid value is silently ignored there. In password mode it is recommended: an `https://` origin makes the session cookie Secure, and only that origin can sign in or press buttons (unset, the request's `Origin` host must equal its `Host`). An invalid value is a setup error in password mode. It is also what signed action links are built on. |
+| `SHIPSHAPE_ACTION_SECRET` | none | The key that signs the action links in email, ntfy, Discord, Gotify and Apprise messages. 32 characters or more (`openssl rand -hex 32`); a shorter one disables links and is logged once. Links also need `SHIPSHAPE_ALLOWED_ORIGIN`, and a card carries them only while the [MCP server](/shipshape/guides/mcp/) is enabled. |
+
+## Models
+
+The provider is chosen in this order: a custom endpoint (`LLM_BASE_URL`), then Anthropic,
+then OpenRouter. [Models](/shipshape/guides/models/) explains each. `ANTHROPIC_BASE_URL` and
+`ANTHROPIC_AUTH_TOKEN` are ignored: the Anthropic client always talks to
+`https://api.anthropic.com`.
+
+| Variable | Default | What it is |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | none | A Claude key. Sent only to `https://api.anthropic.com`. |
+| `OPENROUTER_API_KEY` | none | An OpenRouter key. It runs the [screen](/shipshape/concepts/review/) whatever serves the rest, serves the reader when neither of the other two is set, and is the fallback bearer for `LLM_BASE_URL` when `LLM_API_KEY` is unset. |
+| `LLM_BASE_URL` | none | An Anthropic-Messages-compatible endpoint, such as Ollama or LiteLLM. When set it serves every model call and wins over both keys. Any value, however spelled, makes the provider "custom". |
+| `LLM_API_KEY` | falls back to `OPENROUTER_API_KEY` | The bearer for `LLM_BASE_URL`. With neither, no credential is sent. |
+
+## Notifications
+
+A [sink](/shipshape/reference/notifications/) names the variables it reads; these are the
+names the sinks use unless the policy file says otherwise, and a sink may name any other
+variable.
+
+| Variable | Default | What it is |
+|---|---|---|
+| `NOTIFY_URL` | none | A webhook sink's URL (its `url_env`). |
+| `NOTIFY_TOKEN` | none | The webhook sink's bearer (its `token_env`). Optional: without it no `Authorization` header is sent. |
+| `DISCORD_WEBHOOK_URL` | none | A Discord sink's webhook URL (its `url_env`). Anything that is not `https://` counts as unset. |
+| `GOTIFY_TOKEN` | none | A Gotify sink's application token (its `token_env`). |
+| `SMTP_URL` | none | The email sink's connection string, such as `smtps://user:pass@host:465`. It holds credentials, so it lives here and not in the policy file. |
+| `MAIL_TO` | none | The email sink's recipients, comma-separated. Email is sent only when both `SMTP_URL` and `MAIL_TO` are set. |
+| `MAIL_FROM` | `BOT_EMAIL` | The email sink's envelope sender. |
+
+## Registries
+
+| Variable | Default | What it is |
+|---|---|---|
+| `DOCKER_HUB_LOGIN` | none | A Docker Hub username. Docker Hub counts manifest reads as pulls, 100 per six hours per address anonymously and 200 signed in; shipshape keeps a reserve. Sent only to `auth.docker.io`. |
+| `DOCKER_HUB_PASSWORD` | none | The password or access token for `DOCKER_HUB_LOGIN`. |
+
+## MCP
+
+The [MCP server](/shipshape/guides/mcp/) starts only when `MCP_PORT` and a long enough
+`MCP_TOKEN` are both set.
+
+| Variable | Default | What it is |
+|---|---|---|
+| `MCP_PORT` | none (off) | The port of the MCP listener. |
+| `MCP_TOKEN` | none | The bearer every MCP request must send: 32 characters or more, no whitespace. Without it the listener does not start and says why in Activity. |
+| `MCP_HOST` | `0.0.0.0` | The address the MCP listener binds. |
+
+## Process
+
+| Variable | Default | What it is |
+|---|---|---|
+| `DATA_DIR` | `/data` | Where the database, the work clone, the session key and docker's client state live. [Back it up](/shipshape/guides/backup/). |
+| `PORT` | `8080` | The web interface's port. |
+| `TZ` | `UTC` | The time zone of every time shipshape shows and of the scan schedule. |
+
+## Passed to docker compose
+
+Every `docker` command that touches a stack runs with only these variables from shipshape's
+own environment, so none of its keys leak into your stacks' `${VAR}` interpolation: those
+values come from each stack's own `.env`, as they do when you run `docker compose up`
+yourself. Set them on the shipshape container to reach a remote daemon or a registry
+through a proxy.
+
+| Variable | Default | What it is |
+|---|---|---|
+| `PATH` | the image's | Passed to docker compose unchanged. |
+| `DOCKER_HOST` | the local socket | The daemon to talk to. |
+| `DOCKER_CONFIG` | `/data/docker` in the image | Where the docker client keeps its state and a private registry's `config.json`. |
+| `DOCKER_CONTEXT` | none | A docker context to use. |
+| `DOCKER_CERT_PATH` | none | The directory of the TLS certificates for a TLS daemon. |
+| `DOCKER_TLS_VERIFY` | none | Verify the daemon's certificate. |
+| `DOCKER_API_VERSION` | none | Pin the API version. |
+| `HTTP_PROXY` | none | An HTTP proxy for docker's pulls. |
+| `HTTPS_PROXY` | none | An HTTPS proxy for docker's pulls. |
+| `NO_PROXY` | none | Hosts that skip the proxy. |
+| `SSL_CERT_FILE` | none | A CA bundle for docker. |
+| `SSL_CERT_DIR` | none | A directory of CA certificates for docker. |
+
+## Set by the image
+
+You rarely change these.
+
+| Variable | Default | What it is |
+|---|---|---|
+| `HOME` | `/tmp` | So any user ID given with `user:` has a writable home, including under `read_only: true` with a tmpfs on `/tmp`. It is also passed to docker compose. |
+| `SHIPSHAPE_VERSION` | the release | The version shown in the sidebar, on Status and in `/health`. An edge build says `0.2.0+edge.<sha>`. |
+| `SHIPSHAPE_REVISION` | the commit | The commit the image was built from, shown on Status. |
+
+## Used by the example compose files, not by shipshape
+
+The [example compose files](/shipshape/start/quick-start/) read these from the `.env` next
+to them to fill in `user:` and `group_add:`. shipshape never reads them.
+
+| Variable | Default | What it is |
+|---|---|---|
+| `PUID` | `1000` | The user ID that owns your compose checkout: `stat -c '%u' <checkout>`. |
+| `PGID` | `1000` | The group ID that owns it: `stat -c '%g' <checkout>`. |
+| `DOCKER_GID` | none (required) | The group that owns the docker socket: `stat -c %g /var/run/docker.sock`. Without it every deploy fails with `permission denied while trying to connect to the docker API`. |
+
+## Removed
+
+`HOMELAB_REPO` is gone: it is `REPO_DIR` now.

@@ -1,6 +1,189 @@
 ---
-title: "Notification reference"
-description: "Events, keys, priorities and the webhook payload."
+title: Notification reference
+description: Events, keys, priorities and the webhook payload.
 ---
+This is the contract: what shipshape announces, how a message is identified, and what each
+sink type takes and sends. [Notifications](/shipshape/guides/notifications/) is the guide to
+setting them up.
 
-This page is being written.
+Silence means healthy. Nothing is sent when a deploy succeeds or a condition clears, except
+that a **webhook** is told a condition it opened has resolved.
+
+## Events
+
+Each sink may list the events it wants with `events`; with none, it gets all four.
+
+| Event | What fires it |
+|---|---|
+| `decision` | An update is waiting on you: one card per decision, keyed by stack, or by image when one release fans out across many stacks. It escalates once, louder, after `notify.escalate_after_days`, and is resolved the moment the update stops waiting. |
+| `broken` | A deploy failed or could not be run, verification failed, a deploy was rolled back (or the rollback failed), or a service degraded after its verify window. |
+| `security` | A service you run carries a package an incident names, with `security.mode: on`. |
+| `system` | shipshape's own health: a credential the git host refuses, a sync it cannot complete, the monthly budget spent, a screen that missed work the reader found. |
+
+## Keys
+
+A message with a `key` is one condition: a repeat of the key is an edit of the same message,
+and a resolve closes it. A message without a key is a one-off event.
+
+| Key | Event | Meaning |
+|---|---|---|
+| `shipshape:decision:stack:<stack>` | `decision` | Everything in one stack that is waiting on you. |
+| `shipshape:decision:<repository>` | `decision` | One release fanned out across stacks with nothing else waiting. |
+| `shipshape:deploy:<stack>` | `broken` | A deploy of the stack failed, was rolled back, or degraded after it. Resolved when a later deploy of the stack verifies. |
+| `shipshape:security:<slug>` | `security` | One incident that exposes your services. |
+| `shipshape:budget` | `system` | The monthly analysis budget is spent. |
+| `shipshape:sync` | `system` | The checkout could not be brought up to date: sync is paused (wrong branch, an operation in progress), a rebase conflict, or local edits that conflict with a change that shipped. |
+| `shipshape:github-auth` | `system` | The git host is refusing the credentials. The name predates other hosts and is kept on all of them. |
+| `shipshape:screen-miss:<service>` | `system` | The screen called an update routine and the reader found work. A one-off event. |
+| `shipshape:update:<id>` | `decision` | The key of the older per-update cards. Only ever resolved, never sent. |
+| `shipshape-fork-retire:<stack>/<service>` | `system` | A [fork](/shipshape/guides/forks/#retiring-a-fork) can retire because every fix it carries has shipped upstream, or has no upstream path because a fix was closed without one. Priority 3. |
+| `shipshape-fork-conflict:<stack>/<service>` | `system` | A carried commit [no longer applies](/shipshape/guides/forks/#when-a-rebase-conflicts) to the new release. Priority 3. |
+
+## Priorities
+
+Priority is 1 to 5, and 3 when a message does not say.
+
+| Priority | Used for |
+|---|---|
+| 3 | A decision; a deploy that was rolled back cleanly; a security incident that is neither critical nor exploited; sync paused. |
+| 4 | A decision that has waited past the escalation; an exploited incident, or a critical one on a public service; a deploy that failed but left the service up; a service that degraded after its verify window; a rollback that left the stack not fully up; a blocked sync; the budget spent; a screen miss. |
+| 5 | A service that is down after a failed deploy or a failed rollback; a deploy that could not be run at all; a verification failure that was not rolled back; a credential the git host refuses; an incident that is critical, exploited and public. |
+
+How each sink shows it is under its type below.
+
+## Sinks
+
+Every sink is an entry of `notify.sinks` with a `type`. A sink whose variable is unset (no
+URL or token, no SMTP) is skipped whatever the policy says, and a failing sink never stops
+another. Status shows one row for each variable a configured sink reads.
+
+### webhook
+
+JSON to any URL: the only sink that edits a message in place and removes it on resolve.
+`type: webhook`.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `webhook.url_env` | `NOTIFY_URL` | The variable that holds the URL. |
+| `webhook.token_env` | `NOTIFY_TOKEN` | The variable that holds a bearer token. Optional: unset, no `Authorization` header is sent. |
+| `webhook.events` | all four | The events this sink wants. |
+
+### email
+
+Mail through `SMTP_URL` and `MAIL_TO`. `type: email`. It sends when a condition first fires
+and again when it escalates, and says nothing about edits, repeats or resolutions.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `email.events` | all four | The events this sink wants. |
+
+### ntfy
+
+One JSON publish per first fire or escalation. `type: ntfy`. The message's priority 1 to 5
+is passed through unchanged, and at most three action buttons are added, as `view` actions
+that open a signed link.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `ntfy.url` | required | The ntfy server's base URL. shipshape posts to it, with the topic in the JSON body. |
+| `ntfy.topic` | required | The topic. |
+| `ntfy.token_env` | none | The variable that holds an access token, sent as a bearer. |
+| `ntfy.events` | all four | The events this sink wants. |
+
+### discord
+
+One embed per first fire or escalation, posted to a channel webhook, coloured by priority,
+with the signed links as Markdown links. Mentions are disabled, because the text derives
+from release notes. `type: discord`.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `discord.url_env` | `DISCORD_WEBHOOK_URL` | The variable that holds the webhook URL. A value that is not `https://` counts as unset, and Status then shows "missing". |
+| `discord.events` | all four | The events this sink wants. |
+
+### gotify
+
+One plain-text message per first fire or escalation: Gotify's Markdown downloads images, and
+the text derives from release notes. The card's link is the notification's click URL, and
+the signed links are lines of the text. `type: gotify`.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `gotify.url` | required | The Gotify server's base URL. |
+| `gotify.token_env` | `GOTIFY_TOKEN` | The variable that holds an application token. |
+| `gotify.events` | all four | The events this sink wants. |
+
+shipshape maps its priorities 1, 2, 3, 4, 5 to Gotify's 1, 3, 5, 8, 10.
+
+### apprise
+
+One notification per first fire or escalation, through an Apprise API server that fans it
+out to whatever services it is set up for. `type: apprise`. Priority 1 to 3 is sent as type
+`info`, 4 as `warning`, 5 as `failure`.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `apprise.url` | required | The full notify endpoint: `.../notify/<key>` for a saved configuration, or `.../notify` with stateless URLs set on the server. |
+| `apprise.tag` | none | Which of the server's tagged services to notify. |
+| `apprise.auth_env` | none | The variable that holds `user:password` for the server's Basic auth. A variable that is named but unset or empty disables the sink: it does not fall back to no authentication. |
+| `apprise.events` | all four | The events this sink wants. |
+
+## Webhook payload
+
+shipshape sends `POST <url>` with `content-type: application/json`, an `authorization:
+Bearer <token>` header when a token is set, and a ten-second timeout. Any answer that is not
+2xx is a failure.
+
+A condition that fires, or a one-off event:
+
+| Field | Content |
+|---|---|
+| `key` | The condition's key from the table above. Absent on a one-off event. |
+| `source` | Always `"shipshape"`. |
+| `title` | The headline. |
+| `message` | The body, as plain text. |
+| `priority` | 1 to 5; 3 when unset. |
+| `status` | `"firing"` when there is a key, `"event"` when there is none. |
+| `click` | Optional: a link to the card in the interface, when `SHIPSHAPE_ALLOWED_ORIGIN` is set. |
+| `actions` | Optional: a list of `{emoji, label, do}`, where `emoji` is one emoji character and `do` says what to call back. |
+
+`do` is `{target: "shipshape", verb, update: <id>}` for an update verb (`ship`, `snooze`,
+`always-ship`, `skip`), and `{target: "shipshape", verb: "retry" or "rollback", stack}` on a
+deploy card. Actions are present only while the [MCP server](/shipshape/guides/mcp/) is
+enabled (`MCP_PORT` and an `MCP_TOKEN` of 32 characters or more): a receiver calls the verb
+back through the MCP `update_action` or `stack_action` tool.
+
+A condition that clears:
+
+| Field | Content |
+|---|---|
+| `key` | The condition's key. |
+| `source` | `"shipshape"`. |
+| `status` | `"resolved"`. |
+| `redact` | Optional `true`: delete the message instead of marking it resolved. Used for decision cards, whose history is in git and Activity. |
+
+A resolve is sent only for a key this instance opened.
+
+### Delivery
+
+Delivery is at least once. A message that could not be handed over is kept in the database
+and retried on every loop tick, oldest first and at most 20 a tick, stopping at the first
+failure; the latest state of each key wins. A one-off event is dropped after 1440 failed
+attempts, and a keyed state is kept until it goes through. The other sinks do not retry: a
+failed send is logged and the next fire of the condition tries again.
+
+Two webhook sinks share one retry table, so their pending state collides. Use one webhook
+sink.
+
+## Signed action links
+
+Email, ntfy, Discord, Gotify and Apprise cannot call back, so a decision's verbs become
+links, for update verbs only. The webhook never carries them, and **retry** and **roll back**
+of a deploy exist only as webhook and MCP actions.
+
+A link is `<SHIPSHAPE_ALLOWED_ORIGIN>/act/<token>`. The token is signed with
+`SHIPSHAPE_ACTION_SECRET`, names one verb on one update, and is valid for 14 days. Opening
+it shows a confirmation page that says what will happen; only the button on that page does
+it. The link sits behind the same sign-in as everything else, so a leaked link alone does
+nothing, and signing in returns you to it. Links need all of: a `SHIPSHAPE_ACTION_SECRET` of
+32 characters or more, `SHIPSHAPE_ALLOWED_ORIGIN`, and the MCP server enabled.

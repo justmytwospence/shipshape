@@ -23,7 +23,8 @@ delete process.env.NOTIFY_URL
 after(() => rmSync(dir, { recursive: true, force: true }))
 
 const { getDb } = await import('../src/db.ts')
-const { buildBranch, changeTitle, upstreamRefAt } = await import('../src/gitops/ship.ts')
+const { buildBranch, upstreamRefAt } = await import('../src/gitops/build.ts')
+const { changeTitle } = await import('../src/gitops/body.ts')
 const { carriedFixesSection } = await import('../src/gitops/body.ts')
 const { forkConflictFor, forkPreparedFor } = await import('../src/forks.ts')
 const { PolicySchema } = await import('../src/config.ts')

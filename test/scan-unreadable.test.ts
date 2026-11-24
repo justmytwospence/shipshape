@@ -19,7 +19,7 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 
 const { getDb } = await import('../src/db.ts')
 const { runScan } = await import('../src/scan.ts')
-const { composeFileFor } = await import('../src/gitops/ship.ts')
+const { composeFileFor } = await import('../src/images/rows.ts')
 
 const APP = join(repo, 'app', 'docker-compose.yaml')
 const services = () =>

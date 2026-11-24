@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { retiredKeys, validatePolicyText } from '../src/config.ts'
+import { validatePolicyText } from '../src/config.ts'
+import { retiredKeys } from '../src/policy-schema.ts'
 import { applyPolicyEdits, planPolicy, planServiceLabels, type LabelEdit } from '../src/v1/convert.ts'
 
 /**

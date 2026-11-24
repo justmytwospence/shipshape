@@ -110,7 +110,7 @@ test('unpricedCost reports tokens and no cost', async () => {
 
 test('web tools follow review.web', async () => {
   const { webEnabled } = await import('../src/analyze/tools.ts')
-  const { PolicySchema } = await import('../src/config.ts')
+  const { PolicySchema } = await import('../src/policy-schema.ts')
   assert.equal(webEnabled(PolicySchema.parse({})), true)
   assert.equal(webEnabled(PolicySchema.parse({ review: { web: 'off' } })), false)
   assert.equal(webEnabled(PolicySchema.parse({}), 'custom'), false)

@@ -1,5 +1,6 @@
 import { parse as parseYaml } from 'yaml'
-import { retiredKeys, validatePolicyText } from '../config.ts'
+import { validatePolicyText } from '../config.ts'
+import { retiredKeys } from '../policy-schema.ts'
 import { removeValue, setValue, spliceValue } from '../settings/yaml.ts'
 
 /**

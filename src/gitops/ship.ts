@@ -1,4 +1,6 @@
-import { configured, gitBranch, gitCredentialProblem, loadPolicy, type Policy } from '../config.ts'
+import { loadPolicy } from '../config.ts'
+import { type Policy } from '../policy-schema.ts'
+import { configured, gitBranch, gitCredentialProblem } from '../env.ts'
 import { getDb } from '../db.ts'
 import { logEvent } from '../events.ts'
 import { type GroupMember, type UpdateGroup } from '../groups.ts'

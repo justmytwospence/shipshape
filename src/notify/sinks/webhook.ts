@@ -1,5 +1,5 @@
-import { env, mcpEnabled } from '../../config.ts'
-import type { Sink } from '../../config.ts'
+import { env, mcpEnabled } from '../../env.ts'
+import type { Sink } from '../../policy-schema.ts'
 import { getDb } from '../../db.ts'
 import { logEvent } from '../../events.ts'
 import type { IncidentAction, IncidentStatus, Message, Priority } from '../types.ts'

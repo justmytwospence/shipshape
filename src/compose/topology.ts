@@ -1,4 +1,5 @@
-import { env, type Policy } from '../config.ts'
+import { type Policy } from '../policy-schema.ts'
+import { env } from '../env.ts'
 import { includedStacks, scanRepo } from './scan.ts'
 import { getDb } from '../db.ts'
 import { readFileSync } from 'node:fs'

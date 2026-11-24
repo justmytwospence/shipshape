@@ -37,7 +37,7 @@ test('only the client module constructs an Anthropic client', () => {
 test('only the client module reads a model credential out of the environment', () => {
   // config.ts declares them; everything else asks the client module instead. A direct
   // read is how a call site ends up deciding the provider for itself.
-  const offenders = ALL.filter((f) => f !== 'analyze/client.ts' && f !== 'config.ts').filter((f) =>
+  const offenders = ALL.filter((f) => f !== 'analyze/client.ts' && f !== 'env.ts').filter((f) =>
     /\benv\.(anthropicApiKey|openrouterApiKey|llmBaseUrl|llmApiKey)\b/.test(read(f)),
   )
   assert.deepEqual(offenders, [])

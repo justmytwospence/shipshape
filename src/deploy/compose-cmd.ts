@@ -1,4 +1,4 @@
-import { env } from '../config.ts'
+import { env } from '../env.ts'
 import { isRootStack } from '../compose/topology.ts'
 import { composeFileOfStack, overrideFor } from '../compose/files.ts'
 import type { DeployTarget } from './types.ts'

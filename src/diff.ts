@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { LineCounter, parseDocument, isScalar } from 'yaml'
-import { env } from './config.ts'
+import { env } from './env.ts'
 import { getDb } from './db.ts'
 import { bumpFork, retireFork } from './compose/fork-edit.ts'
 import { forkConflictFor, forkPreparedFor, type ForkPrepared } from './forks.ts'

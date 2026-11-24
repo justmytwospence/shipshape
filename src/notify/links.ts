@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { allowedOrigin, env } from '../config.ts'
+import { allowedOrigin, env } from '../env.ts'
 import { logEvent } from '../events.ts'
 import type { IncidentAction } from './types.ts'
 

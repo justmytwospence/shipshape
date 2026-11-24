@@ -1,5 +1,5 @@
 import { createTransport, type Transporter } from 'nodemailer'
-import { env } from '../config.ts'
+import { env } from '../env.ts'
 import { logEvent } from '../events.ts'
 
 /**

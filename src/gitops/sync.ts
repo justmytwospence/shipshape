@@ -1,4 +1,5 @@
-import { env, gitBranch, loadPolicy } from '../config.ts'
+import { loadPolicy } from '../config.ts'
+import { env, gitBranch } from '../env.ts'
 import { logEvent } from '../events.ts'
 import { notifyOnce, clearNotifyState as clearReason, notify, resolveIncident } from '../notify/index.ts'
 

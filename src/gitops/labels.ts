@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { execa } from 'execa'
-import { canPublish, env } from '../config.ts'
+import { canPublish, env } from '../env.ts'
 import { getDb } from '../db.ts'
 import { logEvent } from '../events.ts'
 import { setLabel } from '../compose/edit.ts'

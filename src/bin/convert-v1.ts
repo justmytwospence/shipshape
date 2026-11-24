@@ -17,7 +17,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative } from 'node:path'
-import { botIdentity, configured, env, gitBranch, paths } from '../config.ts'
+import { botIdentity, configured, env, gitBranch, paths } from '../env.ts'
 import { scanRepo } from '../compose/scan.ts'
 import { setLabel } from '../compose/edit.ts'
 import { composeRejects } from '../gitops/labels.ts'

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { failureState, nextStep } from '../src/deploy/outcome.ts'
 import { manualCommand } from '../src/deploy/compose-cmd.ts'
 import { type DeployTarget } from '../src/deploy/types.ts'
-import { PolicySchema } from '../src/config.ts'
+import { PolicySchema } from '../src/policy-schema.ts'
 
 /**
  * The command an operator pastes, and what a failed deploy left behind.

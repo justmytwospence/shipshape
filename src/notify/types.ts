@@ -1,4 +1,4 @@
-import type { EventClass } from '../config.ts'
+import type { EventClass } from '../policy-schema.ts'
 
 export type Priority = 1 | 2 | 3 | 4 | 5
 

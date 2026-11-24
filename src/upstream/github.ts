@@ -1,4 +1,4 @@
-import { env } from '../config.ts'
+import { env } from '../env.ts'
 import { pace, readCache, touchCache, writeCache, type CacheRow } from '../registry/http.ts'
 
 /**

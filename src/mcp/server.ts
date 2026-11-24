@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
-import { gitBranch } from '../config.ts'
+import { gitBranch } from '../env.ts'
 import { logEvent } from '../events.ts'
 import { buildUpdateDiff } from '../diff.ts'
 import { isScanning } from '../scan/index.ts'

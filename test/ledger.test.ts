@@ -17,7 +17,7 @@ process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'shipshape-ledger-'))
 delete process.env.REPO_DIR
 
 const { getDb } = await import('../src/db.ts')
-const { PolicySchema } = await import('../src/config.ts')
+const { PolicySchema } = await import('../src/policy-schema.ts')
 const { recordCost, recordUnanswered, recordSpend, monthlySpend, isTimeout } = await import(
   '../src/analyze/claude.ts'
 )

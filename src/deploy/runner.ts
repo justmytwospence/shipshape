@@ -1,4 +1,4 @@
-import { env } from '../config.ts'
+import { env } from '../env.ts'
 import { getDb } from '../db.ts'
 import { logEvent } from '../events.ts'
 import { syncMain, type SyncResult } from '../gitops/sync.ts'

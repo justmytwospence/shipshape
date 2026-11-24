@@ -29,7 +29,7 @@ const { checkFork, reconcileForks, forkRefs, forkVerdict, forkIncidentKey, newes
   await import('../src/forks.ts')
 const { eligibleGroups } = await import('../src/gitops/eligible.ts')
 const { isFork } = await import('../src/images/rows.ts')
-const { PolicySchema } = await import('../src/config.ts')
+const { PolicySchema } = await import('../src/policy-schema.ts')
 const { mockFetch, assertAllMocked, json, status } = await import('./helpers/http.ts')
 const { parseImageRef } = await import('../src/images/ref.ts')
 const { scannedService } = await import('./helpers/scanned.ts')

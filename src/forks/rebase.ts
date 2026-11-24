@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { env } from '../config.ts'
+import { env } from '../env.ts'
 import { FORKS_GUIDE_URL } from '../links.ts'
 import { authorArgs, git } from '../gitops/repo.ts'
 import { parseForkRef } from '../upstream/forks.ts'

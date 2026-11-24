@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
-import { botIdentity, env, gitBranch, paths, validatePolicyText } from '../config.ts'
+import { validatePolicyText } from '../config.ts'
+import { botIdentity, env, gitBranch, paths } from '../env.ts'
 import { POLICY_STARTER } from '../policy-starter.ts'
 import { git, withGitLock } from './repo.ts'
 import { inProgress } from './sync.ts'

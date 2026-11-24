@@ -87,7 +87,7 @@ test('health starts clean, and is what the Status page reads', () => {
 
 test('probeMethod: the API only with GITHUB_TOKEN as the git credential, ls-remote otherwise', async () => {
   const { probeMethod } = await import('../src/health/github-auth.ts')
-  const { parseRemote } = await import('../src/config.ts')
+  const { parseRemote } = await import('../src/env.ts')
   const gh = parseRemote('', 'me/c')
   assert.equal(probeMethod({ remote: gh, githubRepo: 'me/c', gitToken: 'g', githubToken: 'g' }), 'api')
   assert.equal(probeMethod({ remote: gh, githubRepo: 'me/c', gitToken: 'x', githubToken: 'g' }), 'ls-remote')

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { PolicySchema } from '../src/config.ts'
+import { PolicySchema } from '../src/policy-schema.ts'
 import { classFor, foldGroupClass, foldGroupMagnitude, normaliseClass, repositoryOf, shortRepository } from '../src/policy.ts'
 
 /**

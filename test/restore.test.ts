@@ -19,7 +19,7 @@ const { getDb } = await import('../src/db.ts')
 const { takeRestorePoint, stackHasSnapshot } = await import('../src/restore/index.ts')
 const { runOffsite, offsiteJob, runOffsiteAndWait, refreshOffsiteJobs, setOffsiteJobs, hasOffsiteJob } = await import('../src/restore/offsite.ts')
 const { canRestore } = await import('../src/restore/index.ts')
-const { PolicySchema } = await import('../src/config.ts')
+const { PolicySchema } = await import('../src/policy-schema.ts')
 
 type Io = import('../src/restore/index.ts').RestoreIo
 type Fetch = import('../src/restore/offsite.ts').Fetch

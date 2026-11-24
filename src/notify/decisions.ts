@@ -1,6 +1,6 @@
 import { loadPolicy } from '../config.ts'
 import { getDb } from '../db.ts'
-import { allowedOrigin, env, mcpEnabled } from '../config.ts'
+import { allowedOrigin, env, mcpEnabled } from '../env.ts'
 import { short } from '../updates/vocabulary.ts'
 import { shortRepository } from '../policy.ts'
 import { currentDecisions, type Decision } from '../updates/holds.ts'

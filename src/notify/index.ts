@@ -1,4 +1,5 @@
-import { loadPolicy, type EventClass, type Sink } from '../config.ts'
+import { loadPolicy } from '../config.ts'
+import { type EventClass, type Sink } from '../policy-schema.ts'
 import { sendEmailSink, configured as emailConfigured } from './sinks/email.ts'
 import { sendNtfy } from './sinks/ntfy.ts'
 import { discordUrl, sendDiscord } from './sinks/discord.ts'

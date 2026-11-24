@@ -48,7 +48,8 @@ globalThis.fetch = (async (_url: unknown, init: { body: unknown }) => {
 }) as unknown as typeof fetch
 
 const { getDb } = await import('../src/db.ts')
-const { loadPolicy, PolicySchema } = await import('../src/config.ts')
+const { loadPolicy } = await import('../src/config.ts')
+const { PolicySchema } = await import('../src/policy-schema.ts')
 const { parseIndex, storeIncidents } = await import('../src/security/feed.ts')
 const { runExtraction, normaliseTargets, incidentTargets } = await import('../src/security/extract.ts')
 const { computeExposures, recordExposures, verifyFixes, securityFixFor, syncSecurityCards, candidateRef, isPublic, priorityOf } =

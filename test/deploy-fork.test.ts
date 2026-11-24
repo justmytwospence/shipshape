@@ -47,7 +47,7 @@ const { failureState } = await import('../src/deploy/outcome.ts')
 const { manualCommand, pullArgs } = await import('../src/deploy/compose-cmd.ts')
 const { buildableServices } = await import('../src/compose/topology.ts')
 const { performRollback } = await import('../src/deploy/rollback.ts')
-const { PolicySchema } = await import('../src/config.ts')
+const { PolicySchema } = await import('../src/policy-schema.ts')
 const { composeCalls, fakeIo } = await import('./helpers/deploy-io.ts')
 type DeployTarget = import('../src/deploy/types.ts').DeployTarget
 

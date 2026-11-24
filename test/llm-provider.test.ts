@@ -7,7 +7,7 @@ process.env.ANTHROPIC_API_KEY = 'sk-ant-test'
 process.env.OPENROUTER_API_KEY = 'sk-or-test'
 
 const { llmProvider, decisionsKey, modelsEndpoint } = await import('../src/analyze/client.ts')
-const { DEFAULT_READER_MODEL, DEFAULT_CODE_MODEL } = await import('../src/config.ts')
+const { DEFAULT_READER_MODEL, DEFAULT_CODE_MODEL } = await import('../src/policy-schema.ts')
 
 test('with both keys, Messages go to Anthropic and the screen stays on OpenRouter', () => {
   assert.equal(llmProvider(), 'anthropic')

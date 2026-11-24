@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { env, loadPolicy } from '../config.ts'
+import { loadPolicy } from '../config.ts'
+import { env } from '../env.ts'
 import { getDb } from '../db.ts'
 import { logEvent } from '../events.ts'
 import { analyze, budgetExhausted, type ReviewedVerdict, type Verdict } from './claude.ts'

@@ -1,4 +1,4 @@
-import { env } from '../config.ts'
+import { env } from '../env.ts'
 
 /**
  * Times as the server sees them. Activity groups lines by day on the server, so its day

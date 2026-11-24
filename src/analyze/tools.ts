@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk'
 import { baseModel, llmProvider } from './client.ts'
-import type { LlmProvider, Policy } from '../config.ts'
+import type { Policy } from '../policy-schema.ts'
+import type { LlmProvider } from '../env.ts'
 
 /**
  * The web tools each model is actually allowed to use, and how much they may read.

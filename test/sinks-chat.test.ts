@@ -23,7 +23,7 @@ process.env.EMPTY_VAR = ''
 after(() => rmSync(root, { recursive: true, force: true }))
 
 const { getDb } = await import('../src/db.ts')
-const { SinkSchema } = await import('../src/config.ts')
+const { SinkSchema } = await import('../src/policy-schema.ts')
 const { notify, activeChannels } = await import('../src/notify/index.ts')
 const { sendDiscord, resetDiscordSink } = await import('../src/notify/sinks/discord.ts')
 const { sendGotify, resetGotifySink } = await import('../src/notify/sinks/gotify.ts')

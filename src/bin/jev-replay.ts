@@ -24,7 +24,7 @@ import { getDb } from '../db.ts'
 import { screenBump } from '../analyze/screen/run.ts'
 import { decideScreen, flagsOf, THRESHOLDS, type Thresholds } from '../analyze/screen/decide.ts'
 import type { Answer } from '../analyze/jev.ts'
-import { env } from '../config.ts'
+import { env } from '../env.ts'
 import { composeFileOfStack } from '../compose/files.ts'
 
 const args = process.argv.slice(2)

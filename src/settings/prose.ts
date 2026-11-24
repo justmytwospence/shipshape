@@ -1,5 +1,5 @@
 import type { SectionName } from './defs.ts'
-import { gitBranch } from '../config.ts'
+import { gitBranch } from '../env.ts'
 
 /**
  * Why each setting exists, next to the setting.

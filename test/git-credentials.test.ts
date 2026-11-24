@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { parseRemote } from '../src/config.ts'
+import { parseRemote } from '../src/env.ts'
 import { credentialArgs } from '../src/gitops/credentials.ts'
 
 /** A token goes to the host it belongs to, and to no other. */

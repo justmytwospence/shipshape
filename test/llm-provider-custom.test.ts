@@ -16,7 +16,7 @@ process.env.OPENROUTER_API_KEY = 'sk-or-test'
 after(() => rmSync(dir, { recursive: true, force: true }))
 
 const { llmClient, llmProvider, decisionsKey, modelsEndpoint } = await import('../src/analyze/client.ts')
-const { DEFAULT_READER_MODEL, DEFAULT_CODE_MODEL, MODEL_DEFAULTS, PolicySchema } = await import('../src/config.ts')
+const { DEFAULT_READER_MODEL, DEFAULT_CODE_MODEL, MODEL_DEFAULTS, PolicySchema } = await import('../src/policy-schema.ts')
 const { readerOn } = await import('../src/policy.ts')
 const { listModels } = await import('../src/analyze/models.ts')
 const { recordCost, recordSpend, budgetExhausted } = await import('../src/analyze/claude.ts')

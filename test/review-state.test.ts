@@ -13,7 +13,7 @@ delete process.env.ANTHROPIC_API_KEY
 delete process.env.OPENROUTER_API_KEY
 delete process.env.LLM_BASE_URL
 
-const { PolicySchema } = await import('../src/config.ts')
+const { PolicySchema } = await import('../src/policy-schema.ts')
 const { reviewOffReason } = await import('../src/analyze/review-state.ts')
 const { reviewExpected } = await import('../src/gitops/policy-inputs.ts')
 

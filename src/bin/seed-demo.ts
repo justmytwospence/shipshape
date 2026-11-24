@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
-import { configured, env, loadPolicy, paths } from '../config.ts'
+import { loadPolicy } from '../config.ts'
+import { configured, env, paths } from '../env.ts'
 import { getDb } from '../db.ts'
 import { logEvent, type EventKind } from '../events.ts'
 import { scanRepo } from '../compose/scan.ts'

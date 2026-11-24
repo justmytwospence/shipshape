@@ -1,6 +1,6 @@
 import { execa } from 'execa'
 import { basename } from 'node:path'
-import { env } from '../config.ts'
+import { env } from '../env.ts'
 import { includedStacks } from '../compose/scan.ts'
 import { dockerEnvOptions } from '../docker/env.ts'
 

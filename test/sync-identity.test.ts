@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { botIdentity as authorArgs } from '../src/config.ts'
+import { botIdentity as authorArgs } from '../src/env.ts'
 
 /**
  * Every git command that writes a commit must carry an identity.

@@ -1,4 +1,4 @@
-import type { Policy } from '../config.ts'
+import type { Policy } from '../policy-schema.ts'
 import { llmConfigured } from './client.ts'
 import { budgetExhausted } from './claude.ts'
 import { reviewMode } from '../policy.ts'

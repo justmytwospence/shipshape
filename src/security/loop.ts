@@ -1,4 +1,5 @@
-import { configured, loadPolicy } from '../config.ts'
+import { loadPolicy } from '../config.ts'
+import { configured } from '../env.ts'
 import { getDb } from '../db.ts'
 import { logEvent } from '../events.ts'
 import { createTicker, type Ticker } from '../loop/ticker.ts'

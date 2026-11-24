@@ -23,7 +23,7 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 
 const { getDb } = await import('../src/db.ts')
 const { appendRule, describeRule, fallbackRule, inferRule, nextRuleId, validateDraft } = await import('../src/rules.ts')
-const { PolicySchema } = await import('../src/config.ts')
+const { PolicySchema } = await import('../src/policy-schema.ts')
 const { ruleMatches } = await import('../src/policy.ts')
 
 const g = (args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: repo, encoding: 'utf8' }).trim()

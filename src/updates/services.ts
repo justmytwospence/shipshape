@@ -1,5 +1,6 @@
 import { getDb } from '../db.ts'
-import { loadPolicy, env } from '../config.ts'
+import { loadPolicy } from '../config.ts'
+import { env } from '../env.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'
 import { patternFor } from '../detect.ts'
 import { classFor, type ServiceClass } from '../policy.ts'

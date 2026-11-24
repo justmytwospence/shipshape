@@ -1,5 +1,5 @@
 import { execa } from 'execa'
-import { env, gitBranch, gitCredentialName, type GitRemote } from '../config.ts'
+import { env, gitBranch, gitCredentialName, type GitRemote } from '../env.ts'
 import { logEvent } from '../events.ts'
 import { notify, resolveIncident } from '../notify/index.ts'
 import { ghRequest } from '../upstream/github.ts'

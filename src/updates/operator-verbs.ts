@@ -1,5 +1,5 @@
 import { closeLocalChange } from '../gitops/drafts.ts'
-import { gitBranch } from '../config.ts'
+import { gitBranch } from '../env.ts'
 import { runProposePass } from '../propose/run.ts'
 import { appendRule, describeRule, inferRule, publishRule } from '../rules.ts'
 import { wakeLoop } from '../loop/wake.ts'

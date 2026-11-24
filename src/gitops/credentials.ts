@@ -1,4 +1,4 @@
-import { env, type GitRemote } from '../config.ts'
+import { env, type GitRemote } from '../env.ts'
 
 /**
  * Which credential git is offered, and for which host.

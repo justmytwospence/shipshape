@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { PolicySchema, type Rule } from '../src/config.ts'
+import { PolicySchema, type Rule } from '../src/policy-schema.ts'
 import {
   applyRules,
   blocking,

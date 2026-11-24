@@ -1,4 +1,4 @@
-import type { Policy } from '../config.ts'
+import type { Policy } from '../policy-schema.ts'
 import { logEvent } from '../events.ts'
 
 /**

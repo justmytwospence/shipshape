@@ -1,4 +1,5 @@
-import { env, loadPolicy, policyFileState } from './config.ts'
+import { loadPolicy, policyFileState } from './config.ts'
+import { env } from './env.ts'
 import { closeDb, getDb } from './db.ts'
 import { logEvent } from './events.ts'
 import { compactOnce } from './db/retention.ts'

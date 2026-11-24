@@ -7,7 +7,7 @@ import { SignOutForm } from './auth.tsx'
 import { DOCS_URL } from '../../../links.ts'
 import { ExtLink } from './parts.tsx'
 import { describeRule } from '../../../rules.ts'
-import type { Rule } from '../../../config.ts'
+import type { Rule } from '../../../policy-schema.ts'
 
 /**
  * Settings: one page, in the order an update travels through shipshape.

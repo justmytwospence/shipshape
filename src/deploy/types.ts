@@ -1,4 +1,4 @@
-import { type Policy } from '../config.ts'
+import { type Policy } from '../policy-schema.ts'
 import { type ServiceObservation, type ServiceSnapshot } from './probe.ts'
 import { type Verdict } from './verify.ts'
 import { type LeftService, type RecordedPlan } from './runstate.ts'

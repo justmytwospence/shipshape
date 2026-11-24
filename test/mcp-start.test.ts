@@ -14,7 +14,7 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 
 const { getDb } = await import('../src/db.ts')
 const { startMcpServer } = await import('../src/mcp/listen.ts')
-const { mcpEnabled } = await import('../src/config.ts')
+const { mcpEnabled } = await import('../src/env.ts')
 
 test('the listener does not start without a token, and says why', () => {
   assert.equal(startMcpServer(), null)

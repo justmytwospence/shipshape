@@ -20,7 +20,7 @@ import type { Milestone } from '../../src/updates/timeline.ts'
 import type { UpdateView } from '../../src/updates/view.ts'
 import { present } from '../../src/updates/present.ts'
 import { setupSteps } from '../../src/web/onboarding.ts'
-import { PolicySchema } from '../../src/config.ts'
+import { PolicySchema } from '../../src/policy-schema.ts'
 
 /**
  * Every view, rendered without a database, a token or a network.

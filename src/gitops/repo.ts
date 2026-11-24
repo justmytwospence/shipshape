@@ -1,6 +1,6 @@
 import { execa, type Options } from 'execa'
 import { existsSync, rmSync } from 'node:fs'
-import { botIdentity, env, paths } from '../config.ts'
+import { botIdentity, env, paths } from '../env.ts'
 import { logEvent } from '../events.ts'
 import { background } from '../lifecycle.ts'
 import { credentialArgs, credentialEnv } from './credentials.ts'

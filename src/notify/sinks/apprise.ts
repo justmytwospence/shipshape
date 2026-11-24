@@ -1,4 +1,4 @@
-import type { Sink } from '../../config.ts'
+import type { Sink } from '../../policy-schema.ts'
 import { logEvent } from '../../events.ts'
 import { messageLinks } from '../links.ts'
 import type { Message, Priority } from '../types.ts'

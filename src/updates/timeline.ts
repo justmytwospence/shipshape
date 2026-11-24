@@ -1,5 +1,5 @@
 import { getDb } from '../db.ts'
-import { gitBranch } from '../config.ts'
+import { gitBranch } from '../env.ts'
 import { VERDICT_LABEL } from './vocabulary.ts'
 import { readRecordedPlan } from '../deploy/runstate.ts'
 import { updateView } from './view.ts'

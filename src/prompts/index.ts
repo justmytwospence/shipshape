@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { paths } from '../config.ts'
+import { paths } from '../env.ts'
 
 /**
  * The system prompts, and the operator's overrides of them.

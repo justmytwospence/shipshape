@@ -1,4 +1,4 @@
-import { env } from '../config.ts'
+import { env } from '../env.ts'
 import { fetchJson, registryFetch, RegistryError } from './http.ts'
 
 /** The repository publishes too many tags to enumerate safely. Callers should fall back

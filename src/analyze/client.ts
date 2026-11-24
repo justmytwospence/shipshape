@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { env, providerOf, type LlmProvider } from '../config.ts'
+import { env, providerOf, type LlmProvider } from '../env.ts'
 
 /**
  * One place that decides who serves the model, and under what credential.

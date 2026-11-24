@@ -5,7 +5,7 @@ import { actionsFor, refusalFor, type ActionContext, type Verb } from './actions
 import { carriedFor, linkDeployUpdates } from '../deploy/queue.ts'
 import { launchDeploy, launchOnStack, stackBusy } from '../deploy/runner.ts'
 import { performRollback, revertArgs } from '../deploy/rollback.ts'
-import { env } from '../config.ts'
+import { env } from '../env.ts'
 import { holdsForRow, type HoldRow } from './holds.ts'
 import { type DeployIo, type DeployTarget } from '../deploy/types.ts'
 import { stackPeers, withNamespacePeers } from '../compose/topology.ts'

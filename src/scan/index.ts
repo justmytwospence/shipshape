@@ -1,4 +1,6 @@
-import { configured, env, loadPolicy, type Policy } from '../config.ts'
+import { loadPolicy } from '../config.ts'
+import { type Policy } from '../policy-schema.ts'
+import { configured, env } from '../env.ts'
 import { getDb } from '../db.ts'
 import { logEvent } from '../events.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'

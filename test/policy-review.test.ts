@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { PolicySchema, retiredKeys, validatePolicyText } from '../src/config.ts'
+import { validatePolicyText } from '../src/config.ts'
+import { PolicySchema, retiredKeys } from '../src/policy-schema.ts'
 import { readerOn, reviewMode } from '../src/policy.ts'
 
 /**

@@ -11,7 +11,7 @@ const dir = mkdtempSync(join(tmpdir(), 'shipshape-compact-'))
 process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 
-const { paths } = await import('../src/config.ts')
+const { paths } = await import('../src/env.ts')
 const { getDb } = await import('../src/db.ts')
 const { compactOnce } = await import('../src/db/retention.ts')
 

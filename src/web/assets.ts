@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { env } from '../config.ts'
+import { env } from '../env.ts'
 
 /**
  * A static asset's URL with its content hash, so a browser (and the service worker) can

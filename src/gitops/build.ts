@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { gitBranch, loadPolicy } from '../config.ts'
+import { loadPolicy } from '../config.ts'
+import { gitBranch } from '../env.ts'
 import { bumpFork, readForkPin, retireFork } from '../compose/fork-edit.ts'
 import { clearForkConflict, forkRefs, recordForkConflict, recordForkPrepared } from '../forks.ts'
 import { prepareFork as realPrepareFork, upstreamUrlFor, type PrepareForkInput, type PrepareForkResult } from '../forks/rebase.ts'

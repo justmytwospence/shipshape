@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { paths } from '../config.ts'
+import { paths } from '../env.ts'
 import { getDb } from '../db.ts'
 import { logEvent } from '../events.ts'
 import type { UpdateGroup } from '../groups.ts'

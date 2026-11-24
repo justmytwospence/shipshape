@@ -1,4 +1,5 @@
-import { DEFAULT_CODE_MODEL, DEFAULT_READER_MODEL, gitBranch, type Policy } from '../config.ts'
+import { DEFAULT_CODE_MODEL, DEFAULT_READER_MODEL, type Policy } from '../policy-schema.ts'
+import { gitBranch } from '../env.ts'
 
 export type SettingKind =
   | 'enum'

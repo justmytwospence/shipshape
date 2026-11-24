@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import { existsSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { paths } from './config.ts'
+import { paths } from './env.ts'
 
 /**
  * Runtime state only. Policy is tracked YAML in the watched repository; per-service config is

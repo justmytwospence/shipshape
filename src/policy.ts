@@ -1,4 +1,4 @@
-import type { Policy, Rule } from './config.ts'
+import type { Policy, Rule } from './policy-schema.ts'
 import { parseImageRef } from './images/ref.ts'
 import type { Magnitude } from './versions/patterns.ts'
 

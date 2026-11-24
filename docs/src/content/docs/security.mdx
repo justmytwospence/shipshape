@@ -1,6 +1,86 @@
 ---
-title: "Security model"
-description: "What shipshape trusts, what it does not, what leaves your network, and the gaps it has."
+title: Security model
+description: What shipshape trusts, what it does not, what leaves your network, and the gaps it has.
 ---
+shipshape holds the Docker socket and pushes to the repository your host deploys from. It is,
+by design, as powerful as root on that host. This page says where that power is guarded and
+where it is not.
 
-This page is being written.
+## Report a vulnerability
+
+Privately, through [GitHub's security advisories](https://github.com/justmytwospence/shipshape/security/advisories/new),
+not in a public issue. Only the newest release is supported.
+
+## Trusted: each of these is as good as root on the host
+
+- Anyone who holds the Docker socket, the host itself, `DATA_DIR`, and the shipshape container.
+- The compose repository and everyone who can push to the branch shipshape publishes:
+  shipshape fast-forwards your checkout and runs `docker compose up` on whatever is there.
+- The policy file and the `shipshape.*` labels. `shipshape.snapshot` runs as a shell command
+  inside the service's own container.
+- The signed-in user. **Ship** overrides every hold, `lifeline` and `unsafe` included.
+- Whoever holds `MCP_TOKEN`: it grants what the signed-in user can do.
+- In proxy mode, the reverse proxy. It must authenticate every request and overwrite any
+  identity header a browser sends.
+- Image publishers and registries, for the bytes of the images. The cooldown, verification,
+  the soak and rollback are the mitigation, not the review.
+- The offsite backup MCP endpoint, if you configure one. It receives unauthenticated requests.
+
+## Not trusted
+
+- **Release notes, changelogs, linked pages, search results and advisory text.** They can add a
+  hold or cause a drafted change. A drafted change is held for a person (the `draft` hold,
+  which no rule can waive) and can never change privileges, mounts, networking, the build, the
+  user or `shipshape.*` labels. The worst a hostile changelog achieves is a card asking you.
+- **Model output.** It is parsed into fixed schemas and applied deterministically inside a
+  per-service boundary. Links it produces are shown only when they are http(s). A rule it
+  proposes is never wider than the card it answers.
+- **Registry responses.** Tags are filtered and every edit is verified with `docker compose
+  config`. A redirect or token realm that leaves the registry's host must be https and resolve
+  to a public address; paging links must stay on the host.
+- **Links you type** for release notes: https only, public addresses only, 2 MB and 20 seconds
+  at most, parsed in linear time.
+- **Browsers.** Every request that changes something needs an exact `Origin`. The pages carry
+  a Content Security Policy with no inline script except one hashed theme script, no `eval`,
+  and `frame-ancestors 'none'`.
+
+## Signing in
+
+- **Password mode**: the password is derived with scrypt at start and compared in constant
+  time, and is never logged or stored. Each session stores a fingerprint of it, an HMAC keyed
+  by `DATA_DIR/session-key` (created on first start, mode `0600`), so a password change signs
+  everyone out without the database being useful for guessing the password. Sessions are
+  random 32-byte tokens stored as SHA-256 hashes; cookies are `HttpOnly`, `SameSite=Lax`, and
+  `Secure` when `SHIPSHAPE_ALLOWED_ORIGIN` is https. Failed sign-ins are rate-limited by the
+  socket address, never by `X-Forwarded-For`. Without `SHIPSHAPE_ALLOWED_ORIGIN`, a changing
+  request's `Origin` must match its `Host`; that is sound here because the session cookie is
+  scoped to the host, so a page on another name carries no session.
+- **Proxy mode**: identity is accepted only from the configured proxy address, in the
+  configured header, for the configured users, and buttons need the exact configured origin. A
+  wide CIDR lets every container in it claim any identity: list the proxy's own address.
+- Only `GET /health` and the public static files answer without signing in.
+
+## What leaves your network
+
+- To the model provider: release notes, the names (never the values) of a service's
+  environment variables, volume paths, and for a drafted change the service's compose block
+  with secret-looking values replaced by `<redacted>`.
+- Metadata requests to GitHub, Docker Hub, LinuxServer and the registries of your images.
+- Notifications to the sinks you configure.
+- Credentials only to the hosts they belong to: git credentials to your remote's host, the
+  GitHub token to github.com, Docker Hub credentials to `auth.docker.io`.
+
+Every request shipshape makes to another host carries `User-Agent: shipshape/<version>`.
+
+## Known gaps
+
+- A well-formed malicious upstream release is a real release: if nothing holds it, it ships
+  after the cooldown.
+- Deploys pull by tag, not digest, so the image that was reviewed and inventoried may differ
+  from the one pulled.
+- The inventory scanner (syft) runs with the host's Docker socket mounted.
+- A DNS server that answers differently on a second lookup can race the address check for a
+  release-notes link you typed.
+- A socket proxy in front of shipshape is not a security boundary: deploys need container
+  creation, builds and exec, and the scanner mounts the real socket.
+- Rootless Docker and Podman are untested.

@@ -1,6 +1,129 @@
 ---
-title: "Development"
+title: Development
 description: "Working on shipshape: the dev loop, tests, architecture and releases."
 ---
+shipshape is a TypeScript application: a server-rendered interface (Hono and htmx), SQLite, and
+no client framework. The contributing rules are in
+[CONTRIBUTING.md](https://github.com/justmytwospence/shipshape/blob/main/CONTRIBUTING.md).
 
-This page is being written.
+## Dev loop
+
+You need Node 26 (`.nvmrc`), git, and the Docker `compose` CLI plugin on your `PATH`. No daemon
+is needed for the tests.
+
+```sh
+npm ci --ignore-scripts   # as CI does: a plain `npm ci` compiles better-sqlite3 from source
+npm test                  # the whole suite; tests run with an isolated git config
+npm run typecheck         # src/ and test/
+npm run check             # Biome: lint and format (npm run lint, npm run format)
+npm run dev:ui            # the interface on http://127.0.0.1:8081, with an empty sandbox
+npm run dev:ui -- --demo  # a demo repository and a seeded history: every page has rows
+npm run db:baseline       # after adding a migration to src/db/legacy.ts
+```
+
+`npm run dev:ui` builds a throwaway world under `.dev/` and never touches a real repository or
+the Docker daemon. By default it is an empty database and an empty scratch git repository, the
+first-run state. `--repo <path>` swaps in a copy of a compose repository's `HEAD`, `--db <file>`
+an online-backup copy of a real database, `--fresh` rebuilds `.dev/`, `--empty` drops the
+database, `--demo` uses `examples/demo` with a seeded history (rebuilt on every run), `--port`
+picks where you browse, and `--origin` names the browser origin the app accepts on a POST (pass
+it when you browse through a tunnel as `localhost`). It sets `SHIPSHAPE_UI_DEV` to `1`, which stops
+the scheduler from starting, deletes every credential from the environment and points
+`DOCKER_HOST` at nothing.
+
+The app answers only its trusted proxy, with a user header, and has no development bypass. So
+`dev:ui` runs the app on port + 1 **behind a small proxy on `--port`**, which adds
+`Remote-User: dev`: browse `--port`, never port + 1. Never point a dev server at a real
+checkout: a configured `REPO_DIR` and `GITHUB_REPO` arm the scheduler, which syncs git, polls
+GitHub and recreates containers.
+
+## Looking at the UI
+
+Structure is testable; layout has to be looked at. `bin/shots.mjs` drives a headless Chrome over
+CDP and captures a route by viewport by colour-scheme matrix, with layout probes for overflow,
+nested scroll regions and small touch targets. Every UI change gets a pass at phone and desktop
+sizes, light and dark. The headless Chrome is one container sharing the host's network:
+
+```sh
+docker run -d --rm --name ss-chrome --network host --shm-size=1g \
+  -v "$PWD/bin/shots-fonts.conf:/etc/fonts/local.conf:ro" \
+  gcr.io/zenika-hub/alpine-chrome:124 --no-sandbox --disable-gpu \
+  --disable-dev-shm-usage --remote-debugging-port=9222 --hide-scrollbars about:blank
+node bin/shots.mjs --label my-change --routes / /updates
+docker stop ss-chrome
+```
+
+The landing screenshots in `docs/src/assets/screenshots/` are regenerated from `--demo` with the
+commands in the
+[README there](https://github.com/justmytwospence/shipshape/blob/main/docs/src/assets/screenshots/README.md).
+
+## Architecture
+
+A module is one thing, and the layers are enforced by tests, not by hope.
+
+| Module | What it does |
+|---|---|
+| `src/env.ts` | The environment, and the paths derived from it. |
+| `src/policy-schema.ts` | The policy file's schema and defaults. |
+| `src/config.ts` | Loading the policy file. |
+| `src/events.ts` | The Activity log. |
+| `src/db/` | The database: connection, migrations, the generated baseline, retention. |
+| `src/scan/` | Reading the compose files, taking the inventory, reporting. |
+| `src/resolver/` | Which upstream an image comes from, and the cache of what was found. |
+| `src/versions/` | Tag patterns, version keys and comparison. |
+| `src/registry/`, `src/upstream/` | Talking to registries, GitHub and other hosts. |
+| `src/analyze/` | The screen and the reader. |
+| `src/policy.ts`, `src/rules.ts` | The decision engine: classes, holds, rules. |
+| `src/gitops/` | Git: syncing the checkout, building and shipping a change. |
+| `src/deploy/` | Compose, verification, the soak and rollback. |
+| `src/restore/`, `src/propose/`, `src/forks/`, `src/security/` | Restore points, drafted changes, forks, security incidents. |
+| `src/notify/` | Sinks, signed links and decision cards. |
+| `src/updates/` | The views of updates, holds and the verbs. |
+| `src/settings/` | The Settings page's definitions and how a save is applied. |
+| `src/mcp/` | The MCP server. |
+| `src/web/` | The web server, routes, authentication and views. |
+| `src/links.ts`, `src/version.ts` | The documentation links, and the version the build reports. |
+
+The rule: nothing outside `src/web` imports it, and views are imported only from `src/web`.
+These boundaries are tests:
+
+- `test/layering.test.ts`: the layering above.
+- `test/resolver-boundary.test.ts`: only `src/resolver/` reads the resolutions and labels.
+- `test/llm-client.test.ts`: only `src/analyze/client.ts` builds a model client or reads a model
+  credential.
+- `test/docs-reference.test.ts`: the reference pages match the code.
+
+## The documentation
+
+This site is `docs/`, an Astro Starlight project with its own `package.json`.
+
+```sh
+npm --prefix docs ci
+npm run docs:dev      # http://localhost:4321/shipshape/
+npm run docs:build    # fails on any broken internal link
+```
+
+A change a user can see updates the page that states it, in the same commit: behaviour in
+`concepts/`, a task in `guides/`, every variable, label, policy key, endpoint and command in
+`reference/`. Links in Markdown are absolute with the base and a trailing slash
+(`/shipshape/guides/forks/`), and example files and the starter policy are imported, never
+pasted. `docs/README.md` has the rules.
+
+## Releasing
+
+Releases are tags on `main`, and GitHub Actions builds and publishes everything else.
+
+```sh
+npm run release -- 0.3.0   # typecheck and test, bump, CHANGELOG.md from git-cliff,
+                           # commit "chore(release): v0.3.0", tag v0.3.0
+git push origin main --follow-tags
+```
+
+`release.yml` then runs the checks, publishes `ghcr.io/justmytwospence/shipshape:0.3.0`, `:0.3`
+and `:latest` with provenance, a software bill of materials and an attestation, and creates the
+GitHub release from the changelog. Every push to `main` that passes CI is also published as
+`:edge` and `:sha-<short>`.
+
+## Contributing
+
+See [CONTRIBUTING.md](https://github.com/justmytwospence/shipshape/blob/main/CONTRIBUTING.md).

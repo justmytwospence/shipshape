@@ -1,6 +1,111 @@
 ---
-title: "Models"
+title: Models
 description: "Anthropic, OpenRouter, a local model, or none."
 ---
+import { Aside } from '@astrojs/starlight/components'
 
-This page is being written.
+The reader, the drafter, rule scoping and security extraction all make **Anthropic Messages**
+calls. Which service answers them is decided by what you set, and with none, shipshape still
+works. The [screen](/shipshape/concepts/review/#the-screen) is separate: it always runs
+through OpenRouter.
+
+## Precedence
+
+A custom endpoint wins over Anthropic, which wins over OpenRouter:
+
+| You set | Messages calls go to |
+|---|---|
+| `LLM_BASE_URL` | that endpoint. The provider is "custom". Its bearer is `LLM_API_KEY`, else `OPENROUTER_API_KEY`, else none; `ANTHROPIC_API_KEY` is never sent to it. |
+| `ANTHROPIC_API_KEY` | `https://api.anthropic.com` |
+| `OPENROUTER_API_KEY` only | OpenRouter |
+| nothing | no calls: [no model](#no-model) |
+
+`ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` are ignored: the Anthropic client is pinned to
+`https://api.anthropic.com`, so a key can never be sent elsewhere. `LLM_BASE_URL` is the one
+way to point at another endpoint, and **any** value makes the provider custom, including on a
+host that used to set it for OpenRouter.
+
+## Anthropic
+
+```sh
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+The reader defaults to Claude Sonnet 5.5 (`claude-sonnet-5-5`) and drafting to Claude Opus
+5.5 (`claude-opus-5-5`), with a monthly budget of $15. Change them in Settings, or with
+`review.model`, `review.code_model` and `review.monthly_budget_usd`.
+
+## OpenRouter
+
+```sh
+OPENROUTER_API_KEY=sk-or-...
+```
+
+The same defaults, spelled with the vendor prefix: `anthropic/claude-sonnet-5.5` and
+`anthropic/claude-opus-5.5`. The same key runs the screen (`review.screen`), whichever
+provider serves the rest.
+
+## Ollama
+
+```sh
+LLM_BASE_URL=http://ollama:11434
+# LLM_API_KEY is not needed for a local server
+```
+
+Ollama documents an Anthropic-compatible API that supports tool calls but not forced tool
+choice, prompt caching or hosted web search. Pick a model that is good at tool calls, with a
+context window large enough for a changelog: several thousand tokens of notes plus the prompt.
+For Ollama's hosted API, use `LLM_BASE_URL=https://ollama.com` and put your key in
+`LLM_API_KEY`.
+
+## LiteLLM
+
+```sh
+LLM_BASE_URL=http://litellm:4000
+LLM_API_KEY=<a virtual key>
+```
+
+LiteLLM's proxy serves the Anthropic Messages route. The model name is the proxy's
+`model_name`.
+
+## What a custom endpoint needs
+
+- `review.model` and `review.code_model` **must be set**: there is no default, and with none
+  set nothing is read.
+- Calls are **not priced**, and `review.monthly_budget_usd` does not apply to them.
+- Web search and fetch are **always off**, and shipshape never asks it for a forced tool
+  choice or prompt caching; the prompt's closing instruction does the work.
+- The Settings model list shows what the endpoint reports at `<LLM_BASE_URL>/v1/models`,
+  using the bearer. On Anthropic and OpenRouter the list offers only `anthropic/*` and
+  `claude-*` ids; type any other id.
+
+| | Anthropic | OpenRouter | Custom endpoint |
+|---|---|---|---|
+| Web search and fetch (`review.web`) | yes | yes | never |
+| Forced tool choice | yes, except Sonnet 5.5 and Opus 5.5, which refuse it | the same | never |
+| Prompt caching | yes | yes | no |
+| Priced, and counted against the budget | yes | yes | no |
+| Needs `review.model` set | no | no | yes |
+
+<Aside type="caution" title="Readings are only as good as the model">
+shipshape's prompts are written and tested against Claude. Ollama and LiteLLM are documented
+as compatible, but no reading has been run through either by the project, and another model's
+readings are only as good as that model.
+</Aside>
+
+## No model
+
+With no key, or with `review.model: off`, updates still ship. What changes is the evidence: a
+reading is "no evidence", so a major version, a stateful service and a service labelled
+`shipshape.review: required` ask you instead of shipping. Everything else is covered by
+verification and rollback.
+
+## What the models do and what they cost
+
+- **Reader**: `review.model`. It reads the changelog, and it also extracts affected packages
+  from [security incidents](/shipshape/concepts/security-incidents/).
+- **Drafting and rule scope**: `review.code_model`.
+- **The budget** pauses the reader, drafting, rule scoping and security extraction, not
+  shipping. The month is the UTC calendar month. The spend by model and stage is on Status.
+- **The screen** (`review.screen`, off by default) is a small classifier through OpenRouter's
+  Decisions API at about a twentieth of a cent a look, and needs `OPENROUTER_API_KEY`.

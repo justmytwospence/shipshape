@@ -1,6 +1,82 @@
 ---
-title: "Compared with other tools"
+title: Compared with other tools
 description: "How shipshape differs from Watchtower, What's Up Docker, Diun, Renovate, and the stack managers, and when to use one of them instead."
 ---
+Every tool here is good at what it sets out to do. This page says what each does as of
+November 2026 so you can pick; corrections are welcome as an
+[issue](https://github.com/justmytwospence/shipshape/issues).
 
-This page is being written.
+## At a glance
+
+| | shipshape | Watchtower (fork) | What's Up Docker | Diun | Renovate |
+|---|---|---|---|---|---|
+| What it is | update bot for a compose repository in git | in-place container updater | update dashboard with triggers | update notifier | dependency-update bot for git repositories |
+| Notices new tags and digests | yes | yes | yes | yes | yes |
+| Reads the release notes | finds and reads them with a model | no | no | no | links the notes it can find from the image's source label |
+| Where the change lands | a merge commit on your branch | nowhere: the container is recreated | optional triggers | nowhere | a pull request |
+| Deploys | `docker compose up -d` from your checkout | recreates the running container | with a trigger | no | no |
+| Verifies and rolls back | health, HTTP probe, crash watch, soak; one automatic revert | no | no | no | no |
+| Asks you first | per hold, one card per decision | no | per container | n/a | every change is a pull request |
+| License | FSL-1.1-ALv2 (source-available) | Apache-2.0 | MIT | MIT | AGPL-3.0 |
+
+The original Watchtower (`containrrr/watchtower`) was archived in December 2025; the column
+describes the maintained fork, `nicholas-fedor/watchtower`.
+
+## Watchtower
+
+Watchtower pulls a newer image and recreates the container with it, on a schedule, with no
+repository involved. It is the least work to set up and the right choice when you do not keep
+your compose files in git and are content to find out about a breaking release when a service
+stops. shipshape differs in three ways: the change is a commit you can read and revert, the
+release notes are read before anything moves, and a deploy that fails its health checks is
+undone.
+
+## What's Up Docker
+
+WUD watches running containers, shows what is out of date in a web UI and can act through
+triggers, one of which updates compose services. shipshape reads its configuration from the
+compose files in git rather than from running containers, and deploys with a real `docker
+compose up -d`, so a change to labels or environment in the file always applies. Choose WUD
+when you want a dashboard and notifications across hosts without a git repository.
+
+## Diun
+
+Diun tells you an image has a new version and does nothing else, across many providers
+(Docker, Kubernetes, Swarm, files). If you want to be told and keep doing every update by hand,
+Diun is smaller and simpler than shipshape.
+
+## Renovate
+
+Renovate opens a pull request for each dependency update in a git repository, compose files
+included, and is excellent at it. For homelab images it often has no release notes to show,
+because it finds them through the image's `org.opencontainers.image.source` label, which many
+images lack or point at a packaging repository. It does not deploy or verify; you merge and
+something else deploys. shipshape finds the upstream through several sources and reads the
+notes, ships without a pull request when nothing holds the update, and deploys and verifies the
+result. Choose Renovate when you want every change reviewed as a pull request, or when the same
+repository also holds code.
+
+## Stack managers: Komodo, Dockge, Dockhand, Portainer
+
+These manage stacks: editing compose files, starting and stopping them, often across hosts,
+some with GitOps and update checks of their own. shipshape is not a stack manager and works
+beside one as long as the stacks are files in a git repository it can push to. Dockge's
+`/opt/stacks` layout works once that directory is a repository
+([Requirements](/shipshape/start/requirements/)).
+
+## Tugtainer and other in-place updaters
+
+Tugtainer and similar tools update containers in place with a web UI, with per-container
+check-only or automatic updates and health-check monitoring, and no git. If you want that and
+not a repository, look at them.
+
+## When to use something else
+
+- Your compose files are not in a git repository, and you do not want them to be: Watchtower,
+  What's Up Docker or Tugtainer.
+- You only want to be told: Diun.
+- You want a pull request for every change: Renovate.
+- You run several Docker hosts: shipshape manages one; a stack manager with its own update
+  checks fits better.
+- You will not mount the Docker socket into anything: none of these, shipshape included, can
+  deploy without it.

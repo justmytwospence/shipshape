@@ -1,6 +1,102 @@
 ---
-title: "Forks"
-description: "Carry your own fixes on an upstream project, and let shipshape replay them on each release."
+title: Forks
+description: Carry your own fixes on an upstream project, and let shipshape replay them on each release.
 ---
+Sometimes a project has a bug that bites you, a fix you can write, and no release that carries
+it yet. You fork the project, build your fork instead of the published image, and then have to
+redo that work by hand at every upstream release. shipshape does the redoing: it watches the
+**upstream's** releases, replays the commits you carry onto each new one, builds from a pinned
+commit of your fork, and retires the fork when upstream has taken your fixes.
 
-This page is being written.
+This works for **GitHub** forks only, and needs a `GITHUB_TOKEN` with push access to the fork.
+
+## How a fork is written
+
+A fork is a `build:` service with a pinned git build context and three more pieces:
+
+```yaml
+services:
+  app:
+    image: local/app:v3.5.1-1a2b3c4          # <upstream version>-<short sha>: the local build name
+    build:
+      context: https://github.com/you/app.git#1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b
+    labels:
+      shipshape.watch: "true"
+      shipshape.fork.upstream: ghcr.io/example/app:v3.5.1   # the image the fork stands in for
+      shipshape.fork.waits-on: example/app#1234, example/app#1301
+```
+
+- `build.context` is your fork's `https://github.com/<you>/<fork>.git`, pinned to a commit
+  with `#<sha>`.
+- `image:` is the local name of the build. Its tag must be `<upstream version>-<short sha>`,
+  ending in the first characters of the pinned commit.
+- `shipshape.fork.upstream` is the upstream image your fork is based on. **This** is what
+  shipshape polls.
+- `shipshape.fork.waits-on` names the upstream issues or changes your fork exists for,
+  as `owner/repo#N`. Without it shipshape cannot know when you can stop carrying a fix.
+
+A bump moves exactly four places: the context's sha, the `image:` tag, the upstream label, and
+any `build.args` value that carries the base tag or the sha. Nothing else in the file changes.
+
+## What shipshape does
+
+When upstream releases a new version:
+
+1. It clones your fork and the upstream into a work clone of its own, and finds the commits
+   you carry: those between the base release and your pinned commit.
+2. It **drops** the ones upstream already has, and the ones whose `waits-on` reference shipped
+   in the target release or earlier.
+3. It replays the rest, one at a time, onto the new upstream tag. Each keeps its author and its
+   date, so the same inputs make the same commit and the same tag.
+4. It pushes the result to your fork: it moves the branch `forks.branch` (default
+   `shipshape`) **with a lease** on the tip it fetched, never a bare force, and tags every
+   replay `<forks.tag_prefix><upstream tag>-<short sha>` (default `shipshape/`), so every
+   deployed commit stays reachable and a rollback can rebuild the previous pin.
+5. It ships the pin bump as an ordinary update: the merge commit lists what was kept, what was
+   dropped and why, and where each reference you wait on stands.
+
+It does not push anything to your fork unless a replay succeeds. It does not run when the fork
+carries a merge commit: replay that by hand.
+
+## When a rebase conflicts
+
+If a carried commit no longer applies to the new release, shipshape stops at the first one that
+does not. It aborts the whole replay, names the commit and the files, **pushes nothing**, and
+raises a notification (`shipshape-fork-conflict:<stack>/<service>`) once for that conflict.
+The update waits.
+
+Do it by hand:
+
+1. Rebase your fork's carried commits onto the new upstream tag yourself, and push the result.
+2. Move the pinned sha in the compose file, and the `image:` tag with it, to the new commit.
+   Or drop the commit, if upstream has made it unnecessary.
+
+shipshape tries again as soon as the pin or the target changes, and not before: the same
+replay from the same pin would fail identically on every poll.
+
+## Retiring a fork
+
+When every reference in `shipshape.fork.waits-on` has shipped in a release newer than your
+fork's base, shipshape tells you the fork can retire (`shipshape-fork-retire:<stack>/<service>`),
+and the update it makes is a **retire**: it puts the plain upstream image back in `image:` and
+removes the `build:` block and both `shipshape.fork.*` labels. When it has shipped:
+
+- tidy the comment block in the compose file by hand, because shipshape does not rewrite
+  prose that explained the fork;
+- the branch it pushed to your fork (`forks.branch`) can go, and so can the tags under
+  `forks.tag_prefix` once you no longer need to rebuild an old pin.
+
+If a reference you wait on was **closed without a fix**, shipshape says so instead: nothing
+upstream will release it, and whether to keep carrying it, resubmit it or drop it is yours to
+decide.
+
+## When the container user does not own the checkout
+
+A fork's `build:` deploy may print a Buildx warning that it could not read git provenance for
+the context. It is harmless. To avoid it, set `user:` to the checkout owner's user and group
+ID, as the [quick start](/shipshape/start/quick-start/) does.
+
+## Keys
+
+`forks.branch` and `forks.tag_prefix` are in the [policy reference](/shipshape/reference/policy/#forks).
+Both must be valid git names. The labels are in the [label reference](/shipshape/reference/labels/).

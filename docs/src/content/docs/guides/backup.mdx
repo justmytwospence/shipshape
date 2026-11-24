@@ -1,6 +1,45 @@
 ---
-title: "Backup"
-description: "What to back up and how."
+title: Backup
+description: What to back up and how.
 ---
+## What lives where
 
-This page is being written.
+- **Your repository** has the compose files, the labels, the policy file, the rules, and the
+  prompt overrides, and every change shipshape made, as commits. It is already backed up by
+  your git host.
+- **`data/`** (`DATA_DIR`) is shipshape's own state:
+  - `shipshape.db`, the database: the Activity log, reviews, update history, and what a
+    service's upstream resolved to;
+  - `repo/`, its work clone, which is rebuilt if lost;
+  - `session-key`, in password mode;
+  - `restore-points/`, the dumps taken before stateful services moved;
+  - `docker/`, the docker client's state, including a private registry's `config.json`.
+
+Losing the database costs history and caches, not your configuration; nothing that decides what
+ships lives only there.
+
+## Taking a backup
+
+Stop shipshape and copy `data/`:
+
+```sh
+docker compose stop shipshape
+cp -a data data-backup
+docker compose start shipshape
+```
+
+Or take a consistent copy of the database while it runs, using the `sqlite3` in the image:
+
+```sh
+docker exec shipshape sqlite3 /data/shipshape.db ".backup /data/shipshape-backup.db"
+```
+
+Never copy `shipshape.db` itself while shipshape runs: the database uses a write-ahead log and
+its owner is still writing to it.
+
+## Restore points
+
+The dumps under `data/restore-points/` are copies of your services' data, kept `0600` in
+directories `0700`. They are not a backup strategy; they are what you reach for when an update
+you were warned about was one-way. Include them in your backup of `data/` if you want them to
+outlive the host. See [Restore points](/shipshape/concepts/restore-points/).

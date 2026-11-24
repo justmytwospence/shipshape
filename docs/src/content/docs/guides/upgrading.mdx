@@ -1,6 +1,60 @@
 ---
-title: "Upgrading shipshape"
-description: "shipshape never updates itself. How to upgrade it by hand, and how to go back."
+title: Upgrading shipshape
+description: shipshape never updates itself. How to upgrade it by hand, and how to go back.
 ---
+shipshape never updates itself: its own stack is excluded from everything it does, because
+recreating its own container would kill the process that is doing it. You upgrade it on
+purpose.
 
-This page is being written.
+## Before you upgrade
+
+1. **Read the release notes**, the **Breaking** section first. Each release's notes are on
+   [GitHub](https://github.com/justmytwospence/shipshape/releases), generated from the commit
+   messages; a `fix(security):` commit is listed under Security, and a `!` or a
+   `BREAKING CHANGE:` under Breaking. While shipshape is on 0.x, a breaking change bumps the
+   minor version, which is why the examples pin `0.2` and not `0`.
+2. **Back up `data/`**, which holds the database. Migrations run at start and are one-way.
+
+   ```sh
+   docker compose stop shipshape && cp -a data data-backup && docker compose start shipshape
+   # or, while it runs:
+   docker exec shipshape sqlite3 /data/shipshape.db ".backup /data/shipshape-backup.db"
+   ```
+
+## Upgrade
+
+```sh
+docker compose pull shipshape
+docker compose up -d shipshape
+```
+
+Change the tag in your compose file first when you are moving to a new minor (`0.2` to `0.3`).
+Check that `docker compose ps` shows `healthy` within a minute, and Activity for anything that
+is not routine.
+
+The first start after an upgrade from a large pre-0.2 database compacts it once. It takes
+seconds to a minute, before shipshape starts listening, and needs free space in `/tmp` about
+the size of the database if the root filesystem is read-only. The image's health check allows
+for it.
+
+## Going back
+
+To go back, restore the backup and pin the previous tag. A newer database is not read by an
+older version.
+
+```sh
+docker compose stop shipshape
+rm -rf data && cp -a data-backup data
+# set the image tag back in the compose file, then
+docker compose up -d shipshape
+```
+
+## Follow releases
+
+In GitHub, Watch, then Custom, then Releases; or subscribe to the feed
+`https://github.com/justmytwospence/shipshape/releases.atom`.
+
+## From before 0.2
+
+Everything before 0.2 was the pull-request era (v1). See
+[Migrating from v1](/shipshape/guides/migrating-from-v1/) before you upgrade.

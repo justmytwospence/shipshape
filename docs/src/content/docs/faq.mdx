@@ -1,6 +1,90 @@
 ---
-title: "FAQ"
-description: "Short answers about the Docker socket, cost, the license, AI and what shipshape needs."
+title: FAQ
+description: Short answers about the Docker socket, cost, the license, AI and what shipshape needs.
 ---
 
-This page is being written.
+## Why does it need the Docker socket?
+
+Because deploying is the job. shipshape runs `docker compose up -d` from your checkout, builds
+what you build yourself, runs your dump command inside a database container before it moves,
+and asks Docker which services are running before and after. Every one of those needs the
+Docker API, and the Docker API is root on the host. There is no read-only mode that deploys.
+What shipshape does instead is limit what can make it act: release notes and model output can
+only add holds or draft a change it holds for you, and only you, your policy file, or a rule
+you wrote can let an update through. The [Security model](/shipshape/security/) lists what it
+trusts and what it does not. A socket proxy does not reduce this much: deploys need container
+creation, builds and exec.
+
+## Is it open source?
+
+No. shipshape is source-available under the Functional Source License (FSL-1.1-ALv2). You can
+read, run, change and self-host it for any purpose, including at work, except offering a
+commercial product or service that competes with it. Each release becomes Apache-2.0, which is
+open source, two years after it ships. The code as it stood before the license change on 27
+October 2026 (commit `4f52567`) was published under MIT and remains available under it.
+
+## Why that license?
+
+It lets anyone use shipshape for their own infrastructure, which is what it is for, while
+stopping a company from selling it as a hosted service in its first two years. After two years
+the protection lapses for that release and it is Apache-2.0. Contributions are licensed to the
+project under Apache-2.0 (see CONTRIBUTING), so nothing you contribute is locked up longer than
+the code around it.
+
+## Was it written with AI?
+
+{/* DRAFT: the author confirms or rewrites this answer in his own words before launch
+    (the P8 checkpoint). It must say the same as the README's "How this was built". */}
+
+Yes. shipshape was built by its author with AI coding agents: he decided what it does, directed
+the work and reviewed it, and the agents wrote most of the code. It has a test suite of over a
+thousand tests, a type checker over the code and the tests, and CI on every change, and it has
+run the author's own homelab every day since August 2026. That is also why the docs are
+specific about what it has and has not been tested against.
+
+## What does it cost to run?
+
+Nothing, unless you give it a model. With no model, or with `review.model: off`, updates still
+ship and no call is made. With a key, what every reading costs is shown on Status, by model and
+stage, and the monthly budget (`review.monthly_budget_usd`, default $15) stops the reader,
+drafting and rule scoping when it is reached; it never stops shipping. The optional screen is
+about a twentieth of a cent a look. A local model through Ollama or LiteLLM is not priced at
+all. See [Models](/shipshape/guides/models/).
+
+## Can it update itself?
+
+No, deliberately. Its own stack is excluded from everything it does (`SELF_STACK`), because
+recreating its own container would kill the process doing it. You upgrade it by hand, on
+purpose: see [Upgrading](/shipshape/guides/upgrading/).
+
+## Do I need GitHub?
+
+No. Any git host that accepts a username and token over https works: Gitea, Forgejo and GitLab
+as well as GitHub ([Git hosts](/shipshape/guides/git-hosts/)). GitHub is still used to read the
+release notes of upstream projects, and for [forks](/shipshape/guides/forks/).
+
+## Do I need an AI key?
+
+No. Without one, updates still scan, still ship on the evidence that is left, and still deploy,
+verify and roll back. What changes is that a major version, a stateful service, and a service
+labelled `shipshape.review: required` ask you, because no reading counts as no evidence. See
+[Models](/shipshape/guides/models/).
+
+## Does it work with Portainer, Dockge or Komodo?
+
+When the stacks are files in a git repository it can push to, yes: it works beside them.
+Dockge's layout works with `REPO_DIR=/opt/stacks` once that directory is a repository.
+Portainer stacks that are not files in a repository are not supported. See
+[Requirements](/shipshape/start/requirements/).
+
+## Does it support more than one host? Kubernetes? Swarm?
+
+No. It manages the Docker daemon next to it, on one host.
+
+## Will it restart my containers at 3 a.m.?
+
+Only to deploy something that shipped, and nothing ships while shipshape is paused, which it is
+until you switch Pause off. Once it is on, an update nothing holds ships as soon as its
+cooldown allows, and the loop can notice it right after the scan, which by default runs at
+03:00. A service that is stopped stays stopped, and a deploy that fails its window is reverted.
+If you do not want changes at night, keep Pause on and ship by hand, or move `scan.cron`.

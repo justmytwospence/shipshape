@@ -1,6 +1,150 @@
 ---
-title: "Troubleshooting"
-description: "Symptoms and what to do."
+title: Troubleshooting
+description: Symptoms and what to do.
 ---
+Start it with nothing set and it will tell you what is missing rather than crash-loop: every
+page explains it, and Activity says what happened. Look there first.
 
-This page is being written.
+## Every page shows the setup page
+
+No sign-in method is configured, or the settings contradict each other. The page lists what is
+wrong. It is one of:
+
+- neither `SHIPSHAPE_PASSWORD` (or `SHIPSHAPE_PASSWORD_FILE`) nor `SHIPSHAPE_TRUSTED_PROXY` is set;
+- both are set: use one;
+- `SHIPSHAPE_PASSWORD` and `SHIPSHAPE_PASSWORD_FILE` are both set: use one;
+- the password is shorter than 12 or longer than 1024 characters;
+- `SHIPSHAPE_ALLOWED_USER` is set without `SHIPSHAPE_TRUSTED_PROXY`, or the other way round;
+- `SHIPSHAPE_ALLOWED_ORIGIN` is not a bare origin such as `https://shipshape.example.com`
+  (password mode only: proxy mode ignores a bad one, see below);
+- `DATA_DIR` is not writable, so the session key cannot be created.
+
+Fix the environment and recreate the container; the settings are read at start. See
+[Sign-in](/shipshape/guides/sign-in/).
+
+## 403 Forbidden behind my proxy
+
+In proxy mode, a request is refused unless its socket peer is in `SHIPSHAPE_TRUSTED_PROXY`, the
+header `SHIPSHAPE_USER_HEADER` names a user exactly in `SHIPSHAPE_ALLOWED_USER`, and for any
+change the `Origin` is exactly `SHIPSHAPE_ALLOWED_ORIGIN`. Check:
+
+- the address the container sees your proxy from: it must be the one you listed, and not the
+  bridge gateway, which is how every process on the host appears;
+- the header name your proxy sets, against `SHIPSHAPE_USER_HEADER`, and its case-sensitive value
+  against `SHIPSHAPE_ALLOWED_USER`;
+- that your proxy does not also add a second `Remote-User`: two values match no user.
+
+See [Reverse proxy](/shipshape/guides/reverse-proxy/).
+
+## Buttons do nothing, or answer 403 or 503 after signing in
+
+A button is a request that changes something, and those need an exact `Origin`.
+
+- **Proxy mode, 503 `CSRF protection unavailable`.** `SHIPSHAPE_ALLOWED_ORIGIN` is missing or
+  invalid, and proxy mode ignores an invalid one without a setup error. Set it to exactly the
+  address you browse at.
+- **403 in either mode.** The browser's `Origin` is not the configured origin. Behind a proxy
+  that rewrites `Host`, password mode without `SHIPSHAPE_ALLOWED_ORIGIN` compares `Origin` with
+  `Host` and fails: set the origin. Open shipshape at the same address as the origin.
+- **Password mode, signing in loops back to the sign-in page.** An `https://`
+  `SHIPSHAPE_ALLOWED_ORIGIN` makes the cookie Secure, so browsing `http://host:8080` directly
+  never keeps it. Open the https address.
+
+The page shows a banner, "shipshape refused a request", when one of these happens, and a toast
+says what to check. A request a poll made never raises a toast.
+
+## Too many sign-in attempts
+
+You get `429` with `Retry-After`. Five failures from one address or 30 in all lock sign-in for
+15 minutes, the correct password included. Behind a reverse proxy every visitor shares the
+proxy's address, so the limit is everyone's. Wait it out, or restart shipshape.
+
+## No services found
+
+Status says `compose files: none found -- check REPO_DIR`.
+
+- `REPO_DIR` must exist **inside the container** at the same path as on the host: the mount is
+  `/srv/compose:/srv/compose`, not `/srv/compose:/repo`.
+- The layout must be `compose.yaml` (or one of its three alternatives) at the root or one
+  directory down; see [Requirements](/shipshape/start/requirements/).
+- Services show under **Not watched** until you choose them: nothing is watched without
+  `shipshape.watch: "true"`.
+
+## A service I watch never gets updates
+
+shipshape cannot tell how its tag is numbered, so it shows under **Needs attention** until a
+`shipshape.pattern` label says how. For an odd shape use `pattern: regex` with `tag.include`.
+An `image: ${VAR}` cannot be watched at all, and says *variable image*. A bad `tag.include`
+expression stops updates for that service rather than widening them, and says so.
+
+## Deploys fail with permission denied
+
+`permission denied while trying to connect to the docker API` means the container user is not in
+the socket's group: set `group_add` to `stat -c %g /var/run/docker.sock`. See
+[Docker permissions](/shipshape/guides/docker-permissions/).
+
+## Git refuses: dubious ownership
+
+The container user does not own the checkout, and git was not started through the entrypoint,
+which is what trusts `REPO_DIR` and the work clone. shipshape's own commands are covered. A
+hand-run `docker exec shipshape git ...` is not: use `docker exec shipshape
+shipshape-entrypoint git ...`, or set `user:` to the checkout's owner. Running through plain
+`docker exec` can also make the branch lookup fall back to `main` without saying why.
+
+## A fork's build warns about git provenance
+
+When the container user does not own the checkout, a fork's `build:` deploy may print a Buildx
+warning that it could not read git provenance for the context. It is harmless; set `user:` to
+the checkout owner's user and group ID to avoid it. See [Forks](/shipshape/guides/forks/).
+
+## shipshape says sync is paused
+
+The checkout is not where shipshape needs it, and it changed nothing. The message says which:
+
+- `checkout is on "<branch>", not "<main>"`: switch the checkout back, or set `GIT_BRANCH` to
+  the branch you use;
+- `a rebase is in progress in the checkout` (or a merge, or a cherry-pick): finish or abort it;
+- `push_main is disabled`: `sync.push_main` is `false`, which stops shipping too;
+- a file shipshape wants to write has uncommitted changes: `<file> has uncommitted changes in
+  the checkout. Commit or discard them first.`, or `<file> is not tracked by git. Commit it
+  first.`
+
+It resumes by itself once the checkout is right.
+
+## The policy file is invalid
+
+Activity says `the policy file is invalid; running on the last version that loaded, or the
+defaults (paused) if none did`, with the reason. A key may be out of range, a cron
+expression wrong, or one of the [refused keys](/shipshape/reference/policy/#keys-that-are-refused)
+of the pull-request era present: `npm run convert-v1` removes those.
+
+## No release notes
+
+A review without notes says so. Check **Services**: the upstream may be unlinked or only
+likely. `shipshape.source` names the repository and `shipshape.changelog` the notes. A GitHub
+rate limit marks a reading incomplete and retries later; a `GITHUB_TOKEN` raises the limit. See
+[The review](/shipshape/concepts/review/).
+
+## Docker Hub rate limit
+
+Docker Hub counts manifest reads as pulls: 100 per six hours per address anonymously, 200 with a
+login. shipshape keeps a reserve so a deploy can always pull, and delays a reading instead. Set
+`DOCKER_HUB_LOGIN` and `DOCKER_HUB_PASSWORD`.
+
+## The container is unhealthy
+
+`/health` answers 503 when the database cannot be read or the main loop has stopped, and says
+nothing more because it answers without sign-in. The reason is in Activity: `main loop
+stalled`. If the database is the problem, look at the permissions of `data/`. After an upgrade
+from a large pre-0.2 database the first start spends seconds to a minute compacting it; the
+health check allows 60 seconds for that.
+
+## Times are in the wrong zone
+
+Set `TZ` on the container. Every time shipshape shows, and the scan schedule, use it, and a
+schedule names its zone: `Every day at 03:00 (UTC)`.
+
+## First start after upgrading is slow
+
+The database is compacted once, before shipshape listens. It is seconds to a minute, once, and
+needs free space in `/tmp` about the size of the database when the root filesystem is read-only.

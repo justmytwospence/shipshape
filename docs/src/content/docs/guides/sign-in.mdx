@@ -1,6 +1,83 @@
 ---
-title: "Sign-in"
+title: Sign-in
 description: "Choose how people sign in: shipshape's own password, or your reverse proxy."
 ---
+import { Code } from '@astrojs/starlight/components'
 
-This page is being written.
+shipshape has no accounts. It answers to one person, who signs in one of two ways, and it
+needs exactly one of them configured. With neither, every page except `/health` answers a
+setup page that says what to set.
+
+## Choosing
+
+| You set | Mode | What happens |
+|---|---|---|
+| `SHIPSHAPE_PASSWORD` or `SHIPSHAPE_PASSWORD_FILE` | **Password** | shipshape shows its own sign-in page. |
+| `SHIPSHAPE_TRUSTED_PROXY` and `SHIPSHAPE_ALLOWED_USER` | **Proxy** | Your reverse proxy signs people in and tells shipshape who they are. |
+| both a password and a trusted proxy | error | The setup page says to use one method. |
+| neither | setup page | Every route answers HTTP 503 with instructions. |
+| `SHIPSHAPE_ALLOWED_USER` alone | setup page | It needs `SHIPSHAPE_TRUSTED_PROXY` with it. |
+
+Only `GET /health` and the public files under `/static/` ever answer without signing in; the
+[HTTP reference](/shipshape/reference/http/) lists every endpoint, and the same
+[security headers](/shipshape/reference/http/#headers) go on every page, the setup page
+included.
+
+## Password
+
+```yaml
+    environment:
+      SHIPSHAPE_PASSWORD: "a long passphrase of your own"
+      SHIPSHAPE_ALLOWED_ORIGIN: https://shipshape.example.com   # recommended
+```
+
+- **Length.** 12 to 1024 characters. Anything outside that is a setup error that says so.
+- **From a file.** `SHIPSHAPE_PASSWORD_FILE` reads the password from a file, such as a Docker
+  secret; one trailing newline is stripped. Setting it together with `SHIPSHAPE_PASSWORD` is
+  an error.
+
+  ```yaml
+  services:
+    shipshape:
+      environment:
+        SHIPSHAPE_PASSWORD_FILE: /run/secrets/shipshape_password
+      secrets: [shipshape_password]
+  secrets:
+    shipshape_password:
+      file: ./shipshape_password.txt
+  ```
+- **Storage.** The password is never logged or stored. shipshape derives a key from it with
+  scrypt at start and compares attempts in constant time. Each session stores a fingerprint
+  of the password, an HMAC keyed by `DATA_DIR/session-key` (created on first start, mode
+  `0600`), so a password change signs everyone out without the database being useful for
+  guessing it.
+- **Sessions.** The cookie is `shipshape_session`: `HttpOnly`, `SameSite=Lax`, path `/`, 30
+  days, and `Secure` when `SHIPSHAPE_ALLOWED_ORIGIN` is `https://`. It is a random 32-byte
+  token, stored as its SHA-256. A session slides: it is renewed at most every five minutes
+  while you use it. Sessions survive a restart; changing the password ends them all.
+- **Rate limits.** 5 failed attempts per socket address and 30 in all, per 15 minutes, then
+  `429` with `Retry-After`. The address is the socket's, never `X-Forwarded-For`. Behind a
+  reverse proxy every visitor shares the proxy's address, so the per-address limit caps
+  everyone together. Once the global limit of 30 is reached, everyone is locked out for up to
+  15 minutes, the correct password included.
+- **Origin.** With `SHIPSHAPE_ALLOWED_ORIGIN` set, only that address can sign in or press a
+  button. Unset, a change's `Origin` host must equal its `Host` header, which is sound
+  because the session cookie is scoped to the host. If a proxy in front rewrites `Host`, every
+  button answers 403: set the origin. An `https://` origin makes the cookie Secure, so
+  opening `http://host:8080` directly then loops back to the sign-in page.
+- **One user.** Password mode has no usernames.
+
+The startup log says which mode is on (`web sign-in: password`), or, with problems, names the
+variables that are missing.
+
+## Behind a reverse proxy
+
+If you already run a proxy with single sign-on, let it sign people in:
+[Reverse proxy](/shipshape/guides/reverse-proxy/).
+
+## Signed links
+
+The links in notifications go to `/act/<token>`. They need sign-in like any page, and send you
+back to the link afterwards. They also need `SHIPSHAPE_ACTION_SECRET` (32 characters or
+more), `SHIPSHAPE_ALLOWED_ORIGIN` to build the address on, and the MCP server enabled; see
+[Notifications](/shipshape/guides/notifications/).

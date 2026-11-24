@@ -1,6 +1,43 @@
 ---
-title: "Images you build yourself"
-description: "How shipshape watches a service built from your own Dockerfile by its base image."
+title: Images you build yourself
+description: How shipshape watches a service built from your own Dockerfile by its base image.
 ---
+A service with `build:` runs an image no registry publishes, so there is nothing to poll for
+it. Its **base image** is published, though, and that is where most of what it carries comes
+from: the distribution's packages, the language runtime, OpenSSL. Left alone, a local build
+keeps the base it was last built on for as long as nobody rebuilds it, because `compose up -d`
+reuses the cached image.
 
-This page is being written.
+So `shipshape.watch: "true"` on a `build:` service watches it through the base of its
+Dockerfile's **final stage**, followed back through any earlier stage it names:
+
+```dockerfile
+FROM python:3.13-slim@sha256:...   # what shipshape watches and moves
+```
+
+- The other `shipshape.*` labels describe that base, as they describe the upstream for a fork.
+  **Pin it by digest** and leave `shipshape.pattern` unset: every move of the tag (a
+  distribution security rebuild, a runtime patch) is then a digest update. Or give it a version
+  pattern to follow releases instead. A **floating** base (`latest`, no tag, or a `latest` or
+  `digest` pattern without a pin) is refused, because the file would say the same thing after
+  the move.
+- The change edits the `FROM` lines that name the base (a builder stage on the same image moves
+  with the final one) and nothing else, so it is as clean as an image line, and ships, deploys
+  and rolls back like one. A digest pin is kept on a version bump.
+- Its commit says **rebuild**: `chore(deps): <stack>: rebuild <service> on <base> <from> ->
+  <to>`, because the version moving is the base's, not a release of your service.
+- Deploying **builds** the service before it is brought up. A rollback reverts the line and
+  **rebuilds** on the old base: the image keeps one local name whatever it is built on, so no
+  previous image is on disk under a name a revert could point at. The old base and the layers
+  built on it usually are, so the rebuild is quick.
+- The Dockerfile must be a file in your repository. A remote context (a git URL), an inline
+  Dockerfile, an `escape` directive, a `FROM` continued across lines, or a base set by a build
+  argument are refused, and the reason is on the service's Activity line.
+- A move of a digest pin is an update like any other: it waits out the cooldown, has no release
+  notes to read, and is covered by verification and rollback. The
+  [security pass](/shipshape/concepts/security-incidents/) inventories the running build, so
+  an incident in a base package finds it, and a digest move whose new base carries the fixed
+  version is a verified fix.
+
+The build's own dependencies, such as a version in an `ARG` or a `pip install`, are not
+watched.

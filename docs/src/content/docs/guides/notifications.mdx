@@ -1,6 +1,125 @@
 ---
-title: "Notifications"
-description: "Where decisions and failures go."
+title: Notifications
+description: Where decisions and failures go.
 ---
+shipshape announces four kinds of thing, and nothing else:
 
-This page is being written.
+- **A decision** is waiting on you.
+- **Something broke**: a deploy failed or was rolled back.
+- **An exposure**: a service you run carries a package a security incident names.
+- **shipshape itself** needs attention: a credential refused, a sync stuck, the budget spent.
+
+**Silence means healthy.** Nothing is sent on success, completion or recovery. A decision card
+is removed from the room (or resolved, where a sink cannot remove it) the moment the update
+stops waiting: the record of what was decided is in git and on the Activity page.
+
+Nothing is sent until you say where. Notifications are the `notify.sinks` list of the
+[policy file](/shipshape/reference/policy/#notify); each entry is a sink of one type, and may
+list the `events` it wants (`decision`, `broken`, `security`, `system`; none listed means all
+four). A sink whose variable is unset is skipped, and a failing sink never stops another.
+Status shows one row for each variable a configured sink reads, `set` or `missing`, and never
+the value. The exact fields, keys and the webhook payload are in the
+[notification reference](/shipshape/reference/notifications/).
+
+## Webhook
+
+JSON to any URL. A receiver that keeps one message per `key` can edit it in place and remove it
+when the condition clears; that makes it the right sink for a notification router.
+
+```yaml
+notify:
+  sinks:
+    - type: webhook          # NOTIFY_URL, and NOTIFY_TOKEN as a bearer if you set one
+```
+
+```yaml
+    - type: webhook
+      url_env: ROUTER_URL    # read these variables instead
+      token_env: ROUTER_TOKEN
+      events: [decision, broken]
+```
+
+It is the only sink that is told when a condition resolves, and the only one that queues: a
+send that fails is kept and retried on every loop tick. Use **one** webhook sink; two share a
+retry table and their state collides.
+
+## Email
+
+```yaml
+    - type: email            # SMTP_URL and MAIL_TO
+```
+
+```sh
+SMTP_URL=smtps://user:password@smtp.example.com:465
+MAIL_TO=you@example.com
+```
+
+One mail when a condition first fires and again when it escalates; never for an edit or a
+resolve. Both variables are needed: either alone counts as off.
+
+## ntfy
+
+```yaml
+    - type: ntfy
+      url: https://ntfy.example.com
+      topic: shipshape
+      token_env: NTFY_TOKEN  # optional
+```
+
+One message per first fire or escalation, with up to three buttons that open a signed link.
+Priorities 1 to 5 are passed through as they are.
+
+## Discord
+
+```yaml
+    - type: discord          # DISCORD_WEBHOOK_URL
+```
+
+An embed per first fire or escalation, coloured by priority, with the links as Markdown. A
+webhook URL that is not `https://` counts as unset, and Status shows it as missing. Mentions
+are off, because the text derives from release notes.
+
+## Gotify
+
+```yaml
+    - type: gotify
+      url: https://gotify.example.com
+                              # token in GOTIFY_TOKEN
+```
+
+A plain-text message (Gotify's Markdown fetches images automatically) whose click URL is the
+card's link.
+
+## Apprise
+
+```yaml
+    - type: apprise
+      url: http://apprise:8000/notify/shipshape
+      tag: homelab           # optional
+      auth_env: APPRISE_AUTH # optional: a variable holding user:password
+```
+
+Through an Apprise API server, which fans the message out to whatever it is set up for. A
+variable named by `auth_env` that is empty disables the sink, and does not fall back to no
+authentication.
+
+## Action links
+
+A decision card carries the same four verbs everywhere: ship, snooze, always ship (when every
+hold can be waived) and skip. A webhook gets them as actions to call back through the
+[MCP server](/shipshape/guides/mcp/); email, ntfy, Discord, Gotify and Apprise get them as
+**signed links** that open a confirmation page and act only when you press its button, behind
+your normal sign-in. For that, all of these must be in place:
+
+- `SHIPSHAPE_ACTION_SECRET`, 32 characters or more (`openssl rand -hex 32`);
+- `SHIPSHAPE_ALLOWED_ORIGIN`, the address the links point at;
+- the MCP server enabled (`MCP_PORT` and an `MCP_TOKEN`), because a card offers its actions
+  only while it is.
+
+Links last 14 days. Stack-level retry and roll back exist only as webhook and MCP actions.
+
+## Escalation
+
+A decision still waiting after `notify.escalate_after_days` (7) is announced once more, louder.
+The webhook receives the same key again with a higher priority, which an edit-in-place receiver
+shows as the same message; the other sinks send a second message.

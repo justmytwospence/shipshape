@@ -1,6 +1,84 @@
 ---
-title: "Git hosts"
+title: Git hosts
 description: "GitHub, Gitea, Forgejo, GitLab: what to set for each."
 ---
+shipshape fetches and pushes your compose repository over **https** with a username and a
+token, on any host that accepts them. It never uses ssh, and refuses a plain `http://` remote
+because the token would cross the network in the clear.
 
-This page is being written.
+shipshape's git handling is tested against local repositories and against git's own
+credential scoping, not against a running Gitea, Forgejo or GitLab. The token scopes below are
+taken from each project's documentation. If one of them does not work as written, please
+[open an issue](https://github.com/justmytwospence/shipshape/issues).
+
+## The variables
+
+| What | GitHub | Any other host |
+|---|---|---|
+| Where the repository is | `GITHUB_REPO=owner/repo` | `GIT_REMOTE_URL=https://host/owner/repo.git` |
+| The token | `GITHUB_TOKEN` (or `GIT_TOKEN`) | `GIT_TOKEN` |
+| The username | none: `x-access-token` | `GIT_USERNAME` (required) |
+| The branch | `GIT_BRANCH`, default the branch `origin/HEAD` names, else `main` | the same |
+
+`GIT_REMOTE_URL` wins over `GITHUB_REPO`. On a host other than github.com, `GITHUB_REPO` is
+ignored for the compose repository, and `GITHUB_TOKEN` is used only to read upstream projects
+on `api.github.com`, where it raises GitHub's rate limit. Every variable is in the
+[environment reference](/shipshape/reference/environment/).
+
+## GitHub
+
+A fine-grained personal access token for the one repository with **Contents: read and
+write**, set as `GITHUB_TOKEN`. It is also the credential shipshape uses to read release notes
+on `api.github.com` and, for [forks](/shipshape/guides/forks/), to push to your fork.
+
+## Gitea and Forgejo
+
+```sh
+GIT_REMOTE_URL=https://git.example.com/you/compose.git
+GIT_USERNAME=you
+GIT_TOKEN=...
+```
+
+Create an access token under your account's settings with the **`write:repository`** scope,
+which Gitea documents as read, write and delete access to repository operations. Forgejo, a
+fork of Gitea, uses the same scope names. The token is the password and `GIT_USERNAME` is your
+username.
+
+## GitLab
+
+```sh
+GIT_REMOTE_URL=https://gitlab.example.com/you/compose.git
+GIT_USERNAME=oauth2
+GIT_TOKEN=...
+```
+
+GitLab documents the username for git over https as "any non-blank value", with the token as
+the password, so `oauth2` works as well as your own. Use a project access token (or a personal
+access token) with the **`write_repository`** scope. Creating a project access token needs the
+Maintainer or Owner role, and if your branch is protected, the token's role must be allowed to
+push to it.
+
+## What the credentials are used for
+
+The credential is offered **only to the remote's own host**: git's credential helper is scoped
+to that origin, so a token set for one host is never sent to another, and `GITHUB_TOKEN` goes
+only to github.com.
+
+## How shipshape checks them
+
+Every loop tick on GitHub, shipshape asks the API whether the token can see the repository. On
+any other host it runs `git ls-remote` at most once every five minutes. When the host refuses
+the credentials, shipshape says so once, then daily while it lasts, as a notification
+(`shipshape:github-auth`, the name predates other hosts) and on Status: nothing can ship or
+publish while that lasts. Fix the variable and recreate the container so it is read again.
+
+## Links
+
+A change's link in the interface is `<the remote's web address>/commit/<sha>`, which GitHub,
+Gitea, Forgejo and GitLab all answer.
+
+## What still needs GitHub
+
+- **Release notes** of upstream projects are read from `api.github.com`, whatever your own
+  host is, with `GITHUB_TOKEN` for the rate limit.
+- **Forks** are pushed to GitHub only.

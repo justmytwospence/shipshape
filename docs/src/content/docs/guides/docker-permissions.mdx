@@ -1,6 +1,72 @@
 ---
-title: "Docker permissions"
-description: "Users, groups, the socket, and what a socket proxy does not buy you."
+title: Docker permissions
+description: Users, groups, the socket, and what a socket proxy does not buy you.
 ---
+shipshape runs `docker compose` and `git` from inside a container, against a checkout and a
+Docker socket that belong to other users. Most of what goes wrong is one of these.
 
-This page is being written.
+## User and group
+
+The container user must be able to write your compose checkout, so the commits and the work
+clone are yours:
+
+```yaml
+user: "${PUID:-1000}:${PGID:-1000}"   # stat -c '%u:%g' /path/to/checkout
+```
+
+The image runs as user ID 1000 by default and as any user ID that `user:` names.
+`./data` must exist before the first start and be writable by that user, or Docker creates it
+owned by root: `mkdir -p data` as that user.
+
+## The Docker socket's group
+
+The container user also needs the socket's group to reach the daemon:
+
+```yaml
+group_add:
+  - "${DOCKER_GID}"   # stat -c %g /var/run/docker.sock
+```
+
+Without it, every deploy fails with `permission denied while trying to connect to the docker
+API`.
+
+## Read-only root and tini
+
+`read_only: true` with `tmpfs: [/tmp]` works. `HOME` is `/tmp`, so any user ID has a writable
+home. The one-time database compaction after an upgrade from a large pre-0.2 database needs
+space in `/tmp` about the size of the database. tini is the image's init process, so `init:
+true` is unnecessary and harmless.
+
+## Git's trust of the checkout
+
+git refuses a repository owned by another user ("dubious ownership"). The image's entrypoint
+tells git to trust exactly two directories, `REPO_DIR` and `<DATA_DIR>/repo`, whatever user
+the container runs as, through git's environment configuration, so nothing is written to
+disk. That covers everything shipshape runs.
+
+`docker exec` does not go through the entrypoint. Any `docker exec shipshape ...` that runs
+git, including every `node dist/bin/*.js`, must go through it when the container user does not
+own the checkout:
+
+```sh
+docker exec shipshape shipshape-entrypoint git -C /srv/compose status
+docker exec shipshape shipshape-entrypoint node dist/bin/convert-v1.js
+```
+
+or use `docker compose run --rm shipshape ...`, which does go through it. A failure to read
+the branch this way is silent: shipshape falls back to `main`.
+
+## Socket proxies
+
+A socket proxy in front of shipshape is **not a security boundary**. A deploy needs to create
+containers, run builds and exec into containers, which a proxy that allows `POST` has to
+permit, and the inventory scanner for [security incidents](/shipshape/concepts/security-incidents/)
+mounts the real socket itself. A proxy that blocks those stops shipshape working; one that
+allows them stops nothing. Treat the socket as what it is, root on the host.
+
+## Private registries
+
+Docker's client reads registry credentials from `DOCKER_CONFIG`, which is `/data/docker` in
+the image: put a `config.json` at `data/docker/config.json` and deploys can pull private
+images. shipshape's own polling of registries uses Docker Hub credentials only, so a private
+image can be deployed but not watched.

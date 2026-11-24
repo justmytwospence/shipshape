@@ -1,6 +1,91 @@
 ---
-title: "MCP server"
-description: "Give an agent the dashboard's reads and the operator's verbs."
+title: MCP server
+description: Give an agent the dashboard's reads and the operator's verbs.
 ---
+shipshape can serve the [Model Context Protocol](https://modelcontextprotocol.io) on a port of
+its own, so an agent can read the same things you see and do the same things your buttons do.
+It is off until you set it up.
 
-This page is being written.
+## Turning it on
+
+```sh
+MCP_PORT=8090
+MCP_TOKEN=<32 or more characters, no spaces: openssl rand -hex 32>
+# MCP_HOST=0.0.0.0    # where it binds; the default
+```
+
+The listener starts only when `MCP_PORT` is set **and** `MCP_TOKEN` is at least 32 characters.
+With a port and no valid token it does not start, and Activity says why. Every request to
+`/mcp` must carry `Authorization: Bearer <MCP_TOKEN>`; without it the answer is `401`. It
+speaks Streamable HTTP at `/mcp`. `GET /health` on the MCP port answers without the token, like
+the main port.
+
+The token grants what the signed-in user can do, including shipping and deploying. Keep the port
+on a network only your agents reach, and put an authenticating gateway in front of it if it is
+reachable beyond one private network. Never publish it.
+
+A client entry:
+
+```json
+{
+  "mcpServers": {
+    "shipshape": {
+      "type": "http",
+      "url": "http://shipshape:8090/mcp",
+      "headers": { "Authorization": "Bearer <MCP_TOKEN>" }
+    }
+  }
+}
+```
+
+## Tools
+
+Every write goes through the same dispatcher as the buttons and the cards, which checks what
+is allowed *right now* first. An agent can do exactly what you could do at that moment, and
+nothing else. Settings, labels and Pause are not offered.
+
+| Tool | What it does |
+|---|---|
+| `api_usage` | Local observations of budgets and limits, with no call upstream. |
+| `inbox` | What is waiting on you, broken, parked, and recent. |
+| `list_updates` | Updates by stage, or the releases feed. |
+| `get_update` | One update: state, holds, review, timeline, the compose diff, and `allowed_verbs`. |
+| `list_services` | Every service with its watch state. |
+| `get_service` | One service: labels as read from git, its upstream and its updates. |
+| `activity` | The activity log, newest first. |
+| `scan_status` | Whether a scan is running, and what the last found. |
+| `scan_now` | Scan everything now. Contacts upstreams. |
+| `check_service` | Re-check one service now. Contacts upstreams. |
+| `update_action` | Apply a verb (`ship`, `snooze`, `always-ship`, `skip`, `deploy`, `redeploy`, `retry`, `rollback`, `rerun-review`, `propose`, `ack`) to one update, refused when it is not in `allowed_verbs`. |
+| `stack_action` | `retry` or `rollback` a stack's newest deploy. |
+| `list_exposures` | Running services that carry a package a followed incident names. |
+| `list_security_incidents` | The incidents shipshape follows. |
+| `find_package` | Which running services carry a package, and at what version. |
+
+Deploys run in the background: an action returns once started, and `get_update` shows how it
+went.
+
+**What spends money or contacts others.** `scan_now`, `check_service`, a paid reading
+(`rerun-review`, `propose`) and every deployment action can contact registries and GitHub, call
+your model provider or change the host. Inspect what is already there before repeating one.
+Reading resources and discovering tools never triggers a scan, a reading, a ship or a deploy.
+
+## Resources and prompt
+
+| URI | What it is |
+|---|---|
+| `shipshape://usage` | The same observations as `api_usage`: Docker Hub's last reported pull budget with its timestamp, its reserve, unknown GitHub quota, and the shared local model spend. Cached observations, not a fresh quota probe and not a per-agent allowance. |
+| `shipshape://status` | A cached summary of Status. |
+| `shipshape://updates/{id}` | One update, bounded. |
+| `shipshape://services/{stack}/{service}` | One service, bounded. |
+
+The prompt `review-update` takes an update id and plans a read-first look. It is a plan, not
+permission to run an action.
+
+Every tool carries explicit behavioural hints (read-only, destructive, idempotent), and
+returns text with structured data beside it.
+
+## Notification actions
+
+The webhook sink's actions call back through `update_action` and `stack_action`, which is why
+cards offer them only while this server is enabled.

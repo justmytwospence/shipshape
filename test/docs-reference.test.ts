@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { KNOWN_LABELS } from '../src/compose/scan.ts'
@@ -86,6 +86,11 @@ test('the environment reference names nothing the code does not read', () => {
   assert.deepEqual(stale, [], `documented but never read: ${stale.join(', ')}`)
 })
 
+test('development-only variables are on the development page', () => {
+  const dev = page('development.mdx')
+  for (const n of DEVELOPMENT_ONLY) assert.ok(dev.includes(`\`${n}\``), `${n} missing from development.mdx`)
+})
+
 const REMOVED_LABELS = new Set(['shipshape.policy', 'shipshape.pr', 'shipshape.claude'])
 
 test('every label the scanner knows is in the labels reference, and nothing else is', () => {
@@ -128,4 +133,52 @@ test('the notifications page names every sink type and field', () => {
     }
   }
   assert.deepEqual(missing, [], `add these to reference/notifications.mdx: ${missing.join(', ')}`)
+})
+
+/** GitHub-style heading slug, enough for the headings these pages use. */
+function slug(heading: string): string {
+  return heading
+    .toLowerCase()
+    .replace(/`/g, '')
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+    .trim()
+    .replace(/\s/g, '-')
+}
+
+function anchors(file: string): Set<string> {
+  const out = new Set<string>()
+  for (const m of readFileSync(file, 'utf8').matchAll(/^#{2,4}\s+(.+?)\s*$/gm)) out.add(slug(m[1]!))
+  return out
+}
+
+const BASE = 'https://justmytwospence.github.io/shipshape/'
+
+test('every documentation link in the code, the examples and the README leads to a page', () => {
+  const sources = [
+    ...files(join(ROOT, 'src'), /\.(ts|tsx|md)$/),
+    ...files(join(ROOT, 'examples'), /./),
+    ...files(join(ROOT, '.github'), /\.(ya?ml|md)$/),
+    join(ROOT, 'README.md'),
+  ]
+  const links = new Set<string>()
+  for (const f of sources) {
+    const text = readFileSync(f, 'utf8')
+    for (const m of text.matchAll(/https:\/\/justmytwospence\.github\.io\/shipshape\/([a-z0-9/_-]*)(#[a-z0-9_-]+)?/g)) {
+      links.add(`${m[1]}${m[2] ?? ''}`)
+    }
+    // `${DOCS_URL}path` and `${FORKS_GUIDE_URL}#anchor`, the two forms src/links.ts uses.
+    for (const m of text.matchAll(/\$\{DOCS_URL\}([a-z0-9/_-]*)(#[a-z0-9_-]+)?/g)) links.add(`${m[1]}${m[2] ?? ''}`)
+    for (const m of text.matchAll(/\$\{FORKS_GUIDE_URL\}(#[a-z0-9_-]+)/g)) links.add(`guides/forks/${m[1]}`)
+  }
+  assert.ok(links.size > 0, 'found no documentation links at all: the extraction is broken')
+  const broken: string[] = []
+  for (const link of links) {
+    const [path, hash] = link.split('#') as [string, string | undefined]
+    const clean = path.replace(/\/$/, '')
+    const candidates = clean === '' ? ['index.mdx'] : [`${clean}.mdx`, `${clean}.md`, `${clean}/index.mdx`]
+    const file = candidates.map((c) => join(PAGES, c)).find((c) => existsSync(c))
+    if (!file) broken.push(`${BASE}${link} (no page)`)
+    else if (hash && !anchors(file).has(hash)) broken.push(`${BASE}${link} (no heading #${hash})`)
+  }
+  assert.deepEqual(broken, [], broken.join('\n'))
 })

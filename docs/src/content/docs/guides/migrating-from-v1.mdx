@@ -1,6 +1,79 @@
 ---
-title: "Migrating from v1"
-description: "What changed since the pull-request era, and how to convert labels and policy."
+title: Migrating from v1
+description: What changed since the pull-request era, and how to convert labels and policy.
 ---
+Before 0.2, shipshape opened a pull request for each update and merged it on its own terms.
+Now an update ships on its own unless a hold says a person is needed, and what ships is a
+merge commit on your branch, with no pull request. This page is the only one that describes
+shipshape as it was.
 
-This page is being written.
+## What was removed
+
+- **The labels `shipshape.policy`, `shipshape.pr` and `shipshape.claude`** are no longer read.
+  They became `shipshape.class` and `shipshape.review`: see
+  [Removed labels](/shipshape/reference/labels/#removed-labels).
+- **The policy keys** `merge_method`, `defaults`, `merge`, `prs`, `revise`, `claude`,
+  `model_tier`, `sync.blackout`, `deploy.mode`, `deploy.health_window_s`, `notify.routine`,
+  `notify.cron`, `notify.incidents` and `notify.email`. A file that still carries any is
+  refused: the error names them, and the last good policy or the defaults apply. Older
+  versions loaded them silently.
+- **The `pr` kind in Activity** is now `ship`.
+
+## The safety net
+
+A service that still carries a v1 label is held to the class `ask` (or `lifeline`, `frozen` or
+`skip`, if `shipshape.class` says so), so a leftover can never loosen it. Each scan logs
+`<stack>/<service> carries a v1 label shipshape no longer reads`.
+
+## The converter
+
+```sh
+npm run convert-v1                      # a dry run: lists what would change; exit 1 while anything is left
+npm run convert-v1 -- --write           # one commit in the live checkout
+docker exec shipshape shipshape-entrypoint node dist/bin/convert-v1.js [--write]   # in the container
+```
+
+**Stop shipshape before `--write`:** it is a separate process and cannot take the running
+application's git lock. It refuses a checkout that is off the configured branch or has changes
+in a file it would touch. Its exit code is 0 when nothing is left to convert, 1 when something
+is, and 2 when it refused with nothing changed.
+
+For labels, `shipshape.policy` `auto` becomes class `normal`, `attended` becomes `lifeline`,
+`on-request` becomes `frozen`, `skip` stays `skip` and anything else becomes `ask`;
+`shipshape.pr: on-request` becomes `frozen`; `shipshape.claude` becomes `shipshape.review`.
+
+For the policy file, `claude.model`, `code_model` and `monthly_budget_usd` move under `review`
+(and `claude.mode: off` becomes `review.model: off`), `merge.cooldown_days` and `max_per_run`
+move under `ship`, the old pair `merge.auto` and `deploy.mode` becomes `paused` (running
+unattended only when both said so), `notify.incidents` and `notify.email` become `notify.sinks`,
+`deploy.health_window_s` becomes `deploy.verify_window_s`, `propose.mode: manual` becomes
+`off`, and every other retired key is removed. Where it cannot edit a file safely, it says so
+and leaves the file for you. See [Commands](/shipshape/reference/cli/) for why the command goes
+through the entrypoint.
+
+## Defaults that changed
+
+- **`paused` is `true`** for a file that does not say. Nothing ships on its own until you switch
+  Pause off. The converter writes it from your old `merge.auto` and `deploy.mode`.
+- **`notify.sinks` is empty** for a file that does not say. Nothing is sent until a sink is
+  configured. The converter writes the sinks your old `notify` settings implied.
+- **`ship.cooldown_days` is 7 and `ship.max_per_run` is 3.**
+- **The reader is Claude Sonnet 5.5** and **`review.monthly_budget_usd` is 15.** Write the old
+  values into the policy file if you want to keep them.
+
+## Environment
+
+- `HOMELAB_REPO` is `REPO_DIR`.
+- `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` are ignored. A self-hosted endpoint is
+  `LLM_BASE_URL`, and any value of it makes the provider "custom"; it is no longer an
+  OpenRouter setting. See [Models](/shipshape/guides/models/).
+- The MCP server needs `MCP_TOKEN`, and the action links need a `SHIPSHAPE_ACTION_SECRET` of 32
+  characters or more. See the [environment reference](/shipshape/reference/environment/).
+- The image runs as user 1000 with `HOME=/tmp`; see
+  [Docker permissions](/shipshape/guides/docker-permissions/).
+
+## Open pull requests
+
+Migration `034-drop-v1` closes any v1 pull-request rows still open in the database. It does
+**not** close them on GitHub: the v1 cutover did that, and it is removed. If you upgrade straight
+from v1, close the old pull requests yourself.

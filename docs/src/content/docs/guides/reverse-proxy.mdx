@@ -1,6 +1,104 @@
 ---
-title: "Reverse proxy"
+title: Reverse proxy
 description: "Proxy mode: your reverse proxy signs people in and tells shipshape who they are."
 ---
+import { Code } from '@astrojs/starlight/components'
+import traefikCompose from '../../../../../examples/compose/traefik-authelia/compose.yaml?raw'
+import traefikEnv from '../../../../../examples/compose/traefik-authelia/.env.example?raw'
+import traefikSnippet from '../../../../../examples/compose/traefik-authelia/traefik.snippet.yaml?raw'
+import caddyfile from '../../../../../examples/compose/caddy/Caddyfile?raw'
+import caddyCompose from '../../../../../examples/compose/caddy/compose.yaml?raw'
 
-This page is being written.
+If you already have single sign-on in front of your services, shipshape can believe your
+proxy instead of keeping a password of its own. The proxy authenticates every request and
+puts the username in a header; shipshape trusts that header only from the proxy's address.
+
+## How it decides
+
+A request is let in when **all three** hold:
+
+1. the **socket peer** is in `SHIPSHAPE_TRUSTED_PROXY`;
+2. the header `SHIPSHAPE_USER_HEADER` (default `Remote-User`) names a user exactly in
+   `SHIPSHAPE_ALLOWED_USER`, case-sensitively;
+3. for anything that changes something, the request's `Origin` is exactly
+   `SHIPSHAPE_ALLOWED_ORIGIN`.
+
+`X-Forwarded-For` is never an identity source. A request that fails the first two answers
+`403 Forbidden`, and so does a change whose `Origin` is wrong. The proxy must pass the
+browser's `Origin` through unchanged. An invalid `SHIPSHAPE_ALLOWED_ORIGIN` is ignored in proxy
+mode with no setup error, so every button then answers `503 CSRF protection unavailable`.
+
+## Rules every proxy must follow
+
+- **Overwrite the identity header.** The proxy must replace any `Remote-User` a browser
+  sends, or a visitor could name themselves.
+- **Authenticate every request** before it forwards one.
+- **Give it a fixed address on a dedicated network** that only the proxy and shipshape join,
+  and put that one address in `SHIPSHAPE_TRUSTED_PROXY`. Never the bridge gateway, and never
+  a subnet that contains it: every process on the host appears as the gateway. A wide range
+  lets every container in it claim any identity. shipshape does not warn about a wide range;
+  the choice is yours.
+- **Publish no port** for shipshape. Only the proxy reaches it.
+
+## Single sign-on headers
+
+| Proxy or auth server | Header | Set `SHIPSHAPE_USER_HEADER` to |
+|---|---|---|
+| Authelia | `Remote-User` | nothing: the default |
+| Authentik | `X-authentik-username` | `X-authentik-username` |
+| oauth2-proxy | `X-Auth-Request-User` | `X-Auth-Request-User` |
+| Caddy or nginx basic auth | any name you set | that name |
+
+## Traefik and Authelia
+
+Traefik asks Authelia about every request and forwards the signed-in user in `Remote-User`.
+These are the files the project's own tests use; the compose file runs shipshape, and the
+snippet is what to merge into the files that run Traefik and Authelia.
+
+<Code code={traefikCompose} lang="yaml" title="compose.yaml" />
+<Code code={traefikEnv} lang="sh" title=".env.example" />
+<Code code={traefikSnippet} lang="yaml" title="traefik.snippet.yaml" />
+
+## Caddy
+
+Caddy terminates TLS and asks the auth server through `forward_auth`. Put the directives in a
+`route` block: outside one, Caddy runs `forward_auth` before `request_header` and deletes the
+header the auth server has just set.
+
+<Code code={caddyfile} lang="txt" title="Caddyfile" />
+<Code code={caddyCompose} lang="yaml" title="compose.yaml" />
+
+## Authentik
+
+Use Authentik's forward-auth outpost as in either example above, and set
+`SHIPSHAPE_USER_HEADER=X-authentik-username`, with the username Authentik signs the user in as
+in `SHIPSHAPE_ALLOWED_USER`.
+
+## oauth2-proxy
+
+Configure oauth2-proxy to pass the user on (`--set-xauthrequest`) and let your proxy copy
+`X-Auth-Request-User` onto the request. Set `SHIPSHAPE_USER_HEADER=X-Auth-Request-User`.
+
+## nginx
+
+With `auth_basic`, or `auth_request` and your own identity provider, set the header in the
+`location`:
+
+```nginx
+location / {
+    auth_basic           "shipshape";
+    auth_basic_user_file /etc/nginx/htpasswd;
+    proxy_set_header     Remote-User $remote_user;
+    proxy_pass           http://shipshape:8080;
+}
+```
+
+`proxy_set_header` replaces a value the client sent under that name, which is the point.
+
+## These examples are checked for syntax
+
+The compose files pass `docker compose config`, and the Caddyfile validates and adapts. They
+have not been run against a live Authelia, Authentik or oauth2-proxy, and the header names for
+Authentik and oauth2-proxy are from their documentation, not from a test. If one does not work
+as written, please
+[open an issue](https://github.com/justmytwospence/shipshape/issues).

@@ -23,7 +23,10 @@
     "shots": "node bin/shots.mjs",
     "css": "tailwindcss -i src/styles/app.css -o public/app.css --minify",
     "css:watch": "tailwindcss -i src/styles/app.css -o public/app.css --watch",
-    "pretest": "npm run css && node bin/check-test-prereqs.mjs"
+    "pretest": "npm run css && node bin/check-test-prereqs.mjs",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check ."
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
@@ -38,6 +41,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.8",
     "@tailwindcss/cli": "^4.3.3",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.15.3",

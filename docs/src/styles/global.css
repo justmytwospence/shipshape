@@ -41,4 +41,8 @@
 .shot {
   border: 1px solid var(--sl-color-gray-5);
   border-radius: 0.5rem;
+  /* The width and height attributes Astro writes must not decide the box. */
+  display: block;
+  height: auto;
+  max-width: 100%;
 }

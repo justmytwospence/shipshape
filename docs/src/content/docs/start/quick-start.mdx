@@ -1,6 +1,100 @@
 ---
-title: "Quick start"
-description: "One container, signed in with its own password, watching your compose repository in about five minutes."
+title: Quick start
+description: One container, signed in with its own password, watching your compose repository in about five minutes.
 ---
+import { Aside, Code, Steps } from '@astrojs/starlight/components'
+import compose from '../../../../../examples/compose/quickstart/compose.yaml?raw'
+import envExample from '../../../../../examples/compose/quickstart/.env.example?raw'
 
-This page is being written.
+This runs shipshape as one container on the host that runs your stacks, signed in with a
+password of its own. It is the shortest path to looking at your own updates; nothing ships on
+its own until you switch Pause off.
+
+## Before you start
+
+- **A git repository of compose files, checked out on this host**, with one directory per
+  stack (`<stack>/compose.yaml` or `docker-compose.yml`; a file at the root works too) and
+  pushed to an **https** remote: GitHub, Gitea, Forgejo or GitLab.
+  [Requirements](/shipshape/start/requirements/) has the details.
+- **A token that can push to it.** On GitHub, a fine-grained token for that one repository
+  with *Contents: read and write*.
+- **Docker with the compose plugin**, on linux/amd64 or linux/arm64.
+- Optional: an `ANTHROPIC_API_KEY`, so release notes are read. Without one, updates still ship
+  on the evidence that is left; [Models](/shipshape/guides/models/) lists the other choices, a
+  local one included.
+
+## Run it
+
+<Steps>
+
+1. Make a directory for shipshape **outside** your compose repository, and fetch the two files:
+
+   ```sh
+   mkdir -p ~/shipshape && cd ~/shipshape
+   curl -fsSLO https://raw.githubusercontent.com/justmytwospence/shipshape/main/examples/compose/quickstart/compose.yaml
+   curl -fsSL -o .env https://raw.githubusercontent.com/justmytwospence/shipshape/main/examples/compose/quickstart/.env.example
+   ```
+
+2. Fill in `.env`. Each line says what it is. Two commands give you the numbers:
+
+   ```sh
+   stat -c '%u %g' /srv/compose        # PUID and PGID: the owner of your checkout
+   stat -c %g /var/run/docker.sock     # DOCKER_GID: the group of the docker socket
+   ```
+
+   `REPO_DIR` is the checkout's absolute path, `GITHUB_REPO` its `owner/repo`, `GITHUB_TOKEN`
+   the token, and `SHIPSHAPE_PASSWORD` a password of 12 characters or more. On another git
+   host, set `GIT_REMOTE_URL`, `GIT_USERNAME` and `GIT_TOKEN` instead
+   ([Git hosts](/shipshape/guides/git-hosts/)).
+
+3. Create the data directory as that user, then start it:
+
+   ```sh
+   mkdir -p data
+   docker compose up -d
+   docker compose ps        # STATUS shows (healthy) within a minute
+   ```
+
+4. Open `http://<this host>:8080` and sign in with the password.
+
+</Steps>
+
+<Aside type="caution" title="Plain HTTP">
+Port 8080 is plain HTTP: the password crosses your network in the clear. Before you reach it
+from anywhere but a trusted LAN, put it behind HTTPS, or a VPN, and set
+`SHIPSHAPE_ALLOWED_ORIGIN` to the address you use ([Sign-in](/shipshape/guides/sign-in/)).
+</Aside>
+
+## Getting started
+
+The Inbox opens on a **Getting started** list that ticks itself off:
+
+1. **Connect your compose repository**: ticks once shipshape has read the compose files in your
+   checkout. If a variable is missing, the step says which.
+2. **Choose what to watch**: shipshape only looks at services you watch. Open **Services**,
+   pick **Not watched**, then **Watch this service** on one or **Watch all** for a stack. Each
+   is one commit in your repository that adds `shipshape.watch: "true"`.
+3. **Run the first scan**: press **Scan now**, or wait for the nightly scan at 03:00.
+
+Two more are shown but optional: **Changelog reviews** (on when a model key is set) and
+**Pause**. The list disappears once the first three are done.
+
+## Let it ship
+
+shipshape starts paused: it scans, reads release notes and shows you what it would do, but
+nothing ships until you press Ship or switch Pause off in **Settings**. The Inbox's **Ships
+when you unpause** group is exactly what switching it off would let through. Read
+[Classes and holds](/shipshape/concepts/classes-and-holds/) first, and give the services that
+must never move on their own (your reverse proxy, your VPN, your DNS) the class `lifeline`.
+
+## The files
+
+<Code code={compose} lang="yaml" title="compose.yaml" />
+<Code code={envExample} lang="sh" title=".env.example" />
+
+## Next
+
+- [Your first update](/shipshape/start/first-update/): what a decision looks like and what each answer does.
+- [Notifications](/shipshape/guides/notifications/): get the card on your phone.
+- [Sign-in](/shipshape/guides/sign-in/): put it behind your reverse proxy or single sign-on.
+- [Upgrading](/shipshape/guides/upgrading/): shipshape never updates itself.

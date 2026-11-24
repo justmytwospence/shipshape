@@ -5,10 +5,6 @@ template: splash
 hero:
   title: Image updates that read the changelog first
   tagline: shipshape watches the compose files in your git repository, reads the release notes of every new image, ships what nothing holds as a merge commit, deploys it with a real docker compose up, and rolls it back if it breaks. What needs you arrives as one card with four answers.
-  image:
-    light: ../../assets/screenshots/hero-decision-light.png
-    dark: ../../assets/screenshots/hero-decision-dark.png
-    alt: A decision in shipshape. The update is held because the release notes list breaking changes; the notes' own lines are quoted, and Ship, Snooze and Skip sit underneath.
   actions:
     - text: Quick start
       link: /shipshape/start/quick-start/
@@ -21,3 +17,103 @@ hero:
       icon: external
       variant: minimal
 ---
+import { Code } from '@astrojs/starlight/components'
+import { Image } from 'astro:assets'
+import Section from '../../components/Section.astro'
+import Steps4 from '../../components/Steps4.astro'
+import FeatureGrid from '../../components/FeatureGrid.astro'
+import PhoneShot from '../../components/PhoneShot.astro'
+import Shot from '../../components/Shot.astro'
+import heroLight from '../../assets/screenshots/hero-decision-light.png'
+import heroDark from '../../assets/screenshots/hero-decision-dark.png'
+import compose from '../../../../examples/compose/quickstart/compose.yaml?raw'
+import rollbackDark from '../../assets/screenshots/rollback-dark.png'
+import shipLight from '../../assets/screenshots/ship-confirm-light.png'
+import inboxPhone from '../../assets/screenshots/inbox-phone-dark.png'
+import decisionPhone from '../../assets/screenshots/decision-phone-light.png'
+
+<div class="not-content mx-auto max-w-5xl">
+  <Shot light={heroLight} dark={heroDark} alt="A decision in shipshape. The update is held because the release notes list breaking changes; the notes' own lines are quoted, and Ship, Snooze and Skip sit underneath." />
+</div>
+
+<Section title="One update, four steps" lead="Every new image tag takes the same path, and every page names the same stage the same way.">
+<Steps4 steps={[
+  { title: 'Notice', body: 'Registries are polled for newer tags and moved digests of the services you watch. shipshape works out which upstream project each image comes from, even when the image does not say.' },
+  { title: 'Read', body: 'The release notes for exactly the versions crossed are fetched and read: a cheap screen first, then Claude where a person will act on it. What comes back is concrete: work to do, something unsafe, a one-way migration, or nothing.' },
+  { title: 'Ship', body: 'If nothing holds it and the release is a week old, the change lands on your branch as a merge commit with the review in its message. If something holds it, you get one card: ship, snooze, always ship, skip.' },
+  { title: 'Deploy', body: 'A real docker compose up -d, then a health check, an HTTP probe and a crash watch, then a soak. A deploy that fails its window is reverted with git revert and redeployed, once, and you are told.' },
+]} />
+</Section>
+
+<Section title="Made to be run from a phone" lead="A decision is a five-second job. The interface is a server-rendered app that installs to a home screen, with nothing but the decision on the screen.">
+<div class="grid items-start gap-8 sm:grid-cols-2">
+  <PhoneShot src={decisionPhone} alt="An update waiting on you, on a phone: what holds it, the review, and the Ship button above the dock." />
+  <PhoneShot src={inboxPhone} alt="The Inbox on a phone, dark: something broken, decisions waiting on you, rolling tags that moved." />
+</div>
+</Section>
+
+<Section title="What it does">
+<FeatureGrid items={[
+  { title: 'Finds the changelog', body: 'From LinuxServer metadata, OCI labels, registry pages and GitHub, checked and ranked by certainty. Two labels cover what nothing finds.', href: 'concepts/review/' },
+  { title: 'Holds only for reasons', body: 'A class per service and a short list of concrete holds. Nothing predicts risk; something is either listed as work, unsafe, irreversible, unread where it matters, or it ships.', href: 'concepts/classes-and-holds/' },
+  { title: 'Ships as git', body: 'Each change is a merge commit on your branch, built in shipshape\'s own clone. git log --graph is the history; git revert -m 1 undoes one.', href: 'concepts/shipping/' },
+  { title: 'Deploys for real', body: 'docker compose up -d from your checkout, so label and environment changes apply. A stopped service stays stopped.', href: 'concepts/deploy-and-rollback/' },
+  { title: 'Takes a restore point', body: 'Before a stateful service moves, its own dump command runs and the output is kept, or your offsite backup job runs first.', href: 'concepts/restore-points/' },
+  { title: 'Answers in one tap', body: 'One card per decision, sent to a webhook, email, ntfy, Discord, Gotify or Apprise. Where a message carries links, they confirm before they act.', href: 'guides/notifications/' },
+  { title: 'Matches security incidents', body: 'Incidents from a public feed are matched against package inventories of your running images, and the update that removes one is named.', href: 'concepts/security-incidents/' },
+  { title: 'Works with your model, or none', body: 'Anthropic, OpenRouter, or any Anthropic-compatible endpoint such as Ollama or LiteLLM. Without a model, updates still ship on the evidence that is left.', href: 'guides/models/' },
+  { title: 'Talks to agents', body: 'An MCP server with the dashboard\'s reads and the operator\'s verbs, each checked exactly like a button.', href: 'guides/mcp/' },
+]} />
+</Section>
+
+<Section title="When it breaks, it says so" lead="A failed verification inside the window reverts the merge commit, redeploys the old version and leaves a quiet card with the reason. After the soak nothing is rolled back on its own: by then a database may have migrated, and that is a person's call.">
+<div class="grid items-start gap-6 lg:grid-cols-2">
+  <figure class="m-0">
+    <Image src={shipLight} alt="The Ship confirmation, written from the policy: what will be watched, what happens on failure, which services it carries." widths={[720, 1440]} sizes="(min-width: 1024px) 480px, 100vw" class="shot" />
+    <figcaption class="mt-2 text-sm text-[var(--sl-color-gray-3)]">The Ship confirmation says what will happen before it does.</figcaption>
+  </figure>
+  <figure class="m-0">
+    <Image src={rollbackDark} alt="An update that was rolled back automatically, with the reason on its timeline." widths={[720, 1440]} sizes="(min-width: 1024px) 480px, 100vw" class="shot" />
+    <figcaption class="mt-2 text-sm text-[var(--sl-color-gray-3)]">An update that was rolled back, with why.</figcaption>
+  </figure>
+</div>
+</Section>
+
+<Section title="What it will not do" lead="It is a tool for one operator and one host. Better to know now.">
+<ul class="grid gap-3 sm:grid-cols-2">
+  <li>It does not run without a git repository of compose files checked out on the host and pushed to an https remote. There is no mode that edits files in place.</li>
+  <li>It does not manage more than one Docker host.</li>
+  <li>It does not update itself. You upgrade shipshape by hand, on purpose.</li>
+  <li>It does not open pull requests. Changes land on your branch; holds are how you keep the say.</li>
+  <li>It does not watch images in private registries, except on Docker Hub with your Docker Hub login.</li>
+  <li>It does not use ssh remotes.</li>
+  <li>It does not judge how risky a version looks. Verification, the soak and rollback carry that.</li>
+  <li>It is not open source. It is source-available under the Functional Source License; each release becomes Apache-2.0 two years after it ships.</li>
+</ul>
+</Section>
+
+<div class="mx-auto max-w-5xl">
+
+## Compared with what you may run now
+
+| | Notices new tags | Reads release notes | Changes land in git | Deploys and verifies | Rolls back |
+|---|---|---|---|---|---|
+| shipshape | yes | yes, with a model | merge commit | yes | yes, once, inside the window |
+| Watchtower | yes | no | no | restarts the container | no |
+| What's Up Docker | yes | no | no | optional triggers | no |
+| Diun | yes | no | no | no (notifies) | no |
+| Renovate | yes | from the image's source label | pull request | no | no |
+
+[The full comparison](/shipshape/compare/), including when to use something else.
+
+</div>
+
+<Section title="Running in five minutes" lead="One container, signed in with its own password. The guide walks through every line.">
+<Code code={compose} lang="yaml" title="compose.yaml" />
+
+[Quick start](/shipshape/start/quick-start/) · [Requirements](/shipshape/start/requirements/) · [Security model](/shipshape/security/)
+</Section>
+
+<p class="not-content mx-auto max-w-5xl pb-12 text-sm text-[var(--sl-color-gray-3)]">
+shipshape is source-available under the <a href="https://github.com/justmytwospence/shipshape/blob/main/LICENSE.md">Functional Source License 1.1, Apache-2.0 future license</a>: use it, change it and self-host it for anything except offering a competing commercial product or service. Each release becomes Apache-2.0 two years after it ships.
+</p>

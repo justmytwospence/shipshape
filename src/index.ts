@@ -1,5 +1,6 @@
 import { env, loadPolicy, policyFileState } from './config.ts'
 import { closeDb, getDb, logEvent } from './db.ts'
+import { compactOnce } from './db/retention.ts'
 import { reclaimInterrupted } from './deploy/queue.ts'
 import { deploysIdle } from './deploy/runner.ts'
 import { gitIdle } from './gitops/repo.ts'
@@ -14,6 +15,8 @@ let mcp: ServerHandle | null = null
 
 async function main(): Promise<void> {
   getDb()
+  // Before anything listens: a one-time VACUUM on the first start after upgrading.
+  compactOnce()
   // Whatever was running when the last process stopped is not running now.
   reclaimInterrupted()
   const { policy, error, missing } = loadPolicy()

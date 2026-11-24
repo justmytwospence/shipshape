@@ -1,5 +1,5 @@
 import { env } from '../config.ts'
-import { pace, readCache, writeCache, type CacheRow } from '../registry/http.ts'
+import { pace, readCache, touchCache, writeCache, type CacheRow } from '../registry/http.ts'
 
 /**
  * GitHub, as one client.
@@ -63,7 +63,10 @@ export async function ghRequest<T>(path: string, opts: GhRequestOpts<T> = {}): P
 
   if (res.status === 304) {
     const hit = parseCached<T>(cached)
-    if (hit !== undefined) return { ok: true, data: hit, fromCache: true }
+    if (hit !== undefined) {
+      if (opts.cacheKey) touchCache(opts.cacheKey)
+      return { ok: true, data: hit, fromCache: true }
+    }
     return { ok: false, kind: 'server', status: 304, detail: 'GitHub answered 304 with nothing cached' }
   }
 

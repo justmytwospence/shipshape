@@ -1136,6 +1136,14 @@ const MIGRATIONS: { id: string; sql: string }[] = [
      WHERE legacy_labels IS NOT NULL AND legacy_labels NOT LIKE 'shipshape.%';
     `,
   },
+  {
+    id: '035-retention',
+    sql: `
+    -- The retention prune (src/db/retention.ts) and the Activity list both read events by
+    -- when they were last seen.
+    CREATE INDEX IF NOT EXISTS idx_events_seen ON events(COALESCE(last_at, at));
+    `,
+  },
 ]
 
 /** The migration list, for tests that need to stop partway (test/migrate-034.test.ts). */

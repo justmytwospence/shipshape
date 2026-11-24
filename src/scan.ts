@@ -10,6 +10,7 @@ import { resolveWatched } from './resolver/index.ts'
 import type { Magnitude } from './versions/patterns.ts'
 import { LIVE_STATES, REFUSED_STATES, sqlIn } from './updates/state.ts'
 import { checkFork, reconcileForks } from './forks.ts'
+import { prune } from './db/retention.ts'
 
 /**
  * The nightly (or on-demand) sweep: read the compose files, ask each registry what
@@ -119,6 +120,11 @@ async function scanBody(trigger: 'cron' | 'manual'): Promise<ScanResult> {
 
     const durationS = Math.round((Date.now() - started) / 1000)
     recordTelemetry(counts, durationS)
+    try {
+      prune()
+    } catch (err) {
+      logEvent({ level: 'warn', kind: 'system', message: 'database pruning failed', detail: (err as Error).message })
+    }
     logEvent({
       level: 'info',
       kind: 'scan',

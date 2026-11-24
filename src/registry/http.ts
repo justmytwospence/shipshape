@@ -283,6 +283,11 @@ export function writeCache(key: string, etag: string | null, body: string): void
     .run(key, etag, body, new Date().toISOString())
 }
 
+/** A 304 confirmed the cached body: it is still current, so retention keeps it. */
+export function touchCache(key: string): void {
+  getDb().prepare(`UPDATE http_cache SET fetched_at = ? WHERE url = ?`).run(new Date().toISOString(), key)
+}
+
 export function readCachedBody(key: string): string | null {
   return readCache(key)?.body ?? null
 }
@@ -292,10 +297,15 @@ export async function fetchJson<T>(url: string, opts: FetchOpts = {}): Promise<T
   const res = await registryFetch(url, opts)
   if (res.status === 304 && opts.cacheKey) {
     const body = readCachedBody(opts.cacheKey)
-    if (body) return JSON.parse(body) as T
+    if (body) {
+      touchCache(opts.cacheKey)
+      return JSON.parse(body) as T
+    }
   }
   if (!res.ok) throw new RegistryError(`${res.status} from ${url}`, res.status)
   const text = await res.text()
-  if (opts.cacheKey) writeCache(opts.cacheKey, res.headers.get('etag'), text)
+  // Only a body that can be revalidated is worth keeping: without an ETag it is never read.
+  const etag = res.headers.get('etag')
+  if (opts.cacheKey && etag) writeCache(opts.cacheKey, etag, text)
   return JSON.parse(text) as T
 }

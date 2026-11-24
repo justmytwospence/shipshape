@@ -140,8 +140,8 @@ export function inventory(imageId: string): Package[] | null {
  * How long syft may take on one image, by its size.
  *
  * Most of a scan is docker exporting and unpacking the image, which grows with its size:
- * hermes (3 GB) took two minutes, paperless-ai (8.6 GB) thirteen, of which a minute was
- * syft's own catalogers. A flat limit either gave up on the large ones every time or let a
+ * a 3 GB image took two minutes, an 8 GB image thirteen, of which a minute was syft's own
+ * catalogers. A flat limit either gave up on the large ones every time or let a
  * stuck small one hold the queue. 2.5 minutes a gigabyte, at least 5, at most 40.
  */
 async function timeoutFor(imageId: string, exec: Exec = run): Promise<number> {
@@ -161,7 +161,7 @@ export async function scanImage(imageId: string, ref: string | null, policy: Pol
     [
       'run',
       '--rm',
-      // A 3 GB image (hermes) needs more than 3g; 8g is a ceiling, not a reservation.
+      // A 3 GB image needs more than 3g; 8g is a ceiling, not a reservation.
       '--memory',
       '8g',
       '--cpus',

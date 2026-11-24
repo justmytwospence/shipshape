@@ -9,8 +9,8 @@ import { composeFileOfStack } from './files.ts'
 /**
  * Stacks that are part of the root compose project rather than their own.
  *
- * Either the root file itself, or one it `include:`s -- pihole, traefik, ddclient and
- * wireguard here. Both are addressed from the repository root with no `-f`, because
+ * Either the root file itself, or one it `include:`s -- a DNS server, a reverse proxy and
+ * a VPN, for example. Both are addressed from the repository root with no `-f`, because
  * scoping to their own file loses the networks the root defines and compose refuses the
  * whole project.
  */

@@ -295,8 +295,8 @@ test('the timeline of a left-stopped update ends there', () => {
 })
 
 test('a left-stopped member still reads left stopped once a later merge overtakes it', () => {
-  // n8n #91 left n8n-import stopped while n8n verified on the same row. The next group bump
-  // merged, retireOvertaken moved n8n-import's update to superseded -- and its history
+  // One change left a one-shot job stopped while its sibling verified on the same row. The
+  // next group bump merged, retireOvertaken moved the job's update to superseded -- and its history
   // started saying "verified", because only the update's state had said left stopped.
   const db = getDb()
   const left = addUpdate({ service: 'n8n-import', state: 'left-stopped', fromTag: '2.38.5', toTag: '2.38.7' })
@@ -318,7 +318,7 @@ test('a left-stopped member still reads left stopped once a later merge overtake
     }),
     dep,
   )
-  // Order is the whole question for retireOvertaken, so #91 merged strictly before #95.
+  // Order is the whole question for retireOvertaken, so the first change merged strictly before the second.
   db.prepare(`UPDATE prs SET merged_at = ? WHERE id = ?`).run(ago(3), prA)
   const next = addUpdate({ service: 'n8n-import', state: 'merged', fromTag: '2.38.7', toTag: '2.38.8' })
   addPr(next, { number: 95, state: 'merged', sha: 'def' })

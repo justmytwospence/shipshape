@@ -89,7 +89,7 @@ export function repositoryOf(image: string): string {
   return `${ref.registry}/${ref.repository}`
 }
 
-/** `ghcr.io/agentgateway/agentgateway` -> `agentgateway`: the name a card leads with. */
+/** `ghcr.io/example/auth-proxy` -> `auth-proxy`: the name a card leads with. */
 export function shortRepository(image: string): string {
   const repo = parseImageRef(image).repository
   return repo.split('/').pop() ?? repo

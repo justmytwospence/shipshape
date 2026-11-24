@@ -156,8 +156,7 @@ test('the same bump in several stacks is read once, against all of them', () => 
  *
  * A target replaced while it waited -- `newer target` -- never reached the compose file,
  * and its successor is written from the same from_tag, so the successor's review covers
- * this range whole. That is the waste: 162 such rows, and 89 of the 204 verdicts ever
- * written, about $8.17 of $25.05.
+ * this range whole. That is the waste, and it was most of the bill.
  *
  * Two others did reach the host and must keep their review, because nothing else will ever
  * carry it and the interface offers a superseded row no button to ask again.

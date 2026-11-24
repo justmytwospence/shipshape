@@ -130,7 +130,7 @@ test('the prompt says where the repository came from, how sure that is, and what
 
 test('an approximate range says it is one, and nothing in range asks for a search', () => {
   const text = renderPrompt(
-    { image: 'nousresearch/hermes-agent:latest', fromTag: 'latest@sha256:aaa', toTag: 'latest@sha256:bbb' },
+    { image: 'example/agent:latest', fromTag: 'latest@sha256:aaa', toTag: 'latest@sha256:bbb' },
     bundle({ range: { from: 'latest@sha256:aaa', to: 'latest@sha256:bbb', approximate: true, basis: 'the tags float' } }),
   )
   assert.match(text, /-- approximate: the tags float/)

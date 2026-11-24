@@ -23,11 +23,11 @@ const { getDb } = await import('../src/db/index.ts')
 const { runOperatorVerb } = await import('../src/updates/operator-verbs.ts')
 
 const g = (args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: repo, encoding: 'utf8' }).trim()
-const AG = 'ghcr.io/agentgateway/agentgateway'
+const AG = 'ghcr.io/example/auth-proxy'
 
 function add(stack: string, tier: string, image = AG): number {
   getDb()
-    .prepare(`INSERT OR REPLACE INTO images (stack, service, compose_file, image_ref, registry, repository, watched, last_seen_at) VALUES (?, ?, 'x', ?, 'ghcr.io', 'agentgateway/agentgateway', 1, 'now')`)
+    .prepare(`INSERT OR REPLACE INTO images (stack, service, compose_file, image_ref, registry, repository, watched, last_seen_at) VALUES (?, ?, 'x', ?, 'ghcr.io', 'example/auth-proxy', 1, 'now')`)
     .run(stack, stack, `${image}:v1.6.0`)
   return Number(
     getDb()
@@ -92,7 +92,7 @@ test('always ship writes the rule as a commit, approves the decision, and says w
   const ids = [add('a-mcp', 'ask'), add('b-mcp', 'ask')]
   const r = await runOperatorVerb(ids[0]!, 'always-ship')
   assert.equal(r.ok, true, r.message)
-  assert.match(r.message, /^Always ship: every service running ghcr\.io\/agentgateway\/agentgateway, waiving ask\. Rule r1 committed \([0-9a-f]{7,}\)\./)
+  assert.match(r.message, /^Always ship: every service running ghcr\.io\/example\/auth-proxy, waiving ask\. Rule r1 committed \([0-9a-f]{7,}\)\./)
   assert.match(readFileSync(join(repo, 'policy.yaml'), 'utf8'), /id: r1/)
   assert.match(g(['log', '-1', '--format=%s']), /^chore\(shipshape\): rule r1: always ship/)
   for (const id of ids) assert.ok(row(id)!.approved_at, 'shipped now as well')

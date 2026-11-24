@@ -43,9 +43,9 @@ beforeEach(() => {
 
 const rule = (id = 'r1') => ({
   id,
-  match: { image: 'ghcr.io/agentgateway/agentgateway' },
+  match: { image: 'ghcr.io/example/auth-proxy' },
   waive: ['ask' as const],
-  because: '2026-11-11, agentgateway v1.7.0 card: always ship',
+  because: '2026-11-11, auth-proxy v1.7.0 card: always ship',
 })
 
 test('a rule is appended to policy.yaml as a commit, and the file still parses', async () => {
@@ -56,7 +56,7 @@ test('a rule is appended to policy.yaml as a commit, and the file still parses',
   assert.match(text, /rules:/)
   const parsed = PolicySchema.parse(JSON.parse(JSON.stringify(require_yaml(text))))
   assert.deepEqual(parsed.rules, [rule()])
-  assert.match(g(['log', '-1', '--format=%s']), /^chore\(shipshape\): rule r1: always ship every service running ghcr\.io\/agentgateway\/agentgateway, waiving ask$/)
+  assert.match(g(['log', '-1', '--format=%s']), /^chore\(shipshape\): rule r1: always ship every service running ghcr\.io\/example\/auth-proxy, waiving ask$/)
   assert.equal(g(['log', '-1', '--format=%h']), sha)
   assert.equal(g(['status', '--porcelain']), '')
 })
@@ -94,20 +94,20 @@ test('nextRuleId counts from the highest id, not the length', () => {
 })
 
 test('describeRule says the scope and what it waives, in words', () => {
-  assert.equal(describeRule(rule()), 'every service running ghcr.io/agentgateway/agentgateway, waiving ask')
+  assert.equal(describeRule(rule()), 'every service running ghcr.io/example/auth-proxy, waiving ask')
   assert.equal(describeRule({ match: { stack: 'books', service: 'shelfmark' }, waive: ['no-evidence'] }), 'books/shelfmark, waiving no-evidence')
   assert.equal(describeRule({ match: { base_build: true }, waive: ['ask'] }), 'our own builds, waiving ask')
 })
 
 // ------------------------------------------------------------------ the fallback scope
 
-const member = (stack: string, service: string, image = 'ghcr.io/agentgateway/agentgateway:v1.6.0', baseBuild = false) => ({ image, stack, service, baseBuild })
+const member = (stack: string, service: string, image = 'ghcr.io/example/auth-proxy:v1.6.0', baseBuild = false) => ({ image, stack, service, baseBuild })
 
 test('the fallback is the shared image when several services run it', () => {
   const r = fallbackRule([member('a', 'a-auth'), member('b', 'b-auth')], ['ask'], 'v1.7.0', '2026-11-11')
-  assert.deepEqual(r.match, { image: 'ghcr.io/agentgateway/agentgateway' })
+  assert.deepEqual(r.match, { image: 'ghcr.io/example/auth-proxy' })
   assert.deepEqual(r.waive, ['ask'])
-  assert.equal(r.because, '2026-11-11, agentgateway v1.7.0 card: always ship')
+  assert.equal(r.because, '2026-11-11, auth-proxy v1.7.0 card: always ship')
 })
 
 test('the fallback is one service when it stands alone, and notes our own builds', () => {
@@ -127,7 +127,7 @@ test('every fallback covers every service it was asked about', () => {
 const ctx = { info: [member('a', 'a-auth'), member('b', 'b-auth')], waivable: ['ask', 'no-evidence'] as ('ask' | 'no-evidence')[] }
 
 test('a model answer is used only if it is well-formed, waives only what the card had, and covers every service', () => {
-  const good = { match: { image: 'ghcr.io/agentgateway/agentgateway' }, waive: ['ask'], because: 'x' }
+  const good = { match: { image: 'ghcr.io/example/auth-proxy' }, waive: ['ask'], because: 'x' }
   assert.deepEqual(validateDraft(good, ctx), good)
   assert.equal(validateDraft({ ...good, waive: ['irreversible'] }, ctx), null, 'a hold the card did not have')
   assert.equal(validateDraft({ ...good, waive: ['lifeline'] }, ctx), null, 'not waivable at all')
@@ -138,11 +138,11 @@ test('a model answer is used only if it is well-formed, waives only what the car
 
 // ------------------------------------------------------------------ inferRule end to end
 
-function seed(stack: string, service: string, tier: string, image = 'ghcr.io/agentgateway/agentgateway:v1.6.0') {
+function seed(stack: string, service: string, tier: string, image = 'ghcr.io/example/auth-proxy:v1.6.0') {
   const db = getDb()
   db.prepare(
     `INSERT INTO images (stack, service, compose_file, image_ref, registry, repository, watched, last_seen_at)
-     VALUES (?, ?, 'x', ?, 'ghcr.io', 'agentgateway/agentgateway', 1, 'now')`,
+     VALUES (?, ?, 'x', ?, 'ghcr.io', 'example/auth-proxy', 1, 'now')`,
   ).run(stack, service, image)
   return Number(
     db
@@ -158,7 +158,7 @@ test('inferRule without a model gives the shared image for one decision across s
   const a = seed('a-mcp', 'a-mcp-auth', 'ask')
   seed('b-mcp', 'b-mcp-auth', 'ask')
   const r = await inferRule(a, '2026-11-11')
-  assert.deepEqual(r, { id: 'r1', match: { image: 'ghcr.io/agentgateway/agentgateway' }, waive: ['ask'], because: '2026-11-11, agentgateway v1.7.0 card: always ship' })
+  assert.deepEqual(r, { id: 'r1', match: { image: 'ghcr.io/example/auth-proxy' }, waive: ['ask'], because: '2026-11-11, auth-proxy v1.7.0 card: always ship' })
 })
 
 test('inferRule refuses what no rule may waive', async () => {
@@ -172,8 +172,8 @@ test('inferRule refuses when nothing is holding the update', async () => {
 })
 
 test('the fallback for a stack card with several images is the stack', () => {
-  const r = fallbackRule([member('pay', 'btc', 'docker.io/x/btc:1'), member('pay', 'db', 'docker.io/library/postgres:17')], ['ask'], 'x')
-  assert.deepEqual(r.match, { stack: 'pay' })
+  const r = fallbackRule([member('media', 'app', 'docker.io/x/app:1'), member('media', 'db', 'docker.io/library/postgres:17')], ['ask'], 'x')
+  assert.deepEqual(r.match, { stack: 'media' })
 })
 
 test('a model answer wider than the card is refused', () => {

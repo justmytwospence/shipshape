@@ -141,18 +141,18 @@ export interface Thresholds {
 }
 
 /**
- * Calibrated on 2026-10-01 against 80 reader verdicts (`npm run jev-replay`), at the
- * conservative end of the region with no miss rather than its loosest edge:
+ * Calibrated against 80 reader verdicts (`npm run jev-replay`), at the conservative end
+ * of the region with no miss rather than its loosest edge:
  *
  * - The Score's *position* was wrong for gating. Its middle level fit almost every
  *   release (median 0.96 on what the reader approved), so it holds only at "breaks
  *   without action" (1.5). Its *confidence* earns its place: the one update the reader
- *   flagged with every risk answer low (n8n 2.38.0, "back up first") was stopped by a
+ *   flagged with every risk answer low (one that said "back up first") was stopped by a
  *   confidence of 0.30.
  * - `affects_this_deployment` sat near 0.5 whether or not anything mattered, and decides
  *   nothing on its own; it is still shown.
- * - A wide range is always read. The closest call in the replay (n8n 2.38.5 -> 2.40.5,
- *   a block with its strongest risk answer at 0.30) had 22 releases' notes in it, and Jev
+ * - A wide range is always read. The closest call in the replay (a jump of two minors, a
+ *   block with its strongest risk answer at 0.30) had 22 releases' notes in it, and Jev
  *   is documented to lose accuracy as its input grows.
  *
  * Move these only with a replay that still shows no miss, and never quiet a finding.

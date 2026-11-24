@@ -128,7 +128,7 @@ const bump: PrepareForkResult = {
   kind: 'bump',
   sha: NEW_SHA,
   short: NEW_SHA.slice(0, 7),
-  tag: `homelab/v3.5.1-${NEW_SHA.slice(0, 7)}`,
+  tag: `shipshape/v3.5.1-${NEW_SHA.slice(0, 7)}`,
   upstreamTag: 'v3.5.1',
   carried,
   dropped: [],
@@ -180,7 +180,7 @@ test('a fork group builds its branch through bumpFork, from the replay it was ha
 
   const body = carriedFixesSection(group(), r.forks)
   assert.match(body, /### Carried fixes/)
-  assert.match(body, /\[`9f1c2d3`\]|`homelab\/v3\.5\.1-9f1c2d3`/)
+  assert.match(body, /\[`9f1c2d3`\]|`shipshape\/v3\.5\.1-9f1c2d3`/)
   assert.match(body, /\[`ccccccc`\]\(https:\/\/github\.com\/justmytwospence\/grimmory\/commit\/c{40}\) fix: keep the reading statistics \(#2952\) — Spencer/)
   assert.match(body, /grimmory-tools\/grimmory#2952\]\(https:\/\/github\.com\/grimmory-tools\/grimmory\/issues\/2952\): merged, not released/)
 })
@@ -267,14 +267,14 @@ test('a digest-pinned upstream keeps its pin, or the edit is refused', async () 
 
 test('an overtaken fork change is rebuilt from main onto the newer target', async () => {
   const repo = workRepo()
-  const first = await buildBranch(repo, group('v3.5.0'), 'shipshape/books-grimmory', deps({ ...bump, tag: 'homelab/v3.5.0-9f1c2d3', upstreamTag: 'v3.5.0' }).deps)
+  const first = await buildBranch(repo, group('v3.5.0'), 'shipshape/books-grimmory', deps({ ...bump, tag: 'shipshape/v3.5.0-9f1c2d3', upstreamTag: 'v3.5.0' }).deps)
   assert.ok(first.ok)
   const later = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
   const second = await buildBranch(
     repo,
     group('v3.5.1'),
     'shipshape/books-grimmory',
-    deps({ ...bump, sha: later, short: later.slice(0, 7), tag: `homelab/v3.5.1-${later.slice(0, 7)}` }).deps,
+    deps({ ...bump, sha: later, short: later.slice(0, 7), tag: `shipshape/v3.5.1-${later.slice(0, 7)}` }).deps,
   )
   assert.ok(second.ok, (second as { reason?: string }).reason)
   // One commit on top of main, not two: the retarget discards the previous target's.

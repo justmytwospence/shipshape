@@ -235,7 +235,7 @@ test('a fork says what will happen until the replay exists, then shows the whole
     toTag: 'v3.5.1',
     fromSha: FORK_SHA,
     sha: newSha,
-    tag: 'homelab/v3.5.1-9f1c2d3',
+    tag: 'shipshape/v3.5.1-9f1c2d3',
     forkUrl: 'https://github.com/justmytwospence/grimmory.git',
     upstreamRef: 'ghcr.io/grimmory-tools/grimmory:v3.5.1',
     carried: [{ sha: 'c'.repeat(40), short: 'ccccccc', subject: 'fix: x', author: 'me' }],

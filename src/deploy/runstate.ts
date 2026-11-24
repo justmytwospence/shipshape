@@ -12,9 +12,9 @@ import { missing, type ServiceObservation, type ServiceSnapshot } from './probe.
  * brought up. Anything else is left exactly as it was: no create, no pull, no start, no
  * rm. The merge still stands and the compose file still carries the new version.
  *
- * It was not always so. `docker compose up -d bitwarden` does not care that someone
- * stopped bitwarden: #101 merged 1.37.3 at 09:02 on 2026-09-14 and started a service the
- * operator had deliberately parked, and the digest reported it as a routine deploy.
+ * It was not always so. `docker compose up -d <service>` does not care that someone
+ * stopped the service: a change merged and started a service the operator had
+ * deliberately parked, and the report called it a routine deploy.
  *
  * **The docker-state table.** Read from `State.Status`, never `State.Running`:
  *
@@ -29,12 +29,12 @@ import { missing, type ServiceObservation, type ServiceSnapshot } from './probe.
  * reason a service is down cannot be recovered from docker, and leaving it is the only
  * answer that is never wrong. There is no one-shot exception either: a job container that
  * exited 0 under `restart: "no"` is indistinguishable from a long-running service that
- * was parked, so n8n-import is left like anything else and a deploy of n8n's group brings
- * up n8n alone.
+ * was parked, so a one-shot import job is left like anything else and a deploy of its
+ * group brings up the service alone.
  *
  * **Carry: undoing shipshape's own damage.** The rule must not read back a stop that
- * shipshape itself caused as though a person had asked for it. minuspod #79 and #93 both
- * failed mid-"Recreate" after an rm-first removed the old container; without an exception,
+ * shipshape itself caused as though a person had asked for it. A change and a later one
+ * both failed mid-"Recreate" after an rm-first removed the old container; without an exception,
  * Try again on that DOWN alert would find nothing running and politely leave it down. So a
  * service the caller says is *carried* -- its newest recorded plan put it up, in an attempt
  * that failed, or in this very row before it was interrupted (see `carriedFor`) -- is
@@ -49,8 +49,8 @@ import { missing, type ServiceObservation, type ServiceSnapshot } from './probe.
  * its owner is recreated is *stranded*: its pinned id is gone, `docker start` on it would
  * fail, and only compose recovers it (probe 4a3/4a5) -- so its text says so.
  *
- * **Backup stops.** docker-volume-backup stops bitwarden, sftpgo, actual, readeck and
- * shelfmark around its nightly archive and restarts the same container ids afterwards.
+ * **Backup stops.** A backup job that stops containers to copy their volumes restarts the
+ * same container ids afterwards.
  * Recreating a container it holds stopped would make that restart fail and leave the
  * service down, which is one of the reasons stopped services are left rather than staged
  * with `up --no-start`.

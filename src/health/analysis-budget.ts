@@ -10,10 +10,10 @@ import { notify, resolveIncident } from '../notify/index.ts'
  * Saying so when the analysis budget runs out.
  *
  * Written from a specific silence, and the same shape as the one `github-auth.ts` exists
- * for. The monthly cap was reached on 2026-08-27 and again on 2026-09-14. Both times
- * analysis simply stopped: the container stayed green, scanning carried on, pull requests
- * went on opening -- and auto-merge went on merging them, with no changelog read. Of the
- * 40 pull requests merged between 2026-09-14 and 2026-09-21, 39 carried no review at all.
+ * for. When the monthly cap was reached, analysis simply stopped: the container stayed
+ * green, scanning carried on, changes went on being made -- and they went on shipping,
+ * with no changelog read. For a week nearly every change that shipped carried no review
+ * at all.
  *
  * The reason nothing was said is worth keeping written down, because it is not an
  * oversight anyone would spot by reading either half on its own. The only line that ever

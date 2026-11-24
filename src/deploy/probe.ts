@@ -311,7 +311,7 @@ export function stackDir(stack: string, repoDir = env.repoDir): string {
  *
  * `stdout` is `docker ps` lines of id, project, working directory and name, tab-separated.
  * A different project name from the same directory is the tell of a stack brought up
- * historically under another name (the homelab's "orphaned containers" gotcha): compose
+ * historically under another name (compose's orphan-container warning): compose
  * cannot see it, the project-scoped lookup cannot see it, and without this check a running
  * orphan would be reported as "left stopped (no container)".
  */

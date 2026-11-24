@@ -202,7 +202,7 @@ export function validateDraft(
   return wider ? null : d
 }
 
-/** `agentgateway, waiving "no release notes"`: a rule in words, for the verb's answer. */
+/** `auth-proxy, waiving "no release notes"`: a rule in words, for the verb's answer. */
 export function describeRule(rule: Pick<Rule, 'match' | 'waive'>): string {
   const m = rule.match
   const scope = m.image

@@ -598,7 +598,7 @@ test('the Not watched filter offers to watch them all', () => {
 
 test('the interface never says pull request, or points at a file that is not here', () => {
   for (const [name, html] of Object.entries(VIEWS)) {
-    assert.doesNotMatch(html, /pull request|\bPRs?\b|FORKS\.md|Hermes|\bJev\b/i, name)
+    assert.doesNotMatch(html, /pull request|\bPRs?\b|FORKS\.md|Hermes|\bJev\b|homelab/i, name)
   }
 })
 

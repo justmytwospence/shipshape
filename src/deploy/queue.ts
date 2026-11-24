@@ -604,10 +604,10 @@ const UNFINISHED = new Set(['running', 'pending', 'superseded'])
  * unless someone has visibly stopped them since.
  *
  * The rule that a deploy never starts a stopped service needs this one exception, or it
- * reads shipshape's damage back as an operator's decision. minuspod #79 and #93 are the
- * shape: both deploys (rows 23 and 24) were rm-first, removed the old container, and
- * failed mid-"Recreate", leaving minuspod DOWN. The next merge on minuspod, and Try again
- * on the DOWN alert that asked for exactly that, would both find no container and leave
+ * reads shipshape's damage back as an operator's decision. A change and a later one are
+ * the shape: both deploys were rm-first, removed the old container, and failed
+ * mid-"Recreate", leaving the service DOWN. The next merge on it, and Try again on the
+ * DOWN alert that asked for exactly that, would both find no container and leave
  * it down, reporting "left stopped (no container)" about an outage shipshape caused.
  *
  * So, per service, the newest recorded plan that names it -- up or left -- decides. It is

@@ -4,10 +4,10 @@ import { logEvent } from '../events.ts'
 /**
  * Retire merged updates that a later merge has overtaken.
  *
- * #79 moved minuspod 2.87.0 -> 2.96.15 and its deploy failed. #93 then moved it 2.96.15
- * -> 2.96.17. From that moment #79 could never be deployed on its own -- the compose
- * file names #93's tag, and a deploy brings up whatever the file says -- but it went on
- * reading `merged`, with a failed deploy and a Retry button, as if it were still
+ * A change moved a service 2.87.0 -> 2.96.15 and its deploy failed. A later change then
+ * moved it 2.96.15 -> 2.96.17. From that moment the first could never be deployed on its
+ * own -- the compose file names the later tag, and a deploy brings up whatever the file
+ * says -- but it went on reading `merged`, with a failed deploy and a Retry button, as if it were still
  * something to act on. It took a manual retry to clear it.
  *
  * The rule is the one `superseded` already describes: a newer target replaced it. An
@@ -23,8 +23,8 @@ import { logEvent } from '../events.ts'
  *
  * A left-stopped update is overtaken the same way, and overtakes the same way, so only the
  * newest merge for a service reads Left stopped. Its merge landed in the file just like a
- * deployed one did; the service simply was not running to take it. Left alone, #79 and #93
- * on a stopped minuspod would both read Left stopped, one of them naming a tag the compose
+ * deployed one did; the service simply was not running to take it. Left alone, a change
+ * and a later one on a stopped service would both read Left stopped, one of them naming a tag the compose
  * file no longer carries.
  *
  * Called when a pull request merges, and once at startup so updates stranded before this

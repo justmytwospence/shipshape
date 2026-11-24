@@ -11,7 +11,7 @@ and a list of work to do can never be waived, and you are only offered holds tha
 
 `match` keys, all of which must match:
 - `image`: an image repository including its registry, no tag (for example
-  `ghcr.io/agentgateway/agentgateway`). Covers every service running that image, in any stack.
+  `ghcr.io/example/auth-proxy`). Covers every service running that image, in any stack.
 - `stack` and `service`: exactly one service.
 - `base_build`: `true` for our own builds that are watched through their base image.
 

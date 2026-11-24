@@ -26,8 +26,8 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 /**
  * A deploy's outcome, end to end through the queue: the row, the updates, the digest.
  *
- * bitwarden was stopped on purpose, #101 merged 1.37.3 at 09:02 on 2026-09-14, and the
- * deploy started it -- then the digest called it deployed. Here a deploy that finds a
+ * A service was stopped on purpose, a change merged a new version of it, and the deploy
+ * started it -- then the report called it deployed. Here a deploy that finds a
  * service stopped leaves it so, and every record says Left stopped rather than verified.
  */
 

@@ -264,7 +264,7 @@ test('the deadline is a failure, not a default pass', () => {
 
 test('the compose project scopes the lookup, and root is the repo directory', () => {
   assert.equal(projectName('jellyfin'), 'jellyfin')
-  assert.equal(projectName('root', '/home/spencer/homelab'), 'homelab')
+  assert.equal(projectName('root', '/srv/compose'), 'compose')
 })
 
 test('inspect output becomes the fields the verifier reads', () => {

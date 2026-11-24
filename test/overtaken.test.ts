@@ -7,9 +7,9 @@ import { join } from 'node:path'
 /**
  * A merged update that a later merge has overtaken is retired, not left asking.
  *
- * #79 (minuspod -> 2.96.15) failed to deploy; #93 (2.96.15 -> 2.96.17) merged on top of
- * it. #79 could never deploy on its own after that, and still read `merged` with a Retry
- * button until someone pressed it.
+ * A change (-> 2.96.15) failed to deploy; a later one (2.96.15 -> 2.96.17) merged on top
+ * of it. The first could never deploy on its own after that, and still read `merged` with
+ * a Retry button until someone pressed it.
  */
 
 const dir = mkdtempSync(join(tmpdir(), 'shipshape-overtaken-'))
@@ -115,7 +115,7 @@ test('a later update that was rolled back or dismissed has overtaken nothing', (
 })
 
 test('a later left-stopped merge retires an older merged update', () => {
-  // #93 landed in the file on a stopped minuspod; the file names its tag either way.
+  // The later change landed in the file on a stopped service; the file names its tag either way.
   const u79 = update({ from: '2.87.0-cpu', to: '2.96.15-cpu' })
   pr(79, u79, { mergedAt: at(6) })
   const u93 = update({ from: '2.96.15-cpu', to: '2.96.17-cpu', state: 'left-stopped' })

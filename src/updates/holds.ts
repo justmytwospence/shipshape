@@ -199,8 +199,8 @@ export function holdsForUpdate(id: number, policy?: Policy): UpdateHolds | null 
  * A decision is a stack: everything in it that needs you, shipped together as one merge
  * commit when you say ship (src/gitops/ship.ts, `eligibleGroups`). The one exception is a
  * bump fanned out across stacks -- the same image moving to the same tag in stacks that
- * have nothing else waiting (nineteen agentgateway sidecars) -- which is one card, not
- * nineteen.
+ * have nothing else waiting (six auth-proxy sidecars) -- which is one card, not
+ * six.
  */
 export interface Decision {
   /** The card key's suffix: `stack:<stack>`, or the image repository for a fan-out. */

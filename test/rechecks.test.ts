@@ -116,9 +116,9 @@ const detailOf = (id: number) =>
   (getDb().prepare(`SELECT detail FROM deploys WHERE id = ?`).get(id) as { detail: string }).detail
 
 test('a soak that fails keeps what the deploy said about the service it left', async () => {
-  // n8n #91: n8n came up, n8n-import was left stopped, and the row's detail is the only
-  // place n8n-import's timeline reads its sentence from. The soak failing on n8n used to
-  // write over it.
+  // One service came up, a sibling one-shot job was left stopped, and the row's detail is
+  // the only place the job's timeline reads its sentence from. The soak failing on the
+  // service used to write over it.
   const db = getDb()
   const now = new Date().toISOString()
   const update = (service: string, state: string) =>

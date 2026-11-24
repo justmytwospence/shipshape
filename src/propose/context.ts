@@ -5,7 +5,7 @@ import { parse as parseYaml } from 'yaml'
  * Facts about the running deployment that the compose file alone does not state.
  *
  * A compose file says a service is on the `traefik` network; it does not say that
- * network is `10.0.74.0/24`. When an upstream tells you to set a trusted-proxy range,
+ * network is `172.20.0.0/16`. When an upstream tells you to set a trusted-proxy range,
  * the compose file cannot answer the question and the model has to guess. It guessed
  * `172.16.0.0/12` on the first real proposal here -- the documented Docker default,
  * and wrong for this host.

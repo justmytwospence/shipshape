@@ -25,8 +25,8 @@ import type { Verdict } from './verify.ts'
  * The alternative -- an override file pinning the previous image digest -- was rejected.
  * It is faster by about ten seconds and creates exactly the git-versus-runtime drift
  * this repository has been burned by: the override lives only in shipshape's head, so
- * the next `bin/homelab up`, the next hand-run compose, or the next scan would quietly
- * converge the service back onto the broken tag.
+ * the next hand-run `docker compose up` or the next scan would quietly converge the
+ * service back onto the broken tag.
  *
  * The revert is committed locally and deployed immediately; pushing happens afterwards
  * through the normal sync. The old image's layers are still on disk, so the restore is

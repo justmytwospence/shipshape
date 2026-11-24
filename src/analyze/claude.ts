@@ -238,8 +238,8 @@ export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | 
  *
  * The first two lines state as fact what the model otherwise had to take on trust, and
  * did not. Given only a version string and a release list that ended a few builds
- * earlier, it concluded -- three times for minuspod, and for jackett and code-server on
- * 2026-09-11 -- that the proposed version "does not exist", that pulling it would fail,
+ * earlier, it concluded -- three times for one service, and for two more on the same
+ * day -- that the proposed version "does not exist", that pulling it would fail,
  * and so that it would break. Every one of those tags was in the registry; shipshape had
  * read it there. Exported for the tests.
  */

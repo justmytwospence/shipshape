@@ -771,7 +771,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
           fork: {
             kind: 'bump',
             sha: '9f1c2d3e4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d',
-            tag: 'homelab/v3.5.1-9f1c2d3',
+            tag: 'shipshape/v3.5.1-9f1c2d3',
             forkUrl: 'https://github.com/justmytwospence/grimmory.git',
             upstreamRef: 'ghcr.io/grimmory-tools/grimmory:v3.5.1@sha256:' + '0'.repeat(64),
             carried: [{ sha: 'c'.repeat(40), short: 'ccccccc', subject: 'fix: keep the reading statistics (#2952)', author: 'Spencer' }],

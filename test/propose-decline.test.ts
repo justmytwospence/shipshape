@@ -27,7 +27,7 @@ after(() => {
  * sits downstream of a candidate being picked, so there was no event, no comment and no
  * digest line either.
  *
- * pihole #132 is the case that surfaced it. The review named a migration step, nothing was
+ * A real update surfaced it. The review named a migration step, nothing was
  * drafted, and the pull request read as though shipshape had no drafting feature at all --
  * which is what the operator concluded. The bug is not that it declined; it is that
  * declining and having nothing to do were indistinguishable.

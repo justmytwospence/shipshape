@@ -132,29 +132,29 @@ const rule = (over: Partial<Rule> & { match: Rule['match'] }): Rule => ({
   because: '',
   ...over,
 })
-const target = { image: 'ghcr.io/agentgateway/agentgateway:v1.6.0', stack: 'strava-mcp', service: 'strava-mcp-auth', baseBuild: false }
+const target = { image: 'ghcr.io/example/auth-proxy:v1.6.0', stack: 'notes', service: 'notes-auth', baseBuild: false }
 
 test('a rule matches by image repository, stack, service or base build; every key it names must match', () => {
-  assert.equal(ruleMatches(rule({ match: { image: 'ghcr.io/agentgateway/agentgateway' } }), target), true)
-  assert.equal(ruleMatches(rule({ match: { image: 'ghcr.io/agentgateway/other' } }), target), false)
-  assert.equal(ruleMatches(rule({ match: { stack: 'strava-mcp', service: 'strava-mcp-auth' } }), target), true)
-  assert.equal(ruleMatches(rule({ match: { stack: 'strava-mcp', service: 'other' } }), target), false)
+  assert.equal(ruleMatches(rule({ match: { image: 'ghcr.io/example/auth-proxy' } }), target), true)
+  assert.equal(ruleMatches(rule({ match: { image: 'ghcr.io/example/other' } }), target), false)
+  assert.equal(ruleMatches(rule({ match: { stack: 'notes', service: 'notes-auth' } }), target), true)
+  assert.equal(ruleMatches(rule({ match: { stack: 'notes', service: 'other' } }), target), false)
   assert.equal(ruleMatches(rule({ match: { base_build: true } }), target), false)
   assert.equal(ruleMatches(rule({ match: { base_build: true } }), { ...target, baseBuild: true }), true)
-  assert.equal(ruleMatches(rule({ match: { image: 'ghcr.io/agentgateway/agentgateway', stack: 'nope' } }), target), false)
+  assert.equal(ruleMatches(rule({ match: { image: 'ghcr.io/example/auth-proxy', stack: 'nope' } }), target), false)
 })
 
 test('applyRules waives only the waivable kinds a matching rule names', () => {
   const holds = holdsFor(input({ cls: 'ask', magnitude: 'major', verdict: verdict({ notesInRange: 0, steps: ['x'] }) }))
   assert.deepEqual(holds.map((h) => h.kind), ['ask', 'needs-action', 'no-evidence'])
-  const out = applyRules(holds, [rule({ id: 'r7', waive: ['ask', 'no-evidence'], match: { image: 'ghcr.io/agentgateway/agentgateway' } })], target)
+  const out = applyRules(holds, [rule({ id: 'r7', waive: ['ask', 'no-evidence'], match: { image: 'ghcr.io/example/auth-proxy' } })], target)
   assert.deepEqual(out.map((h) => [h.kind, h.waivedBy ?? null]), [['ask', 'r7'], ['needs-action', null], ['no-evidence', 'r7']])
   assert.deepEqual(blocking(out).map((h) => h.kind), ['needs-action'])
 })
 
 test('a rule can never waive what is not waivable, even if it says so', () => {
   const holds = holdsFor(input({ cls: 'lifeline' }))
-  const out = applyRules(holds, [{ id: 'r1', match: { image: 'ghcr.io/agentgateway/agentgateway' }, waive: ['ask'], because: '' }], target)
+  const out = applyRules(holds, [{ id: 'r1', match: { image: 'ghcr.io/example/auth-proxy' }, waive: ['ask'], because: '' }], target)
   assert.deepEqual(blocking(out).map((h) => h.kind), ['lifeline'])
 })
 
@@ -163,8 +163,8 @@ test('the first matching rule that names a hold wins', () => {
   const out = applyRules(
     holds,
     [
-      rule({ id: 'r1', waive: ['no-evidence'], match: { image: 'ghcr.io/agentgateway/agentgateway' } }),
-      rule({ id: 'r2', waive: ['ask'], match: { stack: 'strava-mcp' } }),
+      rule({ id: 'r1', waive: ['no-evidence'], match: { image: 'ghcr.io/example/auth-proxy' } }),
+      rule({ id: 'r2', waive: ['ask'], match: { stack: 'notes' } }),
     ],
     target,
   )
@@ -208,7 +208,7 @@ test('shipStatus: blocking holds are a decision, until snoozed', () => {
 })
 
 test('shipStatus: a rule that waives every hold makes it ready', () => {
-  const rules = [rule({ waive: ['ask'], match: { image: 'ghcr.io/agentgateway/agentgateway' } })]
+  const rules = [rule({ waive: ['ask'], match: { image: 'ghcr.io/example/auth-proxy' } })]
   assert.deepEqual(shipStatus(ship({ cls: 'ask', rules })), { status: 'ready' })
 })
 
@@ -241,7 +241,7 @@ test('a drafted change holds, and no rule can waive it', () => {
   assert.equal(h!.kind, 'draft')
   assert.equal(h!.waivable, false)
   assert.equal(h!.text, 'a drafted change is waiting to be read')
-  const all = rule({ id: 'r9', waive: ['ask', 'no-evidence', 'irreversible', 'no-restore-point'], match: { image: 'ghcr.io/agentgateway/agentgateway' } })
+  const all = rule({ id: 'r9', waive: ['ask', 'no-evidence', 'irreversible', 'no-restore-point'], match: { image: 'ghcr.io/example/auth-proxy' } })
   assert.deepEqual(blocking(applyRules(holds, [all], target)).map((x) => x.kind), ['draft'])
 })
 

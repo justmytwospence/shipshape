@@ -4,7 +4,7 @@
  * Compose resolves `${VAR}` from the caller's environment *before* the stack's own
  * `.env` -- the shell wins. Inheriting shipshape's environment therefore handed its own
  * OPENROUTER_API_KEY, NTFY_TOKEN, PUID, ... to every stack that names the same variable
- * (opencode, n8n, paperless, hermes, crowdsec, ...), so a deploy from here resolved
+ * (several stacks), so a deploy from here resolved
  * differently from the same `docker compose up` on the host, and could put shipshape's
  * key -- with its own spending cap -- inside another service.
  *

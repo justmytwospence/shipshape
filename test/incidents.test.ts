@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 /**
- * The incident channel: keyed messages to the homelab's notification router, resolved
+ * The incident channel: keyed messages to a webhook receiver, resolved
  * silently, and kept for retry when the router cannot take them.
  */
 

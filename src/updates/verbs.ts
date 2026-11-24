@@ -148,9 +148,9 @@ function targetFor(stack: string, services: string[]): DeployTarget {
  * carried, not just the one the button was pressed on.
  *
  * `git revert` undoes the whole commit, so a group's file goes back for every member. Rolling
- * back from one member used to redeploy only that member -- pressed on n8n-import, left
- * stopped from #91, it reverted n8n's line too and never touched n8n, which kept running
- * 2.38.7 and kept reading verified against a file that pinned 2.38.5. A member already
+ * back from one member used to redeploy only that member -- pressed on a one-shot job left
+ * stopped by a change, it reverted its sibling's line too and never touched the sibling,
+ * which kept running 2.38.7 and kept reading verified against a file that pinned 2.38.5. A member already
  * overtaken or dismissed is not the revert's to move, and there is no pull request to read
  * for an update that never had one.
  */

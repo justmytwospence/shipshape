@@ -16,9 +16,8 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 /**
  * Saying so when the analysis budget runs out.
  *
- * The silence this covers ran twice: the cap was reached on 2026-08-27 and again on
- * 2026-09-14, and each time the only trace was a single warning line. 39 of the 40 pull
- * requests merged in the week after the second one were merged with no changelog read.
+ * The silence this covers: the cap was reached, and the only trace was a single warning
+ * line. Nearly every change shipped in the week after was shipped with no changelog read.
  *
  * The mechanism is the part worth a regression test. The warning lived in `recordCost`,
  * which only runs when a model call is made, so it stopped being emitted at exactly the

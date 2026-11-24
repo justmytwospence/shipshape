@@ -122,18 +122,16 @@ export function pendingAnalysis(limit: number): PendingAnalysis[] {
          -- written from the SAME from_tag and is read over a range that contains this one
          -- whole. Reading 1.18.30 -> 2.0.11 passes through the notes for 2.0.4 on the way,
          -- so a separate verdict buys the same prose attributed to a row nobody can act
-         -- on. 162 rows are that, against 66 minor and major in any 30-day window, and it
-         -- is most of the bill: 89 of the 204 verdicts ever written, about $8.17 of
-         -- $25.05. When the budget was raised on 2026-09-21 the first thing the headroom
-         -- bought was six dead opencode versions, 2.0.2 through 2.0.9, each read in full
-         -- beside the 2.0.11 that could actually be deployed.
+         -- on. Rows like that outnumber the minor and major updates in any 30-day window
+         -- and were most of the bill: raising the budget once bought six dead versions of
+         -- one service, each read in full beside the one that could actually be deployed.
          --
          -- Two of the others did reach the compose file, and they are kept:
          --
          --   caught-up -- it applied out of band, so the scan found the file already
          --   past it. There is no successor row at all, so nothing else will ever carry
          --   this range. This is the backfill's own reason for existing, and the class is
-         --   not hypothetical: paperless 2.20.15 -> 3.1.3 is a major that ran here.
+         --   not hypothetical: a major can apply out of band this way.
          --
          --   a merged pull request -- the tag landed, and a later merge passed it. Its
          --   successor starts from THIS row's to_tag, so the successor's range begins

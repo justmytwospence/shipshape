@@ -84,11 +84,11 @@ test('a compose file that names itself is that project, not its directory', () =
     mkdirSync(join(dir, n), { recursive: true })
     writeFileSync(join(dir, n, 'docker-compose.yaml'), body)
   }
-  stack('crypto-nodes', '# comment\nname: payments\nservices:\n  btc:\n    image: x\n')
+  stack('media', '# comment\nname: jellyfin\nservices:\n  app:\n    image: x\n')
   stack('quoted', 'name: "My_App"  # why\nservices: {}\n')
   stack('var', 'name: ${PROJECT:-x}\nservices: {}\n')
   stack('plain', 'services:\n  a:\n    image: x\n    labels:\n      name: nope\n')
-  assert.equal(projectName('crypto-nodes', dir), 'payments')
+  assert.equal(projectName('media', dir), 'jellyfin')
   assert.equal(projectName('quoted', dir), 'my_app')
   assert.equal(projectName('var', dir), 'var', 'a variable is left to the directory')
   assert.equal(projectName('plain', dir), 'plain', 'only a top-level name counts')

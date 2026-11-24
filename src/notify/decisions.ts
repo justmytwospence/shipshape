@@ -11,7 +11,7 @@ import { notify, resolveIncident, type IncidentAction } from './index.ts'
  *
  * A decision is a stack: everything in it waiting on you, answered with one tap and
  * shipped as one merge commit. A bump fanned out across stacks with nothing else waiting
- * (nineteen sidecars on one agentgateway release) is one card keyed by its image instead
+ * (six sidecars on one auth-proxy release) is one card keyed by its image instead
  * (`currentDecisions`, src/updates/holds.ts). Each card leads with the question, offers
  * its verbs as one-tap actions, escalates once if it waits, and is resolved -- removed
  * from the room -- the moment the update stops waiting: shipped, skipped, snoozed,

@@ -196,14 +196,14 @@ test('one tap on a stack card ships everything in it as one merge commit', async
   const seedDir = join(dir, 'seed2')
   rmSync(seedDir, { recursive: true, force: true })
   execFileSync('git', ['clone', '-q', origin, seedDir])
-  mkdirSync(join(seedDir, 'pay'), { recursive: true })
+  mkdirSync(join(seedDir, 'media'), { recursive: true })
   writeFileSync(
-    join(seedDir, 'pay', 'docker-compose.yaml'),
-    'services:\n  btc:\n    image: example/btc:1.0.0\n    labels:\n      shipshape.watch: "true"\n      shipshape.class: ask\n' +
+    join(seedDir, 'media', 'docker-compose.yaml'),
+    'services:\n  app:\n    image: example/app:1.0.0\n    labels:\n      shipshape.watch: "true"\n      shipshape.class: ask\n' +
       '  db:\n    image: example/db:17\n    labels:\n      shipshape.watch: "true"\n      shipshape.class: ask\n',
   )
   g(seedDir, ['add', '-A'])
-  g(seedDir, ['commit', '-qm', 'pay'])
+  g(seedDir, ['commit', '-qm', 'media'])
   g(seedDir, ['push', '-q', 'origin', 'HEAD:main'])
   g(live, ['pull', '-q', 'origin', 'main'])
 
@@ -211,24 +211,24 @@ test('one tap on a stack card ships everything in it as one merge commit', async
   const ins = (service: string, from: string, to: string) => {
     db.prepare(
       `INSERT OR REPLACE INTO images (stack, service, compose_file, image_ref, registry, repository, current_tag, watched, last_seen_at)
-       VALUES ('pay', ?, 'pay/docker-compose.yaml', ?, 'docker.io', ?, ?, 1, 'now')`,
+       VALUES ('media', ?, 'media/docker-compose.yaml', ?, 'docker.io', ?, ?, 1, 'now')`,
     ).run(service, `example/${service}:${from}`, `example/${service}`, from)
     return Number(
       db.prepare(
         `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at, approved_at)
-         VALUES ('pay', ?, ?, ?, ?, 'minor', 'ask', 'detected', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', '2026-02-02T00:00:00Z')`,
+         VALUES ('media', ?, ?, ?, ?, 'minor', 'ask', 'detected', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', '2026-02-02T00:00:00Z')`,
       ).run(service, `example/${service}:${from}`, from, to).lastInsertRowid,
     )
   }
-  ins('btc', '1.0.0', '1.1.0')
+  ins('app', '1.0.0', '1.1.0')
   ins('db', '17', '18')
 
   const r = await runShipPass()
   assert.deepEqual([r.shipped, r.failed], [1, 0])
   const [merge] = originLog().split('\n')
-  assert.equal(merge!.split('|')[1], 'chore(deps): pay: bump btc 1.0.0 -> 1.1.0, db 17 -> 18')
-  const compose = g(origin, ['show', 'main:pay/docker-compose.yaml'])
-  assert.match(compose, /example\/btc:1\.1\.0/)
+  assert.equal(merge!.split('|')[1], 'chore(deps): media: bump app 1.0.0 -> 1.1.0, db 17 -> 18')
+  const compose = g(origin, ['show', 'main:media/docker-compose.yaml'])
+  assert.match(compose, /example\/app:1\.1\.0/)
   assert.match(compose, /example\/db:18/)
   assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM deploys`).get() as { n: number }).n, 1, 'one deploy')
 })
@@ -239,7 +239,7 @@ test('an update for a service that is in no compose file any more is retired, no
   const id = Number(
     db.prepare(
       `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at, approved_at)
-       VALUES ('payments', 'btc', 'example/btc:1.0.0', '1.0.0', '1.1.0', 'patch', 'ask', 'detected', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', '2026-02-02T00:00:00Z')`,
+       VALUES ('media', 'app', 'example/app:1.0.0', '1.0.0', '1.1.0', 'patch', 'ask', 'detected', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', '2026-02-02T00:00:00Z')`,
     ).run().lastInsertRowid,
   )
   const r = await runShipPass()

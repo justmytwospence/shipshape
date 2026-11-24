@@ -7,7 +7,7 @@ import { join } from 'node:path'
 /**
  * One card per decision, live. A decision is a stack -- everything in it waiting on you --
  * except one bump fanned out across stacks with nothing else waiting, which is one card
- * keyed by its image (nineteen sidecars, one card). The card leads with the question,
+ * keyed by its image (six sidecars, one card). The card leads with the question,
  * escalates once, and is resolved the moment the update stops waiting.
  */
 
@@ -34,7 +34,7 @@ globalThis.fetch = (async (_u: unknown, init: { body: string }) => {
 const { getDb } = await import('../src/db/index.ts')
 const { currentDecisions, cardFor, syncDecisionCards, resetDecisionCards, DECISION_PREFIX } = await import('../src/notify/decisions.ts')
 
-const AG = 'ghcr.io/agentgateway/agentgateway'
+const AG = 'ghcr.io/example/auth-proxy'
 
 function add(stack: string, service: string, tier: string, o: { image?: string; to?: string; from?: string; since?: string | null; state?: string } = {}): number {
   return Number(
@@ -55,14 +55,14 @@ beforeEach(() => {
   writeFileSync(process.env.POLICY_FILE!, 'paused: false\nnotify:\n  sinks:\n    - { type: webhook }\n')
 })
 
-test('nineteen services on one bump are one decision, and one card', () => {
-  for (let i = 0; i < 19; i++) add(`s${i}-mcp`, `s${i}-mcp-auth`, 'ask')
+test('six services on one bump are one decision, and one card', () => {
+  for (let i = 0; i < 6; i++) add(`s${i}-mcp`, `s${i}-mcp-auth`, 'ask')
   const ds = currentDecisions()
   assert.equal(ds.length, 1)
-  assert.equal(ds[0]!.members.length, 19)
+  assert.equal(ds[0]!.members.length, 6)
   const c = cardFor(ds[0]!)
-  assert.equal(c.key, `${DECISION_PREFIX}ghcr.io/agentgateway/agentgateway`)
-  assert.equal(c.title, 'agentgateway v1.6.0 → v1.7.0 · 19 services')
+  assert.equal(c.key, `${DECISION_PREFIX}ghcr.io/example/auth-proxy`)
+  assert.equal(c.title, 'auth-proxy v1.6.0 → v1.7.0 · 6 services')
 })
 
 test('a lone service is named by itself', () => {
@@ -148,18 +148,18 @@ test('syncing sends a card once, edits it when it changes, and resolves it when 
 })
 
 test('a stack is one card listing each update with what holds it', () => {
-  add('payments', 'btcpayserver', 'ask', { image: 'docker.io/btcpayserver/btcpayserver', from: '2.1.0', to: '2.2.0' })
-  add('payments', 'payments-db', 'stateful', { image: 'docker.io/library/postgres', from: '17', to: '18' })
+  add('media', 'jellyfin', 'ask', { image: 'docker.io/jellyfin/jellyfin', from: '2.1.0', to: '2.2.0' })
+  add('media', 'media-db', 'stateful', { image: 'docker.io/library/postgres', from: '17', to: '18' })
   add('other', 'other', 'ask', { image: 'docker.io/x/other' })
   const ds = currentDecisions()
   assert.equal(ds.length, 2)
-  const c = cardFor(ds.find((d) => d.stack === 'payments')!)
-  assert.equal(c.key, `${DECISION_PREFIX}stack:payments`)
-  assert.equal(c.title, 'payments: 2 updates')
+  const c = cardFor(ds.find((d) => d.stack === 'media')!)
+  assert.equal(c.key, `${DECISION_PREFIX}stack:media`)
+  assert.equal(c.title, 'media: 2 updates')
   const lines = c.body.split('\n')
   assert.match(lines[0]!, /^Ship these together\?/)
-  assert.equal(lines[1], '- btcpayserver 2.1.0 → 2.2.0: this service always asks')
-  assert.match(lines[2]!, /^- payments-db 17 → 18: /)
+  assert.equal(lines[1], '- jellyfin 2.1.0 → 2.2.0: this service always asks')
+  assert.match(lines[2]!, /^- media-db 17 → 18: /)
 })
 
 test('a stack with more waiting does not join a fan-out of one of its images', () => {
@@ -168,7 +168,7 @@ test('a stack with more waiting does not join a fan-out of one of its images', (
   add('s2', 's2-db', 'ask', { image: 'docker.io/library/postgres', from: '17', to: '18' })
   add('s3', 's3-auth', 'ask')
   const keys = currentDecisions().map((d) => d.key).sort()
-  assert.deepEqual(keys, ['ghcr.io/agentgateway/agentgateway', 'stack:s2'])
+  assert.deepEqual(keys, ['ghcr.io/example/auth-proxy', 'stack:s2'])
   assert.equal(currentDecisions().find((d) => d.repository)!.members.length, 2)
 })
 

@@ -15,7 +15,7 @@ writeFileSync(join(dir, 'compose.override.yaml'), 'services: {}\n')
 process.env.REPO_DIR = dir
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const { composeArgs, pullArgs, buildArgs, manualCommand } = await import('../src/deploy/run.ts')
+const { composeArgs, pullArgs, buildArgs, manualCommand } = await import('../src/deploy/compose-cmd.ts')
 const t = { stack: 'jellyfin', services: ['jellyfin'], strategy: 'up' as const }
 
 test('a stack whose file is compose.yaml deploys with it, and with its override', () => {

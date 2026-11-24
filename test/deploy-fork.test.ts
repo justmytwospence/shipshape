@@ -42,12 +42,14 @@ const merge = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 
 
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const { deploy, deployChange, failureState, manualCommand, pullArgs } = await import('../src/deploy/run.ts')
+const { deploy, deployChange } = await import('../src/deploy/run.ts')
+const { failureState } = await import('../src/deploy/outcome.ts')
+const { manualCommand, pullArgs } = await import('../src/deploy/compose-cmd.ts')
 const { buildableServices } = await import('../src/compose/topology.ts')
 const { performRollback } = await import('../src/deploy/rollback.ts')
 const { PolicySchema } = await import('../src/config.ts')
 const { composeCalls, fakeIo } = await import('./helpers/deploy-io.ts')
-type DeployTarget = import('../src/deploy/run.ts').DeployTarget
+type DeployTarget = import('../src/deploy/types.ts').DeployTarget
 
 const policy = PolicySchema.parse({})
 const target: DeployTarget = { stack: 'books', services: ['grimmory', 'mariadb'], strategy: 'up' }

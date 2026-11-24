@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { includedStacks } from '../src/compose/scan.ts'
-import { composeArgs } from '../src/deploy/run.ts'
+import { composeArgs } from '../src/deploy/compose-cmd.ts'
 import { isRootStack } from '../src/compose/topology.ts'
 import { projectName } from '../src/compose/topology.ts'
 

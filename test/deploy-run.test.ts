@@ -8,10 +8,11 @@ const dir = mkdtempSync(join(tmpdir(), 'shipshape-deploy-run-'))
 process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 
-const { deploy, nextStep } = await import('../src/deploy/run.ts')
+const { deploy } = await import('../src/deploy/run.ts')
+const { nextStep } = await import('../src/deploy/outcome.ts')
 const { composeCalls, fakeIo } = await import('./helpers/deploy-io.ts')
 type RecordedPlan = import('../src/deploy/runstate.ts').RecordedPlan
-type DeployTarget = import('../src/deploy/run.ts').DeployTarget
+type DeployTarget = import('../src/deploy/types.ts').DeployTarget
 
 after(() => rmSync(dir, { recursive: true, force: true }))
 

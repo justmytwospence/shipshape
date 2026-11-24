@@ -1,17 +1,18 @@
 import { execa } from 'execa'
 import { env, loadPolicy, type Policy } from '../config.ts'
 import { DockerUnreadable, findForeign, httpProbe, inspectService, missing, snapshotOf, type ServiceObservation, type ServiceSnapshot } from './probe.ts'
-import { projectName } from '../compose/topology.ts'
+import { projectName, stackPeers, buildableServices } from '../compose/topology.ts'
 import { scanRepo } from '../compose/scan.ts'
-import { composeFileOfStack, overrideFor } from '../compose/files.ts'
 import { DEFAULT_VERIFY, runVerify, type Verdict } from './verify.ts'
 import { dockerEnvOptions } from '../docker/env.ts'
 import { getDb } from '../db.ts'
 import { logEvent } from '../events.ts'
 import { notify, resolveIncident } from '../notify/index.ts'
 import type { DeployTrigger } from './queue.ts'
-import { countsAsRunning, leftClause, observeSet, ownerFrom, planRun, restoredClause, type LeftService, type RecordedPlan, type RunPlan } from './runstate.ts'
-import { stackPeers, buildableServices, isRootStack } from '../compose/topology.ts'
+import { leftClause, observeSet, ownerFrom, planRun, restoredClause, type RecordedPlan, type RunPlan } from './runstate.ts'
+import type { DeployIo, DeployTarget, DeployOutcome } from './types.ts'
+import { pullArgs, buildArgs, removeArgs, composeArgs } from './compose-cmd.ts'
+import { downAfter, nextStep, failureState } from './outcome.ts'
 
 /**
  * Bringing a merged change up on the host.
@@ -50,119 +51,6 @@ import { stackPeers, buildableServices, isRootStack } from '../compose/topology.
  *    and the one exception for shipshape's own failed attempts, are in runstate.ts.
  */
 
-export interface DeployTarget {
-  stack: string
-  services: string[]
-  /** `rm-first` when any service asked for it. */
-  strategy: 'up' | 'rm-first'
-  /**
-   * Pull before bringing it up. Only a rolling tag needs this: `up -d` reuses the image
-   * it already has, so re-deploying `latest` without a pull brings up the same bits and
-   * reports success -- which for a moved rolling tag is the one thing it must not do.
-   */
-  pull?: boolean
-  /**
-   * Services built from source before `up`: the forks (the forks guide). Their `image:` is a
-   * local name compose cannot pull, so the pull passes `--ignore-buildable` and an explicit
-   * `compose build` runs first -- a failed build then touches no container and is reported
-   * as a deploy failure. Resolved from the compose file when absent (`deployChange`); a
-   * rollback passes an empty list, because the image it puts back is already on disk.
-   */
-  build?: string[]
-}
-
-/**
- * `phase` exists because the alert text depends on it and nothing else can recover it.
- * An `up` that fails after `rm -sf` leaves the service DOWN, and so does a plain `up` that
- * fails once compose has recreated -- which is why a failed `up` also carries what docker
- * says is there afterwards (see `downAfter`). Reporting every failed `up` as "the service
- * is running whatever it was" was false in exactly the case that needed the operator out
- * of bed.
- *
- * `inspect` comes before either: docker could not be asked what is there, so the deploy
- * stopped before its first command and nothing on the host was touched. `pull` comes after
- * the read and before any removal, so a pull that fails has removed nothing, whatever the
- * strategy -- reported as `up` it read as DOWN under rm-first, about a service still running.
- */
-export type DeployPhase = 'refused' | 'inspect' | 'pull' | 'build' | 'rm' | 'up' | 'verify'
-
-/**
- * What a deploy did.
- *
- * `ok` means shipshape did what it set out to: it may have brought nothing up, when
- * nothing was running, and then `healthy` is false and `up` is empty -- a truthful no-op,
- * not a failure. `up`, `left` and `restored` are the two halves of a group that was only
- * partly running, and `notes` are the sentences that explain the left half. `plan` is what
- * was written to `deploys.snapshot` before the first command; a failure carries it only
- * once it exists, which is after the read and the pull. A pull that fails has a plan in
- * memory but nothing recorded, so it carries `up` alone: what it meant to bring up, which
- * is all the alert may name or hand back as a command. A compose `up` that fails carries
- * `after`: each service it meant to bring up, as docker read it once compose had given up
- * (`unknown` when docker could not say).
- */
-export type DeployOutcome =
-  | {
-      ok: true
-      healthy: boolean
-      detail: string
-      verdict?: Verdict
-      up: string[]
-      left: LeftService[]
-      restored: string[]
-      notes: string[]
-      plan: RecordedPlan
-    }
-  | {
-      ok: false
-      phase: DeployPhase
-      reason: string
-      stderr?: string
-      plan?: RecordedPlan
-      up?: string[]
-      after?: { service: string; state: string }[]
-      /**
-       * `orphan` when docker answered and the answer was another project's container. It
-       * fails in `inspect` like an unreadable docker, and nothing was touched either way,
-       * but waiting does not fix it: someone has to move that container.
-       */
-      cause?: 'orphan'
-      /** The other project's container, by name, for `cause: 'orphan'`. */
-      container?: string
-    }
-
-/**
- * Everything a deploy asks of the outside world, in one seam.
- *
- * The promises that matter are about what is *not* run -- no compose at all when nothing
- * is running, the plan recorded before the first command, `--no-deps` on the running
- * subset only -- and those can only be asserted against a docker that records what it was
- * asked. `realIo` is the one that talks to the host.
- */
-export interface DeployIo {
-  /** Strict: throws `DockerUnreadable` rather than reading a failure as no container. */
-  observe(project: string, service: string): Promise<ServiceObservation>
-  /** A container of this service from another compose project, described; null when none. */
-  foreign(project: string, stack: string, service: string): Promise<string | null>
-  exec(args: string[], opts: { cwd: string; timeout: number }): Promise<{ exitCode?: number; stderr?: unknown }>
-  verify(
-    target: DeployTarget,
-    project: string,
-    snapshot: ServiceSnapshot[],
-    policy: Policy,
-    pinned: Map<string, string | null>,
-  ): Promise<Verdict>
-  peers(stack: string): { service: string; network_mode: string | null }[]
-  /** What the compose file pins now, per service of the stack. */
-  pinned(stack: string, policy: Policy): Map<string, string | null>
-  /** Which of these services the compose file builds from source now (forks, base-watched builds). */
-  buildable(stack: string, services: string[], policy: Policy): string[]
-  /**
-   * Which of these a rollback must rebuild: the builds watched through their base image,
-   * whose local image name does not change with the base. Absent means none.
-   */
-  rebuildable?(stack: string, services: string[], policy: Policy): string[]
-  now(): number
-}
 
 export const realIo: DeployIo = {
   observe: (project, service) => inspectService(project, service),
@@ -175,84 +63,6 @@ export const realIo: DeployIo = {
   buildable: (stack, services, policy) => buildableServices(stack, services, policy),
   rebuildable: (stack, services, policy) => buildableServices(stack, services, policy, env.repoDir, { forks: false }),
   now: () => Date.now(),
-}
-
-/**
- * The `-f` arguments that point compose at a stack's files: none for the root project (no -f at
- * all, because scoping it loses the networks it defines), otherwise the stack's compose file
- * and the override Compose would have applied on its own, so the command matches a plain
- * `docker compose up` in that directory.
- */
-export function fileArgs(stack: string, repoDir = env.repoDir): string[] {
-  if (isRootStack(stack, repoDir)) return []
-  const file = composeFileOfStack(repoDir, stack)
-  const override = overrideFor(repoDir, file)
-  return ['-f', file, ...(override ? ['-f', override] : [])]
-}
-
-/**
- * `compose up` for exactly the services a deploy means, and nothing they depend on.
- *
- * `--no-deps` is always there because `up -d svc` on its own reaches past `svc`: it
- * starts any `depends_on` service that is stopped, and recreates any running one whose
- * section of the file has an unrelated pending edit (compose probe 3a, 3c, 3r-e). An
- * update to one service must not start a database someone stopped, or restart a sibling
- * on a change nobody merged. So everything a deploy does mean is named explicitly
- * instead -- every member of a group, and the namespace followers `withNamespacePeers`
- * adds -- and compose still orders several named services correctly under the flag
- * (probe 4b).
- *
- * `manualCommand`, the pull request comment and the alert commands are all built from
- * this, so the command an operator pastes carries the flag too. `pullArgs` slices at
- * `up`, so a pull never sees it.
- */
-export function composeArgs(
-  target: DeployTarget,
-  repoDir = env.repoDir,
-): { cwd: string; args: string[] } {
-  const cwd = repoDir
-  // Deduped here rather than at the call site: this is the one function that turns a
-  // target into a command, so it is the one place that can guarantee the executed and
-  // the pasted command agree.
-  const services = [...new Set(target.services)]
-  return { cwd, args: ['compose', ...fileArgs(target.stack, repoDir), 'up', '-d', '--no-deps', ...services] }
-}
-
-/**
- * `compose pull` for the same target, so the command that runs and the command the pull
- * request suggests are built by the same function rather than resembling each other.
- */
-export function pullArgs(
-  target: DeployTarget,
-  repoDir = env.repoDir,
-): { cwd: string; args: string[] } {
-  const up = composeArgs(target, repoDir)
-  const head = up.args.slice(0, up.args.indexOf('up'))
-  // A fork's `image:` is a local build name no registry has; `--ignore-buildable` keeps
-  // compose from trying, while the other services of the target are still pulled.
-  const flags = (target.build ?? []).length > 0 ? ['--ignore-buildable'] : []
-  return { cwd: up.cwd, args: [...head, 'pull', ...flags, ...new Set(target.services)] }
-}
-
-/**
- * `compose build` for the services of the target that are built from source, before `up`.
- * Its own step rather than `up --build`, so a build that fails has recreated nothing and
- * says so, and so the command an operator pastes shows the build it needs.
- */
-export function buildArgs(
-  target: DeployTarget,
-  repoDir = env.repoDir,
-): { cwd: string; args: string[] } | null {
-  const build = [...new Set((target.build ?? []).filter((s) => target.services.includes(s)))]
-  if (build.length === 0) return null
-  const up = composeArgs(target, repoDir)
-  const head = up.args.slice(0, up.args.indexOf('up'))
-  return { cwd: up.cwd, args: [...head, 'build', ...build] }
-}
-
-function removeArgs(target: DeployTarget, repoDir = env.repoDir): { cwd: string; args: string[] } {
-  const cwd = repoDir
-  return { cwd, args: ['compose', ...fileArgs(target.stack, repoDir), 'rm', '-sf', ...new Set(target.services)] }
 }
 
 /**
@@ -584,111 +394,6 @@ function tail(s: unknown): string {
     .slice(-6)
     .join('\n')
     .slice(0, 600)
-}
-
-/**
- * The command an operator runs by hand, built from the same function the automatic path
- * executes.
- *
- * It was assembled by string concatenation at the call site, which produced
- * `-f root/docker-compose.yaml` for root-stack services -- the exact invocation
- * composeArgs exists to avoid, since it fails with "refers to undefined network" -- and
- * repeated a service name when a group listed it twice. Deriving it here means the
- * pasted command and the executed one cannot drift.
- */
-export function manualCommand(target: DeployTarget): string {
-  const lines: string[] = []
-  if (target.pull) {
-    const pu = pullArgs(target)
-    lines.push(`docker ${pu.args.join(' ')}`)
-  }
-  const build = buildArgs(target)
-  if (build) lines.push(`docker ${build.args.join(' ')}`)
-  if (target.strategy === 'rm-first') {
-    const rm = removeArgs(target)
-    lines.push(`docker ${rm.args.join(' ')}`)
-  }
-  const up = composeArgs(target)
-  lines.push(`docker ${up.args.join(' ')}`)
-  return lines.join('\n')
-}
-
-/**
- * Whether a failed `up` left a service it meant to bring up not running.
- *
- * Docker's answer, read after the failure, and not the strategy's. Compose v2 recreates by
- * creating the new container, stopping and removing the old one, and only then starting the
- * new -- so a plain `up` that fails at start (a missing binary, a port already allocated, a
- * bind source that is not there) has already destroyed what was running. Probed on this
- * host, docker 26.1.4 and compose 2.27.1: "Recreated", then "OCI runtime create failed",
- * exit 1, and the one container left was `created`. The alert said "running whatever it
- * was" at priority 4.
- *
- * rm-first is DOWN unless docker says every service is running, because its removal
- * certainly ran; for a plain `up`, a read that could not be made proves nothing either way.
- */
-export function downAfter(outcome: Extract<DeployOutcome, { ok: false }>, strategy: DeployTarget['strategy']): boolean {
-  if (outcome.phase !== 'up') return false
-  const after = outcome.after ?? []
-  if (after.some((a) => a.state !== 'unknown' && !countsAsRunning(a.state))) return true
-  return strategy === 'rm-first' && !(after.length > 0 && after.every((a) => countsAsRunning(a.state)))
-}
-
-/**
- * What a failed deploy left behind, in the operator's terms.
- *
- * A failed `up` is described from `downAfter`: DOWN when docker says so, a warning when it
- * could not say, and "running whatever it was" only when every service still is -- compose
- * failed before recreating anything. `inspect` never got as far as anything, whatever the
- * strategy -- the read comes before the removal -- and `pull` stopped before the removal too.
- */
-export function failureState(outcome: Extract<DeployOutcome, { ok: false }>, strategy: DeployTarget['strategy']): string {
-  if (outcome.phase === 'inspect') return 'Nothing was touched: shipshape does not guess whether a service is running.'
-  if (outcome.phase === 'pull') return 'Nothing was removed or recreated; the service is running whatever it was.'
-  if (outcome.phase === 'build') return 'The build failed before anything was removed or recreated; the service is running whatever it was.'
-  if (outcome.phase === 'up') {
-    if (downAfter(outcome, strategy)) {
-      return strategy === 'rm-first'
-        ? 'The old container was removed and the new one did not start — the service is DOWN.'
-        : 'The old container was replaced and the new one did not start — the service is DOWN.'
-    }
-    if (outcome.after?.some((a) => a.state === 'unknown')) {
-      return 'Compose may have replaced the old container before it failed — check whether the service is running.'
-    }
-  }
-  if (outcome.phase === 'rm') {
-    return 'The old container may be partly stopped; nothing was recreated.'
-  }
-  if (outcome.phase === 'refused') return 'Nothing was attempted.'
-  return 'The change is in the checkout; the service is running whatever it was.'
-}
-
-/**
- * What the operator does about a failed deploy, as the last paragraph of its alert.
- *
- * Usually the command to run by hand, built for `target` -- which the caller has already
- * narrowed to what the deploy meant to bring up. Not when the deploy stopped in `inspect`:
- * running compose by hand while docker cannot say what is there is the very guess the
- * deploy declined to make, so what fixes it is docker answering. And not for an orphan
- * either, where docker did answer: pressing Try again finds the same container every time
- * until someone removes it or brings it up from the project that owns it.
- *
- * The button it names is the one the update will actually offer. A merge that did not land
- * goes back to merged and offers Try again; a Redeploy goes back to a moved rolling tag,
- * which offers Redeploy and nothing called Try again.
- */
-export function nextStep(
-  outcome: Extract<DeployOutcome, { ok: false }>,
-  target: DeployTarget,
-  trigger?: DeployTrigger,
-): string {
-  const again = trigger === 'redeploy' ? 'Redeploy' : 'Try again'
-  if (outcome.phase === 'inspect' && outcome.cause === 'orphan') {
-    const rm = outcome.container ? ` (docker rm -f ${outcome.container})` : ''
-    return `Remove that container${rm} or bring it up from its own compose project, then press ${again} on the update.`
-  }
-  if (outcome.phase === 'inspect') return `Press ${again} on the update once docker answers.`
-  return `Retry with:\n${manualCommand(target)}`
 }
 
 /** Run a deploy for a shipped change and record what happened. */

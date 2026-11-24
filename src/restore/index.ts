@@ -8,7 +8,7 @@ import { env, loadPolicy, type Policy } from '../config.ts'
 import { getDb } from '../db.ts'
 import { logEvent } from '../events.ts'
 import { dockerEnvOptions } from '../docker/env.ts'
-import { fileArgs } from '../deploy/run.ts'
+import { fileArgs } from '../deploy/compose-cmd.ts'
 import { hasOffsiteJob, runOffsite, runOffsiteAndWait, type Fetch, type WaitIo } from './offsite.ts'
 
 /**

@@ -48,7 +48,7 @@ const { claimJob, dueJobs, enqueueDeploy, linkDeployUpdates, runDeployJob } = aw
 const { contextFor } = await import('../src/updates/verbs.ts')
 const { actionsFor } = await import('../src/updates/actions.ts')
 const { composeCalls, fakeIo } = await import('./helpers/deploy-io.ts')
-type DeployTarget = import('../src/deploy/run.ts').DeployTarget
+type DeployTarget = import('../src/deploy/types.ts').DeployTarget
 
 after(() => rmSync(root, { recursive: true, force: true }))
 

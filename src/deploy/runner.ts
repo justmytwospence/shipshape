@@ -5,7 +5,7 @@ import { syncMain, type SyncResult } from '../gitops/sync.ts'
 import { withGitLock } from '../gitops/repo.ts'
 import { background, isStopping } from '../lifecycle.ts'
 import { claimJob, runDeployJob, type DeployJob } from './queue.ts'
-import type { DeployIo } from './run.ts'
+import type { DeployIo } from './types.ts'
 
 /**
  * The only way a deploy starts.

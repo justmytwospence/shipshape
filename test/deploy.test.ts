@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { composeArgs, pullArgs, refuseReason, type DeployTarget } from '../src/deploy/run.ts'
+import { refuseReason } from '../src/deploy/run.ts'
+import { composeArgs, pullArgs } from '../src/deploy/compose-cmd.ts'
+import { type DeployTarget } from '../src/deploy/types.ts'
 
 const target = (over: Partial<DeployTarget> = {}): DeployTarget => ({
   stack: 'jellyfin',

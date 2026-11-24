@@ -1,5 +1,5 @@
 import { DockerUnreadable, missing, type ServiceObservation } from '../../src/deploy/probe.ts'
-import type { DeployIo } from '../../src/deploy/run.ts'
+import type { DeployIo } from '../../src/deploy/types.ts'
 
 /**
  * A docker that records what it was asked, for tests of what a deploy runs.

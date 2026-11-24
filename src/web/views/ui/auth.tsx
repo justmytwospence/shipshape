@@ -8,6 +8,7 @@ import { THEME_SCRIPT } from '../../theme-script.ts'
  */
 
 export const DOCS_URL = 'https://justmytwospence.github.io/shipshape/'
+export const FORKS_GUIDE_URL = `${DOCS_URL}guides/forks/`
 
 export const AuthShell: FC<PropsWithChildren<{ title: string }>> = ({ title, children }) => (
   <html lang="en">

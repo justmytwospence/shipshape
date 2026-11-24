@@ -205,7 +205,7 @@ const SecurityBlock: FC<{ s: SecurityPanel }> = ({ s }) => (
     <H>Security incidents</H>
     <KV
       rows={[
-        ['mode', `${s.mode}${s.mode === 'on' ? (s.autoMerge ? ' · verified fixes merge on their own' : ' · fixes wait for you') : ' · shown, not acted on'}`],
+        ['mode', `${s.mode}${s.mode === 'on' ? (s.autoMerge ? ' · verified fixes ship on their own' : ' · fixes wait for you') : ' · shown, not acted on'}`],
         ['incidents', `${s.incidents} followed · ${s.withTargets} could match an image`],
         [
           'inventories',
@@ -266,7 +266,7 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
           <span>
             <strong class="font-medium">This is a sandbox.</strong> The credentials below were
             removed on purpose, the scheduler never started, and the docker socket points
-            nowhere — so nothing you press here can reach GitHub, the model, or a container.
+            nowhere — so nothing you press here can reach your git host, the model, or a container.
           </span>
         </div>
       ) : null}
@@ -388,10 +388,10 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
                 ['ships as', `merge commits on ${data.branch ?? 'main'}`],
                 [`publishes ${data.branch ?? 'main'}`, String(data.pushMain)],
                 ...(data.policyFile
-                  ? [['policy file', data.policyFile.exists ? data.policyFile.rel : `none yet -- defaults apply; Settings creates ${data.policyFile.rel}`] as [string, string]]
+                  ? [['policy file', data.policyFile.exists ? data.policyFile.rel : `none yet — defaults apply; Settings creates ${data.policyFile.rel}`] as [string, string]]
                   : []),
                 ...(data.composeFiles !== undefined
-                  ? [['compose files', data.composeFiles == null ? 'not scanned yet' : data.composeFiles === 0 ? 'none found -- check REPO_DIR' : String(data.composeFiles)] as [string, string]]
+                  ? [['compose files', data.composeFiles == null ? 'not scanned yet' : data.composeFiles === 0 ? 'none found — check REPO_DIR' : String(data.composeFiles)] as [string, string]]
                   : []),
               ]}
             />

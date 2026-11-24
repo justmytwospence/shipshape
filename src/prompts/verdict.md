@@ -67,8 +67,8 @@ specific version is where the problem is.
 ## The two lists that mean work
 
 `breaking_changes` and `migration_steps` are the "breaking here" lists, and they are read
-as work: the pull request prints them under headings that sound like instructions, and a
-non-empty `migration_steps` is on its own enough to hold a merge and to send shipshape off
+as work: the update page prints them under headings that sound like instructions, and a
+non-empty `migration_steps` is on its own enough to hold an update and to send shipshape off
 to draft a config change against it.
 
 So the bar for an entry is the configuration you were shown, not what the notes say in

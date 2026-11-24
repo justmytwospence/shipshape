@@ -35,3 +35,10 @@ export const OUTCOMES = {
 } as const satisfies Record<string, OutcomeWords>
 
 export type Outcome = keyof typeof OUTCOMES
+
+/** What a review's recommendation means, in the words the interface uses for it. */
+export const VERDICT_LABEL: Record<'approve' | 'caution' | 'block', string> = {
+  approve: 'Safe to apply',
+  caution: 'Read first',
+  block: 'Breaking changes',
+}

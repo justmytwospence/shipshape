@@ -1,4 +1,4 @@
-import { OUTCOMES, type Outcome } from '../../../updates/vocabulary.ts'
+import { OUTCOMES, VERDICT_LABEL, type Outcome } from '../../../updates/vocabulary.ts'
 import type { FC, PropsWithChildren } from 'hono/jsx'
 import { Icon, type IconName } from './icon.tsx'
 import type { UpdateView } from '../../../updates/queries.ts'
@@ -98,11 +98,11 @@ export function verdictLabel(u: UpdateView): {
   if (v.error) return { label: 'Review failed', cls: 'text-error', icon: 'alert', confidence: null }
   switch (v.recommendation) {
     case 'approve':
-      return { label: 'Safe to apply', cls: 'text-success', icon: 'check', confidence: v.confidence }
+      return { label: VERDICT_LABEL.approve, cls: 'text-success', icon: 'check', confidence: v.confidence }
     case 'caution':
-      return { label: 'Read first', cls: 'text-warning', icon: 'alert', confidence: v.confidence }
+      return { label: VERDICT_LABEL.caution, cls: 'text-warning', icon: 'alert', confidence: v.confidence }
     case 'block':
-      return { label: 'Breaking changes', cls: 'text-error', icon: 'ban', confidence: v.confidence }
+      return { label: VERDICT_LABEL.block, cls: 'text-error', icon: 'ban', confidence: v.confidence }
     default:
       return null
   }

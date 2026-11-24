@@ -1,7 +1,7 @@
 {
   "name": "shipshape",
   "short_name": "shipshape",
-  "description": "Image update bot: registry polling, GitHub pull requests, changelog analysis, and deploys.",
+  "description": "Docker image updates for a compose repository: reads the changelog, ships what nothing holds, deploys and verifies.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

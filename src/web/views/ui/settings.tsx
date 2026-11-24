@@ -218,7 +218,9 @@ export const SettingsForm: FC<{
   readyCount?: number
   /** Rendered inside the section of the same title. */
   extras?: Record<string, unknown>
-}> = ({ groups, models, banner, readyCount, extras }) => (
+  /** The policy file, repo-relative, as the savebar names it. */
+  policyRel?: string
+}> = ({ groups, models, banner, readyCount, extras, policyRel }) => (
   <form
     id="settings-form"
     data-dirty
@@ -237,7 +239,7 @@ export const SettingsForm: FC<{
     ) : null}
     {readyCount ? (
       <p class="border-base-300 border-b px-4 py-2 text-xs opacity-60">
-        {readyCount} merged {readyCount === 1 ? 'update is' : 'updates are'} waiting for a
+        {readyCount} shipped {readyCount === 1 ? 'update is' : 'updates are'} waiting for a
         deploy. Unpausing does not start them — press Deploy on each.
       </p>
     ) : null}
@@ -248,7 +250,7 @@ export const SettingsForm: FC<{
       <button type="submit" class="btn btn-primary btn-sm tap">
         Save changes
       </button>
-      <span class="text-xs opacity-60">Writes policy.yaml and commits it.</span>
+      <span class="text-xs opacity-60">Writes {policyRel ?? 'the policy file'} and commits it.</span>
     </div>
   </form>
 )

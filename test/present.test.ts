@@ -28,7 +28,7 @@ const policy = PolicySchema.parse({})
 test('ship says it is a merge commit, and the deploy that follows', () => {
   const p = present(['ship'], facts(), policy)['ship']!
   assert.equal(p.label, 'Ship')
-  assert.equal(p.steps![0], 'merge it into main with a merge commit')
+  assert.equal(p.steps![0], 'record it as a merge commit on main')
   assert.ok(p.steps!.some((s) => /docker compose/.test(s)))
   assert.ok(p.steps!.some((s) => /automatically/.test(s)))
 })
@@ -63,7 +63,7 @@ test('a change carrying more than a tag is never promised a rollback', () => {
 
 test('always ship says it writes a rule before it ships', () => {
   const p = present(['always-ship'], facts(), policy)['always-ship']!
-  assert.match(p.steps![0]!, /standing rule to policy.yaml/)
+  assert.match(p.steps![0]!, /standing rule to shipshape\.yaml/)
   assert.equal(present(['snooze'], facts(), policy)['snooze']!.label, 'Snooze 1 week')
 })
 

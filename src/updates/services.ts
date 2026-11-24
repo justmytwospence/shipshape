@@ -172,7 +172,7 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
     note: live?.dormant
       ? 'the stack is disabled, so nothing moves on its own'
       : isFork
-        ? 'a fork: shipping replays our fixes onto the new release, or retires the fork -- FORKS.md'
+        ? 'a fork: shipping replays its fixes onto the new release, or retires the fork'
         : legacy.length
           ? `still carries ${legacy.join(', ')}, which shipshape no longer reads: held to ask until rewritten (npm run convert-v1)`
           : CLASS_NOTE[cls],

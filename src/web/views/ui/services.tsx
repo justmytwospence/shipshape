@@ -5,6 +5,7 @@ import { GroupHeader, UpdateRow } from './update.tsx'
 import type { UpdateView } from '../../../updates/queries.ts'
 import type { LinkPreview } from '../../../resolver/preview.ts'
 import type { UnwatchableReason } from '../../../compose/scan.ts'
+import { FORKS_GUIDE_URL } from './auth.tsx'
 
 /**
  * Every service shipshape can see, and what it has been told about each one.
@@ -34,7 +35,7 @@ export interface ServiceRowData {
   policy?: string | null
   /** Whether the repository its release notes come from is certain, only likely, or unknown. */
   upstream?: 'linked' | 'likely' | 'none'
-  /** Our own build of the upstream image, waiting on an upstream fix (FORKS.md). */
+  /** Our own build of the upstream image, waiting on an upstream fix. */
   fork?: boolean
 }
 
@@ -552,8 +553,8 @@ const ForkSection: FC<{ fork: NonNullable<ServiceDetailData['fork']> }> = ({ for
     <h3 class="mb-1.5 text-xs font-medium tracking-wide uppercase opacity-60">Fork</h3>
     {fork.conflict ? (
       <p class="text-warning mb-1.5 text-xs">
-        Cannot be rebased: {fork.conflict}. Rebase the fork's homelab branch by hand and move the pinned sha, or drop
-        the commit (FORKS.md); shipshape tries again once the pin or the target changes.
+        Cannot be rebased: {fork.conflict}. Rebase the fork's carried commits by hand and move the pinned sha, or drop
+        the commit; shipshape tries again once the pin or the target changes.
       </p>
     ) : null}
     <div class="divide-base-300 border-base-300 divide-y border-y text-xs">
@@ -593,8 +594,11 @@ const ForkSection: FC<{ fork: NonNullable<ServiceDetailData['fork']> }> = ({ for
       )}
     </div>
     <p class="mt-1.5 text-xs opacity-60">
-      Follows its rung like any service: a new upstream release replays these fixes onto it, and once every fix has
-      shipped the pull request retires the fork. A conflict comes to you — FORKS.md.
+      Follows its class like any service: a new upstream release replays these fixes onto it, and once every fix has
+      shipped upstream, shipping retires the fork. A conflict comes to you.{' '}
+      <ExtLink href={FORKS_GUIDE_URL} class="link">
+        Forks guide
+      </ExtLink>
     </p>
   </section>
 )
@@ -728,9 +732,10 @@ const WatchAllDialog: FC<{ n: number; files: number; q: string }> = ({ n, files,
 const RungDialog: FC<{ svc: ServiceRowData; ctx?: string }> = ({ svc, ctx }) => (
   <dialog id={`rung-${svc.stack}-${svc.service}`} class="modal modal-bottom sm:modal-middle">
     <div class="modal-box pb-safe">
-      <h3 class="text-base font-semibold">How much this service asks of you</h3>
+      <h3 class="text-base font-semibold">Class: how much this service asks of you</h3>
       <p class="mt-1 text-xs opacity-70">
-        {svc.stack}/{svc.service}. Writes shipshape.class into the compose file and commits it.
+        {svc.stack}/{svc.service}. Writes shipshape.class into its compose file and commits it.
+        {svc.legacyLabels ? ` It also removes the old label it replaces (${svc.legacyLabels}).` : null}
       </p>
       <form
         class="mt-3 flex flex-col gap-1.5"

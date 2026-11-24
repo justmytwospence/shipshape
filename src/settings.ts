@@ -94,7 +94,7 @@ export interface SettingDef {
  * runPrPass -> runAnalysisPass -> runProposePass -> runAutoMerge, so: the pull request
  * exists before the model writes a verdict INTO it, and a proposal is drafted before the
  * merge it then forces to wait. Changelog review used to sit above Pull requests and
- * Merging above Config proposals, which made the hand-off between sections unwritable.
+ * Merging above Drafted changes, which made the hand-off between sections unwritable.
  *
  * Reordering is free: pane ids are slugs of these NAMES, so no anchor or bookmark moves,
  * and applySettings iterates SETTINGS rather than this, so policy.yaml is untouched.
@@ -112,7 +112,7 @@ export const SECTIONS = [
     'A screen looks at every update; a reader reads the ones a person will. Either can hold an update for you — never cause one to ship.',
   ],
   [
-    'Config proposals',
+    'Drafted changes',
     'When an update needs more than its tag, a model can write the rest onto a local branch. A change carrying drafted edits never ships on its own.',
   ],
   ['Restore points', 'A dump taken before a stateful service is updated, so a one-way migration can be undone by hand.'],
@@ -121,7 +121,7 @@ export const SECTIONS = [
     'Notifications',
     'Where decisions and failures go. Silence means healthy: nothing is announced on success.',
   ],
-  ['Rules', 'Standing always-ship decisions, written by the Always ship button and kept in policy.yaml.'],
+  ['Rules', 'Standing always-ship decisions, written by the Always ship button and kept in the policy file.'],
   ['Git sync', `Publishing ${gitBranch()}, and staying out of the way while you work.`],
 ] as const satisfies readonly (readonly [string, string])[]
 
@@ -171,7 +171,7 @@ export const SETTINGS: SettingDef[] = [
     kind: 'enum',
     options: ['off', 'shadow', 'on'],
     optionHelp: {
-      off: 'no screen; the reader reads every update with a pull request',
+      off: 'no screen; the reader reads every update',
       shadow: 'screen every update and show what it found, without acting on it',
       on: 'the screen decides which updates the reader is paid to read',
     },
@@ -225,23 +225,23 @@ export const SETTINGS: SettingDef[] = [
 
   // ------------------------------------------------------- Drafting config changes
   {
-    section: 'Config proposals',
+    section: 'Drafted changes',
     path: 'propose.mode',
     advanced: false,
     kind: 'enum',
     options: ['auto', 'off'],
     optionHelp: {
       auto: 'draft whenever the review names steps this deployment has to take',
-      off: 'only when you press Draft config changes on a pull request',
+      off: 'only when you press Draft config changes on an update',
     },
     defaultValue: 'auto',
     label: 'Draft config changes',
     help: '',
     about:
-      'A drafted pull request always needs a human, whatever else is set.',
+      'A drafted change always waits for you to read it and press Ship, whatever else is set.',
   },
   {
-    section: 'Config proposals',
+    section: 'Drafted changes',
     path: 'review.code_model',
     advanced: true,
     kind: 'model',
@@ -275,7 +275,7 @@ export const SETTINGS: SettingDef[] = [
     label: 'Keep per service',
     help: 'dumps',
     about:
-      'The newest few are kept under the data directory. The dump command is the service\'s own `shipshape.snapshot` label; an offsite copy is `restore_points.offsite` in policy.yaml.',
+      'The newest few are kept under the data directory. The dump command is the service\'s own `shipshape.snapshot` label; an offsite copy is `restore_points.offsite` in the policy file.',
   },
 
   // ---------------------------------------------------------------- Deploying
@@ -286,14 +286,14 @@ export const SETTINGS: SettingDef[] = [
     kind: 'enum',
     options: ['auto', 'off'],
     optionHelp: {
-      auto: 'ask the service over HTTP, on the port it already declares to traefik',
+      auto: 'ask the service over HTTP, on the port its Traefik router declares or shipshape.probe names',
       off: 'judge on container state alone',
     },
     defaultValue: 'auto',
     label: 'Probe over HTTP',
     help: '',
     about:
-      'Barely half the containers here carry a healthcheck, and 76 services already tell traefik which port they answer on. Anything below a 500 counts as answered -- a redirect to a login page is still a service that is listening. It can only ever warn, never fail a deploy by itself.',
+      'Many containers carry no healthcheck, but a service behind Traefik already declares the port it answers on, and shipshape.probe names one by hand. Anything below a 500 counts as answered -- a redirect to a login page is still a service that is listening. It can only ever warn, never fail a deploy by itself.',
   },
   {
     section: 'Deploys',
@@ -310,7 +310,7 @@ export const SETTINGS: SettingDef[] = [
     label: 'When verification fails',
     help: '',
     about:
-      `Exactly one attempt: a revert commit on ${gitBranch()}, deployed and announced. There is no second try and no setting that adds one. A pull request carrying more than an image line is never reverted unattended, and a verifier that could not see the containers never triggers anything -- both fall back to asking you.`,
+      `Exactly one attempt: a revert commit on ${gitBranch()}, deployed and announced. There is no second try and no setting that adds one. A change carrying more than an image line is never reverted unattended, and a verifier that could not see the containers never triggers anything -- both fall back to asking you.`,
   },
   {
     section: 'Deploys',
@@ -347,7 +347,7 @@ export const SETTINGS: SettingDef[] = [
     label: 'Escalate a waiting decision after',
     help: 'days',
     about:
-      'A decision card still open this long is announced once more, louder. Where cards go is `notify.sinks` in policy.yaml (webhook, email, ntfy).',
+      'A decision card still open this long is announced once more, louder. Where cards go is `notify.sinks` in the policy file (webhook, email, ntfy, Discord, Gotify, Apprise).',
   },
 
   // -------------------------------------------------------- Keeping git in step
@@ -383,7 +383,7 @@ export const SETTINGS: SettingDef[] = [
     label: 'Poll, idle',
     help: 'seconds',
     about:
-      'How often GitHub is checked when nothing is open.',
+      'How often the loop runs when nothing is in flight.',
     advanced: true,
   },
 ]

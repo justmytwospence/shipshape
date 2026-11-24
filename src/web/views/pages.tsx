@@ -296,8 +296,9 @@ export const SettingsPage: FC<{
   readyCount?: number
   /** Rendered inside the section of the same title. */
   extras?: Record<string, unknown>
+  policyRel?: string
   chrome: PageChrome
-}> = ({ groups, models, banner, readyCount, extras, chrome }) => (
+}> = ({ groups, models, banner, readyCount, extras, policyRel, chrome }) => (
   <Layout title="Settings" nav="settings" chrome={chrome}>
     <Split
       variant="nav"
@@ -310,6 +311,7 @@ export const SettingsPage: FC<{
             banner={banner}
             readyCount={readyCount}
             extras={extras}
+            policyRel={policyRel}
           />
         </div>
       }

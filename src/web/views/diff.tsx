@@ -5,7 +5,7 @@ import type { RefLinks } from '../../links.ts'
 
 /**
  * The change itself: the hunks a pull request carries, any config changes a model
- * drafted onto it, and the row of links you might want before merging.
+ * drafted onto it, and the row of links you might want before shipping.
  *
  * Rendered inside the update pane's "The change" disclosure. Everything here is read,
  * not pressed -- the verbs live in the pane's action bar, once, so nothing down here can
@@ -171,9 +171,9 @@ export const DiffView: FC<{
       <div class={`border-l-2 pl-3 ${proposal.error ? 'border-warning' : 'border-base-300'} my-2`}>
         <p class="font-medium">
           {proposal.error
-            ? 'Config changes drafted but not applied'
+            ? 'Drafted change, not applied'
             : proposal.changed.length > 0
-              ? 'Config changes drafted'
+              ? 'Drafted change'
               : 'No config change needed'}
         </p>
         {proposal.error ? <p class="text-warning text-xs">{proposal.error}</p> : null}
@@ -191,7 +191,7 @@ export const DiffView: FC<{
         ))}
         {proposal.notes.length > 0 && (
           <>
-            <p class="mt-1 text-xs font-medium tracking-wide uppercase opacity-60">Manual steps</p>
+            <p class="mt-1 text-xs font-medium tracking-wide uppercase opacity-60">Steps to do by hand</p>
             <ul class="list-disc pl-4 text-xs">
               {proposal.notes.map((n) => (
                 <li>{n}</li>
@@ -201,7 +201,7 @@ export const DiffView: FC<{
         )}
         <p class="mt-1 text-xs opacity-50">
           Drafted by <code class="font-mono">{proposal.model}</code>. Nothing has verified
-          these; read the commit before merging.
+          these; read the change before shipping it.
         </p>
       </div>
     ) : null}

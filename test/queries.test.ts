@@ -227,7 +227,7 @@ test('the timeline tells the whole story, including what has not happened yet', 
   assert.deepEqual(kinds, ['detected', 'review', 'merged', 'deploying', 'deployed', 'verified'])
   const future = updateTimeline(id).at(-1)!
   assert.equal(future.future, true, 'the soak is shown before it finishes')
-  assert.match(updateTimeline(id)[1]!.label, /caution at medium confidence/)
+  assert.match(updateTimeline(id)[1]!.label, /reviewed: Read first, medium confidence/)
 })
 
 test('recent activity spans the merge, the deploy and the dismissal', () => {

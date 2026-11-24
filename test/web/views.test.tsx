@@ -302,7 +302,7 @@ test('shipping, rolling back and skipping ask twice', () => {
   const html = VIEWS['update-detail']!
   assert.match(html, /data-open="#confirm-ship-7"/)
   assert.match(html, /id="confirm-ship-7"/)
-  assert.match(html, /merge it into main with a merge commit/)
+  assert.match(html, /record it as a merge commit on main/)
   // Written from policy (here the defaults), not from constants.
   assert.match(html, /watch it for up to 5 minutes/)
   assert.match(html, /look again 30 minutes later/)
@@ -324,7 +324,7 @@ test('the screen quotes the notes, links them, and says when nothing acted on it
 
 test('a lifeline service asks first, and says why on the page', () => {
   const html = VIEWS['update-attended']!
-  assert.match(html, />lifeline</)
+  assert.match(html, />class lifeline</)
   assert.match(html, />Ship<\/button>/)
   assert.match(html, /Waiting on you/)
   assert.match(html, /this service always asks/)
@@ -410,8 +410,8 @@ test('the toolbar counts what the list shows', () => {
 test('the settings nav is a map of the form: it glides to a section and marks the one you are in', () => {
   const html = VIEWS['settings-page']!
   assert.match(html, /<nav data-spy[^>]*>/, 'the nav is the scroll-spy root')
-  assert.match(html, /<a href="#update-policy"/, 'anchors, scrolled natively')
-  assert.match(html, /id="update-policy"[^>]*class="[^"]*scroll-mt-2/, 'sections land under the top edge')
+  assert.match(html, /<a href="#shipping"/, 'anchors, scrolled natively')
+  assert.match(html, /id="shipping"[^>]*class="[^"]*scroll-mt-2/, 'sections land under the top edge')
   assert.match(html, /id="pane"[^>]*class="[^"]*lg:scroll-smooth/, 'the pane glides rather than jumps')
   const appJs = readFileSync(join(process.cwd(), 'public', 'app.js'), 'utf8')
   assert.match(appJs, /\[data-spy\][\s\S]{0,1200}aria-current/, 'app.js marks the current section')
@@ -428,7 +428,7 @@ test('an unchecked switch still says off', () => {
 })
 
 test('the settings form knows what unpausing will not do', () => {
-  assert.match(VIEWS['settings']!, /2 merged updates are waiting for a deploy/)
+  assert.match(VIEWS['settings']!, /2 shipped updates are waiting for a deploy/)
 })
 
 test('a service says where each of its settings came from', () => {
@@ -452,8 +452,8 @@ test('a settings section explains itself, without linking away', () => {
   // The prose was a separate page for a while, which meant answering "what does this
   // actually do" cost a page load and a scroll back to the control you were looking at.
   const html = VIEWS['settings']!
-  assert.match(html, /how much happens without you/i, 'the section says what it is for')
-  assert.match(html, /always wait for a person/, 'including the part that surprises people')
+  assert.match(html, /ships on its own unless a hold says/i, 'the section says what it is for')
+  assert.match(html, /Pause stops that, and nothing else/, 'including the part that surprises people')
   assert.doesNotMatch(html, /Learn more/, 'and does not send you elsewhere for it')
   assert.doesNotMatch(html, /href="\/docs/, 'there is no separate docs page to send you to')
 })
@@ -593,4 +593,16 @@ test('the Not watched filter offers to watch them all', () => {
   )
   assert.match(html, /Watch all 1/)
   assert.match(html, /hx-post="\/services\/watch"/)
+})
+
+test('the interface never says pull request, or points at a file that is not here', () => {
+  for (const [name, html] of Object.entries(VIEWS)) {
+    assert.doesNotMatch(html, /pull request|\bPRs?\b|FORKS\.md|Hermes|\bJev\b/i, name)
+  }
+})
+
+test('fork copy links the forks guide', () => {
+  for (const name of ['update-detail-fork-conflict', 'service-detail-fork']) {
+    assert.match(VIEWS[name]!, /guides\/forks\//, name)
+  }
 })

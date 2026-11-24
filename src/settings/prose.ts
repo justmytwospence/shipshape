@@ -37,7 +37,7 @@ export const SECTION_PROSE: Record<SectionName, string[]> = {
     'Two stages. The screen -- a fast classifier reached through OpenRouter, a fraction of a cent a look -- reads the release notes shipshape already fetched and answers narrow questions: does a setting change, is there a manual step, does it touch anything this service uses. It picks the lines worth reading rather than writing a summary. The reader -- the model set below -- reads the changelog properly, and only where a person will read what it writes. With web access on it may also search the upstream project\'s own pages.',
     'Either can hold an update for you and neither can cause one to ship. Release notes are untrusted text from the internet, so the worst a hostile changelog can achieve is a stopped update. Reaching the monthly budget pauses the reader and drafting; updates keep shipping on the evidence that is left, because an unreviewed update you can see beats an invisible one.',
   ],
-  'Config proposals': [
+  'Drafted changes': [
     'Sometimes an update needs more than its tag: a renamed environment variable, a moved volume. A stronger model can draft the rest of the change onto the same local branch, within the boundary a service sets with `shipshape.propose`.',
     'A change carrying drafted edits never ships on its own: you read it on the card and ship it.',
   ],
@@ -47,7 +47,7 @@ export const SECTION_PROSE: Record<SectionName, string[]> = {
   ],
   Deploys: [
     'The checkout is fast-forwarded and the stack is brought up with a real `docker compose up -d`, which re-reads the whole file — labels, environment, networks — rather than cloning a running container and swapping its image. That difference is why this tool exists.',
-    'Then it is verified: the container healthcheck where one exists, an HTTP probe where a port is already declared to traefik, and a crash watch that needs neither. Passing that window is not the same as being fine, so a deploy soaks before it reads verified. A hard failure inside the window is rolled back automatically, once; after the soak nothing is, because by then a database may have migrated and undoing that is your decision.',
+    'Then it is verified: the container healthcheck where one exists, an HTTP probe where a port is already declared to Traefik or named by `shipshape.probe`, and a crash watch that needs neither. Passing that window is not the same as being fine, so a deploy soaks before it reads verified. A hard failure inside the window is rolled back automatically, once; after the soak nothing is, because by then a database may have migrated and undoing that is your decision.',
     'A deploy never changes whether a service is running. One that is running is brought up on the new version and verified; one that is stopped, paused or removed is left exactly as it was and reads Left stopped — the compose file carries the new version, so compose brings it up on it, while docker start on the old container would resume the old one. If shipshape cannot ask Docker, the deploy fails and touches nothing.',
   ],
   Notifications: [
@@ -56,7 +56,7 @@ export const SECTION_PROSE: Record<SectionName, string[]> = {
   ],
   Rules: [
     'Every card exists because of one specific reason it was held, so a rule waives the reason, not the service. Pressing Always ship infers the narrowest scope that explains the card (one image across many stacks, or one service) and writes it here as a commit.',
-    'A rule can never waive a lifeline service, an unsafe review or a list of work to do. Edit or delete a rule in policy.yaml like anything else; the commit is the record.',
+    'A rule can never waive a lifeline service, an unsafe review or a list of work to do. Edit or delete a rule in the policy file like anything else; the commit is the record.',
   ],
   'Git sync': [
     `shipshape publishes ${gitBranch()} as part of its loop. A branch has to be based on the true tip of ${gitBranch()}, or merging it silently reverts whatever unpushed local commits touched the same file. There is no safe alternative base, which is why turning publishing off also stops shipping.`,

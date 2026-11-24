@@ -14,6 +14,7 @@ import {
 } from './parts.tsx'
 import type { Milestone, UpdateView } from '../../../updates/queries.ts'
 import type { Verb } from '../../../updates/actions.ts'
+import { FORKS_GUIDE_URL } from './auth.tsx'
 
 /**
  * One update: as a row in a list, and as the pane you open from it.
@@ -117,7 +118,7 @@ const Confirm: FC<{
 }> = ({ update, verb, target, reply, warnings }) => {
   const v = VERB[verb]
   const label = update.presented?.[verb]?.label ?? v.label
-  // Written from policy.yaml and the pull request's own members (updates/present.ts),
+  // Written from the policy file and the decision's own members (updates/present.ts),
   // never from constants: this is the one sentence read right before acting.
   const steps = update.presented?.[verb]?.steps ?? []
   return (
@@ -507,7 +508,7 @@ export const ScreenBlock: FC<{ update: UpdateView }> = ({ update }) => {
         </>
       )}
       <p class="text-xs opacity-50">
-        Screened by {s.model ?? 'Jev'} <Relative at={s.createdAt} />.{' '}
+        {s.model ? <>Screened by {s.model}</> : 'Screened'} <Relative at={s.createdAt} />.{' '}
         {s.mode === 'shadow' ? 'Shadow mode: shown, not acted on.' : 'It can hold an update back, never cause one.'}
       </p>
     </div>
@@ -664,7 +665,17 @@ export const ActionBar: FC<{
       </div>
       {warnings && warnings.length > 0 ? (
         <div class="alert alert-warning alert-soft rounded-none border-x-0 border-t-0 py-1.5 text-xs">
-          <span>{warnings.join(' · ')}</span>
+          <span>
+            {warnings.join(' · ')}
+            {update.fork ? (
+              <>
+                {' '}
+                <ExtLink href={FORKS_GUIDE_URL} class="link">
+                  Forks guide
+                </ExtLink>
+              </>
+            ) : null}
+          </span>
         </div>
       ) : null}
       {update.actions
@@ -722,7 +733,7 @@ export const UpdateDetail: FC<{
             href={`/services/${update.stack}/${update.service}`}
             class="link link-hover opacity-70"
           >
-            {update.cls}
+            class {update.cls}
           </a>
         </span>
         {listHref ? (
@@ -744,9 +755,9 @@ export const UpdateDetail: FC<{
         reply={reply}
         warnings={[
           ...(update.forkConflict
-            ? [`The fork's fixes could not be replayed onto ${update.toTag}: ${update.forkConflict}. Rebase the fork's homelab branch by hand and move the pinned sha, or drop the commit (FORKS.md); shipshape tries again once the pin or the target changes.`]
+            ? [`The fork's fixes could not be replayed onto ${update.toTag}: ${update.forkConflict}. Rebase the fork's carried commits onto the new release by hand and move the pinned sha, or drop the commit; shipshape tries again once the pin or the target changes.`]
             : update.fork
-              ? ['This service is a fork of its upstream image: shipping replays our fixes onto the new release and moves the build pin, and the deploy builds it (FORKS.md).']
+              ? ['This service is a fork of its upstream image: shipping replays its fixes onto the new release and moves the build pin, and the deploy builds it.']
               : []),
           ...(warnings ?? []),
         ]}

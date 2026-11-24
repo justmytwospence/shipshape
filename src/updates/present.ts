@@ -1,4 +1,4 @@
-import { gitBranch, type Policy } from '../config.ts'
+import { gitBranch, policyFileState, type Policy } from '../config.ts'
 import type { ServiceClass } from '../policy.ts'
 import type { Verb } from './actions.ts'
 
@@ -52,7 +52,7 @@ function othersOf(f: PresentFacts): string | null {
 }
 
 function shipSteps(f: PresentFacts, policy: Policy): string[] {
-  const steps = [`merge it into ${gitBranch()} with a merge commit`]
+  const steps = [`record it as a merge commit on ${gitBranch()}`]
   const others = othersOf(f)
   if (others) steps.push(`which also updates ${others}`)
   if (f.restorePoint) steps.push('take a restore point of the data first')
@@ -90,7 +90,7 @@ export function present(verbs: Verb[], f: PresentFacts, policy: Policy): Partial
     } else if (verb === 'always-ship') {
       out[verb] = {
         label: 'Always ship',
-        steps: ['write a standing rule to policy.yaml, as a commit, for this kind of update', ...shipSteps(f, policy)],
+        steps: [`write a standing rule to ${policyFileState().rel}, as a commit, for this kind of update`, ...shipSteps(f, policy)],
       }
     } else if (verb === 'snooze') {
       out[verb] = { label: 'Snooze 1 week' }

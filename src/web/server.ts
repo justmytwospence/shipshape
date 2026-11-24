@@ -831,7 +831,8 @@ export function createApp(): Hono {
    * sorts by the afternoon and not by the morning it started.
    */
   const activityQuery = (c: Context) => ({
-    kind: c.req.query('kind') ?? 'all',
+    // `pr` was the ship kind's name in v1; an old bookmark still lands.
+    kind: c.req.query('kind') === 'pr' ? 'ship' : (c.req.query('kind') ?? 'all'),
     problems: c.req.query('level') === 'problems',
     q: c.req.query('q') ?? '',
   })
@@ -1043,6 +1044,7 @@ export function createApp(): Hono {
         models: await listModels(),
         readyCount: loadPolicy().policy.paused ? readyToDeploy() : 0,
         extras: { Notifications: notifyTools(), Rules: RulesList({ rules: loadPolicy().policy.rules }) },
+        policyRel: policyFileState().rel,
         chrome: chrome(c),
       }) as string,
     ),
@@ -1066,6 +1068,7 @@ export function createApp(): Hono {
         models: await listModels(),
         readyCount: loadPolicy().policy.paused ? readyToDeploy() : 0,
         extras: { Notifications: notifyTools(), Rules: RulesList({ rules: loadPolicy().policy.rules }) },
+        policyRel: policyFileState().rel,
         banner: result.ok
           ? result.applied.length
             ? { level: 'info', text: `Saved: ${result.applied.join(', ')}. Committed to git.` }

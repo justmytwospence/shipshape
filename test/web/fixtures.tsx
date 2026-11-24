@@ -261,7 +261,7 @@ export const MILESTONES: Milestone[] = [
   {
     at: ago(20),
     kind: 'review',
-    label: 'reviewed: caution at medium confidence',
+    label: 'reviewed: Read first, medium confidence',
     detail: 'Transcoding defaults changed.',
   },
   { at: null, kind: 'verified', label: 'verified, if it is still healthy', future: true },
@@ -280,10 +280,10 @@ const SERVICE = {
   lastSeenAt: ago(6),
   legacyLabels: null,
   composeFile: 'media/docker-compose.yaml',
-  policy: 'manual',
+  policy: 'ask',
 }
 
-/** A fork (FORKS.md): the row carries a badge and the pane a section of its own. */
+/** A fork: the row carries a badge and the pane a section of its own. */
 const FORK_SERVICE = {
   stack: 'books',
   service: 'grimmory',
@@ -295,7 +295,7 @@ const FORK_SERVICE = {
   lastDetail: null,
   constrainedFrom: null,
   lastSeenAt: ago(6),
-  policy: 'manual',
+  policy: 'ask',
   fork: true,
 }
 
@@ -354,23 +354,23 @@ const CHROME = {
 
 const SETTING_GROUPS = [
   {
-    title: 'Update policy',
+    title: 'Shipping',
     prose: [
-      'One axis — how much happens without you — answered by default from how large the version jump is.',
-      'Majors and digest moves always wait for a person, whatever these say.',
+      'An update ships on its own unless a hold says a person is needed.',
+      'Pause stops that, and nothing else.',
     ],
     items: [
       {
         def: {
-          path: 'defaults.patch',
-          kind: 'enum' as const,
-          label: 'Patch',
-          help: 'x.y.Z',
-          options: ['auto', 'manual', 'on-request', 'skip'],
-          defaultValue: 'auto',
-          section: 'Update policy' as never,
+          path: 'ship.cooldown_days',
+          kind: 'int' as const,
+          label: 'Cooldown',
+          help: 'days',
+          min: 0,
+          defaultValue: '7',
+          section: 'Shipping' as never,
         },
-        value: 'auto',
+        value: '7',
         changed: false,
       },
       {
@@ -378,9 +378,9 @@ const SETTING_GROUPS = [
           path: 'paused',
           kind: 'bool' as const,
           label: 'Pause',
-          help: 'nothing merges or deploys on its own',
+          help: 'nothing ships or deploys on its own',
           defaultValue: 'true',
-          section: 'Merging' as never,
+          section: 'Shipping' as never,
         },
         value: 'true',
         changed: false,
@@ -542,8 +542,8 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
     svc: SERVICE,
     composeFile: 'media/docker-compose.yaml',
     config: [
-      { key: 'policy', value: 'manual', source: 'label' as const },
-      { key: 'major', value: 'manual', source: 'locked' as const },
+      { key: 'class', value: 'frozen', source: 'locked' as const, note: 'the stack is disabled, so nothing moves on its own' },
+      { key: 'watch', value: 'on', source: 'label' as const },
       { key: 'pattern', value: 'semver', source: 'inferred' as const },
       {
         key: 'upstream',
@@ -697,7 +697,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
             decision: 'finding',
             reason: 'the notes mention a setting removed or renamed',
             error: null,
-            model: 'typesafe/jev-1.13-20260917',
+            model: 'example/screen-1',
             createdAt: ago(1),
             flags: [{ label: 'Setting removed or renamed', p: 0.93 }],
             actionable: [{ text: 'The `hwaccel` key is now `hardware_acceleration`', version: 'v10.10.3', url: 'https://github.com/jellyfin/jellyfin/releases/tag/v10.10.3' }],
@@ -788,10 +788,10 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
           composeFile: 'books/docker-compose.yaml',
           config: [
             {
-              key: 'policy',
-              value: 'manual',
-              source: 'label' as const,
-              note: 'a fork: the pull request replays our fixes onto the new release, or retires the fork -- FORKS.md',
+              key: 'class',
+              value: 'normal',
+              source: 'default' as const,
+              note: 'a fork: shipping replays its fixes onto the new release, or retires the fork',
             },
           ],
           history: [],

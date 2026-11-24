@@ -160,16 +160,16 @@ function forkDiff(
     return {
       error:
         `The fork's fixes could not be replayed onto ${target}: ${conflict.detail}. ` +
-        `Nothing was pushed and no pull request opened. Rebase the fork's homelab branch by hand and move the pinned sha, or drop the commit (FORKS.md).`,
+        `Nothing was shipped. Rebase the fork's carried commits by hand and move the pinned sha, or drop the commit.`,
     }
   }
   const prepared = forkPreparedFor(row.stack, row.service)
   if (!prepared || prepared.toTag !== target) {
     return {
       error:
-        `This service is a fork of its upstream image. When the pull request opens, shipshape replays the fork's ` +
+        `This service is a fork of its upstream image. When it ships, shipshape replays the fork's ` +
         `fixes onto ${target}, pushes the result to the fork, and moves the build pin, the image tag and the upstream ` +
-        `reference here; the exact commit and the fixes it carries are shown once that has happened (FORKS.md).`,
+        `reference here; the exact commit and the fixes it carries are shown once that has happened.`,
     }
   }
   const edit =
@@ -222,8 +222,8 @@ function baseDiff(row: { stack: string; service: string; image: string; to_tag: 
     if (!seen?.digest) {
       return {
         error:
-          `${row.base_dockerfile} pins its base by digest. The pull request looks up the digest of ` +
-          `${row.to_tag} when it opens and moves the FROM line to it; nothing else changes.`,
+          `${row.base_dockerfile} pins its base by digest. Shipping looks up the digest of ` +
+          `${row.to_tag} and moves the FROM line to it; nothing else changes.`,
       }
     }
     next = formatImageRef(ref, row.to_tag, seen.digest)

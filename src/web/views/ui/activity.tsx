@@ -35,7 +35,17 @@ const LEVEL_DOT: Record<string, string> = {
   error: 'bg-error',
 }
 
-const KIND_TABS = [{ key: 'all', label: 'All' }, ...KINDS.map((k) => ({ key: k, label: k }))]
+const KIND_LABEL: Record<EventKind, string> = {
+  scan: 'Scans',
+  policy: 'Policy',
+  ship: 'Ships',
+  analysis: 'Reviews',
+  deploy: 'Deploys',
+  sync: 'Git',
+  system: 'System',
+}
+
+const KIND_TABS = [{ key: 'all', label: 'All' }, ...KINDS.map((k) => ({ key: k, label: KIND_LABEL[k] }))]
 
 export const ActivityToolbar: FC<{ kind: string; problems: boolean; q: string }> = ({
   kind,
@@ -100,7 +110,7 @@ const ActivityLine: FC<{ row: ActivityRow }> = ({ row: r }) => {
       <span class={`size-2 rounded-full ${LEVEL_DOT[r.level] ?? 'bg-base-300'}`} />
       {/* phone: line 1 is target + when */}
       <span class="min-w-0 truncate text-xs opacity-70 lg:hidden">
-        <span class="badge badge-xs badge-ghost mr-1">{r.kind}</span>
+        <span class="badge badge-xs badge-ghost mr-1">{KIND_LABEL[r.kind as EventKind] ?? r.kind}</span>
         {r.stack ? (
           <>
             {r.stack}
@@ -114,7 +124,7 @@ const ActivityLine: FC<{ row: ActivityRow }> = ({ row: r }) => {
       {/* lg cells */}
       <span class="hidden font-mono text-xs opacity-60 lg:block">{clock(r.lastAt ?? r.at)}</span>
       <span class="hidden lg:block">
-        <span class="badge badge-xs badge-ghost">{r.kind}</span>
+        <span class="badge badge-xs badge-ghost">{KIND_LABEL[r.kind as EventKind] ?? r.kind}</span>
       </span>
       <span class="hidden min-w-0 truncate text-xs lg:block">
         {r.stack ? (

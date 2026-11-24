@@ -8,7 +8,7 @@ import { changeUrl } from '../gitops/change.ts'
 import { restorePointsFor } from '../restore/index.ts'
 import { present, type Presentation } from './present.ts'
 import { screenFor } from '../analyze/screen/run.ts'
-import type { Outcome } from './vocabulary.ts'
+import { VERDICT_LABEL, type Outcome } from './vocabulary.ts'
 import type { Magnitude } from '../versions/patterns.ts'
 import { actionsFor, isTransient, primaryVerb, type ActionContext, type Verb } from './actions.ts'
 import { LIVE_STATES, sqlIn, type UpdateState } from './state.ts'
@@ -41,7 +41,7 @@ export interface UpdateView {
   state: UpdateState
   detail: string | null
   rolling: boolean
-  /** The service runs our own build of this image, which shipshape rebases and retires (FORKS.md). */
+  /** The service runs our own build of this image, which shipshape rebases and retires. */
   fork: boolean
   /** Why the fork's last replay onto this target opened nothing: the commit and file that conflicted. */
   forkConflict: string | null
@@ -678,7 +678,7 @@ export function updateTimeline(id: number): Milestone[] {
       .prepare(`SELECT created_at, merged_at, state FROM prs WHERE id = ?`)
       .get(v.change.id) as { created_at: string; merged_at: string | null; state: string } | undefined
     if (v.change.scope === 'proposed') {
-      out.push({ at: c?.created_at ?? null, kind: 'drafted', label: 'config changes drafted', detail: 'shipping it merges them too' })
+      out.push({ at: c?.created_at ?? null, kind: 'drafted', label: 'config changes drafted', detail: 'they ship with the update' })
     }
   }
 
@@ -694,7 +694,7 @@ export function updateTimeline(id: number): Milestone[] {
     out.push({
       at: v.verdict.createdAt,
       kind: 'review',
-      label: `reviewed: ${v.verdict.recommendation} at ${v.verdict.confidence} confidence`,
+      label: `reviewed: ${VERDICT_LABEL[v.verdict.recommendation as keyof typeof VERDICT_LABEL] ?? 'reviewed'}, ${v.verdict.confidence} confidence`,
       detail: v.verdict.summary,
       level: v.verdict.recommendation === 'block' ? 'warn' : 'info',
     })

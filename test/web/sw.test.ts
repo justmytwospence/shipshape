@@ -6,9 +6,8 @@ import { readFileSync } from 'node:fs'
  * The service worker is the one piece of this app that can break authentication, so its
  * two safety properties are asserted as source facts rather than trusted to review.
  *
- * This homelab has already lost an afternoon to a cached PWA shell in front of Authelia
- * forward-auth: the app rendered from cache and every request inside it bounced to a
- * login page. The fix there was to move that service off forward-auth entirely.
+ * A cached PWA shell in front of forward-auth renders from cache while every request
+ * inside it bounces to a login page.
  */
 const SW = readFileSync(new URL('../../public/sw.js', import.meta.url), 'utf8')
 

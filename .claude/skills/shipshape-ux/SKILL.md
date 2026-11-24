@@ -26,15 +26,18 @@ the service's **class**, and the **holds**.
 A hold is a reason a person is needed, and the words are these: **lifeline**, **ask**,
 **unsafe** (the review says block, naming what breaks), **needs action** (the review lists
 steps), **no evidence** (no release notes were read, on a major, a stateful service or a
-fail-closed one), **irreversible** (a one-way migration) and **no restore point**. Only
-`ask`, `no evidence`, `irreversible` and `no restore point` can be waived by a rule. Never
+fail-closed one), **irreversible** (a one-way migration), **no restore point** and
+**draft** (a drafted change waits for a Ship pressed after it was drafted). Only
+`ask`, `no evidence`, `irreversible` and `no restore point` can be waived by a rule;
+`lifeline`, `unsafe`, `needs action` and `draft` never can. Never
 say an update is "risky" or "low risk": nothing here predicts risk. Say what is holding it.
 
 **Caution does not hold.** "Read first" is a label on a review, not a state of the update:
 what holds is listed work, an unsafe verdict, or missing evidence where it matters.
 
-A `shipshape.class` label sets the class. The v1 labels (`shipshape.policy`,
-`shipshape.pr`) are still read and mapped; anything unrecognised narrows to `ask`.
+A `shipshape.class` label sets the class. The removed v1 labels (`shipshape.policy`,
+`shipshape.pr`, `shipshape.claude`) are no longer read: a service still carrying one is
+held to `ask` and Activity names `npm run convert-v1`.
 
 ## Security incidents
 
@@ -67,8 +70,8 @@ Withholding the deploy never avoided that risk, it only moved it: the shipped ve
 reaches the host anyway the next time anything recreates the stack, and it arrives then
 with nothing watching.
 
-**Shipping is a merge commit on main.** There are no pull requests. Say "ship" and "change",
-never "merge" or "PR", except for the v1 pull requests that the first start closes. The
+**Shipping is a merge commit on the published branch (`main` unless `GIT_BRANCH` says
+otherwise).** There are no pull requests. Say "ship" and "change", never "merge" or "PR". The
 merge commit is `chore(deps): <stack>: bump <services> <from> -> <to>`, with the review
 and any rule that waived a hold in its body.
 
@@ -101,11 +104,21 @@ shipshape's own failed attempt left down, which Try again, the next deploy and a
 put back unless someone has visibly stopped it since. If docker cannot be asked, the
 deploy fails loudly and touches nothing.
 
+## Words for the same thing
+
+- **Waiting on you**: a decision. Never "Waiting for you".
+- **Rolling tag moved**: one rolling tag whose digest moved. The group heading is singular too.
+- **Drafted change**: the config edits a model drafted. Never "proposal", "config proposal" or "manual steps"; the steps it could not make are "Steps to do by hand".
+- **Class**: what `shipshape.class` sets. Never "rung", "tier" or "policy" in copy.
+- **Not watched**: a service with no `shipshape.watch: "true"`. **Watch** and **Stop watching** are the verbs; both write the label as a commit.
+- **Ships when you unpause**: the Inbox group of updates held only by Pause.
+- **Getting started**: the Inbox checklist, shown until a repository is read, a service is watched and a scan has run.
+
 ## The review
 
-Two stages. The **screen** (Jev) answers narrow questions about the release notes and picks
+Two stages. The **screen** answers narrow questions about the release notes and picks
 out the notes' own lines -- it never writes prose, and the interface never paraphrases it:
-its lines are quoted and linked. The **reader** (Claude) reads the changelog and returns a
+its lines are quoted and linked. The **reader** reads the changelog and returns a
 recommendation with a confidence. The UI never shows the raw enum:
 
 | Verdict | Say | Colour |
@@ -162,7 +175,7 @@ decision, a failure, an exposure, or shipshape's own health.
 A decision card (`shipshape:decision:<repository>`, one per image and target) is built the
 same way every time:
 
-1. **Title** — `agentgateway v1.6.0 → v1.7.0 · 19 services`, or the service by name when it
+1. **Title** — `ghcr.io/example/sidecar v1.6.0 → v1.7.0 · 4 services`, or the service by name when it
    is one.
 2. **The question** — `Ship? ` and the first hold in its own words, so a tap is a five-second
    call. Other holds follow as a list.
@@ -220,13 +233,15 @@ rule r12". Never "ignored" or "overridden".
 
 ## Where things live
 
-- **Inbox** — what needs you, grouped by why, worst first; then what happened recently.
+- **Inbox** — what needs you, grouped by why, worst first; then what ships when you
+  unpause; then what happened recently. A new install sees **Getting started** here.
 - **Updates** — every update by stage, filterable, searchable. Its **Releases** tab is the
   same rows read rather than worked: newest first rather than biggest first, the review's
   summary on the row rather than behind a click, and a link out for every release. It is a
   tab, not a seventh destination -- the six below still stand.
 - **Services** — every service, its watch status, and its effective configuration with
-  provenance (label / default / inferred / locked). Three lines say where release notes
+  provenance (label / default / inferred / locked). **Watch this service** writes the label;
+  the **Not watched** filter offers **Watch all N**, one commit per compose file. Three lines say where release notes
   come from: **upstream** (the repository, and how it was found — a likely match says it is
   one), **notes** (where else they are read from), and **packaging** (a LinuxServer image's
   container repository, which has container changes only). **Change** on either opens the

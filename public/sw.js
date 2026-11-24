@@ -5,13 +5,12 @@
  * "intercepted and handled carefully" -- the fetch handler returns without calling
  * respondWith, so the browser handles them exactly as it would with no worker installed.
  *
- * That matters here specifically. This app sits behind Authelia forward-auth, which
- * answers an unauthenticated request with a 302 to another origin rather than a 401,
- * and sessions lapse after 30 minutes idle. A worker that cached HTML would eventually
- * serve a stale dashboard whose every request bounced to a login page -- which is not
- * hypothetical: this homelab has already had exactly that failure with another PWA, and
- * the fix there was to move the app off forward-auth entirely. Not intercepting removes
- * the failure class by construction rather than mitigating it.
+ * That matters here specifically. This app often sits behind a forward-auth proxy
+ * (Authelia, Authentik), which answers an unauthenticated request with a 302 to another
+ * origin rather than a 401, and its sessions lapse. A worker that cached HTML would
+ * eventually serve a stale dashboard whose every request bounced to a login page. Not
+ * intercepting navigations removes that failure class by construction rather than
+ * mitigating it.
  *
  * So the worker does one job: keep the static assets local. That is worth having on its
  * own -- the stylesheet is half a megabyte -- and it is the part with no auth semantics

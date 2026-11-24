@@ -451,7 +451,7 @@ export function baseFor(
   if (!ref.digest && (!ref.tag || ref.tag === 'latest' || pattern === 'latest' || pattern === 'digest')) {
     return {
       ok: false,
-      reason: `${rel}: the base ${found.from.image} floats; pin it by digest (FROM ${found.from.image}@sha256:...) so a move is a pull request`,
+      reason: `${rel}: the base ${found.from.image} floats; pin it by digest (FROM ${found.from.image}@sha256:...) so a move is a change shipshape can make`,
     }
   }
   return { ok: true, base: { dockerfile: rel, ref: found.from.image } }

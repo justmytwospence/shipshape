@@ -59,7 +59,7 @@ export function createServer(): McpServer {
     { name: 'shipshape', version: version() },
     {
       instructions:
-        'Shipshape keeps the homelab\'s container images up to date: it scans registries, has the changelog ' +
+        'Shipshape keeps the container images of a compose repository up to date: it scans registries, has the changelog ' +
         `reviewed, ships what nothing holds back (a merge commit on ${gitBranch()}) after a cooldown, deploys, verifies and ` +
         'rolls back. Start with `inbox` for what is waiting on a decision. `get_update` lists the verbs ' +
         'allowed on an update right now (`allowed_verbs`); `update_action` accepts only those. Deploys run ' +
@@ -225,10 +225,10 @@ export function createServer(): McpServer {
       title: 'Act on an update',
       description:
         'Apply an operator verb to one update, exactly as the dashboard button would; refused (with the reason) when the verb is not in its allowed_verbs. ' +
-        `ship merges the update into ${gitBranch()} now (a merge commit) and the deploy follows, whatever is holding it; snooze puts a decision off a week; ` +
+        `ship records the update as a merge commit on ${gitBranch()} now and the deploy follows, whatever is holding it; snooze puts a decision off a week; ` +
         'always-ship does what ship does and also writes a standing rule that stops this kind of question coming back (never for a lifeline service, an unsafe review or a list of work); ' +
         'skip dismisses this version for good; deploy brings up a change waiting to be deployed; redeploy pulls a moved rolling tag; retry goes round again after a failure; ' +
-        'rollback puts the previous version back; rerun-review reads the changelog again; propose drafts the config changes the update needs onto a local branch that shipping merges; ack marks it seen. ' +
+        'rollback puts the previous version back; rerun-review reads the changelog again; propose drafts the config changes the update needs onto a local branch that ships with the update; ack marks it seen. ' +
         'Deploys run in the background: follow up with get_update.',
       inputSchema: z.object({ id: z.number().int().positive(), verb: z.enum(OPERATOR_VERBS) }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },

@@ -31,7 +31,7 @@ const GROUPS: Record<AttentionKind, { title: string; hint: string; icon: IconNam
     icon: 'rocket',
   },
   'rolling-moved': {
-    title: 'Rolling tags moved',
+    title: 'Rolling tag moved',
     hint: 'nothing to change in git — redeploy to adopt it',
     icon: 'refresh',
   },

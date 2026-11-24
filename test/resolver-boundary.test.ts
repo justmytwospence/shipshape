@@ -35,7 +35,7 @@ test('nothing outside the resolver reads or writes the resolution cache', () => 
 
 test('nothing outside the resolver and the scan reads shipshape.source out of the database', () => {
   const offenders = ALL.filter(
-    (f) => !f.startsWith('resolver/') && f !== 'scan.ts' && f !== 'db.ts',
+    (f) => !f.startsWith('resolver/') && f !== 'scan/inventory.ts' && f !== 'db.ts',
   ).filter((f) => /\bsource_label\b/.test(read(f)))
   assert.deepEqual(offenders, [])
 })

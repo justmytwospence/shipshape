@@ -1,0 +1,422 @@
+import { type Policy } from '../config.ts'
+import { getDb } from '../db.ts'
+import { logEvent } from '../events.ts'
+import { type ScannedService } from '../compose/scan.ts'
+import { type Detection } from '../detect.ts'
+import { checkDigest, shortDigest, type DigestCheck } from '../digests.ts'
+import { classFor } from '../policy.ts'
+import type { TagInfo } from '../registry/index.ts'
+import type { Magnitude } from '../versions/patterns.ts'
+import { LIVE_STATES, REFUSED_STATES, sqlIn } from '../updates/state.ts'
+
+const LIVE_IN = sqlIn(LIVE_STATES)
+
+
+interface UpdateRow {
+  id: number
+  from_tag: string
+  to_tag: string
+  state: string
+  magnitude: string
+  tier: string
+}
+
+
+function liveRows(stack: string, service: string): UpdateRow[] {
+  return getDb()
+    .prepare(
+      `SELECT id, from_tag, to_tag, state, magnitude, tier FROM updates
+       WHERE stack = ? AND service = ? AND state IN ${LIVE_IN}`,
+    )
+    .all(stack, service) as UpdateRow[]
+}
+
+
+/**
+ * Has this exact upgrade already been tried and rolled back?
+ *
+ * A rollback puts the old tag back in the compose file, which means the very next scan
+ * sees the same old -> new pair it saw before and would offer it again -- reopening the
+ * pull request, re-deploying the version that just broke, and rolling it back once more,
+ * for as long as the tag stays newest. The failed row is the memory that stops that.
+ *
+ * Keyed on the exact four-tuple, so it forgets nothing and blocks nothing else: a newer
+ * tag is a different target and gets a fresh row and a normal pipeline. Only this
+ * version, the one actually observed to fail, stays refused.
+ */
+export function refusedTarget(
+  stack: string,
+  service: string,
+  fromTag: string,
+  toTag: string,
+): { id: number; state: string; detail: string | null } | null {
+  return (getDb()
+    .prepare(
+      `SELECT id, state, detail FROM updates
+       WHERE stack = ? AND service = ? AND from_tag = ? AND to_tag = ?
+         AND state IN ${sqlIn(REFUSED_STATES)}`,
+    )
+    .get(stack, service, fromTag, toTag) ?? null) as {
+    id: number
+    state: string
+    detail: string | null
+  } | null
+}
+
+
+/** @deprecated the tombstone is no longer only about failure; use {@link refusedTarget}. */
+export const failedTarget = refusedTarget
+
+
+function supersede(id: number, detail: string): void {
+  getDb()
+    .prepare(`UPDATE updates SET state = 'superseded', detail = ?, updated_at = ? WHERE id = ?`)
+    .run(detail, new Date().toISOString(), id)
+}
+
+
+function setImageStatus(
+  svc: ScannedService,
+  status: string | null,
+  detail: string | null,
+): { changed: boolean } {
+  const db = getDb()
+  const prev = db
+    .prepare(`SELECT last_status, last_detail FROM images WHERE stack = ? AND service = ?`)
+    .get(svc.stack, svc.service) as { last_status: string | null; last_detail: string | null } | undefined
+  const changed = !prev || prev.last_status !== status || prev.last_detail !== detail
+  db.prepare(`UPDATE images SET last_status = ?, last_detail = ? WHERE stack = ? AND service = ?`)
+    .run(status, detail, svc.stack, svc.service)
+  return { changed }
+}
+
+
+/** A newer release exists but a deliberate `tag.include` pin suppressed it. */
+function setConstrained(svc: ScannedService, tag: string | null): void {
+  getDb()
+    .prepare(`UPDATE images SET constrained_from = ? WHERE stack = ? AND service = ?`)
+    .run(tag, svc.stack, svc.service)
+}
+
+
+function rememberTags(svc: ScannedService, observed: TagInfo[]): void {
+  if (!svc.ref || observed.length === 0) return
+  const db = getDb()
+  const now = new Date().toISOString()
+  const stmt = db.prepare(
+    `INSERT INTO tags_seen (registry, repository, tag, digest, published_at, first_seen_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(registry, repository, tag) DO UPDATE SET
+       digest = COALESCE(excluded.digest, tags_seen.digest),
+       published_at = COALESCE(excluded.published_at, tags_seen.published_at)`,
+  )
+  db.transaction(() => {
+    for (const t of observed) {
+      stmt.run(svc.ref!.registry, svc.ref!.repository, t.tag, t.digest ?? null, t.publishedAt ?? null, now)
+    }
+  })()
+}
+
+
+function insertUpdate(opts: {
+  svc: ScannedService
+  fromTag: string
+  toTag: string
+  magnitude: Magnitude
+  tier: string
+  state: 'detected' | 'frozen'
+  detail?: string
+}): void {
+  const now = new Date().toISOString()
+  // A fork's update is about the upstream image -- that is what moved, and what any
+  // release notes are for -- so that is the image the row names, not the local build. The
+  // same for our own build watched through its base: the row names the base.
+  const image = opts.svc.fork?.upstream ?? opts.svc.base?.ref ?? opts.svc.imageRaw ?? ''
+  getDb()
+    .prepare(
+      `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier,
+                            state, detail, detected_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(stack, service, from_tag, to_tag) DO UPDATE SET
+         state = excluded.state, tier = excluded.tier, updated_at = excluded.updated_at,
+         -- Re-detection is a fresh observation, so the reason the row was last retired
+         -- ('pr-closed', 'newer target X') must not survive into it and be read as the
+         -- reason it is open now.
+         detail = excluded.detail`,
+    )
+    .run(
+      opts.svc.stack,
+      opts.svc.service,
+      image,
+      opts.fromTag,
+      opts.toTag,
+      opts.magnitude,
+      opts.tier,
+      opts.state,
+      opts.detail ?? null,
+      now,
+      now,
+    )
+}
+
+
+/** Returns a short outcome key used for the scan summary counts. */
+export async function persist(
+  svc: ScannedService,
+  d: Detection,
+  policy: Policy,
+): Promise<string> {
+  const now = new Date().toISOString()
+  const db = getDb()
+
+  switch (d.status) {
+    case 'update': {
+      setImageStatus(svc, null, null)
+      setConstrained(svc, null)
+      rememberTags(svc, d.observed)
+      const currentTag = svc.ref?.tag ?? ''
+      const existing = liveRows(svc.stack, svc.service)
+
+      const tier = classFor({
+        classLabel: svc.classLabel,
+        legacy: svc.legacyLabels.length > 0,
+        dormant: svc.dormant,
+      })
+
+      const same = existing.find((r) => r.from_tag === currentTag && r.to_tag === d.tag)
+      if (same) {
+        // Already known: touch and stay silent -- this is the idempotence guarantee.
+        //
+        // But the tier is re-derived every scan rather than frozen at insert time.
+        // Labels live in the compose files precisely so that editing one takes effect
+        // without recreating anything; if the tier were only ever set on insert, adding
+        // `shipshape.class: frozen` to a service with an outstanding update would
+        // silently do nothing until that update happened to be superseded.
+        if (same.tier !== tier) {
+          const nextState = tier === 'frozen' ? 'frozen' : same.state === 'frozen' ? 'detected' : same.state
+          db.prepare(`UPDATE updates SET tier = ?, state = ?, updated_at = ? WHERE id = ?`)
+            .run(tier, nextState, now, same.id)
+          logEvent({
+            level: 'info',
+            kind: 'policy',
+            stack: svc.stack,
+            service: svc.service,
+            message: `policy changed: ${same.tier} -> ${tier}`,
+          })
+          return 'retiered'
+        }
+        db.prepare(`UPDATE updates SET updated_at = ? WHERE id = ?`).run(now, same.id)
+        return 'unchanged'
+      }
+
+      for (const r of existing) {
+        supersede(r.id, r.to_tag === d.tag ? 'rebased on new current tag' : `newer target ${d.tag}`)
+      }
+
+      if (tier === 'skip') return 'skipped'
+
+      // Already answered: rolled back, or dismissed by hand. Touch it so the row does not
+      // look abandoned and say so on the services page, but do not offer it again --
+      // re-detecting a refusal as news is how an automatic loop reapplies the thing that
+      // broke, and how "no thanks" lasts only until the next scan.
+      const dead = refusedTarget(svc.stack, svc.service, currentTag, d.tag)
+      if (dead) {
+        db.prepare(`UPDATE updates SET updated_at = ? WHERE id = ?`).run(now, dead.id)
+        const why =
+          dead.state === 'skipped'
+            ? (dead.detail ?? `${d.tag} was dismissed`)
+            : (dead.detail ?? `${d.tag} failed to deploy`)
+        setImageStatus(svc, dead.state === 'skipped' ? 'dismissed' : 'update-failed', why)
+        return dead.state === 'skipped' ? 'dismissed' : 'known-failed'
+      }
+
+      insertUpdate({
+        svc,
+        fromTag: currentTag,
+        toTag: d.tag,
+        magnitude: d.magnitude as Magnitude,
+        tier,
+        state: tier === 'frozen' ? 'frozen' : 'detected',
+        detail: svc.fork ? 'fork' : undefined,
+      })
+      logEvent({
+        level: 'info',
+        kind: 'scan',
+        stack: svc.stack,
+        service: svc.service,
+        message: `update available: ${currentTag} -> ${d.tag} (${d.magnitude})`,
+        detail: `tier=${tier}${d.via === 'releases' ? ', via release probing' : ''}${d.stream ? `, ${d.stream}` : ''}`,
+      })
+      return 'update'
+    }
+
+    case 'up-to-date': {
+      setImageStatus(svc, null, null)
+      setConstrained(svc, d.constrainedFrom ?? null)
+      rememberTags(svc, d.observed)
+      const currentTag = svc.ref?.tag ?? ''
+      for (const r of liveRows(svc.stack, svc.service)) {
+        if (r.from_tag !== currentTag) {
+          // The file moved on: WUD applied it overnight, or a human hand-bumped it.
+          supersede(r.id, 'caught-up')
+          logEvent({
+            level: 'info',
+            kind: 'scan',
+            stack: svc.stack,
+            service: svc.service,
+            message: `applied elsewhere: now on ${currentTag}`,
+          })
+        } else {
+          // Still on the old tag, but the target no longer wins -- typically a yanked
+          // release. Worth a human's attention rather than a silent disappearance.
+          supersede(r.id, 'target-vanished')
+          logEvent({
+            level: 'warn',
+            kind: 'scan',
+            stack: svc.stack,
+            service: svc.service,
+            message: `previous target ${r.to_tag} is no longer offered`,
+          })
+        }
+      }
+      return 'up-to-date'
+    }
+
+    case 'digest-watch':
+      return persistDigest(svc, await checkDigest(svc), policy)
+
+    default: {
+      // Every named failure. No updates row; the state is surfaced on the images page.
+      const { changed } = setImageStatus(svc, d.status, 'detail' in d ? d.detail : null)
+      if (changed) {
+        logEvent({
+          level: d.status === 'error' ? 'warn' : 'info',
+          kind: 'scan',
+          stack: svc.stack,
+          service: svc.service,
+          message: `needs attention: ${d.status}`,
+          detail: 'detail' in d ? d.detail : undefined,
+        })
+      }
+      return d.status === 'error' ? 'error' : 'needs-attention'
+    }
+  }
+}
+
+
+function persistDigest(svc: ScannedService, c: DigestCheck, policy: Policy): string {
+  const tag = svc.ref?.tag ?? 'latest'
+
+  switch (c.status) {
+    case 'bootstrapped':
+    case 'unchanged':
+    case 'pinned-to-child':
+      setImageStatus(svc, null, null)
+      return c.status === 'bootstrapped' ? 'bootstrapped' : 'unchanged'
+
+    case 'moved-pinned': {
+      setImageStatus(svc, null, null)
+      const fromTag = `${tag}@${c.from}`
+      const toTag = `${tag}@${c.to}`
+      const tier = classFor({
+        classLabel: svc.classLabel,
+        legacy: svc.legacyLabels.length > 0,
+        dormant: svc.dormant,
+      })
+      const existing = liveRows(svc.stack, svc.service)
+      const same = existing.find((r) => r.from_tag === fromTag && r.to_tag === toTag)
+      if (same) {
+        // Re-derive the tier so a label edit lands without waiting for a new digest.
+        if (same.tier !== tier) {
+          getDb()
+            .prepare(`UPDATE updates SET tier = ?, state = ?, updated_at = ? WHERE id = ?`)
+            .run(tier, tier === 'frozen' ? 'frozen' : 'detected', new Date().toISOString(), same.id)
+          return 'retiered'
+        }
+        return 'unchanged'
+      }
+      for (const r of existing) supersede(r.id, 'newer digest')
+
+      if (tier === 'skip') return 'skipped'
+      // Same refusal memory as a tag bump: a digest move that was dismissed or rolled
+      // back must not come back on the next sweep.
+      const refused = refusedTarget(svc.stack, svc.service, fromTag, toTag)
+      if (refused) {
+        getDb().prepare(`UPDATE updates SET updated_at = ? WHERE id = ?`).run(
+          new Date().toISOString(),
+          refused.id,
+        )
+        return refused.state === 'skipped' ? 'dismissed' : 'known-failed'
+      }
+      insertUpdate({
+        svc,
+        fromTag,
+        toTag,
+        magnitude: 'digest',
+        tier,
+        state: tier === 'frozen' ? 'frozen' : 'detected',
+        detail: svc.fork ? 'fork' : undefined,
+      })
+      logEvent({
+        level: 'info',
+        kind: 'scan',
+        stack: svc.stack,
+        service: svc.service,
+        message: `pinned digest moved: ${shortDigest(c.from)} -> ${shortDigest(c.to)}`,
+        detail: `tier=${tier}`,
+      })
+      return 'moved-pinned'
+    }
+
+    case 'moved-rolling': {
+      setImageStatus(svc, null, null)
+      const fromTag = `${tag}@${c.from}`
+      const toTag = `${tag}@${c.to}`
+      const existing = liveRows(svc.stack, svc.service)
+      if (existing.some((r) => r.from_tag === fromTag && r.to_tag === toTag)) return 'unchanged'
+      for (const r of existing) supersede(r.id, 'newer digest')
+
+      // No PR is possible: the compose file says `latest` and will still say `latest`
+      // afterwards. This row exists so the dashboard can offer a redeploy -- except for a
+      // fork, where a redeploy would not pick the upstream's new build up either, and a
+      // rolling tag is no release to rebase onto (src/forks/rebase.ts needs a tag), so the
+      // row is held and only says that upstream moved. A floating base is refused at scan
+      // time (compose/scan.ts), so a build only lands here if that ever changes -- and a
+      // redeploy would not rebuild it either, so it is held the same way.
+      const unmovable = !!svc.fork || !!svc.base
+      insertUpdate({
+        svc,
+        fromTag,
+        toTag,
+        magnitude: 'digest',
+        tier: unmovable ? 'frozen' : 'ask',
+        state: unmovable ? 'frozen' : 'detected',
+        detail: svc.fork ? 'fork' : 'rolling',
+      })
+      logEvent({
+        level: 'info',
+        kind: 'scan',
+        stack: svc.stack,
+        service: svc.service,
+        message: `rolling tag moved: ${tag} ${shortDigest(c.from)} -> ${shortDigest(c.to)}`,
+        detail: 'redeploy to adopt',
+      })
+      return 'moved-rolling'
+    }
+
+    case 'head-failed': {
+      const { changed } = setImageStatus(svc, 'head-failed', c.detail)
+      if (changed) {
+        logEvent({
+          level: 'warn',
+          kind: 'scan',
+          stack: svc.stack,
+          service: svc.service,
+          message: 'digest check failed',
+          detail: c.detail,
+        })
+      }
+      return 'error'
+    }
+  }
+}

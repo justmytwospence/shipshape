@@ -12,7 +12,7 @@ const { getDb } = await import('../src/db.ts')
 const { classFor } = await import('../src/policy.ts')
 
 /**
- * These exercise the transition rules that scan.ts implements, against the real schema.
+ * These exercise the transition rules that src/scan/ implements, against the real schema.
  * The property that matters most is idempotence: a second scan that observes the same
  * facts must not create a second row or a second event.
  */

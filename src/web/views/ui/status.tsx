@@ -81,7 +81,7 @@ const CRED_CLS: Record<string, string> = {
  * The scan's outcome keys, in the words the rest of the interface already uses.
  *
  * These keys are `persist()`'s return values -- database words -- and the Activity log
- * says this same scan in house wording through `summarise()` (src/scan.ts). Printing the
+ * says this same scan in house wording through `summarise()` (src/scan/report.ts). Printing the
  * keys here would give one event two vocabularies and a dictionary for neither, which is
  * the thing this page exists to have stopped doing. Two keys deliberately share a label:
  * failing to read a registry and failing to write the row are both an error to the person

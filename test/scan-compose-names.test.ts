@@ -17,7 +17,7 @@ writeFileSync(process.env.POLICY_FILE, 'paused: true\n')
 after(() => rmSync(dir, { recursive: true, force: true }))
 
 const { getDb } = await import('../src/db.ts')
-const { runScan } = await import('../src/scan.ts')
+const { runScan } = await import('../src/scan/index.ts')
 
 const composeFiles = () =>
   (getDb().prepare(`SELECT value FROM budgets WHERE key = 'scan.compose_files'`).get() as { value: number } | undefined)?.value

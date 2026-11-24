@@ -5,7 +5,8 @@ import { getDb } from '../db.ts'
 import { logEvent, type EventKind } from '../events.ts'
 import { scanRepo } from '../compose/scan.ts'
 import { parseImageRef } from '../images/ref.ts'
-import { recordTelemetry, syncInventory } from '../scan.ts'
+import { recordTelemetry } from '../scan/report.ts'
+import { syncInventory } from '../scan/inventory.ts'
 
 /**
  * The demo's history: a fortnight of a small compose repository (examples/demo), written

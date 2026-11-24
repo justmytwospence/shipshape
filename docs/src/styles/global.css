@@ -1,0 +1,44 @@
+@layer base, starlight, theme, components, utilities;
+@import '@astrojs/starlight-tailwind';
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@source '../components';
+
+/* Dark (Starlight's default). The slate of the app's bridge-dark theme. */
+:root {
+  --sl-color-accent-low: #0d2a44;
+  --sl-color-accent: #4dacf6;
+  --sl-color-accent-high: #cfe7fd;
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #e2e6ec;
+  --sl-color-gray-2: #c0c7d2;
+  --sl-color-gray-3: #8a94a3;
+  --sl-color-gray-4: #555f6e;
+  --sl-color-gray-5: #333b47;
+  --sl-color-gray-6: #1c2129;
+  --sl-color-black: #13161c;
+  --sl-font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --sl-font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Light. Starlight inverts the scale: white is the text, black the page. */
+:root[data-theme='light'] {
+  --sl-color-accent-low: #d6e9f8;
+  --sl-color-accent: #006eb3;
+  --sl-color-accent-high: #053a5e;
+  --sl-color-white: #1a2029;
+  --sl-color-gray-1: #2a313c;
+  --sl-color-gray-2: #3d4652;
+  --sl-color-gray-3: #5b6573;
+  --sl-color-gray-4: #8a94a3;
+  --sl-color-gray-5: #c6ccd5;
+  --sl-color-gray-6: #eceff3;
+  --sl-color-gray-7: #f5f7f9;
+  --sl-color-black: #fbfcfd;
+}
+
+/* Landing screenshots: a hairline frame, no shadow (the app has none either). */
+.shot {
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.5rem;
+}

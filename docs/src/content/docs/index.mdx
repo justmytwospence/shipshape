@@ -1,0 +1,23 @@
+---
+title: shipshape
+description: Docker image updates for a compose homelab kept in git. Reads the changelog, ships what nothing holds, deploys, verifies and rolls back.
+template: splash
+hero:
+  title: Image updates that read the changelog first
+  tagline: shipshape watches the compose files in your git repository, reads the release notes of every new image, ships what nothing holds as a merge commit, deploys it with a real docker compose up, and rolls it back if it breaks. What needs you arrives as one card with four answers.
+  image:
+    light: ../../assets/screenshots/hero-decision-light.png
+    dark: ../../assets/screenshots/hero-decision-dark.png
+    alt: A decision in shipshape. The update is held because the release notes list breaking changes; the notes' own lines are quoted, and Ship, Snooze and Skip sit underneath.
+  actions:
+    - text: Quick start
+      link: /shipshape/start/quick-start/
+      icon: right-arrow
+    - text: How it works
+      link: /shipshape/concepts/how-it-works/
+      variant: secondary
+    - text: GitHub
+      link: https://github.com/justmytwospence/shipshape
+      icon: external
+      variant: minimal
+---

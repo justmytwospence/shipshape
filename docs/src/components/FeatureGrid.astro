@@ -1,0 +1,20 @@
+---
+interface Props {
+  items: { title: string; body: string; href: string }[]
+}
+const { items } = Astro.props
+const base = import.meta.env.BASE_URL
+---
+<div class="not-content grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+  {
+    items.map((item) => (
+      <a
+        href={`${base}${item.href}`}
+        class="block rounded-lg border border-[var(--sl-color-gray-5)] p-5 no-underline hover:border-[var(--sl-color-accent)]"
+      >
+        <span class="block font-semibold text-[var(--sl-color-white)]">{item.title}</span>
+        <span class="mt-1 block text-sm text-[var(--sl-color-gray-2)]">{item.body}</span>
+      </a>
+    ))
+  }
+</div>

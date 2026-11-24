@@ -40,3 +40,14 @@ updates:
     groups:
       docker:
         patterns: ["*"]
+
+  # The documentation site (docs/): Starlight is 0.x, so every bump is looked at.
+  - package-ecosystem: npm
+    directory: /docs
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      docs-minor-and-patch:
+        update-types: [minor, patch]

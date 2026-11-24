@@ -1,0 +1,19 @@
+---
+interface Props {
+  steps: { title: string; body: string }[]
+}
+const { steps } = Astro.props
+---
+<ol class="not-content grid list-none gap-6 p-0 sm:grid-cols-2 lg:grid-cols-4">
+  {
+    steps.map((step, i) => (
+      <li class="flex flex-col gap-2">
+        <span class="flex size-8 items-center justify-center rounded-full bg-[var(--sl-color-accent)] font-semibold text-[var(--sl-color-black)]">
+          {i + 1}
+        </span>
+        <span class="font-semibold">{step.title}</span>
+        <span class="text-sm text-[var(--sl-color-gray-2)]">{step.body}</span>
+      </li>
+    ))
+  }
+</ol>

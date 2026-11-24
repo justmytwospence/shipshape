@@ -7,6 +7,7 @@ running:
 
 ```sh
 node bin/shots.mjs --out .shots/landing --vp desktop-hidpi --scheme dark  --routes '/updates/2?list=inbox' --name hero-decision-dark.png
+node bin/shots.mjs --out .shots/landing --vp desktop-hidpi --scheme light --routes '/updates/2?list=inbox' --name hero-decision-light.png
 node bin/shots.mjs --out .shots/landing --vp phone         --scheme light --routes '/updates/2?list=inbox' --name decision-phone-light.png
 node bin/shots.mjs --out .shots/landing --vp desktop-hidpi --scheme light --routes '/updates?stage=releases' --name releases-light.png
 node bin/shots.mjs --out .shots/landing --vp desktop-hidpi --scheme dark  --routes '/updates/8?list=updates&stage=all' --name rollback-dark.png

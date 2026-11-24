@@ -1,0 +1,16 @@
+---
+import { Image } from 'astro:assets'
+
+interface Props {
+  light: ImageMetadata
+  dark: ImageMetadata
+  alt: string
+  caption?: string
+}
+const { light, dark, alt, caption } = Astro.props
+---
+<figure class="not-content m-0">
+  <Image src={light} alt={alt} widths={[720, 1440]} sizes="(min-width: 1024px) 960px, 100vw" class="shot dark:sl-hidden" />
+  <Image src={dark} alt={alt} widths={[720, 1440]} sizes="(min-width: 1024px) 960px, 100vw" class="shot light:sl-hidden" />
+  {caption && <figcaption class="mt-2 text-sm text-[var(--sl-color-gray-3)]">{caption}</figcaption>}
+</figure>

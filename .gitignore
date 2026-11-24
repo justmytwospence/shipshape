@@ -9,6 +9,9 @@ dist/
 .dev/
 .shots/
 
+# Astro's generated types and cache (docs/).
+.astro/
+
 # Built by `npm run css` from src/styles/app.css.
 public/app.css
 

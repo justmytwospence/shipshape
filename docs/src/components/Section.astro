@@ -1,0 +1,12 @@
+---
+interface Props {
+  title: string
+  lead?: string
+}
+const { title, lead } = Astro.props
+---
+<section class="not-content mx-auto max-w-5xl py-12">
+  <h2 class="text-2xl font-semibold tracking-tight">{title}</h2>
+  {lead && <p class="mt-2 text-[var(--sl-color-gray-2)]">{lead}</p>}
+  <div class="mt-8"><slot /></div>
+</section>

@@ -1,5 +1,6 @@
 import { env, loadPolicy, policyFileState } from './config.ts'
-import { closeDb, getDb, logEvent } from './db.ts'
+import { closeDb, getDb } from './db.ts'
+import { logEvent } from './events.ts'
 import { compactOnce } from './db/retention.ts'
 import { reclaimInterrupted } from './deploy/queue.ts'
 import { deploysIdle } from './deploy/runner.ts'

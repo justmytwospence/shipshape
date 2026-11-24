@@ -1,5 +1,6 @@
 import { configured, env, loadPolicy, type Policy } from './config.ts'
-import { getDb, logEvent } from './db.ts'
+import { getDb } from './db.ts'
+import { logEvent } from './events.ts'
 import { scanRepo, unreadableComposeFiles, type ScannedService } from './compose/scan.ts'
 import { discoverCompose } from './compose/files.ts'
 import { detect, type Detection } from './detect.ts'

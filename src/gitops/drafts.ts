@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { paths } from '../config.ts'
-import { getDb, logEvent } from '../db.ts'
+import { getDb } from '../db.ts'
+import { logEvent } from '../events.ts'
 import type { UpdateGroup } from '../groups.ts'
 import { git, withGitLock } from './repo.ts'
 

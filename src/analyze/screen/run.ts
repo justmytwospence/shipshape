@@ -1,6 +1,7 @@
 import { env, loadPolicy } from '../../config.ts'
 import { composeFileOfStack } from '../../compose/files.ts'
-import { getDb, logEvent } from '../../db.ts'
+import { getDb } from '../../db.ts'
+import { logEvent } from '../../events.ts'
 import { parseImageRef } from '../../images/ref.ts'
 import { assembleNotes, notesInRange } from '../../notes/assemble.ts'
 import { sourceFor } from '../../resolver/index.ts'

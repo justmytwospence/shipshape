@@ -1,5 +1,5 @@
 import type { Sink } from '../../config.ts'
-import { logEvent } from '../../db.ts'
+import { logEvent } from '../../events.ts'
 import { messageLinks } from '../links.ts'
 import type { Message, Priority } from '../types.ts'
 import { FireOnce } from './once.ts'

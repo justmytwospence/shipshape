@@ -1,7 +1,7 @@
 import { execa, type Options } from 'execa'
 import { existsSync, rmSync } from 'node:fs'
 import { botIdentity, env, paths } from '../config.ts'
-import { logEvent } from '../db.ts'
+import { logEvent } from '../events.ts'
 import { background } from '../lifecycle.ts'
 import { credentialArgs, credentialEnv } from './credentials.ts'
 import { looksLikeGitAuthFailure, noteAuthFailure } from '../health/github-auth.ts'

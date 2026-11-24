@@ -1,5 +1,6 @@
 import { env, loadPolicy, mcpEnabled, type Policy } from '../config.ts'
-import { getDb, logEvent } from '../db.ts'
+import { getDb } from '../db.ts'
+import { logEvent } from '../events.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'
 import { formatImageRef, parseImageRef } from '../images/ref.ts'
 import { hubRemaining } from '../registry/http.ts'

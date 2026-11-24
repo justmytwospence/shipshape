@@ -1,5 +1,6 @@
 import { configured, loadPolicy } from '../config.ts'
-import { getDb, logEvent } from '../db.ts'
+import { getDb } from '../db.ts'
+import { logEvent } from '../events.ts'
 import { createTicker, type Ticker } from '../loop/ticker.ts'
 import { pollFeed } from './feed.ts'
 import { runExtraction } from './extract.ts'

@@ -7,7 +7,8 @@ import { EmptyState, ListCount, Search, Tabs } from './ui/parts.tsx'
 import { DeviceSettings, SettingsForm, SettingsNav, type SettingGroup } from './ui/settings.tsx'
 import { version } from '../version.ts'
 import { StatusBody, type StatusData } from './ui/status.tsx'
-import { ActivityList, ActivityToolbar, type ActivityRow } from './ui/activity.tsx'
+import { ActivityList, ActivityToolbar } from './ui/activity.tsx'
+import { type ActivityRow } from '../../events.ts'
 import {
   ServicesList,
   ServicesToolbar,

@@ -1,5 +1,6 @@
 import { env } from '../config.ts'
-import { getDb, logEvent } from '../db.ts'
+import { getDb } from '../db.ts'
+import { logEvent } from '../events.ts'
 import { syncMain, type SyncResult } from '../gitops/sync.ts'
 import { withGitLock } from '../gitops/repo.ts'
 import { background, isStopping } from '../lifecycle.ts'

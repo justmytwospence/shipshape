@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk'
 import { loadPolicy, type Policy } from '../config.ts'
-import { getDb, logEvent } from '../db.ts'
+import { getDb } from '../db.ts'
+import { logEvent } from '../events.ts'
 import { budgetExhausted, isTimeout, recordCost, recordUnanswered } from '../analyze/claude.ts'
 import { llmClient, llmConfigured } from '../analyze/client.ts'
 import { readerOn } from '../policy.ts'

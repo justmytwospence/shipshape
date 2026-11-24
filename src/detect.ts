@@ -7,7 +7,7 @@ import {
   type TagInfo,
 } from './registry/index.ts'
 import { probeByReleases } from './registry/probe.ts'
-import { logEvent } from './db.ts'
+import { logEvent } from './events.ts'
 import { sourceFor, guessFromImagePath } from './resolver/index.ts'
 import { isPackagingRepo } from './resolver/guards.ts'
 import { releaseIndex, type IndexedRelease } from './upstream/releases.ts'

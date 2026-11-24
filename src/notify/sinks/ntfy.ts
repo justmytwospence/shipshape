@@ -1,5 +1,5 @@
 import type { Sink } from '../../config.ts'
-import { logEvent } from '../../db.ts'
+import { logEvent } from '../../events.ts'
 import type { Message } from '../types.ts'
 import { actionUrl } from '../links.ts'
 

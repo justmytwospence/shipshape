@@ -1,6 +1,6 @@
 import { createTransport, type Transporter } from 'nodemailer'
 import { env } from '../config.ts'
-import { logEvent } from '../db.ts'
+import { logEvent } from '../events.ts'
 
 /**
  * Email delivery.

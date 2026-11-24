@@ -1,6 +1,7 @@
 import { authorArgs, git, withGitLock } from '../gitops/repo.ts'
 import { env, gitBranch, loadPolicy } from '../config.ts'
-import { getDb, logEvent } from '../db.ts'
+import { getDb } from '../db.ts'
+import { logEvent } from '../events.ts'
 import { notify } from '../notify/index.ts'
 import { changeUrl } from '../gitops/change.ts'
 import { changeText } from '../gitops/body.ts'

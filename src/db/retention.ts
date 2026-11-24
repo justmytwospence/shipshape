@@ -1,6 +1,7 @@
 import { existsSync, statSync } from 'node:fs'
 import { paths } from '../config.ts'
-import { getDb, logEvent } from '../db.ts'
+import { getDb } from '../db.ts'
+import { logEvent } from '../events.ts'
 
 /**
  * What nothing reads any more, removed after every scan.

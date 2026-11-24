@@ -1,7 +1,8 @@
 import { reviewMode } from '../policy.ts'
 import { llmProvider } from '../analyze/client.ts'
 import { loadPolicy, policyFileState } from '../config.ts'
-import { getDb, logEvent } from '../db.ts'
+import { getDb } from '../db.ts'
+import { logEvent } from '../events.ts'
 import { monthlySpend } from '../analyze/claude.ts'
 import { notify, resolveIncident } from '../notify/index.ts'
 

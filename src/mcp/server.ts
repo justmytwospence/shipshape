@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 import { gitBranch } from '../config.ts'
-import { logEvent } from '../db.ts'
+import { logEvent } from '../events.ts'
 import { buildUpdateDiff } from '../diff.ts'
 import { isScanning } from '../scan.ts'
 import { runScanNow } from '../scheduler.ts'
@@ -19,8 +19,9 @@ import {
 import { filterServices, serviceDetail, serviceRows } from '../updates/services.ts'
 import { runStackVerb, STACK_VERBS } from '../updates/stack-verbs.ts'
 import { contextFor, type VerbResult } from '../updates/verbs.ts'
-import { activityRows, checkService, scanInfo } from '../web/server.ts'
-import { KINDS as ACTIVITY_KINDS } from '../web/views/ui/activity.tsx'
+import { checkService, scanInfo } from '../web/server.ts'
+import { activityRows } from '../events.ts'
+import { EVENT_KINDS } from '../events.ts'
 import { version } from '../web/version.ts'
 import { exposureViews, findPackage, incidentViews } from '../security/queries.ts'
 import { securityStatus } from '../security/loop.ts'
@@ -166,7 +167,7 @@ export function createServer(): McpServer {
       title: 'Activity',
       description: 'The activity log, newest first.',
       inputSchema: z.object({
-        kind: z.enum(['all', ...ACTIVITY_KINDS]).optional(),
+        kind: z.enum(['all', ...EVENT_KINDS]).optional(),
         problems: z.boolean().optional().describe('Only warnings and errors.'),
         q: z.string().optional().describe('Matches message, detail or stack.'),
         limit: z.number().int().min(1).max(500).optional(),

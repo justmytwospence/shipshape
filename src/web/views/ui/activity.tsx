@@ -2,6 +2,7 @@ import type { FC } from 'hono/jsx'
 import { EmptyState, Relative, Search, Tabs } from './parts.tsx'
 import { GroupHeader } from './update.tsx'
 import { clockText, dayKey } from '../../time.ts'
+import { EVENT_KINDS, type ActivityRow, type EventKind } from '../../../events.ts'
 
 /**
  * The log, readable.
@@ -14,21 +15,6 @@ import { clockText, dayKey } from '../../time.ts'
  * the whole width and a day is a sticky header.
  */
 
-export const KINDS = ['scan', 'policy', 'ship', 'analysis', 'deploy', 'sync', 'system'] as const
-export type EventKind = (typeof KINDS)[number]
-
-export interface ActivityRow {
-  id: number
-  at: string
-  lastAt: string | null
-  count: number
-  level: 'info' | 'warn' | 'error'
-  kind: string
-  stack: string | null
-  service: string | null
-  message: string
-  detail: string | null
-}
 
 const LEVEL_DOT: Record<string, string> = {
   info: 'bg-base-content/50',
@@ -46,7 +32,7 @@ const KIND_LABEL: Record<EventKind, string> = {
   system: 'System',
 }
 
-const KIND_TABS = [{ key: 'all', label: 'All' }, ...KINDS.map((k) => ({ key: k, label: KIND_LABEL[k] }))]
+const KIND_TABS = [{ key: 'all', label: 'All' }, ...EVENT_KINDS.map((k) => ({ key: k, label: KIND_LABEL[k] }))]
 
 export const ActivityToolbar: FC<{ kind: string; problems: boolean; q: string }> = ({
   kind,

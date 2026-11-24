@@ -1,5 +1,5 @@
 import { env, gitBranch, loadPolicy } from '../config.ts'
-import { logEvent } from '../db.ts'
+import { logEvent } from '../events.ts'
 import { notifyOnce, clearNotifyState as clearReason, notify, resolveIncident } from '../notify/index.ts'
 
 /** Back to normal: forget the last reason and close the sync incident (silent if none). */

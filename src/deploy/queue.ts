@@ -1,4 +1,5 @@
-import { getDb, logEvent } from '../db.ts'
+import { getDb } from '../db.ts'
+import { logEvent } from '../events.ts'
 import { env, gitBranch, loadPolicy } from '../config.ts'
 import { notify } from '../notify/index.ts'
 import { deployChange, type DeployIo, type DeployTarget } from './run.ts'

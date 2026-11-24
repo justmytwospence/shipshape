@@ -1,6 +1,6 @@
 import { Cron } from 'croner'
 import { DEFAULT_CODE_MODEL, DEFAULT_READER_MODEL, gitBranch, type Policy } from './config.ts'
-import { logEvent } from './db.ts'
+import { logEvent } from './events.ts'
 import { commitPolicyFile } from './gitops/policy-file.ts'
 
 /**

@@ -1,6 +1,7 @@
 import { Cron } from 'croner'
 import { configured, env, loadPolicy } from './config.ts'
-import { getDb, logEvent } from './db.ts'
+import { getDb } from './db.ts'
+import { logEvent } from './events.ts'
 import { runReviewPass } from './analyze/run.ts'
 import { runProposePass } from './propose/run.ts'
 import { drainDeployQueue, hasDueRechecks, hasPendingDeploys, runRechecks } from './deploy/queue.ts'

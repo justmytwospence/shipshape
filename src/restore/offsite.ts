@@ -1,5 +1,5 @@
 import type { Policy } from '../config.ts'
-import { logEvent } from '../db.ts'
+import { logEvent } from '../events.ts'
 
 /**
  * The optional offsite half of a restore point: ask any MCP server to take a backup.

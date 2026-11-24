@@ -1,5 +1,5 @@
 import { beginShutdown } from './lifecycle.ts'
-import type { logEvent } from './db.ts'
+import type { logEvent } from './events.ts'
 
 /**
  * Stop on a signal: stop starting things, let what is running finish for a few seconds,

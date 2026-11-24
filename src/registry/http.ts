@@ -1,4 +1,5 @@
-import { getDb, logEvent } from '../db.ts'
+import { getDb } from '../db.ts'
+import { logEvent } from '../events.ts'
 import { publicAddress, refusedHost } from '../upstream/hosts.ts'
 
 /**

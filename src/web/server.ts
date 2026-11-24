@@ -5,87 +5,51 @@ import { raw } from 'hono/html'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { configured, env, gitBranch, gitCredentialName, loadPolicy, policyFileState, type Policy } from '../config.ts'
-import { getDb, logEvent } from '../db.ts'
+import { getDb } from '../db.ts'
+import { logEvent, type ActivityRow, activityRows } from '../events.ts'
 import { serverHandle, type ServerHandle } from '../lifecycle.ts'
 import { version } from './version.ts'
 import { setupSteps } from './onboarding.ts'
 import { ZONE } from './time.ts'
-import { describeCron } from './views/ui/settings.tsx'
+import { describeCron, NotifyTools, RulesList, SettingsForm, TestEmailResult, type SettingGroup, type SettingValue } from './views/ui/settings.tsx'
 import { reviewOffReason } from '../analyze/review-state.ts'
 import { health } from '../health/liveness.ts'
-import { scanRepo, type ScannedService } from '../compose/scan.ts'
+import { scanRepo } from '../compose/scan.ts'
 import { buildUpdateDiff, type DiffHunk } from '../diff.ts'
 import { parseImageRef } from '../images/ref.ts'
 import { refLinks } from '../links.ts'
 import { isScanning, refreshServiceLabels, scanOne } from '../scan.ts'
 import { sourceCounts, sourceFor, sourceForSync, type SourceInfo } from '../resolver/index.ts'
-import { runScanNow, scheduleInfo } from '../scheduler.ts'
-import { setState } from '../updates/state.ts'
-import { actionsFor, refusalFor } from '../updates/actions.ts'
-import { contextFor, type VerbResult } from '../updates/verbs.ts'
+import { runScanNow, scheduleInfo, rescheduleScan } from '../scheduler.ts'
+import { type VerbResult } from '../updates/verbs.ts'
 import { isOperatorVerb, runOperatorVerb } from '../updates/operator-verbs.ts'
 import { verifyAction } from '../notify/links.ts'
 import { ACT_EXPIRED, ACT_GONE, ActConfirm, ActDone, ActError } from './views/ui/act.tsx'
 import { ErrorPage, notFoundCopy, serverErrorCopy } from './views/ui/errors.tsx'
-import {
-  inboxNeedsYou,
-  inboxParked,
-  inboxPausedOnly,
-  inboxRecent,
-  listUpdates,
-  listReleases,
-  updateTimeline,
-  updateView,
-  type StageFilter,
-  type UpdateView,
-} from '../updates/queries.ts'
-import {
-  ActivityPage,
-  InboxPage,
-  SettingsPage,
-  StatusPage,
-  ServicesPage,
-  UpdatesList,
-  UpdatesPage,
-  ReleasesPage,
-  type Detail,
-} from './views/pages.tsx'
+import { inboxNeedsYou, inboxParked, inboxPausedOnly, inboxRecent, listUpdates, listReleases, updateTimeline, updateView, type UpdateView } from '../updates/queries.ts'
+import { ActivityPage, InboxPage, SettingsPage, StatusPage, ServicesPage, UpdatesList, UpdatesPage, ReleasesPage, type Detail } from './views/pages.tsx'
 import { PhoneScan, type Chrome } from './views/ui/shell.tsx'
 import { ctxString, listHref, readCtx, type ListCtx } from './ctx.ts'
-import {
-  NotifyTools,
-  RulesList,
-  SettingsForm,
-  TestEmailResult,
-  type SettingGroup,
-  type SettingValue,
-} from './views/ui/settings.tsx'
 import type { StatusData } from './views/ui/status.tsx'
 import { authHealth } from '../health/github-auth.ts'
 import { budgetHealth } from '../health/analysis-budget.ts'
 import { LinkPreviewPane, ServiceDetail, ServicesList } from './views/ui/services.tsx'
-import { ActivityList, KINDS as ACTIVITY_KINDS, type ActivityRow } from './views/ui/activity.tsx'
-import {
-  filterServices as filterServiceRows,
-  serviceDetail,
-  serviceRows,
-} from '../updates/services.ts'
+import { ActivityList } from './views/ui/activity.tsx'
+import { filterServices as filterServiceRows, serviceDetail, serviceRows } from '../updates/services.ts'
 import { publishLabelEdits, setLabelsForServices, setServiceLabels, type LabelChange, type LabelKey } from '../gitops/labels.ts'
-import { llmConfigured, llmEndpointHost, llmProvider } from '../analyze/client.ts'
+import { llmEndpointHost, llmProvider } from '../analyze/client.ts'
 import { jevConfigured } from '../analyze/jev.ts'
 import { previewLink } from '../resolver/preview.ts'
 import { InboxList, type InboxData } from './views/ui/inbox.tsx'
 import { ListCount, ScanStatus } from './views/ui/parts.tsx'
 import { UpdateDetail, UpdateRow } from './views/ui/update.tsx'
 import { ReleaseList } from './views/ui/releases.tsx'
-import { runAnalysisPass } from '../analyze/run.ts'
 import { DiffView } from './views/diff.tsx'
 import { applySettings, currentValue, savedText, SECTIONS, SETTINGS } from '../settings.ts'
 import { SECTION_PROSE } from '../settings/prose.ts'
 import { listModels } from '../analyze/models.ts'
 import { activeChannels, sinkCredentials } from '../notify/index.ts'
 import { configured as emailConfigured, send as sendEmail } from '../notify/email.ts'
-import { rescheduleScan } from '../scheduler.ts'
 import { authMiddleware, describeAuth, registerAuthRoutes, resolveAuth } from './auth/index.ts'
 import { pruneSessions } from './auth/session.ts'
 import { securityHeaders } from './security-headers.ts'
@@ -181,40 +145,6 @@ export async function checkService(stack: string, service: string): Promise<bool
   }
   if (svc.watched) await scanOne(svc, policy)
   return true
-}
-
-/** The activity log, newest first: the Activity page's query. */
-export const activityRows = (opts: {
-  kind: string
-  problems: boolean
-  q: string
-  before?: string | null
-  limit?: number
-}): ActivityRow[] => {
-  const where: string[] = []
-  const args: (string | number)[] = []
-  if ((ACTIVITY_KINDS as readonly string[]).includes(opts.kind)) {
-    where.push('kind = ?')
-    args.push(opts.kind)
-  }
-  if (opts.problems) where.push(`level IN ('warn','error')`)
-  if (opts.q) {
-    where.push(`(message LIKE ? OR IFNULL(detail,'') LIKE ? OR IFNULL(stack,'') LIKE ?)`)
-    const like = `%${opts.q}%`
-    args.push(like, like, like)
-  }
-  if (opts.before) {
-    where.push(`COALESCE(last_at, at) < ?`)
-    args.push(opts.before)
-  }
-  args.push(opts.limit ?? 100)
-  return getDb()
-    .prepare(
-      `SELECT id, at, last_at AS lastAt, count, level, kind, stack, service, message, detail
-         FROM events ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-        ORDER BY COALESCE(last_at, at) DESC LIMIT ?`,
-    )
-    .all(...args) as ActivityRow[]
 }
 
 export function createApp(): Hono {

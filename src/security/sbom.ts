@@ -1,6 +1,7 @@
 import { execa } from 'execa'
 import { env, type Policy } from '../config.ts'
-import { getDb, logEvent } from '../db.ts'
+import { getDb } from '../db.ts'
+import { logEvent } from '../events.ts'
 import { dockerEnvOptions } from '../deploy/docker-env.ts'
 import { projectName } from '../deploy/probe.ts'
 import { scanRepo } from '../compose/scan.ts'

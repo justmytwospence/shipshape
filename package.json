@@ -35,7 +35,7 @@
     "release": "npm version --message 'chore(release): v%s'"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.115.0",
+    "@anthropic-ai/sdk": "^1.10.0",
     "@hono/node-server": "^2.1.11",
     "@modelcontextprotocol/server": "^2.3.1",
     "better-sqlite3": "^13.2.0",

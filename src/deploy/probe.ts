@@ -2,7 +2,7 @@ import { execa } from 'execa'
 import { basename } from 'node:path'
 import { env } from '../config.ts'
 import { includedStacks } from '../compose/scan.ts'
-import { dockerEnvOptions } from './docker-env.ts'
+import { dockerEnvOptions } from '../docker/env.ts'
 
 /**
  * Reading what Docker actually thinks, rather than what its output columns say.

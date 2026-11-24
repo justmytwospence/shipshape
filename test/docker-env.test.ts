@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execa } from 'execa'
-import { dockerEnv, dockerEnvOptions } from '../src/deploy/docker-env.ts'
+import { dockerEnv, dockerEnvOptions } from '../src/docker/env.ts'
 
 /**
  * Compose interpolation prefers the caller's environment over a stack's `.env`, so

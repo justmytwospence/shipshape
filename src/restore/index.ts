@@ -7,7 +7,7 @@ import { execa } from 'execa'
 import { env, loadPolicy, type Policy } from '../config.ts'
 import { getDb } from '../db.ts'
 import { logEvent } from '../events.ts'
-import { dockerEnvOptions } from '../deploy/docker-env.ts'
+import { dockerEnvOptions } from '../docker/env.ts'
 import { fileArgs } from '../deploy/run.ts'
 import { hasOffsiteJob, runOffsite, runOffsiteAndWait, type Fetch, type WaitIo } from './offsite.ts'
 

@@ -25,6 +25,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci --ignore-scripts
+      - run: npx biome ci .
       - run: npm run typecheck
       - run: npm test
       - run: npm audit --omit=dev --audit-level=high

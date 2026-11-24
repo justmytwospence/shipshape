@@ -17,14 +17,10 @@ process.env.GITHUB_REPO = 'you/repo'
 delete process.env.REPO_DIR
 
 const { getDb } = await import('../src/db.ts')
-const {
-  inboxNeedsYou,
-  inboxRecent,
-  updateView,
-  updateTimeline,
-  listUpdates,
-  updatesForService,
-} = await import('../src/updates/queries.ts')
+const { listUpdates, updatesForService } = await import('../src/updates/queries.ts')
+const { updateTimeline } = await import('../src/updates/timeline.ts')
+const { inboxNeedsYou, inboxRecent } = await import('../src/updates/inbox.ts')
+const { updateView } = await import('../src/updates/view.ts')
 const { retireOvertaken } = await import('../src/updates/overtaken.ts')
 
 after(() => rmSync(dir, { recursive: true, force: true }))
@@ -357,7 +353,7 @@ test('a service page shows its whole history, not just what is live', () => {
 })
 
 test('an update held only by pause is listed apart from decisions', async () => {
-  const { inboxPausedOnly } = await import('../src/updates/queries.ts')
+  const { inboxPausedOnly } = await import('../src/updates/inbox.ts')
   const id = addUpdate({ service: 'paused-only', state: 'detected', tier: 'normal', fromTag: '2.0.0', toTag: '2.0.1', magnitude: 'patch' })
   // Past the cooldown, so Pause is the only thing left holding it.
   getDb().prepare(`UPDATE updates SET detected_at = ? WHERE id = ?`).run(ago(24 * 30), id)

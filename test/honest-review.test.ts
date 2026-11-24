@@ -26,7 +26,7 @@ const { normalise, renderPrompt } = await import('../src/analyze/claude.ts')
 const { pendingAnalysis, recordFailure, recordVerdict } = await import('../src/analyze/run.ts')
 const { contextFor, runVerb } = await import('../src/updates/verbs.ts')
 const { actionsFor } = await import('../src/updates/actions.ts')
-const { updateView } = await import('../src/updates/queries.ts')
+const { updateView } = await import('../src/updates/view.ts')
 const { prompt } = await import('../src/prompts/index.ts')
 
 after(() => rmSync(dir, { recursive: true, force: true }))

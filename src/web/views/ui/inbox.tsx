@@ -3,7 +3,8 @@ import type { FC } from 'hono/jsx'
 import { Icon, type IconName } from './icon.tsx'
 import { Change, EmptyState, ExtLink, Relative, ServiceName, relative } from './parts.tsx'
 import { GroupHeader, UpdateRow } from './update.tsx'
-import type { AttentionItem, AttentionKind, RecentItem, UpdateView } from '../../../updates/queries.ts'
+import type { AttentionItem, AttentionKind, RecentItem } from '../../../updates/inbox.ts'
+import type { UpdateView } from '../../../updates/view.ts'
 import type { SetupState } from '../../onboarding.ts'
 
 /**

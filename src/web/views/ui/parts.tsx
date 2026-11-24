@@ -1,7 +1,7 @@
 import { OUTCOMES, VERDICT_LABEL, type Outcome } from '../../../updates/vocabulary.ts'
 import type { FC, PropsWithChildren } from 'hono/jsx'
 import { Icon, type IconName } from './icon.tsx'
-import type { UpdateView } from '../../../updates/queries.ts'
+import type { UpdateView } from '../../../updates/view.ts'
 import { safeHref } from '../../../links.ts'
 
 /**

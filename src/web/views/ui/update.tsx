@@ -13,7 +13,8 @@ import {
   verdictLabel,
   shorten,
 } from './parts.tsx'
-import type { Milestone, UpdateView } from '../../../updates/queries.ts'
+import type { Milestone } from '../../../updates/timeline.ts'
+import type { UpdateView } from '../../../updates/view.ts'
 import type { Verb } from '../../../updates/actions.ts'
 import { FORKS_GUIDE_URL } from '../../../links.ts'
 

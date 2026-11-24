@@ -7,15 +7,10 @@ import { isScanning } from '../scan.ts'
 import { runScanNow } from '../scheduler.ts'
 import { actionsFor } from '../updates/actions.ts'
 import { isOperatorVerb, OPERATOR_VERBS, runOperatorVerb } from '../updates/operator-verbs.ts'
-import {
-  inboxNeedsYou,
-  inboxParked,
-  inboxRecent,
-  listUpdates,
-  STAGE_FILTERS,
-  updateTimeline,
-  updateView,
-} from '../updates/queries.ts'
+import { listUpdates, STAGE_FILTERS } from '../updates/queries.ts'
+import { updateTimeline } from '../updates/timeline.ts'
+import { inboxNeedsYou, inboxParked, inboxRecent } from '../updates/inbox.ts'
+import { updateView } from '../updates/view.ts'
 import { filterServices, serviceDetail, serviceRows } from '../updates/services.ts'
 import { runStackVerb, STACK_VERBS } from '../updates/stack-verbs.ts'
 import { contextFor, type VerbResult } from '../updates/verbs.ts'

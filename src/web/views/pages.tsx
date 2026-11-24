@@ -11,7 +11,8 @@ import { ActivityList, ActivityToolbar } from './ui/activity.tsx'
 import { type ActivityRow } from '../../events.ts'
 import { ServicesList, ServicesToolbar } from './ui/services.tsx'
 import { type ServiceRowData } from '../../updates/services.ts'
-import type { ReleaseView, StageFilter, UpdateView } from '../../updates/queries.ts'
+import type { ReleaseView, StageFilter } from '../../updates/queries.ts'
+import type { UpdateView } from '../../updates/view.ts'
 
 /**
  * The pages, assembled from the parts.

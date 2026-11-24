@@ -5,7 +5,7 @@ import { runReviewPass } from './analyze/run.ts'
 import { runProposePass } from './propose/run.ts'
 import { drainDeployQueue, hasDueRechecks, hasPendingDeploys, runRechecks } from './deploy/queue.ts'
 import { reconcilePushing, runShipPass } from './gitops/ship.ts'
-import { runScan } from './scan.ts'
+import { runScan, scanIdle } from './scan.ts'
 import { checkRemoteAuth } from './health/github-auth.ts'
 import { retryPendingIncidents } from './notify/index.ts'
 import { syncDecisionCards } from './notify/decisions.ts'
@@ -13,7 +13,7 @@ import { refreshOffsiteJobs } from './restore/offsite.ts'
 import { checkAnalysisBudget } from './health/analysis-budget.ts'
 import { createTicker, type Ticker } from './loop/ticker.ts'
 import { logRetired, retireOvertaken } from './updates/overtaken.ts'
-import { startSecurityLoop } from './security/loop.ts'
+import { securityIdle, startSecurityLoop, stopSecurityLoop } from './security/loop.ts'
 
 /**
  * Nightly scan scheduling.
@@ -78,6 +78,17 @@ export function loopIntervalMs(): number {
 function startLoop(): void {
   const tick = async (): Promise<void> => {
     try {
+      // A policy file that does not load leaves shipshape on an older policy, which is a
+      // fault to say, once a day however often the tick runs (events coalesce).
+      const { error: policyError } = loadPolicy()
+      if (policyError) {
+        logEvent({
+          level: 'error',
+          kind: 'policy',
+          message: 'the policy file is invalid; running on the last version that loaded, or the defaults (paused) if none did',
+          detail: policyError,
+        })
+      }
       // First, and whatever else this tick does. A dead credential stops shipshape
       // working, which is a fault rather than a choice, and the state it reports is
       // exactly what the operator would otherwise have to infer from a silent backlog.
@@ -96,7 +107,14 @@ function startLoop(): void {
       await retryPendingIncidents()
       // Which stacks the offsite backup can cover (hourly, local config read on its side):
       // before the cards, because it decides whether a stateful update needs to ask.
-      await refreshOffsiteJobs(loadPolicy().policy.restore_points.offsite).catch(() => {})
+      await refreshOffsiteJobs(loadPolicy().policy.restore_points.offsite).catch((err) =>
+        logEvent({
+          level: 'warn',
+          kind: 'system',
+          message: 'offsite backup jobs could not be listed',
+          detail: (err as Error).message.slice(0, 300),
+        }),
+      )
       // One card per decision waiting on you, kept in line with the Inbox. Never allowed
       // to stop the tick: a card is a convenience, the Inbox is the record.
       await syncDecisionCards().catch((err) =>
@@ -129,16 +147,68 @@ function startLoop(): void {
 }
 
 function schedule(): void {
-  const { policy } = loadPolicy()
-  currentExpression = policy.scan.cron
+  const expr = loadPolicy().policy.scan.cron
+  // Built before the running job is stopped: a schedule that cannot be built must leave
+  // the one that works in place, not leave shipshape with none. `protect` stops a slow
+  // scan from overlapping the next fire, and `catch` keeps its failure from escaping
+  // croner as an unhandled rejection.
+  let next: Cron
+  try {
+    next = new Cron(
+      expr,
+      {
+        timezone: env.tz,
+        protect: true,
+        catch: (err) =>
+          logEvent({ level: 'error', kind: 'scan', message: 'scan failed', detail: (err as Error).message }),
+      },
+      fire,
+    )
+  } catch (err) {
+    logEvent({
+      level: 'error',
+      kind: 'scan',
+      message: 'scan schedule not changed',
+      detail: `${expr}: ${(err as Error).message}; keeping ${currentExpression || 'no schedule'}`,
+    })
+    return
+  }
   job?.stop()
-  job = new Cron(currentExpression, { timezone: env.tz }, fire)
+  job = next
+  currentExpression = expr
   logEvent({
     level: 'info',
     kind: 'system',
     message: 'scan scheduled',
     detail: `${currentExpression} (${env.tz}); next ${job.nextRun()?.toISOString() ?? 'unknown'}`,
   })
+}
+
+/** Stop everything the scheduler started. A tick or a scan in flight still finishes. */
+export function stopScheduler(): void {
+  loop?.stop()
+  job?.stop()
+  stopSecurityLoop()
+}
+
+/** Resolves when no tick, scan or security pass is running. */
+export async function schedulerIdle(): Promise<void> {
+  await Promise.allSettled([loop?.idle(), securityIdle(), scanIdle()])
+}
+
+/**
+ * Whether the main loop has stopped doing its job: a tick that has been running for two
+ * hours, or none due for three idle intervals. False when the loop never started
+ * (unconfigured, or the UI sandbox), which is a state and not a fault.
+ */
+export function loopStalled(now = Date.now()): boolean {
+  if (!loop) return false
+  const since = loop.runningSince()
+  if (since !== null) return now - Date.parse(since) > 2 * 3_600_000
+  const due = loop.nextAt()
+  if (due === null) return false
+  const idle = loadPolicy().policy.sync.poll_idle_s * 1000
+  return now - Date.parse(due) > 3 * idle
 }
 
 async function fire(): Promise<void> {

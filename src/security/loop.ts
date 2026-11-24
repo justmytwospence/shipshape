@@ -127,6 +127,11 @@ export function stopSecurityLoop(): void {
   ticker?.stop()
 }
 
+/** Resolves when no security pass is running. */
+export function securityIdle(): Promise<void> {
+  return ticker?.idle() ?? Promise.resolve()
+}
+
 /** For the status page and the MCP. */
 export function securityStatus(): {
   incidents: number

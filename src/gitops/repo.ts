@@ -2,6 +2,7 @@ import { execa, type Options } from 'execa'
 import { existsSync, rmSync } from 'node:fs'
 import { botIdentity, env, paths } from '../config.ts'
 import { logEvent } from '../db.ts'
+import { background } from '../lifecycle.ts'
 import { credentialArgs, credentialEnv } from './credentials.ts'
 import { looksLikeGitAuthFailure, noteAuthFailure } from '../health/github-auth.ts'
 
@@ -61,7 +62,7 @@ export async function git(
   // each call site because this is the one place every remote command passes through,
   // and the `allowFail` callers swallow the error entirely.
   if (out.exitCode !== 0 && opts.remote && looksLikeGitAuthFailure(out.stderr)) {
-    void noteAuthFailure(`a remote operation was refused: ${out.stderr.split('\n')[0]}`)
+    background(noteAuthFailure(`a remote operation was refused: ${out.stderr.split('\n')[0]}`), 'noting a refused credential', 'sync')
   }
   if (out.exitCode !== 0 && !opts.allowFail) {
     // Never echo the args back wholesale -- the credential helper string is in there.
@@ -100,11 +101,16 @@ export const authorArgs = botIdentity
 // ------------------------------------------------------------------- locking
 
 /**
- * One repository operation at a time. The in-process mutex is what actually serialises
- * (this is a single process); the lock file is a cross-restart guard so a crash mid-sync
- * is visible rather than silently overlapping with the next run.
+ * One repository operation at a time: an in-process promise chain. shipshape is a single
+ * process, so that is all the exclusion there is; a crash mid-operation is settled at the
+ * next start by what git itself says (an in-progress rebase pauses the sync).
  */
 let chain: Promise<unknown> = Promise.resolve()
+
+/** Resolves when every repository operation queued so far has finished. */
+export function gitIdle(): Promise<void> {
+  return withGitLock('shutdown', async () => undefined)
+}
 
 export function withGitLock<T>(label: string, fn: () => Promise<T>): Promise<T> {
   const run = chain.then(async () => {

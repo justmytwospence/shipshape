@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { isAbsolute, join, relative } from 'node:path'
+import { Cron } from 'croner'
 import { parse as parseYaml } from 'yaml'
 import { z } from 'zod'
 
@@ -404,9 +405,20 @@ export const PolicySchema = z.object({
     .prefault({}),
   scan: z
     .object({
-      // Cron with seconds field (croner). Default 03:00 -- clear of WUD's 01:00 watch
-      // and the blackout window that covers it.
-      cron: z.string().default('0 0 3 * * *'),
+      // Cron, seconds first (croner); five fields work too. Default 03:00.
+      cron: z
+        .string()
+        .default('0 0 3 * * *')
+        .superRefine((v, ctx) => {
+          try {
+            new Cron(v, { paused: true }).stop()
+          } catch (err) {
+            ctx.addIssue({
+              code: 'custom',
+              message: `scan.cron "${v}" is not a schedule shipshape can run: ${(err as Error).message}`,
+            })
+          }
+        }),
     })
     .prefault({}),
   /**

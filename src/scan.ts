@@ -28,13 +28,29 @@ export type ScanResult =
   | { status: 'already-running' }
 
 let running = false
+let current: Promise<ScanResult> | null = null
 
 export function isScanning(): boolean {
   return running
 }
 
-export async function runScan(trigger: 'cron' | 'manual'): Promise<ScanResult> {
-  if (running) return { status: 'already-running' }
+/** Resolves when no scan is running (shutdown waits on it). */
+export async function scanIdle(): Promise<void> {
+  await current?.catch(() => undefined)
+}
+
+export function runScan(trigger: 'cron' | 'manual'): Promise<ScanResult> {
+  if (running) return Promise.resolve({ status: 'already-running' })
+  const work = scanBody(trigger)
+  current = work
+  const done = () => {
+    if (current === work) current = null
+  }
+  work.then(done, done)
+  return work
+}
+
+async function scanBody(trigger: 'cron' | 'manual'): Promise<ScanResult> {
   const setup = configured()
   if (!setup.ok) {
     return { status: 'completed', counts: { unconfigured: setup.missing.length }, durationS: 0 }
@@ -45,7 +61,7 @@ export async function runScan(trigger: 'cron' | 'manual'): Promise<ScanResult> {
   const bump = (k: string) => (counts[k] = (counts[k] ?? 0) + 1)
 
   try {
-    const { policy, error: policyError } = loadPolicy()
+    const { policy } = loadPolicy()
     const discovery = discoverCompose(env.repoDir)
     recordComposeFiles(discovery.files.length)
     for (const d of discovery.shadowed) {
@@ -74,7 +90,6 @@ export async function runScan(trigger: 'cron' | 'manual'): Promise<ScanResult> {
     const services = scanRepo(env.repoDir, policy.exclude_stacks)
     syncInventory(services)
     reportUnknownLabels(services)
-    reportPolicyError(policyError)
     // Before detection, so a service that stopped being a fork since the last scan has
     // its incident closed even if everything after this fails.
     await reconcileForks(services)
@@ -161,12 +176,6 @@ export async function scanOne(svc: ScannedService, policy: Policy): Promise<stri
     }
   }
   return outcome
-}
-
-/** policy.yaml keys v2 no longer reads. They load fine; saying so keeps them from being believed. */
-/** A policy file that did not load is said once per scan, beside what the scan found. */
-function reportPolicyError(error: string | undefined): void {
-  if (error) logEvent({ level: 'error', kind: 'policy', message: 'policy.yaml was not applied', detail: error })
 }
 
 function summarise(counts: Record<string, number>, durationS: number): string {

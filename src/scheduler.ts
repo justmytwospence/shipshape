@@ -13,6 +13,7 @@ import { syncDecisionCards } from './notify/decisions.ts'
 import { refreshOffsiteJobs } from './restore/offsite.ts'
 import { checkAnalysisBudget } from './health/analysis-budget.ts'
 import { createTicker, type Ticker } from './loop/ticker.ts'
+import { onWake } from './loop/wake.ts'
 import { logRetired, retireOvertaken } from './updates/overtaken.ts'
 import { securityIdle, startSecurityLoop, stopSecurityLoop } from './security/loop.ts'
 
@@ -29,11 +30,6 @@ let currentExpression = ''
 
 /** The main loop's heartbeat. Null until the loop is running. */
 let loop: Ticker | null = null
-
-/** Wake the loop now: a verb was pressed and the next thing to do should not wait out the idle interval. */
-export function wakeLoop(): void {
-  loop?.wake()
-}
 
 export function startScheduler(): void {
   const setup = configured()
@@ -143,6 +139,8 @@ function startLoop(): void {
   }
 
   loop = createTicker(tick, loopIntervalMs)
+  // A verb was pressed: the next thing to do should not wait out the idle interval.
+  onWake(() => loop?.wake())
   // Give the first scan a moment before touching git.
   loop.start(20_000)
 }
@@ -187,6 +185,7 @@ function schedule(): void {
 
 /** Stop everything the scheduler started. A tick or a scan in flight still finishes. */
 export function stopScheduler(): void {
+  onWake(null)
   loop?.stop()
   job?.stop()
   stopSecurityLoop()

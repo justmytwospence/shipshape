@@ -1,0 +1,42 @@
+# Dependency updates, a week after each release at the earliest (the same hold every
+# package manager on the maintainer's machines applies), minor and patch grouped.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Held back on purpose: TypeScript 7 is the Go port; @types/node follows engines (>=22).
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # The Dockerfile's FROM lines: Node, the docker CLI, compose and buildx. Bump compose
+  # on purpose: run `docker compose config -q` over real stacks with the new version first.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      docker:
+        patterns: ["*"]

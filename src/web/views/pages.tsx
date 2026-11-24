@@ -4,7 +4,8 @@ import { InboxAside, InboxList, ScanControls, type InboxData } from './ui/inbox.
 import { UpdateRow } from './ui/update.tsx'
 import { ReleaseList } from './ui/releases.tsx'
 import { EmptyState, ListCount, Search, Tabs } from './ui/parts.tsx'
-import { SettingsForm, SettingsNav, type SettingGroup } from './ui/settings.tsx'
+import { DeviceSettings, SettingsForm, SettingsNav, type SettingGroup } from './ui/settings.tsx'
+import { version } from '../version.ts'
 import { StatusBody, type StatusData } from './ui/status.tsx'
 import { ActivityList, ActivityToolbar, type ActivityRow } from './ui/activity.tsx'
 import {
@@ -302,7 +303,7 @@ export const SettingsPage: FC<{
   <Layout title="Settings" nav="settings" chrome={chrome}>
     <Split
       variant="nav"
-      list={<SettingsNav sections={groups.map((g) => g.title)} />}
+      list={<SettingsNav sections={[...groups.map((g) => g.title), 'On this device']} />}
       pane={
         <div class="flex flex-col lg:max-w-4xl">
           <SettingsForm
@@ -313,6 +314,7 @@ export const SettingsPage: FC<{
             extras={extras}
             policyRel={policyRel}
           />
+          <DeviceSettings signOut={!!chrome.signOut} version={version()} />
         </div>
       }
     />

@@ -126,9 +126,9 @@ export const LoginPage: FC<{ next: string; error?: string }> = ({ next, error })
   </AuthShell>
 )
 
-export const SignOutForm: FC = () => (
+export const SignOutForm: FC<{ size?: 'xs' | 'sm' }> = ({ size = 'xs' }) => (
   <form method="post" action="/logout" class="inline">
-    <button type="submit" class="btn btn-ghost btn-xs px-1.5">
+    <button type="submit" class={size === 'sm' ? 'btn btn-ghost btn-sm tap' : 'btn btn-ghost btn-xs px-1.5'}>
       Sign out
     </button>
   </form>

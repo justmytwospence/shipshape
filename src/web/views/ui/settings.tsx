@@ -2,6 +2,9 @@ import type { FC } from 'hono/jsx'
 import { Icon } from './icon.tsx'
 import type { SettingDef } from '../../../settings.ts'
 import { ZONE } from '../../time.ts'
+import { ThemeToggle } from './shell.tsx'
+import { DOCS_URL, SignOutForm } from './auth.tsx'
+import { ExtLink } from './parts.tsx'
 
 /**
  * Settings: one page, in the order an update travels through shipshape.
@@ -322,4 +325,29 @@ export const RulesList: FC<{
       </ul>
     )}
   </div>
+)
+
+/**
+ * What is kept in this browser rather than the policy file: the theme, the shortcuts, the
+ * sign-out. Shown at every width, so a phone (which has no sidebar) can reach them.
+ */
+export const DeviceSettings: FC<{ signOut: boolean; version: string }> = ({ signOut, version }) => (
+  <section id="on-this-device" class="border-base-300 scroll-mt-2 border-t px-4 py-3">
+    <h2 class="text-sm font-semibold">On this device</h2>
+    <p class="mt-0.5 text-xs opacity-70">Kept in this browser only, not in the policy file.</p>
+    <div class="mt-2 flex flex-wrap items-center gap-3">
+      <span class="text-sm">Theme</span>
+      <ThemeToggle size="sm" />
+      <button type="button" class="btn btn-ghost btn-sm tap" data-open="#shortcuts">
+        Keyboard shortcuts
+      </button>
+      {signOut ? <SignOutForm size="sm" /> : null}
+    </div>
+    <p class="mt-2 text-xs opacity-70">
+      shipshape v{version} ·{' '}
+      <ExtLink href={DOCS_URL} class="link">
+        Documentation
+      </ExtLink>
+    </p>
+  </section>
 )

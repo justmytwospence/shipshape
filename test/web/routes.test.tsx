@@ -188,6 +188,11 @@ test('checking one service answers even when it has been removed', async () => {
   assert.match(res.headers.get('HX-Trigger') ?? '', /no longer here/)
 })
 
+test('scanning answers in the sidebar and in the phone bar', async () => {
+  const res = await app.request('/scan/status', { headers: { 'HX-Request': 'true' } })
+  assert.match(await res.text(), /id="phone-scan"[^>]*hx-swap-oob="true"/)
+})
+
 test('a theme preview parameter is ignored', async () => {
   const html = await (await app.request('/?theme=dark')).text()
   assert.doesNotMatch(html, /data-theme-pinned/)
@@ -324,7 +329,9 @@ test('the CSP hash matches the theme script the page actually inlines', async ()
 })
 
 test('proxy mode does not render a sign-out control', async () => {
-  assert.doesNotMatch(await (await app.request('/')).text(), /action="\/logout"/)
+  for (const path of ['/', '/settings']) {
+    assert.doesNotMatch(await (await app.request(path)).text(), /action="\/logout"/, path)
+  }
 })
 
 test('an unknown path is a styled 404 inside the shell', async () => {

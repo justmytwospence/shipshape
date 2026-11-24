@@ -637,3 +637,19 @@ test('the brand is the mark, not a stock glyph', () => {
   assert.match(VIEWS.layout!, /viewBox="96 96 320 336"/)
   assert.match(readFileSync('public/icon.svg', 'utf8'), /#006eb3/)
 })
+
+test('the phone bar says whether shipshape ships on its own', () => {
+  const html = VIEWS.layout!
+  assert.match(html, /class="tap order-1 flex h-11[^"]*lg:hidden"/)
+  assert.match(html, />Paused</)
+  assert.doesNotMatch(html, /Nothing merges/)
+})
+
+test('the theme can be changed on a phone', () => {
+  const html = VIEWS['settings-page']!
+  const m = /<section id="on-this-device" class="([^"]*)"/.exec(html)
+  assert.ok(m, 'the section is rendered')
+  assert.doesNotMatch(m![1]!, /hidden/)
+  const section = html.slice(m!.index)
+  assert.match(section, /data-set-theme="dark"/)
+})

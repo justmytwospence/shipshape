@@ -2,9 +2,9 @@ import type { FC, PropsWithChildren } from 'hono/jsx'
 import { THEME_SCRIPT } from '../../theme-script.ts'
 import { ZONE } from '../../time.ts'
 import { asset } from '../../assets.ts'
-import { SignOutForm } from './auth.tsx'
+import { DOCS_URL, SignOutForm } from './auth.tsx'
 import { Icon, Mark, Wordmark, type IconName } from './icon.tsx'
-import { Relative, ScanStatus } from './parts.tsx'
+import { ExtLink, Relative, ScanStatus, relative } from './parts.tsx'
 import { version } from '../../version.ts'
 
 /**
@@ -95,7 +95,6 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
   detail,
   children,
 }) => {
-  const paused = !!chrome?.paused
   const missing = chrome?.missing ?? []
   return (
   <html lang="en" data-tz={ZONE}>
@@ -140,6 +139,8 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
                 <Icon name="chevron-left" />
                 <span class="max-w-[7rem] truncate">{back.label}</span>
               </a>
+            ) : chrome ? (
+              <PhoneStatus chrome={chrome} />
             ) : (
               <span class="order-1 flex h-11 items-center px-2 lg:hidden">
                 <Wordmark />
@@ -175,7 +176,6 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
           </div>
 
           {missing.length > 0 ? <SetupBanner missing={missing} /> : null}
-          {paused ? <PausedBanner /> : null}
 
           <main id="main" class="pb-dock flex min-h-0 flex-1 flex-col lg:pb-0">
             {children}
@@ -272,7 +272,11 @@ const Sidebar: FC<{ nav: NavKey | null; chrome?: Chrome }> = ({ nav, chrome }) =
         >
           <kbd class="kbd kbd-xs">?</kbd>
         </button>
-        {chrome?.signOut ? <SignOutForm /> : null}
+        <ExtLink href={DOCS_URL} class="btn btn-ghost btn-xs btn-square">
+          <Icon name="book" class="size-3.5" />
+          <span class="sr-only">Documentation</span>
+        </ExtLink>
+        {chrome?.signOut ? <SignOutForm size="xs" /> : null}
         <span class="ml-auto font-mono text-xs opacity-50">v{version()}</span>
       </div>
     </div>
@@ -379,7 +383,7 @@ const Dock: FC<{ active: NavKey | null }> = ({ active }) => (
   </nav>
 )
 
-const ThemeToggle: FC = () => (
+export const ThemeToggle: FC<{ size?: 'xs' | 'sm' }> = ({ size = 'xs' }) => (
   <div class="join" role="group" aria-label="Theme">
     {(
       [
@@ -390,7 +394,7 @@ const ThemeToggle: FC = () => (
     ).map(([value, icon, label]) => (
       <button
         type="button"
-        class="btn btn-ghost btn-xs join-item"
+        class={size === 'sm' ? 'btn btn-ghost btn-sm join-item tap' : 'btn btn-ghost btn-xs join-item'}
         data-set-theme={value}
         aria-label={label}
         title={label}
@@ -401,18 +405,33 @@ const ThemeToggle: FC = () => (
   </div>
 )
 
-const PausedBanner: FC = () => (
-  <div class="alert alert-warning alert-soft shrink-0 rounded-none border-x-0 border-t-0 py-1 text-xs lg:hidden">
-    <Icon name="pause" class="size-3.5" />
-    <span>
-      <strong class="font-medium">Paused.</strong> Nothing ships on its own.
+/** The phone's scan clock: swapped out of band by Scan now and the scan poll. */
+export const PhoneScan: FC<{ running: boolean; lastAt: string | null; oob?: boolean }> = ({ running, lastAt, oob }) => (
+  <span id="phone-scan" class="text-xs opacity-70" {...(oob ? { 'hx-swap-oob': 'true' } : {})}>
+    {running ? (
+      'scanning…'
+    ) : lastAt ? (
+      <time datetime={lastAt} data-format="relative">
+        {relative(lastAt)}
+      </time>
+    ) : (
+      'not scanned'
+    )}
+  </span>
+)
+
+/**
+ * The phone bar's first word: whether shipshape ships on its own, and when it last looked.
+ * Straight to the switch while paused, to Status otherwise.
+ */
+const PhoneStatus: FC<{ chrome: Chrome }> = ({ chrome }) => (
+  <a href={chrome.paused ? '/settings#pause' : '/status'} class="tap order-1 flex h-11 items-center gap-1.5 px-1 lg:hidden">
+    <Mark class="text-primary size-5" />
+    <span class={chrome.paused ? 'badge badge-sm badge-soft badge-warning' : 'badge badge-sm badge-soft badge-success'}>
+      {chrome.paused ? 'Paused' : 'Running'}
     </span>
-    {/* Straight to the switch, not to the top of a page it sits somewhere on. The
-        negative margin gives a thumb 44px without making the strip 44px. */}
-    <a href="/settings#pause" class="link tap -my-2 ml-auto inline-flex shrink-0 items-center px-2">
-      Change
-    </a>
-  </div>
+    {chrome.scan ? <PhoneScan running={chrome.scan.running} lastAt={chrome.scan.lastAt} /> : null}
+  </a>
 )
 
 const SetupBanner: FC<{ missing: { name: string; why: string }[] }> = ({ missing }) => (

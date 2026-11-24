@@ -50,7 +50,7 @@ import {
   ReleasesPage,
   type Detail,
 } from './views/pages.tsx'
-import type { Chrome } from './views/ui/shell.tsx'
+import { PhoneScan, type Chrome } from './views/ui/shell.tsx'
 import { ctxString, listHref, readCtx, type ListCtx } from './ctx.ts'
 import {
   NotifyTools,
@@ -730,6 +730,15 @@ export function createApp(): Hono {
     )
   })
 
+  /** The sidebar's scan chip, and the phone bar's clock out of band. */
+  const scanAnswer = (): string => {
+    const lastAt = scanInfo().lastAt
+    return (
+      (ScanStatus({ running: isScanning(), lastAt }) as string) +
+      (PhoneScan({ running: isScanning(), lastAt, oob: true }) as string)
+    )
+  }
+
   /** The pending region alone, so it can refresh itself while a scan runs. */
   app.post('/scan', async (c) => {
     const result = await runScanNow()
@@ -740,12 +749,10 @@ export function createApp(): Hono {
         ? 'A scan is already running.'
         : 'Scanning. The list refreshes itself as results come in.',
     )
-    return c.html(ScanStatus({ running: isScanning(), lastAt: scanInfo().lastAt }) as string)
+    return c.html(scanAnswer())
   })
 
-  app.get('/scan/status', (c) =>
-    c.html(ScanStatus({ running: isScanning(), lastAt: scanInfo().lastAt }) as string),
-  )
+  app.get('/scan/status', (c) => c.html(scanAnswer()))
 
   /**
    * Every operator verb answers the same way: 200, a sentence, and the update's own

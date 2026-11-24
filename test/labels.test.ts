@@ -94,7 +94,7 @@ test('a clean file is edited, committed, and the v1 labels go with the class', a
   assert.ok(text.includes('      shipshape.class: ask\n'))
   assert.ok(!text.includes('shipshape.pr'), 'the v1 pr label would have said something else')
   assert.ok(text.includes('# the media server'), 'comments survive')
-  assert.match(r.message, /old shipshape\.policy and shipshape\.pr labels/)
+  assert.match(r.message, /Also removed the old v1 labels/)
 
   assert.equal(g(['log', '-1', '--pretty=%s']), 'chore(shipshape): media/jellyfin: shipshape.class=ask')
   assert.equal(g(['log', '-1', '--pretty=%an']), 'shipshape')
@@ -314,4 +314,23 @@ test('services in different files are refused', async () => {
   assert.equal(r.ok, false)
   assert.match(r.message, /not in one compose file/)
   assert.equal(readFileSync(FILE, 'utf8'), before)
+})
+
+test('writing a class removes every v1 label, shipshape.claude included', async () => {
+  resetRepo({
+    'media/docker-compose.yaml': `services:
+  jellyfin:
+    image: jellyfin/jellyfin:10.9.11
+    labels:
+      shipshape.watch: "true"
+      shipshape.claude: required
+      shipshape.policy: auto
+`,
+  })
+  const r = await setServiceLabel({ stack: 'media', service: 'jellyfin', key: 'class', value: 'normal' })
+  assert.equal(r.ok, true, r.message)
+  const text = readFileSync(FILE, 'utf8')
+  assert.doesNotMatch(text, /shipshape\.(claude|policy|pr):/)
+  assert.match(text, /shipshape\.class: normal/)
+  assert.match(r.message, /Also removed the old v1 labels/)
 })

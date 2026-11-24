@@ -39,6 +39,9 @@ export interface LabelChange {
 
 const WATCH_VALUES = new Set(['true', 'false'])
 
+/** The v1 labels a class replaces; any one left holds the service to ask. */
+const LEGACY = ['shipshape.policy', 'shipshape.pr', 'shipshape.claude']
+
 export async function setServiceLabel(o: {
   stack: string
   service: string
@@ -151,7 +154,7 @@ async function run(o: { stack: string; services: string[]; changes: LabelChange[
           // A leftover v1 label holds the service to ask whatever the class says, so writing a
           // class is the way out of that: remove them in the same commit.
           if (c.key === 'class' && c.value !== null) {
-            for (const old of ['shipshape.policy', 'shipshape.pr']) {
+            for (const old of LEGACY) {
               const second = setLabel(next, svc, old, null)
               if (!second.ok) return { error: `${rel}: ${second.reason}` }
               removedPr ||= second.text !== next
@@ -173,7 +176,7 @@ async function run(o: { stack: string; services: string[]; changes: LabelChange[
       const diff = await git(env.repoDir, ['diff', '-U0', '--', rel], { allowFail: true })
       const changed = diff.stdout.split('\n').filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l))
       const offending = changed.filter(
-        (l) => !/^[+-]\s*(shipshape\.(policy|class|watch|pr|source|changelog):|labels:\s*$)/.test(l),
+        (l) => !/^[+-]\s*(shipshape\.(policy|class|watch|pr|claude|source|changelog):|labels:\s*$)/.test(l),
       )
       if (changed.length === 0) return 'The edit produced no diff, so nothing was committed.'
       if (offending.length > 0) return `The edit touched a non-label line, so it was reverted: ${offending[0]!.slice(0, 120)}`
@@ -199,7 +202,7 @@ async function run(o: { stack: string; services: string[]; changes: LabelChange[
   }
 
   const prNote = removedPr
-    ? ' Also removed the old shipshape.policy and shipshape.pr labels, which the class replaces.'
+    ? ' Also removed the old v1 labels (shipshape.policy, shipshape.pr, shipshape.claude), which the class replaces.'
     : ''
   logEvent({
     level: 'info',
@@ -207,7 +210,7 @@ async function run(o: { stack: string; services: string[]; changes: LabelChange[
     stack,
     service: many ? undefined : service,
     message: many ? `${stack}: ${verb} for ${services.length} services` : `${stack}/${service}: ${verb}`,
-    detail: `committed ${sha}${removedPr ? ', removed shipshape.policy and shipshape.pr' : ''}`,
+    detail: `committed ${sha}${removedPr ? ', removed the v1 labels' : ''}`,
   })
   return {
     ok: true,

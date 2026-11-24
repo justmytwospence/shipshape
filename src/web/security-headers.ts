@@ -24,7 +24,10 @@ const HEADERS: [string, string][] = [
   ['Content-Security-Policy', CSP],
   ['X-Content-Type-Options', 'nosniff'],
   ['X-Frame-Options', 'DENY'],
-  ['Referrer-Policy', 'no-referrer'],
+  // same-origin, not no-referrer: under no-referrer a browser sends `Origin: null` on a
+  // same-origin form POST, and the sign-in form's Origin check then refuses every login.
+  // Other sites still get no Referer, and outbound links carry rel="noreferrer" anyway.
+  ['Referrer-Policy', 'same-origin'],
 ]
 
 /** Sets the headers on every response, denials and static files included. */

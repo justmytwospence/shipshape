@@ -29,7 +29,8 @@ Every response carries these, denials and static files included:
   `frame-ancestors 'none'`; `form-action 'self'`; `base-uri 'none'`.
 - `X-Frame-Options: DENY`
 - `X-Content-Type-Options: nosniff`
-- `Referrer-Policy: no-referrer`
+- `Referrer-Policy: same-origin`: no `Referer` to other sites. Not `no-referrer`, under which
+  a browser sends `Origin: null` with a form and the Origin check refuses it.
 
 ## Status codes
 

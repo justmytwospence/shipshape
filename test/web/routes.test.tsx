@@ -336,7 +336,8 @@ test('every response carries the security headers', async () => {
     assert.equal(res.headers.get('content-security-policy'), CSP, path)
     assert.equal(res.headers.get('x-frame-options'), 'DENY')
     assert.equal(res.headers.get('x-content-type-options'), 'nosniff')
-    assert.equal(res.headers.get('referrer-policy'), 'no-referrer')
+    // no-referrer would make a browser send `Origin: null` on the sign-in form's POST.
+    assert.equal(res.headers.get('referrer-policy'), 'same-origin')
   }
   const { createApp } = await import('../../src/web/server.ts')
   const denied = await createApp().request('/', {}, socketBindings(TEST_PROXY))

@@ -1,7 +1,7 @@
 import { loadPolicy } from '../config.ts'
 import { getDb } from '../db.ts'
 import { allowedOrigin, env, mcpEnabled } from '../config.ts'
-import { short } from '../gitops/body.ts'
+import { short } from '../updates/vocabulary.ts'
 import { shortRepository } from '../policy.ts'
 import { currentDecisions, type Decision } from '../updates/holds.ts'
 import { notify, resolveIncident, type IncidentAction } from './index.ts'

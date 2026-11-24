@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { changeText } from '../src/gitops/body.ts'
+import { changeText } from '../src/updates/vocabulary.ts'
 
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'shipshape-test-'))
 

@@ -1,4 +1,4 @@
-import { short } from '../gitops/body.ts'
+import { short } from '../updates/vocabulary.ts'
 import { parseImageRef } from '../images/ref.ts'
 import { missing, type ServiceObservation, type ServiceSnapshot } from './probe.ts'
 

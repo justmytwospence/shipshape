@@ -13,7 +13,7 @@ import {
   type ServiceObservation,
 } from './probe.ts'
 import type { Verdict } from './verify.ts'
-import { changeText } from '../gitops/body.ts'
+import { changeText } from '../updates/vocabulary.ts'
 import { isStopping } from '../lifecycle.ts'
 import { inFlightDeployIds, runClaimedDeploy, stackBusy, syncBeforeDeploy } from './runner.ts'
 

@@ -160,6 +160,18 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
             </div>
           </header>
 
+          {/* Shown by app.js when requests stop arriving; outside every swapped region. */}
+          <div
+            id="conn"
+            role="status"
+            class="alert alert-warning alert-soft hidden shrink-0 rounded-none border-x-0 border-t-0 py-1.5 text-xs"
+          >
+            <span id="conn-text">Lost contact with shipshape. Retrying…</span>
+            <button type="button" class="btn btn-ghost btn-xs tap ml-auto" data-reload>
+              Reload
+            </button>
+          </div>
+
           {missing.length > 0 ? <SetupBanner missing={missing} /> : null}
           {paused ? <PausedBanner /> : null}
 
@@ -178,12 +190,8 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
 
       <Shortcuts />
 
-      <div
-        id="toasts"
-        class="toast toast-top toast-center md:toast-bottom md:toast-end z-50 w-[min(28rem,92vw)]"
-        role="status"
-        aria-live="polite"
-      />
+      {/* Each toast carries its own role; a live region around them would announce twice. */}
+      <div id="toasts" class="toast toast-top toast-center md:toast-bottom md:toast-end z-50 w-[min(28rem,92vw)]" />
 
       <script src="/static/app.js" defer />
     </body>

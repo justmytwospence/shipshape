@@ -155,9 +155,10 @@ test('the pane and the toasts live outside every swapped region', () => {
     assert.ok(list > 0 && pane > list && toasts > pane, key)
     assert.equal(html.match(/id="pane"/g)?.length, 1, `${key}: one pane`)
     assert.equal(html.match(/id="toasts"/g)?.length, 1, `${key}: one toast host`)
+    assert.equal(html.match(/id="conn"/g)?.length, 1, `${key}: one connection banner`)
   }
   for (const key of ['inbox', 'update-detail', 'services']) {
-    assert.doesNotMatch(VIEWS[key]!, /id="pane"|id="toasts"/, `${key}: not in the fragment`)
+    assert.doesNotMatch(VIEWS[key]!, /id="pane"|id="toasts"|id="conn"/, `${key}: not in the fragment`)
   }
   assert.doesNotMatch(VIEWS['layout']!, /id="sheet"/, 'the modal sheet is gone')
 })
@@ -605,4 +606,8 @@ test('fork copy links the forks guide', () => {
   for (const name of ['update-detail-fork-conflict', 'service-detail-fork']) {
     assert.match(VIEWS[name]!, /guides\/forks\//, name)
   }
+})
+
+test('the toast host is not itself a live region', () => {
+  assert.doesNotMatch(VIEWS.layout!, /id="toasts"[^>]*aria-live/)
 })

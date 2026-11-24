@@ -64,34 +64,111 @@
     if (!host || !detail || !detail.text) return
     var el = document.createElement('div')
     el.className = 'alert alert-soft ' + (LEVEL[detail.level] || LEVEL.info) + ' text-sm shadow'
-    el.setAttribute('role', 'status')
-    el.textContent = detail.text
-    el.addEventListener('click', function () {
+    el.setAttribute('role', detail.level === 'error' ? 'alert' : 'status')
+    var text = document.createElement('span')
+    text.textContent = detail.text
+    var close = document.createElement('button')
+    close.type = 'button'
+    close.className = 'btn btn-ghost btn-xs btn-square tap'
+    close.setAttribute('aria-label', 'Dismiss')
+    close.textContent = '\u00d7'
+    close.addEventListener('click', function () {
       el.remove()
     })
+    el.appendChild(text)
+    el.appendChild(close)
     host.appendChild(el)
-    setTimeout(
-      function () {
+    // Long enough to read; paused while a pointer or focus is on it, so a sentence being
+    // read is never taken away mid-way.
+    var left = detail.level === 'info' || !detail.level ? 5000 : 9000
+    var started = 0
+    var timer = null
+    function run() {
+      started = Date.now()
+      timer = setTimeout(function () {
         el.remove()
-      },
-      detail.level === 'error' ? 9000 : 5000,
-    )
+      }, left)
+    }
+    function hold() {
+      if (timer === null) return
+      clearTimeout(timer)
+      timer = null
+      left = Math.max(1000, left - (Date.now() - started))
+    }
+    el.addEventListener('mouseenter', hold)
+    el.addEventListener('focusin', hold)
+    el.addEventListener('mouseleave', function () {
+      if (timer === null) run()
+    })
+    el.addEventListener('focusout', function () {
+      if (timer === null) run()
+    })
+    run()
   }
 
   document.body.addEventListener('toast', function (e) {
     toast(e.detail)
   })
 
-  // A request that never arrived is the one failure htmx cannot express as content.
+  // ------------------------------------------------------------- connection
+  //
+  // A poll that fails says so once, in a banner that clears itself on the next request
+  // that succeeds; only a request a person made raises a toast.
+  function isPoll(e) {
+    var elt = e.detail && e.detail.elt
+    var t = elt && elt.getAttribute && elt.getAttribute('hx-trigger')
+    return !!t && /\bevery\b/.test(t)
+  }
+  function showConn(text) {
+    var el = document.getElementById('conn')
+    if (!el) return
+    document.getElementById('conn-text').textContent = text
+    el.classList.remove('hidden')
+  }
+  function hideConn() {
+    var el = document.getElementById('conn')
+    if (el) el.classList.add('hidden')
+  }
+  document.body.addEventListener('htmx:afterRequest', function (e) {
+    if (e.detail && e.detail.successful) hideConn()
+  })
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('[data-reload]')) location.reload()
+  })
+
   function failed(e) {
     // The server already said what happened in its own toast; a second one would repeat it.
     if (e.detail && e.detail.xhr && e.detail.xhr.getResponseHeader && e.detail.xhr.getResponseHeader('HX-Trigger')) return
+    var status = e.detail && e.detail.xhr ? e.detail.xhr.status : 0
+    if (!status) {
+      showConn('Lost contact with shipshape. Retrying… If this does not clear, your sign-in may have expired: reload the page.')
+      if (!isPoll(e)) {
+        toast({ level: 'error', text: 'Could not reach shipshape. If you pressed a button, check Activity before pressing it again.' })
+      }
+      return
+    }
+    if (status === 401 || status === 403) {
+      showConn('shipshape refused a request (' + status + '). Your sign-in may have expired: reload the page.')
+      if (!isPoll(e)) {
+        toast({
+          level: 'error',
+          text:
+            status === 401
+              ? 'Your session has expired. Reload the page to sign in again.'
+              : 'Refused (403). Reload the page; if it keeps happening, SHIPSHAPE_ALLOWED_ORIGIN may not match this address.',
+        })
+      }
+      return
+    }
+    if (isPoll(e)) return
     toast({
       level: 'error',
       text:
-        e.detail && e.detail.xhr && e.detail.xhr.status
-          ? 'The server answered ' + e.detail.xhr.status + '. Nothing was changed.'
-          : 'Could not reach shipshape. Nothing was changed.',
+        status === 503
+          ? 'shipshape is not set up to accept this yet (503). Nothing was changed; Status says what is missing.'
+          : status >= 500
+            ? 'The server failed (' + status + '). It may have done part of the work: check Activity before trying again.'
+            : 'The server answered ' + status + '. Nothing was changed.',
     })
   }
   document.body.addEventListener('htmx:responseError', failed)

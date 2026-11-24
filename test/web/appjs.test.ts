@@ -24,3 +24,16 @@ test('the address bar colour follows a pinned theme', () => {
   assert.match(src, /meta\[name=theme-color\]'\)\.forEach/)
   assert.doesNotMatch(src, /:not\(\[media\]\)/)
 })
+
+test('a poll never raises a toast', () => {
+  const failed = src.slice(src.indexOf('function failed('), src.indexOf("addEventListener('htmx:responseError'"))
+  assert.match(failed, /isPoll\(e\)/)
+  assert.match(src.slice(src.indexOf('function isPoll('), src.indexOf('function showConn(')), /\\bevery\\b/)
+})
+
+test('an error toast is an alert with a close button and a pausable timer', () => {
+  assert.match(src, /'alert' : 'status'/)
+  assert.match(src, /aria-label', 'Dismiss'/)
+  assert.match(src, /mouseenter/)
+  assert.match(src, /focusin/)
+})

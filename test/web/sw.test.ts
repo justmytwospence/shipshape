@@ -48,3 +48,8 @@ test('every precached path exists in public/', () => {
     assert.doesNotThrow(() => readFileSync(file), `${p} is precached but not in public/`)
   }
 })
+
+test('a versioned asset is served from cache and replaces its older version', () => {
+  assert.match(SW, /searchParams\.has\('v'\)/)
+  assert.match(SW, /u\.search !== url\.search/)
+})

@@ -17,27 +17,26 @@
  * attached.
  */
 
-const VERSION = 'shipshape-static-v2'
+const VERSION = 'shipshape-static-v3'
 
 /**
  * Precached on install. Deliberately short and hand-checked against what is actually in
- * public/: a missing entry does not 404 cleanly here, because Traefik's error-pages
- * middleware intercepts 402-599 and substitutes a ~57 KB HTML page.
+ * public/: a missing entry may not 404 cleanly, because a reverse proxy's error-pages
+ * middleware (Traefik's, for one) can substitute an HTML page for any error.
  */
 const PRECACHE = [
-  '/static/app.css',
-  '/static/app.js',
-  '/static/htmx.min.js',
   '/static/icon.svg',
   '/static/icon-192.png',
   '/static/icon-512.png',
   '/static/apple-touch-icon.png',
+  '/static/icon-maskable-512.png',
+  '/static/manifest.webmanifest',
 ]
 
 /**
  * Is this response safe to store?
  *
- * `redirected` and `opaqueredirect` are the Authelia guard: if the session lapsed while
+ * `redirected` and `opaqueredirect` are the forward-auth guard: if the session lapsed while
  * the worker was installing, every one of those fetches is a redirect to the login page,
  * and caching one would pin the login page under the URL of our stylesheet.
  */
@@ -85,14 +84,29 @@ self.addEventListener('fetch', (e) => {
   if (!url.pathname.startsWith('/static/')) return
 
   /*
-   * Stale-while-revalidate rather than cache-first.
-   *
-   * The app sets no Cache-Control or ETag on static files and there is no asset
-   * hashing, so cache-first would mean bumping VERSION by hand on every CSS edit or
-   * inventing `?v=` query strings that then have to be mirrored in PRECACHE. This way a
-   * changed stylesheet lands on the second load with no bookkeeping at all, which is
-   * the right trade for a single-operator homelab.
+   * Versioned URLs (?v=<content hash>) are immutable, so they are served cache-first and
+   * replace their older version. Anything else is stale-while-revalidate.
    */
+  if (url.searchParams.has('v')) {
+    e.respondWith(
+      (async () => {
+        const cache = await caches.open(VERSION)
+        const hit = await cache.match(req)
+        if (hit) return hit
+        const res = await fetch(req).catch(() => null)
+        if (usable(res)) {
+          await cache.put(req, res.clone())
+          for (const k of await cache.keys()) {
+            const u = new URL(k.url)
+            if (u.pathname === url.pathname && u.search !== url.search) await cache.delete(k)
+          }
+        }
+        return res || Response.error()
+      })(),
+    )
+    return
+  }
+
   e.respondWith(
     (async () => {
       const cache = await caches.open(VERSION)

@@ -11,6 +11,7 @@ import {
   VerdictChip,
   stageOf,
   verdictLabel,
+  shorten,
 } from './parts.tsx'
 import type { Milestone, UpdateView } from '../../../updates/queries.ts'
 import type { Verb } from '../../../updates/actions.ts'
@@ -127,8 +128,8 @@ const Confirm: FC<{
         <h3 class="text-base font-semibold">
           {label} — {update.service}
         </h3>
-        <p class="mt-1 font-mono text-xs opacity-70">
-          {update.fromTag} → {update.toTag}
+        <p class="mt-1 font-mono text-xs break-all opacity-70">
+          {shorten(update.fromTag)} → {shorten(update.toTag)}
         </p>
         {warnings && warnings.length > 0 ? (
           <div class="alert alert-warning alert-soft mt-3 flex-col items-start gap-1 py-2 text-xs">

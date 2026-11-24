@@ -121,7 +121,7 @@ test('the installable bits are all present', () => {
   assert.equal(html.match(/name="theme-color"/g)?.length, 2, 'one per colour scheme')
   assert.match(html, /apple-mobile-web-app-capable/)
   assert.match(html, /rel="apple-touch-icon"/)
-  assert.match(html, /<script src="\/static\/app\.js"/)
+  assert.match(html, /<script src="\/static\/app\.js\?v=[0-9a-f]{10}"/)
   assert.match(readFileSync(join(import.meta.dirname, '../../public/app.js'), 'utf8'), /navigator\.serviceWorker\.register\('\/sw\.js'\)/)
 })
 
@@ -627,4 +627,8 @@ test('a schedule names its zone', async () => {
   assert.equal(describeCron('0 0 3 * * *'), 'Every day at 03:00')
   assert.equal(describeCron('30 4 * * *'), 'Every day at 04:30')
   assert.equal(describeCron('*/5 * * * * *', 'UTC'), null)
+})
+
+test('assets are addressed by their content', () => {
+  assert.match(VIEWS.layout!, /href="\/static\/app\.css\?v=[0-9a-f]{10}"/)
 })

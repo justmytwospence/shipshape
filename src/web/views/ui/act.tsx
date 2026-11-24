@@ -14,7 +14,7 @@ export const ActConfirm: FC<{ verb: string; label: string; title: string; steps?
   <Layout title={label} nav={null}>
     <div class="mx-auto flex w-full max-w-xl flex-col gap-3 p-4">
       <h2 class="text-base font-semibold">{label}</h2>
-      <p class="text-sm">{title}</p>
+      <p class="text-sm break-all">{title}</p>
       {steps && steps.length > 0 ? (
         <ul class="list-disc pl-5 text-sm opacity-80">
           {steps.map((s) => (

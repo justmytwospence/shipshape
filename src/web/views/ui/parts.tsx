@@ -153,7 +153,7 @@ export const Mono: FC<PropsWithChildren> = ({ children }) => (
 
 /** `1.2.3 → 1.3.0`, with digests shortened to something a person can compare. */
 export const Change: FC<{ from: string; to: string }> = ({ from, to }) => (
-  <span class="font-mono text-xs whitespace-nowrap">
+  <span class="inline-block max-w-full truncate align-bottom font-mono text-xs whitespace-nowrap">
     {shorten(from)} <span class="opacity-50">→</span>{' '}
     <span class="font-medium">{shorten(to)}</span>
   </span>

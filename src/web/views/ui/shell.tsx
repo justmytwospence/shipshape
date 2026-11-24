@@ -1,6 +1,7 @@
 import type { FC, PropsWithChildren } from 'hono/jsx'
 import { THEME_SCRIPT } from '../../theme-script.ts'
 import { ZONE } from '../../time.ts'
+import { asset } from '../../assets.ts'
 import { SignOutForm } from './auth.tsx'
 import { Icon, type IconName } from './icon.tsx'
 import { Relative, ScanStatus } from './parts.tsx'
@@ -103,7 +104,7 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       <title>{title} · shipshape</title>
       <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
-      <link rel="stylesheet" href="/static/app.css" />
+      <link rel="stylesheet" href={asset('app.css')} />
       <meta name="htmx-config" content={HTMX_CONFIG} />
       {/* Fetched with credentials or Authelia's redirect makes the app silently
           non-installable while still answering 200. */}
@@ -114,7 +115,7 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
       <meta name="apple-mobile-web-app-title" content="shipshape" />
       <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
       <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
-      <script src="/static/htmx.min.js" defer />
+      <script src={asset('htmx.min.js')} defer />
     </head>
     <body class="bg-base-100 text-base-content min-h-dvh lg:h-dvh lg:overflow-hidden">
       <progress
@@ -194,7 +195,7 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
       {/* Each toast carries its own role; a live region around them would announce twice. */}
       <div id="toasts" class="toast toast-top toast-center md:toast-bottom md:toast-end z-50 w-[min(28rem,92vw)]" />
 
-      <script src="/static/app.js" defer />
+      <script src={asset('app.js')} defer />
     </body>
   </html>
   )

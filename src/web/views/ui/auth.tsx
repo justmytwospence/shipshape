@@ -1,5 +1,6 @@
 import type { FC, PropsWithChildren } from 'hono/jsx'
 import { THEME_SCRIPT } from '../../theme-script.ts'
+import { asset } from '../../assets.ts'
 
 /**
  * The pages that exist before anyone is signed in: the setup page, shown until a sign-in
@@ -17,7 +18,7 @@ export const AuthShell: FC<PropsWithChildren<{ title: string }>> = ({ title, chi
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       <title>{title} · shipshape</title>
       <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
-      <link rel="stylesheet" href="/static/app.css" />
+      <link rel="stylesheet" href={asset('app.css')} />
       <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
     </head>
     <body class="bg-base-100 text-base-content flex min-h-dvh items-center justify-center p-4">

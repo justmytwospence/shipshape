@@ -1,0 +1,21 @@
+# Not a complete file: the lines to merge into the compose file that runs your Traefik
+# and Authelia. Traefik joins shipshape-proxy at the one address shipshape trusts.
+services:
+  traefik:
+    networks:
+      shipshape-proxy:
+        ipv4_address: 172.31.250.2
+      # ...and the networks Traefik already uses
+
+  authelia:
+    labels:
+      # Authelia's forward-auth endpoint for Traefik. authResponseHeaders copies these
+      # headers from Authelia's answer onto the request, replacing any the browser sent;
+      # a request Authelia does not accept never reaches shipshape.
+      traefik.http.middlewares.authelia.forwardAuth.address: http://authelia:9091/api/authz/forward-auth
+      traefik.http.middlewares.authelia.forwardAuth.trustForwardHeader: "true"
+      traefik.http.middlewares.authelia.forwardAuth.authResponseHeaders: Remote-User,Remote-Groups,Remote-Email,Remote-Name
+
+networks:
+  shipshape-proxy:
+    external: true

@@ -1,0 +1,54 @@
+# shipshape behind Traefik with Authelia forward-auth: sign-in is Authelia's.
+#
+# Traefik asks Authelia about every request and forwards the signed-in user in the
+# Remote-User header, replacing anything the browser sent under that name. shipshape
+# believes that header only from Traefik's address on `shipshape-proxy`, a network that
+# nothing but Traefik and shipshape joins. No port is published.
+#
+#   1. cp .env.example .env and fill it in; mkdir -p data
+#   2. docker compose up -d                   (creates the shipshape-proxy network)
+#   3. add traefik.snippet.yaml's lines to your Traefik and Authelia services, then
+#      recreate Traefik so it joins the network at 172.31.250.2
+#
+# Guide: https://justmytwospence.github.io/shipshape/guides/reverse-proxy/
+name: shipshape
+
+services:
+  shipshape:
+    image: ghcr.io/justmytwospence/shipshape:0.2
+    container_name: shipshape
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    group_add:
+      - "${DOCKER_GID:?set DOCKER_GID in .env (stat -c %g /var/run/docker.sock)}"
+    env_file: .env
+    environment:
+      # Traefik's fixed address on shipshape-proxy: the only peer allowed to name a user.
+      SHIPSHAPE_TRUSTED_PROXY: 172.31.250.2
+      # The Authelia username(s) allowed in, comma-separated.
+      SHIPSHAPE_ALLOWED_USER: ${SHIPSHAPE_ALLOWED_USER:?set SHIPSHAPE_ALLOWED_USER in .env}
+      # The address you open shipshape at. Every button press must come from it.
+      SHIPSHAPE_ALLOWED_ORIGIN: https://${SHIPSHAPE_HOST:?set SHIPSHAPE_HOST in .env}
+    volumes:
+      - ${REPO_DIR:?set REPO_DIR in .env}:${REPO_DIR}
+      - ./data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      shipshape-proxy:  # Traefik reaches shipshape here
+      default:          # registries, GitHub and the model provider
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: shipshape-proxy
+      traefik.http.routers.shipshape.rule: Host(`${SHIPSHAPE_HOST}`)
+      traefik.http.routers.shipshape.entrypoints: websecure
+      traefik.http.routers.shipshape.tls: "true"
+      traefik.http.routers.shipshape.middlewares: authelia@docker
+      traefik.http.services.shipshape.loadbalancer.server.port: "8080"
+    stop_grace_period: 15s
+
+networks:
+  shipshape-proxy:
+    name: shipshape-proxy
+    ipam:
+      config:
+        - subnet: 172.31.250.0/29

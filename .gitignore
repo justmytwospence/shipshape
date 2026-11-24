@@ -11,3 +11,6 @@ dist/
 
 # Built by `npm run css` from src/styles/app.css.
 public/app.css
+
+# Data directories of the compose examples, when one is run in place.
+/examples/compose/*/data/

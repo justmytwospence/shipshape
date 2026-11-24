@@ -1,0 +1,33 @@
+# shipshape in one container, signed in with its own password.
+#
+#   cp .env.example .env     then fill it in; each line says how
+#   mkdir -p data            as the user in PUID, so the container can write to it
+#   docker compose up -d     then open http://<this host>:8080
+#
+# Keep this directory outside your compose repository, or add `data/` to its .gitignore.
+# Guide: https://justmytwospence.github.io/shipshape/start/quick-start/
+name: shipshape
+
+services:
+  shipshape:
+    image: ghcr.io/justmytwospence/shipshape:0.2
+    container_name: shipshape
+    restart: unless-stopped
+    # The owner of your compose checkout, so commits and the work clone are yours:
+    #   stat -c '%u:%g' /path/to/checkout
+    user: "${PUID:-1000}:${PGID:-1000}"
+    # The group that owns the docker socket, so deploys can reach the daemon:
+    #   stat -c %g /var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:?set DOCKER_GID in .env (stat -c %g /var/run/docker.sock)}"
+    env_file: .env
+    volumes:
+      # The checkout at the same path inside as outside: compose resolves `./relative`
+      # paths and project names on the client, so any other path deploys the wrong thing.
+      - ${REPO_DIR:?set REPO_DIR in .env}:${REPO_DIR}
+      - ./data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8080:8080"
+    # On stop, shipshape finishes the work in flight for up to 8 seconds.
+    stop_grace_period: 15s

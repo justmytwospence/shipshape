@@ -1,0 +1,18 @@
+# shipshape behind Caddy, signed in by an auth server that speaks forward-auth
+# (Authelia here; Authentik and others work the same way).
+{$SHIPSHAPE_HOST} {
+	# `route` runs these in the order written. Caddy's default order would run
+	# request_header after forward_auth and delete the header the auth server just set.
+	route {
+		# Whatever the browser sent as Remote-User is dropped first...
+		request_header -Remote-User
+		# ...then only the auth server's answer may set it (forward_auth also replaces the
+		# headers it copies; the delete above keeps that true on any Caddy version).
+		# A request the auth server refuses ends here.
+		forward_auth {$AUTH_UPSTREAM} {
+			uri /api/authz/forward-auth
+			copy_headers Remote-User Remote-Groups Remote-Email Remote-Name
+		}
+		reverse_proxy shipshape:8080
+	}
+}

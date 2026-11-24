@@ -1,6 +1,59 @@
 ---
-title: "Drafted changes"
-description: "When a release needs more than a new tag, shipshape can draft the change for you to read. It never ships one unread."
+title: Drafted changes
+description: When a release needs more than a new tag, shipshape can draft the change for you to read. It never ships one unread.
 ---
+Some releases need more than a new tag: a setting was renamed, a file moved, a variable
+became required. When the review names steps this deployment has to take, a model can draft
+the edits for you to read.
 
-This page is being written.
+## When a draft is made
+
+`propose.mode` is `auto` by default: a draft is made whenever the review lists steps. With
+`off`, only when you press **Draft config changes** on an update. The drafting model is
+`review.code_model`. The steps a draft could not make itself are shown as **Steps to do by
+hand**.
+
+## What a draft may touch
+
+How far a draft may reach is set per service with `shipshape.propose`:
+
+| Value | Boundary |
+|---|---|
+| `none` (or `off`) | Nothing. |
+| `service` (the default) | This service's block in its compose file. |
+| `compose-file` (or `file`) | Any service in that compose file. |
+| `compose-dir` (or `dir`, `directory`, `compose-directory`) | Any file in the compose file's directory. |
+| `repo` (or `repository`, `any`) | Any file in the repository. |
+
+An unknown value means `service`: a typo narrows, never widens. Inside a compose file a draft
+changes only keys under the services it was given, and **never**:
+
+- `privileged`, `cap_add`, `devices`, `pid`, `ipc`, `network_mode`, `volumes`,
+  `volumes_from`, `security_opt`, `build`, `user`, `userns_mode`, `cgroup`, `runtime` or
+  `group_add`;
+- any `shipshape.*` label.
+
+Whatever the scope, these paths are never writable, at any depth: `.git`, `.github`, `bin`,
+`scripts`, `credentials`, `secrets`, `custom-cont-init.d`, any `.env*` file, shipshape's own
+stack directory, the policy file and its prompt overrides. Symbolic links are resolved before
+the boundary is checked, so a link cannot lead out of it. You can add paths with
+`propose.never`, which is for configuration that is hot-reloaded and goes live with no deploy
+to verify or roll back.
+
+Secret-looking values (anything under a key that names a password, secret, token, key or
+credential, and the password in a URL) are replaced with `<redacted>` before the service
+block is sent to the model.
+
+## The draft hold
+
+A drafted change is a diff nobody has checked, so a change that carries one is held with the
+`draft` hold, which **no rule can waive**. Only a Ship pressed *after* the draft was written
+lifts it. If the reader later reads the release again and finds no work, the draft is closed
+and the update ships as a plain tag change. Rollback is not promised for a change that carries
+drafted edits.
+
+## Reading one
+
+The update's page shows the draft as a diff, with the review that asked for it. The draft
+travels as a branch in shipshape's clone until you press Ship; the Ship confirmation lists
+what it will change. **Skip** drops the draft with the update.

@@ -1,6 +1,67 @@
 ---
-title: "Security incidents"
-description: "Incidents from pwn.watch matched against package inventories of your running images."
+title: Security incidents
+description: Incidents from pwn.watch matched against package inventories of your running images.
 ---
+shipshape can follow [pwn.watch](https://pwn.watch)'s incident index and say which of your
+running services carry a version an incident names, and which update removes it. It is off
+until you set `security.mode`.
 
-This page is being written.
+## How it works
+
+1. **Feed.** `incidents.json` is read every `security.interval_m` minutes (15) with a
+   conditional request. Live incidents in the followed categories (`security.categories`:
+   `patch`, `supply-chain`) are stored, and stored again only when their `updatedAt` moves.
+2. **Extract.** The screen asks whether anything the incident names could be inside a
+   container at all: appliances, phones and hosted services fall out here. For the rest, the
+   reader turns the advisory's affected and fixed text into package targets (ecosystem,
+   names, version intervals), once per version text. This is the only judgement in the path.
+3. **Inventory.** [syft](https://github.com/anchore/syft), pinned by digest
+   (`security.syft_image`), runs as its own short-lived container against the host's Docker
+   socket and lists every package in each running image: runtimes by their binary, npm, PyPI,
+   Debian and Alpine packages. Inventories are keyed by image, so each is read once, at most
+   `security.sbom_per_pass` (6) per pass. For an *exposed* service only, the image an open
+   update would bring in is pulled and inventoried too.
+4. **Match.** No model: a package either is in an inventory with a version inside an affected
+   interval, or it is not. A service is **exposed** when it runs such a package. An update is
+   a **verified fix** when its own image carries every exposed package, and none of them,
+   nor anything else the incident names, in an affected version. A package that vanished
+   verifies nothing.
+5. **Act.** With `security.mode: shadow`, all of this is recorded (on Status, and in the MCP's
+   `list_exposures`) and nothing is said. With `on`, one card per incident
+   (`shipshape:security:<slug>`) is sent for exposure that no verified fix is about to remove,
+   louder for severity, exploitation and a service with a public router. Which routers count
+   as private is `security.private_middlewares`.
+
+## The one place an outside signal widens what ships
+
+With `security.mode: on` and `security.auto_merge: true`, a verified fix lifts the `ask` and
+`no-evidence` holds and ships after `security.fix_cooldown_days` (2 days; none for a critical,
+KEV-listed or exploited incident). It never passes a `lifeline`, an `unsafe` review, a list of
+work to do, a review still on its way, a frozen or dormant service, the per-run ceiling or
+Pause.
+
+The advisory cannot cause this on its own. It only says which versions are bad; the evidence
+that an update removes one is both images' own inventories, read on your host. The worst a
+hostile feed achieves is shipping a real upstream release that demonstrably changes a package
+it named.
+
+## What you should know
+
+The scanner mounts the host's Docker socket, like the rest of shipshape; see the
+[security model](/shipshape/security/). Each inventory is 20 to 60 seconds of work for syft,
+which is why they are paced. The model's only part is turning the advisory into package names
+and version ranges: shipshape never says a model confirmed an exposure.
+
+| Key | Default |
+|---|---|
+| `security.mode` | `off` (`shadow`, `on`) |
+| `security.auto_merge` | `false` |
+| `security.fix_cooldown_days` | `2` |
+| `security.feed` | `https://pwn.watch/incidents.json` |
+| `security.categories` | `patch`, `supply-chain` |
+| `security.interval_m` | `15` |
+| `security.sbom_per_pass` | `6` |
+| `security.syft_image` | a pinned `anchore/syft` |
+| `security.private_middlewares` | none |
+
+Each is explained in the [policy reference](/shipshape/reference/policy/#security).

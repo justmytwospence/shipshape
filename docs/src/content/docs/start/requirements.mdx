@@ -1,6 +1,81 @@
 ---
-title: "Requirements"
-description: "What shipshape needs from your host, your repository and your git host, and what it does not support yet."
+title: Requirements
+description: What shipshape needs from your host, your repository and your git host, and what it does not support yet.
 ---
+## Host
 
-This page is being written.
+- **Docker Engine with the Compose plugin.** shipshape runs `docker compose` against the
+  host's daemon. It has been tested against Docker Engine 29; older engines are untested.
+- **linux/amd64 or linux/arm64**, such as a Raspberry Pi 4 or 5 on a 64-bit OS. There is no
+  32-bit arm image. The arm64 image is built and started in CI under emulation; it has not
+  yet been tested on real Pi hardware.
+- **One host.** shipshape deploys to the Docker daemon next to it and manages nothing else.
+- **The Docker socket**, mounted into the container. Deploying is the job, and the Docker
+  API is root on the host; the [security model](/shipshape/security/) says what that means.
+- Rootless Docker and Podman are **untested**. The inventory scanner for
+  [security incidents](/shipshape/concepts/security-incidents/) also mounts
+  `/var/run/docker.sock`.
+
+## Repository layout
+
+shipshape reads the compose files in a git repository that is checked out on the Docker
+host. The layout is the one Compose itself uses:
+
+| Layout | Found as |
+|---|---|
+| `compose.yaml` at the root of the repository | the stack `root` |
+| `<stack>/compose.yaml` | the stack `<stack>` |
+| `<stack>/docker-compose.yml` | the stack `<stack>` |
+
+- In each directory the first of `compose.yaml`, `compose.yml`, `docker-compose.yml` and
+  `docker-compose.yaml` is the stack's file, which is the order Compose itself prefers. A
+  directory with several is warned about, and the others are ignored.
+- An override file (`compose.override.yml`, `compose.override.yaml`,
+  `docker-compose.override.yml` or `docker-compose.override.yaml`; the first that exists) is
+  passed to deploys and edit checks and is never read for labels or images. An `image:` that
+  only an override sets is invisible to shipshape.
+- Directories nested deeper than one level are not scanned. `.git`, `.claude`, `.agents`,
+  `bin`, `node_modules` and any directory whose name starts with a dot are skipped.
+- **Dockge**: its `/opt/stacks/<stack>/compose.yaml` layout works with
+  `REPO_DIR=/opt/stacks` once that directory is a git repository that is pushed to a remote.
+- **Portainer** stacks are not files in a repository and are not supported.
+
+With no compose files at all, Status says `compose files: none found -- check REPO_DIR` and
+the inventory is left as it was.
+
+## Git
+
+- A remote that speaks **https** with a username and token: GitHub, Gitea, Forgejo, GitLab,
+  or any host that accepts them. [Git hosts](/shipshape/guides/git-hosts/) has what to set
+  for each. `GIT_REMOTE_URL` must start with `https://`: a plain `http://` remote is
+  refused, because the token would cross the network in the clear, and so is an ssh remote.
+- A token that can push. On GitHub that is a fine-grained token for the one repository with
+  *Contents: read and write*.
+- The checkout must be on the branch shipshape publishes: `GIT_BRANCH`, which defaults to the
+  branch `origin/HEAD` names in your checkout, else `main`. If it is on another branch,
+  shipshape pauses syncing and says so.
+
+## Mounted at the same path
+
+The checkout is mounted into the container at the **identical path** it has on the host:
+`/srv/compose:/srv/compose`, not `/srv/compose:/repo`. `docker compose` resolves relative
+volume paths (`./data`) and derives the project name on the client, before it talks to the
+daemon. If shipshape saw your repository at a different path than the host does, it would
+hand the daemon paths that do not exist.
+
+## Not supported yet
+
+- **ssh remotes.**
+- **Compose files chosen by `COMPOSE_FILE` or by a `.env`**, and project names set in a
+  `.env`. shipshape finds files by the layout above.
+- **The contents of `extends:` and `include:`.** The files they name are not followed, and
+  deploys with more than one `-f` file other than the single override are not supported.
+- **A service whose `image:` is a variable** (`image: ${TAG}`): it cannot be compared with
+  registry tags, and rewriting it would break the indirection. It shows as *variable image*
+  under **Not watched**.
+- **Private registries**, except Docker Hub with your login (`DOCKER_HUB_LOGIN` and
+  `DOCKER_HUB_PASSWORD`). shipshape's own polling of a registry uses only those credentials.
+  The docker CLI reads `config.json` from `DOCKER_CONFIG` (`data/docker/config.json` in the
+  example setup) when deploys pull, so a private image can still be deployed; it cannot be
+  watched.
+- **More than one Docker host**, Kubernetes, Swarm.

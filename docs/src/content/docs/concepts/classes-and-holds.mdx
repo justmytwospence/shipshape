@@ -1,6 +1,90 @@
 ---
-title: "Classes and holds"
-description: "An update ships on its own unless a hold says a person is needed. Classes, holds, rules and the cooldown."
+title: Classes and holds
+description: An update ships on its own unless a hold says a person is needed. Classes, holds, rules and the cooldown.
 ---
+The whole model is one sentence: **an update ships on its own unless a hold says a person is
+needed.** It has three parts: a class for each service, the holds, and the rules that waive
+some of them. Nothing here predicts how risky a version looks; verification and rollback
+carry that.
 
-This page is being written.
+## Classes
+
+A service's class says how much it asks of you. It is set rarely, with the
+[`shipshape.class`](/shipshape/reference/labels/) label.
+
+| Class | What it means |
+|---|---|
+| `normal` (the default) | Ships on its own once the review finds nothing to do and the release has aged. |
+| `stateful` | Ships on its own **after a restore point**. A one-way migration, or a jump with no release notes behind it, asks. For databases and anything that owns data. |
+| `ask` | Always asks. For anything you want to look at. |
+| `lifeline` | Always asks, and **no rule can waive it**. For the way back in: your reverse proxy, your VPN, your DNS. |
+| `frozen` | Tracked; nothing happens until you ask. A service in a `disabled` or `standby` profile is frozen automatically. |
+| `skip` | Not tracked at all. |
+
+An unrecognised value is treated as `ask`, so a typo never grants reach. A group of services
+shipped together is as careful as its most careful member.
+
+## Holds
+
+A hold is a reason a person is needed. These are all of them.
+
+| Hold | When | A rule may waive it |
+|---|---|---|
+| `lifeline` | The service is a lifeline. | No |
+| `ask` | The service always asks. | Yes |
+| `unsafe` | The review says block, naming what breaks. | No |
+| `needs-action` | The review lists steps this deployment must take, or a breaking change. | No |
+| `draft` | A [drafted change](/shipshape/concepts/drafted-changes/) is waiting to be read. Only a Ship pressed after the draft was written lifts it. | No |
+| `no-evidence` | No release notes were read, **and** it is a major version, a stateful service, or `shipshape.review: required`. Never for a digest rebuild of the running tag. | Yes |
+| `irreversible` | The review says it migrates stored data one-way. | Yes |
+| `no-restore-point` | A stateful service with neither a `shipshape.snapshot` command nor an offsite backup job, or one whose restore point failed. Never for a digest rebuild of the running tag. | Yes |
+
+**Caution does not hold.** "Read first" is a label on a review, not a state of the update.
+Missing release notes on a patch or a minor are fine, because rollback covers them. What the
+reader says that holds an update is concrete: work to do, something unsafe, a one-way
+migration, or it is nothing.
+
+A verified [security fix](/shipshape/concepts/security-incidents/) lifts `ask` and
+`no-evidence`, and nothing that is a real warning.
+
+## Waiting
+
+Whatever is not shipped yet is, in this order:
+
+- **ready**: you said ship;
+- **waiting**: a review still coming, a snooze, the cooldown, or Pause;
+- **a decision**: a card, because a hold is open.
+
+**Pause** is the one global switch. While it is on, shipshape ships nothing on its own;
+scanning and release-note reviews carry on. A ship you press is not held by Pause, the
+cooldown or a snooze.
+
+## Cooldown
+
+Nothing ships on its own until its release is `ship.cooldown_days` old (default 7): the
+registry's publish date where it gives one, else when shipshape first saw the tag. A digest
+move counts from when it was seen. A broken or hijacked release usually surfaces within days,
+and a week of nothing shipping is cheap. A ship you press is not held.
+
+A verified security fix waits `security.fix_cooldown_days` (default 2) instead, and a fix for
+a critical, KEV-listed or exploited incident does not wait at all. Release notes never shorten
+the wait: "security release" is exactly what a hostile release would say.
+
+## Rules
+
+Pressing **Always ship** writes a rule into your [policy file](/shipshape/reference/policy/#rules):
+
+```yaml
+rules:
+  - id: r1
+    match: { image: ghcr.io/example/sidecar }
+    waive: [ask]
+    because: "2026-11-11, sidecar v1.7.0 card: always ship"
+```
+
+`match` names what the rule covers: an `image` (a repository, in any stack), a `stack`, a
+`service`, or `base_build: true` for your own builds, and every key it names must match.
+`waive` lists the reasons it removes. A rule is never wider than the card it answers, it can
+only waive a hold that is waivable even if the file says otherwise, and it is an ordinary
+commit that you can read, edit or delete. A hold a rule removed is shown struck through with
+the rule's name: "waived by rule r1". Settings lists the rules in words.

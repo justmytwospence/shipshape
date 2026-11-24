@@ -1,6 +1,71 @@
 ---
-title: "Restore points"
-description: "A dump before a stateful service moves, or an offsite backup job as the restore point."
+title: Restore points
+description: A dump before a stateful service moves, or an offsite backup job as the restore point.
 ---
+Before a `stateful` service is updated, or any update the review calls irreversible,
+shipshape takes a restore point, so a one-way migration can be undone by hand.
 
-This page is being written.
+## The dump
+
+Give the service a [`shipshape.snapshot`](/shipshape/reference/labels/) label: a command that
+prints a dump of its data to standard output.
+
+```yaml
+services:
+  db:
+    image: postgres:16.4-alpine
+    labels:
+      shipshape.watch: "true"
+      shipshape.class: stateful
+      shipshape.snapshot: pg_dump -U app app
+```
+
+shipshape runs it inside the service's own container, gzips the output to
+`DATA_DIR/restore-points/<stack>/<service>-<timestamp>.gz` (files `0600`, in directories
+`0700`, because a dump is a copy of your data), and keeps the newest
+`restore_points.keep` of each service (3).
+
+A failed dump holds the update: it waits with a `no-restore-point` hold that says why. A
+service that is not running has nothing to dump, and is left stopped anyway.
+
+A digest rebuild of the tag already running takes no restore point and asks for none: there
+is no version change to migrate data across.
+
+## An offsite backup job
+
+`restore_points.offsite` names any MCP server that can run a backup job, with the tool to call
+(shipshape sends it unauthenticated JSON-RPC `tools/call` requests with a `job` argument):
+
+```yaml
+restore_points:
+  keep: 3
+  offsite:
+    type: mcp
+    url: http://backup:8000/mcp
+    tool: run_backup
+    job: "{stack}"          # {stack} becomes the stack's name
+    status_tool: run_status # polled when the backup is the restore point itself
+    list_tool: list_jobs    # which stacks have a job
+    wait_minutes: 30
+    poll_seconds: 10
+```
+
+It is used in two ways.
+
+- **Beside a dump**, as an extra copy. A failure is recorded and never blocks a ship.
+- **As the restore point itself**, for a stack with no `shipshape.snapshot` label but a job on
+  the offsite server. shipshape runs the job, polls `status_tool` until it finishes (up to
+  `wait_minutes`), and ships only if it succeeded. A service's `shipshape.backup-job` label
+  names its job when it differs from the template. It is recorded as `offsite:<job>`.
+
+Every key is in the [policy reference](/shipshape/reference/policy/#restore_points).
+
+## Restoring
+
+Restoring is **manual on purpose**: putting data back blindly loses whatever was written after
+the dump. A card for a rolled-back update names the file, and you decide. For the example
+above:
+
+```sh
+gunzip -c data/restore-points/shop/db-20261121T030000Z.gz | docker exec -i shop-db-1 psql -U app app
+```

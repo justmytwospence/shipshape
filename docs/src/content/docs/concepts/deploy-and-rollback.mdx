@@ -1,6 +1,88 @@
 ---
-title: "Deploy and rollback"
-description: "docker compose up -d, verification, the soak, and the one automatic rollback."
+title: Deploy and rollback
+description: docker compose up -d, verification, the soak, and the one automatic rollback.
 ---
+## Deploy
 
-This page is being written.
+After a ship, shipshape fast-forwards your live checkout and runs a real `docker compose up
+-d` there, with your override file if you have one. Because it is a true `compose up` that
+re-reads your compose file, a label or an environment change in the file always applies. (A
+tool that recreates a container by cloning the running one never re-reads the file, and the
+old values live on.)
+
+- `shipshape.deploy: rm-first` removes the old container before creating the new one, so an
+  environment variable baked into the old image is read again.
+- Only one deploy of a stack runs at a time. Pressing Deploy, Redeploy or Try again while
+  the stack is deploying queues it, and says so.
+- Every deploy first brings the checkout up to date. If it cannot, the deploy waits and says
+  why.
+- A service you build yourself is built before it is brought up.
+
+## A deploy never changes whether a service is running
+
+Every shipshape verb chooses a version; none of them means "start my service". shipshape
+reads each service from docker just before acting. A service that is running is brought up
+on the new version and verified. One that is stopped, paused or has no container is left
+exactly as it was, and its update reads **Left stopped**: the change stands, the compose file
+carries the new version, and compose brings it up on that version the next time anything runs
+it, while `docker start` on the old container would resume the old one. The outcome says
+which. In a group, the running members deploy and the rest are left. If docker cannot be
+asked, the deploy fails loudly before it touches anything.
+
+## Verify
+
+A deploy that starts is not a deploy that worked: compose exits as soon as the container is
+created, and a service that crash-loops thirty seconds later still looks like success. So
+shipshape watches, for up to `deploy.verify_window_s` (300 seconds), and returns the moment
+every signal is good:
+
+- **Health.** A service with a health check must report healthy on consecutive samples. A
+  service with none must stay up, without restarting, for a dwell period: "no signal" means
+  unknown, not healthy.
+- **An HTTP probe.** Where a service declares its Traefik port, or `shipshape.probe` names
+  one, that port is asked over HTTP. Any answer below 500 counts: a redirect to a login page
+  is still a service that is listening. The probe can only warn, never fail a deploy by
+  itself, and a probe that cannot connect is not read as a failing service.
+- **A crash watch.** Repeated restarts since the deploy are a crash loop.
+- **The image.** A deploy that changed nothing, because compose reused a container or a pull
+  failed, is not a success.
+
+Reaching the deadline with anything unsettled is a failure, not a pass.
+
+## Soak
+
+After a deploy passes, shipshape looks again `deploy.soak_s` later (1800 seconds), because
+the failures a window misses are the slow ones: a leak, a crash on the first real request.
+Only then does the update read **Verified**. `0` skips it. A service left stopped is not
+soaked, because nothing was brought up.
+
+## Rollback
+
+`deploy.rollback` is `auto` by default. When verification fails on a hard signal, shipshape
+makes **exactly one attempt** to put the previous version back: a revert commit of the merge
+commit (`git revert -m 1`) on your branch, deployed and announced. There is no second try and
+no setting that adds one.
+
+- It happens only **inside the verify window**. After the soak nothing is rolled back on its
+  own: by then a database may have migrated, and undoing that is your call. If a service
+  degrades after the window, you are told, and **Roll back** is one press.
+- Ambiguous evidence downgrades to a suggestion whatever the setting says, and so does a
+  change that carries more than an image line, and a verifier that could not see the
+  containers. In each case you get the alert with the commands instead.
+- `suggest` always sends the alert with the commands and changes nothing; `off` never
+  mentions rolling back.
+- A change you build yourself rebuilds on the old base image.
+- A rollback is never silent. When it worked, it is a quiet card with the reason, the restore
+  point if one was taken, and the rule the change shipped under.
+
+## Restarts
+
+shipshape stops by finishing the work in flight for up to eight seconds; give the container
+`stop_grace_period: 15s`. Anything cut off is picked up at the next start:
+
+- A deploy that was interrupted runs again once. Interrupted twice, it is left for you, with
+  its button offered again.
+- An interrupted rollback is **never** retried by itself, because whether its revert landed
+  is unknown. It is reported as an error, and you decide.
+- A ship interrupted after it was pushed is recorded and deployed at the next start. One
+  interrupted before it was pushed ships again.

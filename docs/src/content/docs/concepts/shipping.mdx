@@ -1,6 +1,52 @@
 ---
-title: "Shipping"
-description: "Shipping is a merge commit on your branch. What shipshape does to your repository, and why."
+title: Shipping
+description: Shipping is a merge commit on your branch. What shipshape does to your repository, and why.
 ---
+## A merge commit per change
 
-This page is being written.
+shipshape builds a branch in its own clone, merges it into your branch with `git merge
+--no-ff`, and pushes. The branch itself is never pushed, and shipshape does not open pull requests. So
+`git log --graph` keeps the shape of each change, the merge commit's message carries the
+review, and `git revert -m 1` undoes it.
+
+The title is `chore(deps): <stack>: bump <services> <from> -> <to>`. The body says what moved
+and its magnitude, what the review concluded and with what confidence, the rule that waived
+a hold if one did, and whether you approved it. The same words are on the update's page.
+
+The one thing that still travels as a branch is a [drafted change](/shipshape/concepts/drafted-changes/),
+because it is a diff you should read before shipping.
+
+## What shipshape does to your repository
+
+This is the whole list.
+
+- It **fetches** and **fast-forwards** your live checkout when your git host is ahead.
+- It **rebases your own unpushed local commits** onto the published branch (with
+  `--autostash`) and **pushes** the branch, when it ships, deploys, or writes a label, a rule
+  or a setting. A branch cut from a stale origin would silently revert unpushed work when it
+  merged, so publishing is a precondition of shipping, not a preference.
+- It **refuses** to write a file you have edited, or while a rebase, merge or cherry-pick is
+  in progress, or when the checkout is on another branch. It says why, and changes nothing.
+  Sync pauses in the same cases, with a notification.
+- It makes its own commits in its own clone, authored `shipshape <BOT_EMAIL>`.
+
+`sync.push_main: false` stops all publishing, and with it shipping: shipshape then only
+alerts.
+
+## Commits it writes
+
+Each of these is one commit:
+
+- a ship (the merge commit);
+- a settings save;
+- an **Always ship** rule;
+- **Watch this service** and **Stop watching**, and **Watch all** (one commit per compose file);
+- a class or a link edited from **Services**.
+
+## Self-exclusion
+
+shipshape never updates or deploys its own stack, because `docker compose up -d shipshape`
+would replace the container running the code that is doing it. The stack is named by
+`SELF_STACK` (default `shipshape`) and is excluded on top of whatever `exclude_stacks`
+lists. The simplest arrangement, which the [quick start](/shipshape/start/quick-start/)
+uses, is to keep shipshape's own compose file outside the repository it watches.

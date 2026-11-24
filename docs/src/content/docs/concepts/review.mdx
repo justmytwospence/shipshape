@@ -1,6 +1,139 @@
 ---
-title: "The review"
-description: "How shipshape finds and reads release notes, what the screen and the reader decide, and what leaves your network."
+title: The review
+description: How shipshape finds and reads release notes, what the screen and the reader decide, and what leaves your network.
 ---
+Before anything ships, shipshape finds the upstream project of the image, fetches the release
+notes for the versions the update crosses, and has them read. The review can only ever **hold
+an update for you, never cause one to ship**: release notes are untrusted text from the
+internet, and the worst a hostile changelog can achieve is a card asking you.
 
-This page is being written.
+## Finding the upstream
+
+Updaters that find release notes through an image's `org.opencontainers.image.source` label
+come up empty for many homelab images: the label is missing, or it points at a *packaging*
+repository (every LinuxServer image points at `linuxserver/docker-<app>`, which is technically
+correct and useless). shipshape asks several sources, most certain first:
+
+1. a short curated map for Docker Official Images;
+2. LinuxServer's API and, where it names a website, the repository their build file reads
+   releases from;
+3. the image's own OCI annotation;
+4. its `ghcr.io` path;
+5. a GitHub link on its Docker Hub, Quay or GitLab page;
+6. a source label in its config, unless it was inherited from a base image;
+7. a GitHub repository with the image's own owner and name.
+
+Every inferred repository is checked against GitHub, and a packaging repository is never the
+answer. One authoritative signal, or two that agree, make it **certain**; anything else is
+only **likely**, and says so. A found repository is kept. A lookup that failed (a rate limit,
+a timeout) is retried with backoff rather than remembered as "nothing", and a clean "nothing
+found" is looked at again after a week.
+
+What no signal reaches, two labels say: [`shipshape.source`](/shipshape/reference/labels/)
+names the repository and `shipshape.changelog` names where its notes are. A service's page
+writes them for you, after previewing what the link leads to.
+
+## What is read
+
+For each update, shipshape reads the notes for exactly the versions it crosses: after the
+running version, up to and including the proposed one.
+
+- the upstream's GitHub releases in that range, prereleases marked;
+- the sections of its changelog file for those versions (`CHANGELOG`, `CHANGES`, `HISTORY`,
+  `NEWS`, `RELEASE_NOTES`, or a directory with a file per version), leaving out what a
+  release already says;
+- the notes linked by `shipshape.changelog`;
+- the newest commits between the two tags.
+
+Image tags and release names are matched by the version they name, so `2.96.22-cpu` meets
+`v2.96.22` and `4.137.0-ls364` meets `v4.137.0`. A rate limit or an outage marks the reading
+incomplete; the verdict stands and is read again later. A service running a stable release is
+not offered a prerelease; one already on a prerelease line keeps moving along it.
+
+## The screen
+
+The screen is a small classification model: Jev, a System 1 model from TypeSafe, reached
+through OpenRouter's Decisions API. It needs `OPENROUTER_API_KEY`. It does not write; it
+answers. For each update it is given the release notes shipshape already fetched (cleaned and
+capped in code), the *names* of the deployment's environment variables, its volume paths, and
+the notes' own bullet lines, and asked narrow questions: a setting removed or renamed, a
+manual step, a one-way migration, dropped support, a changed default, a configuration edit,
+and whether any of it touches this deployment. Code turns the probabilities into one of:
+
+| Decision | Meaning |
+|---|---|
+| **Routine** | Every risk answer is a clear no and the evidence is whole: a patch or minor, notes for every version in range, nothing truncated, an upstream identified with certainty. |
+| **Worth a reading** | It found something. |
+| **Not sure, needs a reading** | The answers do not settle it. |
+| **No notes found** | There was nothing to read. |
+
+Its lines are quoted verbatim, with the version they came from, under **Needs action** and
+**Notable**; the interface never paraphrases the screen. A look costs about a twentieth of a
+cent.
+
+`review.screen` is `off`, `shadow` or `on`. In `shadow`, the screen runs on every update and
+shows its answers without acting on them. In `on`, a routine update goes through on the
+screen's approval and everything else goes to the reader; one routine update in ten is
+still read as an audit, and an alert fires if the reader finds work the screen called routine.
+
+## The reader
+
+The reader is a Claude model reading the changelog properly, with web search confined to the
+upstream's own documentation. It writes the summary, the breaking changes, the migration
+steps and what is new, and returns a recommendation with a confidence. The default is Claude
+Sonnet 5.5, and drafting uses Opus 5.5; see [Models](/shipshape/guides/models/) for the
+other providers. It runs where a person will read the result, and `review.model: off` turns it
+off.
+
+## Verdicts
+
+The interface never shows a raw verdict; it says:
+
+| Says | Means |
+|---|---|
+| **Safe to apply** | The reader found nothing to do. |
+| **Read first** | Worth a look. It holds nothing by itself. |
+| **Breaking changes** | The reader says block, naming what breaks. This is the `unsafe` hold. |
+| **Review pending** | A reading is expected and has not run yet. The update waits for it, for up to six hours. |
+| **Review failed** | The reading failed, with the attempt count. |
+| **No review** | No reader is configured, or it is unavailable. |
+
+Confidence is always shown beside the verdict, as text: "Safe to apply" at low confidence is
+not the same claim. The review reports three lists: **Breaking changes** and **Migration
+steps** are work the update forces on you, and **New in this release** is an offer of
+capabilities you could turn on, which decides nothing.
+
+## Web search
+
+`review.web` is `auto` or `off`. With `auto`, the reader and the drafter may search and
+fetch, confined to github.com, docs.linuxserver.io and api.linuxserver.io. Never on a custom
+endpoint. With `off`, they read only what shipshape fetched, and a release with no notes in
+range is judged on that alone.
+
+## What leaves your network
+
+- To the model provider: the release notes, the **names** (never the values) of a service's
+  environment variables, its volume paths, and, for a drafted change, the service's compose
+  block with secret-looking values replaced by `<redacted>`.
+- Metadata requests to GitHub, Docker Hub, LinuxServer and the registries of your images.
+- Notifications, to the sinks you configure.
+
+Credentials go only to the hosts they belong to: git credentials to your remote's host, the
+GitHub token to github.com, Docker Hub credentials to `auth.docker.io`. The
+[security model](/shipshape/security/) has the rest.
+
+## Without a model
+
+With no key, or with `review.model: off`, shipshape still scans, still ships and still
+deploys. What changes is the evidence: no reading counts as no evidence, so a **major**
+version, a **stateful** service, or a service labelled `shipshape.review: required` is held
+with `no-evidence` and asks you. A patch or a minor ships as usual, covered by verification
+and rollback.
+
+## Cost
+
+What a reading costs is shown on Status, by model and stage. The monthly budget
+(`review.monthly_budget_usd`, default 15, counted per UTC calendar month) pauses the reader,
+drafting, rule scoping and security extraction when it is reached; it never pauses shipping,
+which carries on without a reading. Calls to a custom endpoint are not priced and never count
+against the budget. To spend nothing, set `review.model: off`.

@@ -5,6 +5,8 @@ import { ZONE } from '../../time.ts'
 import { ThemeToggle } from './shell.tsx'
 import { DOCS_URL, SignOutForm } from './auth.tsx'
 import { ExtLink } from './parts.tsx'
+import { describeRule } from '../../../rules.ts'
+import type { Rule } from '../../../config.ts'
 
 /**
  * Settings: one page, in the order an update travels through shipshape.
@@ -20,6 +22,8 @@ export interface SettingValue {
   def: SettingDef
   value: string
   changed: boolean
+  /** Why the last save refused this value; the value shown is the one submitted. */
+  error?: string
 }
 
 export interface SettingGroup {
@@ -58,6 +62,8 @@ export const SettingsNav: FC<{ sections: string[] }> = ({ sections }) => (
 const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) => {
   const { def, value, changed } = item
   const id = def.path.replace(/\./g, '-')
+  const errId = `${id}-error`
+  const helpId = `${id}-help`
   const help = [
     def.locked ?? def.help,
     def.about,
@@ -69,6 +75,8 @@ const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) 
     // broken sentence, so they are joined rather than concatenated.
     .map((part) => (/[.!?]$/.test(part) ? part : `${part}.`))
     .join(' ')
+  const describedBy = [item.error ? errId : '', help ? helpId : ''].filter(Boolean).join(' ') || undefined
+  const invalid = item.error ? 'true' : undefined
   return (
     <fieldset class="fieldset border-base-300 grid grid-cols-1 gap-x-4 gap-y-1 border-t py-2 first:border-t-0 lg:grid-cols-[11rem_minmax(0,1fr)] lg:items-start">
       <label for={id} class="flex min-h-8 items-center gap-2 text-sm font-medium">
@@ -92,12 +100,20 @@ const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) 
                 value="true"
                 class="toggle toggle-sm"
                 checked={value === 'true'}
+                aria-invalid={invalid}
+                aria-describedby={describedBy}
               />
             </>
           ) : def.kind === 'enum' && def.options ? (
             // Each option says what it does, not only what it is called: `act` or
             // `compose-dir` means nothing until you have read the code behind it.
-            <select id={id} name={def.path} class="select select-sm tap w-full max-w-md">
+            <select
+              id={id}
+              name={def.path}
+              class="select select-sm tap w-full max-w-md"
+              aria-invalid={invalid}
+              aria-describedby={describedBy}
+            >
               {def.options.map((o) => (
                 <option value={o} selected={o === value}>
                   {o}
@@ -113,6 +129,8 @@ const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) 
                 name={def.path}
                 value={value}
                 list={`${id}-models`}
+                aria-invalid={invalid}
+                aria-describedby={describedBy}
                 class="input input-sm tap w-full max-w-xs font-mono"
               />
               <datalist id={`${id}-models`}>
@@ -126,7 +144,15 @@ const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) 
               id={id}
               name={def.path}
               value={value}
-              inputmode={def.kind === 'int' || def.kind === 'number' ? 'decimal' : undefined}
+              {...(def.kind === 'int' || def.kind === 'number'
+                ? {
+                    type: 'number',
+                    min: def.min !== undefined ? String(def.min) : undefined,
+                    step: def.kind === 'int' ? '1' : 'any',
+                  }
+                : {})}
+              aria-invalid={invalid}
+              aria-describedby={describedBy}
               class={`input input-sm tap w-full max-w-xs ${def.kind === 'cron' || def.kind === 'windows' ? 'font-mono' : ''}`}
             />
           )}
@@ -134,7 +160,16 @@ const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) 
         {def.kind === 'cron' && describeCron(value, ZONE) ? (
           <p class="mt-0.5 text-xs">{describeCron(value, ZONE)}</p>
         ) : null}
-        {help ? <p class="mt-0.5 max-w-prose text-xs opacity-70">{help}</p> : null}
+        {item.error ? (
+          <p id={errId} class="text-error mt-0.5 text-xs">
+            {item.error}
+          </p>
+        ) : null}
+        {help ? (
+          <p id={helpId} class="mt-0.5 max-w-prose text-xs opacity-70">
+            {help}
+          </p>
+        ) : null}
       </div>
     </fieldset>
   )
@@ -243,6 +278,7 @@ export const SettingsForm: FC<{
   >
     {banner ? (
       <div
+        role={banner.level === 'error' ? 'alert' : 'status'}
         class={`alert alert-soft rounded-none border-x-0 border-t-0 py-1.5 text-xs ${banner.level === 'error' ? 'alert-error' : 'alert-success'}`}
       >
         {banner.text}
@@ -261,6 +297,7 @@ export const SettingsForm: FC<{
       <button type="submit" class="btn btn-primary btn-sm tap">
         Save changes
       </button>
+      <span class="dirty-note text-warning text-xs">Unsaved changes</span>
       <span class="text-xs opacity-70">Writes {policyRel ?? 'the policy file'} and commits it.</span>
     </div>
   </form>
@@ -276,13 +313,13 @@ export const NotifyTools: FC<{ channels: string[]; sinks: string[] }> = ({ chann
     <p class="text-xs font-medium tracking-wide uppercase opacity-70">Sinks</p>
     {sinks.length === 0 ? (
       <p class="text-xs opacity-70">
-        No notification sink is configured in policy.yaml (notify.sinks), so nothing is announced.
+        No notification sink is set (notify.sinks in the policy file), so nothing is announced.
       </p>
     ) : (
       <p class="text-xs">
         {sinks.join(', ')}
         <span class="opacity-70">
-          {channels.length > 0 ? ` -- decisions reach ${channels.join(', ')}` : ' -- none of them is reachable for decisions'}
+          {channels.length > 0 ? ` — decisions reach ${channels.join(', ')}` : ' — none of them is reachable for decisions'}
         </span>
       </p>
     )}
@@ -302,10 +339,12 @@ export const NotifyTools: FC<{ channels: string[]; sinks: string[] }> = ({ chann
   </div>
 )
 
-/** The standing rules, read-only: they are written by Always ship and edited in policy.yaml. */
-export const RulesList: FC<{
-  rules: readonly { id: string; match: Record<string, unknown>; waive: readonly string[]; because: string }[]
-}> = ({ rules }) => (
+/** A test email's answer, in classes that exist. */
+export const TestEmailResult: FC<{ ok: boolean | null; text: string }> = ({ ok, text }) =>
+  ok === false ? <span class="text-error text-xs">{text}</span> : <span class="text-xs opacity-70">{text}</span>
+
+/** The standing rules, read-only: they are written by Always ship and edited in the policy file. */
+export const RulesList: FC<{ rules: readonly Rule[] }> = ({ rules }) => (
   <div id="rules" class="bg-base-200/50 flex flex-col gap-2 rounded p-3">
     <p class="text-xs font-medium tracking-wide uppercase opacity-70">Rules</p>
     {rules.length === 0 ? (
@@ -316,10 +355,8 @@ export const RulesList: FC<{
       <ul class="flex flex-col gap-1.5">
         {rules.map((r) => (
           <li class="text-xs">
-            <span class="font-mono font-medium">{r.id}</span>{' '}
-            <code class="bg-base-100 rounded px-1">{JSON.stringify(r.match)}</code> waives{' '}
-            <span class="font-medium">{r.waive.join(', ')}</span>
-            {r.because ? <span class="opacity-70"> -- {r.because}</span> : null}
+            <span class="font-mono font-medium">{r.id}</span> {describeRule(r)}
+            {r.because ? <span class="opacity-70"> · {r.because}</span> : null}
           </li>
         ))}
       </ul>

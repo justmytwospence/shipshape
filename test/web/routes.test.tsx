@@ -193,6 +193,12 @@ test('scanning answers in the sidebar and in the phone bar', async () => {
   assert.match(await res.text(), /id="phone-scan"[^>]*hx-swap-oob="true"/)
 })
 
+test('the test-email answer is styled with classes that exist', async () => {
+  const html = await (await app.request('/settings/email/test', { method: 'POST', headers: { 'HX-Request': 'true' } })).text()
+  assert.match(html, /class="text-xs opacity-70"/)
+  assert.doesNotMatch(html, /class="sub"|warn-text/)
+})
+
 test('a theme preview parameter is ignored', async () => {
   const html = await (await app.request('/?theme=dark')).text()
   assert.doesNotMatch(html, /data-theme-pinned/)

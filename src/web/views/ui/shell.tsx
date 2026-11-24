@@ -447,6 +447,9 @@ const SetupBanner: FC<{ missing: { name: string; why: string }[] }> = ({ missing
         </li>
       ))}
     </ul>
+    <ExtLink href={DOCS_URL} class="link">
+      Setup guide
+    </ExtLink>
   </div>
 )
 

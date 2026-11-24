@@ -83,6 +83,7 @@ function base(over: Partial<UpdateView>): UpdateView {
     waived: [],
     shipStatus: 'decision',
     shipWhy: null,
+    reviewOff: null,
     snoozedUntil: null,
     approvedAt: null,
     restorePoints: [],

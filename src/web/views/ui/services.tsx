@@ -102,12 +102,29 @@ function statusOf(s: ServiceRowData): { label: string; cls: string; detail?: str
 export const serviceHref = (svc: { stack: string; service: string }) =>
   `/services/${svc.stack}/${svc.service}`
 
+const SERVICE_COLS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)_5rem_4.5rem_2.75rem_1.75rem]'
+
 const ROW =
   'group border-l-2 border-transparent hover:bg-base-200/60 aria-[current=true]:border-primary ' +
   'aria-[current=true]:bg-primary/8 focus-visible:outline-primary block min-h-12 px-3 py-1.5 ' +
   'focus-visible:outline-2 lg:min-h-9 lg:py-0 grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 ' +
   'gap-y-0.5 items-center lg:gap-x-3 ' +
-  'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)_5rem_4.5rem_2.75rem_1.75rem]'
+  SERVICE_COLS
+
+/** What the columns are, at lg. Visual only: each row reads in order without it. */
+const ServiceListHeader: FC = () => (
+  <div
+    aria-hidden="true"
+    class={`bg-base-100 border-b-base-300 sticky top-0 z-10 hidden h-7 items-center gap-x-2 border-b border-l-2 border-l-transparent px-3 text-xs font-medium opacity-70 lg:grid lg:gap-x-3 ${SERVICE_COLS}`}
+  >
+    <span>Service</span>
+    <span>Image</span>
+    <span>Status</span>
+    <span>Class</span>
+    <span>Seen</span>
+    <span />
+  </div>
+)
 
 /**
  * One service, one line at lg and two on a phone: name · image:tag · status · policy ·
@@ -243,6 +260,7 @@ export const ServicesList: FC<{
     return (
       <>
         {watchAll}
+        <ServiceListHeader />
         <div class="divide-base-300 divide-y">
           {services.map((s) => (
             <ServiceRow svc={s} ctx={ctx} selected={isSel(s)} />

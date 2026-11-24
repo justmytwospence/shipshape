@@ -8,6 +8,7 @@ import { changeUrl } from '../gitops/change.ts'
 import { restorePointsFor } from '../restore/index.ts'
 import { present, type Presentation } from './present.ts'
 import { screenFor } from '../analyze/screen/run.ts'
+import { reviewOffReason } from '../analyze/review-state.ts'
 import { VERDICT_LABEL, type Outcome } from './vocabulary.ts'
 import type { Magnitude } from '../versions/patterns.ts'
 import { actionsFor, isTransient, primaryVerb, type ActionContext, type Verb } from './actions.ts'
@@ -65,6 +66,8 @@ export interface UpdateView {
   /** Where it stands on its way out: ready, waiting (with why), or a decision. */
   shipStatus: 'ready' | 'waiting' | 'decision' | null
   shipWhy: string | null
+  /** Why nothing will read release notes right now; null when a review can be expected. */
+  reviewOff: string | null
   snoozedUntil: string | null
   approvedAt: string | null
   /** Restore points taken for the change that carried it. */
@@ -399,6 +402,7 @@ function toView(u: RawUpdate, _repo?: string): UpdateView {
     waived: held?.waived ?? [],
     shipStatus: held ? held.status.status : null,
     shipWhy: held && held.status.status === 'waiting' ? held.status.why : null,
+    reviewOff: reviewOffReason(loadPolicy().policy),
     snoozedUntil: snoozed ? u.snoozed_until : null,
     approvedAt: u.approved_at,
     restorePoints: change ? restorePointsFor(change.id).map((p) => ({ service: p.service, path: p.path, createdAt: p.created_at })) : [],

@@ -84,7 +84,7 @@ test('every bespoke class is actually used', () => {
   // weight that outlives the markup it was for.
   const source = builtCss()
   const rendered = new Set(Object.values(VIEWS).flatMap((h) => classesOf(h)))
-  for (const cls of ['pb-safe', 'pb-dock', 'actionbar', 'savebar', 'tap', 'scroll-x', 'dl', 'tl-future']) {
+  for (const cls of ['pb-safe', 'pb-dock', 'actionbar', 'savebar', 'tap', 'scroll-x', 'dl', 'tl-future', 'dirty-note']) {
     assert.ok(source.includes(`.${cls}`), `${cls} is declared`)
     if (cls === 'dl' || cls === 'tl-future') continue // rendered only with a diff or a soak
     assert.ok(rendered.has(cls), `${cls} is used by some view`)
@@ -678,4 +678,61 @@ test('no text is fainter than opacity-70', () => {
 
 test("a log line's severity is said, not only coloured", () => {
   assert.match(VIEWS.activity!, /class="sr-only">(Warning|Error):</)
+})
+
+test('a list says what its columns are', () => {
+  assert.match(VIEWS['updates-page']!, /aria-hidden="true" class="bg-base-100[^"]*lg:grid[^"]*">[\s\S]*?>Review</)
+  assert.match(VIEWS['services-page']!, />Class</)
+})
+
+test('review pending is said only while a review is coming', async () => {
+  const { update } = await import('./fixtures.tsx')
+  const { UpdateRow } = await import('../../src/web/views/ui/update.tsx')
+  const pending = update({ verdict: null, state: 'detected', shipStatus: 'waiting', shipWhy: 'review pending' })
+  assert.match(String(UpdateRow({ update: pending, ctx: 'list=updates' })), /Review pending/)
+  const paused = update({ verdict: null, state: 'detected', shipStatus: 'waiting', shipWhy: 'paused' })
+  assert.doesNotMatch(String(UpdateRow({ update: paused, ctx: 'list=updates' })), /Review pending/)
+})
+
+test('a pane says why nothing will read the notes', async () => {
+  const { update, MILESTONES } = await import('./fixtures.tsx')
+  const { UpdateDetail } = await import('../../src/web/views/ui/update.tsx')
+  const html = String(
+    UpdateDetail({ update: update({ verdict: null, reviewOff: 'no model provider is set' }), milestones: MILESTONES, ctx: 'list=updates' }),
+  )
+  assert.match(html, /Nothing will read this version(&#39;|')s release notes: no model provider is set/)
+})
+
+test('Status lists recent deploys in words', () => {
+  assert.match(VIEWS.status!, /Recent deploys/)
+  assert.match(VIEWS.status!, />Verified</)
+  assert.match(VIEWS.status!, /after a ship/)
+})
+
+test('a setting that was refused says why beside itself', async () => {
+  const { SettingsForm } = await import('../../src/web/views/ui/settings.tsx')
+  const { SETTINGS } = await import('../../src/settings.ts')
+  const def = SETTINGS.find((d) => d.kind === 'int' && !d.locked)!
+  const html = String(
+    SettingsForm({
+      groups: [{ title: 'X', tagline: 'x', items: [{ def, value: '-1', changed: true, error: 'must be at least 0' }], more: [] }] as never,
+    }),
+  )
+  assert.match(html, /aria-invalid="true"/)
+  assert.match(html, /aria-describedby="[^"]*-error/)
+  assert.match(html, /class="text-error mt-0\.5 text-xs">must be at least 0</)
+})
+
+test('number settings are number inputs with a floor', async () => {
+  const { SettingsForm } = await import('../../src/web/views/ui/settings.tsx')
+  const { SETTINGS } = await import('../../src/settings.ts')
+  const def = SETTINGS.find((d) => d.kind === 'int' && !d.locked && d.min !== undefined)!
+  const html = String(SettingsForm({ groups: [{ title: 'X', tagline: 'x', items: [{ def, value: '3', changed: false }], more: [] }] as never }))
+  assert.match(html, /type="number"[^>]*min="\d/)
+})
+
+test('rules read as words', async () => {
+  const { RulesList } = await import('../../src/web/views/ui/settings.tsx')
+  const html = String(RulesList({ rules: [{ id: 'r1', match: { image: 'ghcr.io/example/app' }, waive: ['ask'], because: 'x' }] as never }))
+  assert.match(html, /every service running ghcr\.io\/example\/app, waiving ask/)
 })

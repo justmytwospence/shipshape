@@ -110,7 +110,15 @@ export function verdictLabel(u: UpdateView): {
 
 export const VerdictChip: FC<{ update: UpdateView; long?: boolean }> = ({ update, long }) => {
   const v = verdictLabel(update)
-  if (!v) return null
+  if (!v) {
+    // A review is still coming: say so, rather than leave the column looking unread.
+    return update.state === 'detected' && update.shipWhy === 'review pending' ? (
+      <span class="inline-flex items-center gap-1 text-xs opacity-70">
+        <Icon name="eye" class="size-3.5" />
+        Review pending
+      </span>
+    ) : null
+  }
   // Only the screen has judged it. Said, because a screened approval rests on narrow
   // answers about the notes rather than a reading of them.
   const screened = update.verdict?.source === 'screen'

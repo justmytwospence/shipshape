@@ -470,6 +470,14 @@
     }
   })
 
+  // Leaving with unsaved edits asks first.
+  addEventListener('beforeunload', function (e) {
+    if (document.querySelector('form.is-dirty')) {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+  })
+
   // A form with unsaved edits says so, rather than leaving you to remember.
   document.addEventListener('input', function (e) {
     var form = e.target.closest('form[data-dirty]')

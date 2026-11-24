@@ -1,5 +1,7 @@
 import type { FC } from 'hono/jsx'
 import { ExtLink, Relative } from './parts.tsx'
+import { describeCron } from './settings.tsx'
+import { ZONE } from '../../time.ts'
 import type { SecurityPanel } from '../../../security/panel.ts'
 
 /**
@@ -157,6 +159,30 @@ const KV: FC<{ rows: [string, unknown][] }> = ({ rows }) => (
   </div>
 )
 
+/** A deploy row's status, in the stage words the rest of the interface uses. */
+const DEPLOY_STATUS: Record<string, { label: string; cls: string }> = {
+  pending: { label: 'Queued', cls: 'badge-ghost' },
+  running: { label: 'Deploying', cls: 'badge-info' },
+  deployed: { label: 'Soaking', cls: 'badge-info' },
+  verified: { label: 'Verified', cls: 'badge-success' },
+  degraded: { label: 'Degraded', cls: 'badge-warning' },
+  failed: { label: 'Deploy failed', cls: 'badge-error' },
+  error: { label: 'Deploy failed', cls: 'badge-error' },
+  'rolled-back': { label: 'Rolled back', cls: 'badge-error' },
+  'left-stopped': { label: 'Left stopped', cls: 'badge-ghost' },
+  ready: { label: 'Ready to deploy', cls: 'badge-info' },
+  superseded: { label: 'Superseded', cls: 'badge-ghost' },
+}
+
+/** What started a deploy. */
+const TRIGGER: Record<string, string> = {
+  queue: 'after a ship',
+  operator: 'you pressed Deploy',
+  redeploy: 'redeploy',
+  retry: 'try again',
+  rollback: 'roll back',
+}
+
 const H: FC<{ children?: unknown }> = ({ children }) => (
   <h2 class="mb-1.5 text-xs font-medium tracking-wide uppercase opacity-70">{children}</h2>
 )
@@ -209,7 +235,7 @@ const SecurityBlock: FC<{ s: SecurityPanel }> = ({ s }) => (
         ['incidents', `${s.incidents} followed · ${s.withTargets} could match an image`],
         [
           'inventories',
-          `${s.running - s.uninventoried} of ${s.running} running services${s.uninventoried > 0 ? ` · ${s.uninventoried} images still to read` : ''}`,
+          `${s.running - s.uninventoried} of ${s.running} running services${s.uninventoried > 0 ? ` · ${s.uninventoried} ${s.uninventoried === 1 ? 'image' : 'images'} still to read` : ''}`,
         ],
         ['next look', s.nextAt ? <Relative at={s.nextAt} /> : 'not scheduled'],
       ]}
@@ -302,7 +328,7 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
                   ) : (
                     <>
                       not scheduled
-                      <span class="ml-2 opacity-70">{data.scan.cron}</span>
+                      <span class="ml-2 opacity-70">{describeCron(data.scan.cron, ZONE) ?? data.scan.cron}</span>
                     </>
                   ),
                 ],
@@ -386,7 +412,7 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
                 ['repository', data.repo || 'not set'],
                 ['remote', data.remote ?? 'not set'],
                 ['ships as', `merge commits on ${data.branch ?? 'main'}`],
-                [`publishes ${data.branch ?? 'main'}`, String(data.pushMain)],
+                [`publishes ${data.branch ?? 'main'}`, data.pushMain ? 'yes' : 'no'],
                 ...(data.policyFile
                   ? [['policy file', data.policyFile.exists ? data.policyFile.rel : `none yet — defaults apply; Settings creates ${data.policyFile.rel}`] as [string, string]]
                   : []),
@@ -395,6 +421,28 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
                   : []),
               ]}
             />
+          </Block>
+
+          <Block>
+            <H>Recent deploys</H>
+            {data.deploys.length === 0 ? (
+              <p class="text-xs opacity-70">No deploys yet.</p>
+            ) : (
+              <div class="divide-base-300 border-base-300 divide-y border-y text-xs">
+                {data.deploys.map((d) => {
+                  const st = DEPLOY_STATUS[d.status] ?? { label: d.status, cls: 'badge-ghost' }
+                  return (
+                    <div class="flex min-h-7 flex-wrap items-center gap-x-2 py-1">
+                      <Relative at={d.at} />
+                      <span class="font-mono">{d.stack}</span>
+                      <span class="min-w-0 flex-1 truncate opacity-70">{d.services}</span>
+                      <span class={`badge badge-xs badge-soft ${st.cls}`}>{st.label}</span>
+                      <span class="opacity-70">{TRIGGER[d.trigger] ?? d.trigger}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </Block>
 
         </div>

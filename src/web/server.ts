@@ -56,6 +56,7 @@ import {
   NotifyTools,
   RulesList,
   SettingsForm,
+  TestEmailResult,
   type SettingGroup,
   type SettingValue,
 } from './views/ui/settings.tsx'
@@ -79,11 +80,11 @@ import { UpdateDetail, UpdateRow } from './views/ui/update.tsx'
 import { ReleaseList } from './views/ui/releases.tsx'
 import { runAnalysisPass } from '../analyze/run.ts'
 import { DiffView } from './views/diff.tsx'
-import { applySettings, currentValue, SECTIONS, SETTINGS } from '../settings.ts'
+import { applySettings, currentValue, savedText, SECTIONS, SETTINGS } from '../settings.ts'
 import { SECTION_PROSE } from '../settings/prose.ts'
 import { listModels } from '../analyze/models.ts'
 import { activeChannels, sinkCredentials } from '../notify/index.ts'
-import { configured as emailConfigured, send as sendEmail, escapeHtml as escapeText } from '../notify/email.ts'
+import { configured as emailConfigured, send as sendEmail } from '../notify/email.ts'
 import { rescheduleScan } from '../scheduler.ts'
 import { authMiddleware, describeAuth, registerAuthRoutes, resolveAuth } from './auth/index.ts'
 import { pruneSessions } from './auth/session.ts'
@@ -892,13 +893,14 @@ export function createApp(): Hono {
    * More -- with the longer explanation, which used to sit beside the fields and pushed
    * the decisions below the fold.
    */
-  const settingGroups = (): SettingGroup[] => {
+  /** After a refused save, a refused field shows what was submitted and why; the rest, the file. */
+  const settingGroups = (submitted: Record<string, string> = {}, fieldErrors: Record<string, string> = {}): SettingGroup[] => {
     const { policy } = loadPolicy()
-    const value = (def: (typeof SETTINGS)[number]): SettingValue => ({
-      def,
-      value: currentValue(policy, def.path),
-      changed: currentValue(policy, def.path) !== def.defaultValue,
-    })
+    const value = (def: (typeof SETTINGS)[number]): SettingValue => {
+      const error = fieldErrors[def.path]
+      const v = error !== undefined && submitted[def.path] !== undefined ? submitted[def.path]! : currentValue(policy, def.path)
+      return { def, value: v, changed: currentValue(policy, def.path) !== def.defaultValue, error }
+    }
     const groups: SettingGroup[] = []
     for (const [title, tagline] of SECTIONS) {
       const defs = SETTINGS.filter((d) => d.section === title)
@@ -1070,18 +1072,28 @@ export function createApp(): Hono {
     const result = await applySettings(changes)
     // A schedule change should not wait for the old schedule to fire before applying.
     if (result.ok && result.applied.includes('scan.cron')) rescheduleScan()
+    const fieldErrors = result.ok ? {} : (result.fields ?? {})
+    const k = Object.keys(fieldErrors).length
+    // Sentences not tied to one field: a dirty file, a failed commit, a file that would not load.
+    const other = result.ok ? [] : result.errors.filter((e) => !Object.keys(fieldErrors).some((p) => e.startsWith(`${SETTINGS.find((d) => d.path === p)?.label}: `)))
     return c.html(
       SettingsForm({
-        groups: settingGroups(),
+        groups: settingGroups(changes, fieldErrors),
         models: await listModels(),
         readyCount: loadPolicy().policy.paused ? readyToDeploy() : 0,
         extras: { Notifications: notifyTools(), Rules: RulesList({ rules: loadPolicy().policy.rules }) },
         policyRel: policyFileState().rel,
         banner: result.ok
           ? result.applied.length
-            ? { level: 'info', text: `Saved: ${result.applied.join(', ')}. Committed to git.` }
+            ? { level: 'info', text: savedText(result.applied, result.commit) }
             : null
-          : { level: 'error', text: result.errors.join(' ') },
+          : {
+              level: 'error',
+              text:
+                k === 0
+                  ? other.join(' ')
+                  : `${k} ${k === 1 ? 'setting was' : 'settings were'} not saved; each says why below.${other.length ? ` ${other.join(' ')}` : ''}`,
+            },
       }) as string,
     )
   })
@@ -1096,7 +1108,7 @@ export function createApp(): Hono {
   app.post('/settings/email/test', async (c) => {
     if (!emailConfigured()) {
       return c.html(
-        '<span class="sub">SMTP_URL and MAIL_TO are not both set — nothing to test.</span>',
+        TestEmailResult({ ok: null, text: 'SMTP_URL and MAIL_TO are not both set, so there is nothing to test.' }) as string,
       )
     }
     const r = await sendEmail({
@@ -1104,9 +1116,7 @@ export function createApp(): Hono {
       text: 'If you are reading this, shipshape can send you email.\n\nSent from the Settings page.',
     })
     return c.html(
-      r.ok
-        ? '<span class="sub">sent — check the inbox</span>'
-        : `<span class="warn-text">${escapeText(r.error ?? 'failed')}</span>`,
+      TestEmailResult(r.ok ? { ok: true, text: 'Sent. Check the inbox.' } : { ok: false, text: r.error ?? 'failed' }) as string,
     )
   })
 

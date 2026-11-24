@@ -1,7 +1,7 @@
 import type { FC } from 'hono/jsx'
 import { Layout, Split, type Chrome } from './ui/shell.tsx'
 import { InboxAside, InboxList, ScanControls, type InboxData } from './ui/inbox.tsx'
-import { UpdateRow } from './ui/update.tsx'
+import { UpdateListHeader, UpdateRow } from './ui/update.tsx'
 import { ReleaseList } from './ui/releases.tsx'
 import { EmptyState, ListCount, Search, Tabs } from './ui/parts.tsx'
 import { DeviceSettings, SettingsForm, SettingsNav, type SettingGroup } from './ui/settings.tsx'
@@ -119,11 +119,14 @@ export const UpdatesList: FC<{ updates: UpdateView[]; ctx: string; selectedId?: 
     )
   }
   return (
-    <div class="divide-base-300 divide-y">
-      {updates.map((u) => (
-        <UpdateRow update={u} ctx={ctx} selected={u.id === selectedId} showStage />
-      ))}
-    </div>
+    <>
+      <UpdateListHeader showStage />
+      <div class="divide-base-300 divide-y">
+        {updates.map((u) => (
+          <UpdateRow update={u} ctx={ctx} selected={u.id === selectedId} showStage />
+        ))}
+      </div>
+    </>
   )
 }
 

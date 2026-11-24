@@ -396,16 +396,26 @@ export function currentValue(policy: Policy, path: string): string {
 
 export type ApplyResult =
   | { ok: true; applied: string[]; commit: string | null }
-  | { ok: false; errors: string[] }
+  /** `fields` holds the refusals tied to one setting, by path; `errors` every sentence. */
+  | { ok: false; errors: string[]; fields?: Record<string, string> }
+
+/** The success sentence: the settings by their labels, joined in words, and the commit. */
+export function savedText(applied: string[], commit: string | null): string {
+  const names = applied.map((p) => SETTINGS.find((d) => d.path === p)?.label ?? p)
+  const words = names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
+  return `Saved ${words}${commit ? `, committed as ${commit}` : ''}.`
+}
 
 export async function applySettings(changes: Record<string, string>): Promise<ApplyResult> {
   const errors: string[] = []
+  const fields: Record<string, string> = {}
   const applied: string[] = []
 
   const result = await commitPolicyFile(
     (current) => {
       errors.length = 0
       applied.length = 0
+      for (const k of Object.keys(fields)) delete fields[k]
       let text = current
       for (const [path, rawValue] of Object.entries(changes)) {
         const def = SETTINGS.find((s) => s.path === path)
@@ -415,6 +425,7 @@ export async function applySettings(changes: Record<string, string>): Promise<Ap
         const validation = validate(def, value)
         if (validation) {
           errors.push(`${def.label}: ${validation}`)
+          fields[def.path] = validation
           continue
         }
 
@@ -437,7 +448,7 @@ export async function applySettings(changes: Record<string, string>): Promise<Ap
     () => `chore(shipshape): settings: ${applied.join(', ')}`,
   )
 
-  if (errors.length > 0) return { ok: false, errors: [...errors] }
+  if (errors.length > 0) return { ok: false, errors: [...errors], fields: { ...fields } }
   if (!result.ok) return { ok: false, errors: [result.reason] }
   if (!result.changed) return { ok: true, applied: [], commit: null }
   logEvent({

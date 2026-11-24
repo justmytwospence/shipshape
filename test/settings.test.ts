@@ -307,3 +307,9 @@ test('removeValue rejects an unusable path', () => {
   assert.equal(removeValue(REMOVE, ''), null)
   assert.equal(removeValue(REMOVE, 'deploy..mode'), null)
 })
+
+test('a saved setting is named in words', async () => {
+  const { savedText } = await import('../src/settings.ts')
+  assert.equal(savedText(['paused', 'scan.cron'], 'a3f9c1'), 'Saved Pause and Schedule, committed as a3f9c1.')
+  assert.equal(savedText(['paused'], null), 'Saved Pause.')
+})

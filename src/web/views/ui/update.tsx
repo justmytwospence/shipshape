@@ -194,6 +194,21 @@ const COLS = 'lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_2.75rem_minmax(0,1.6fr
 const COLS_STAGE =
   'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_2.75rem_6rem_minmax(0,1.5fr)_5rem]'
 
+/** What the columns are, at lg. Visual only: each row reads in order without it. */
+export const UpdateListHeader: FC<{ showStage?: boolean }> = ({ showStage }) => (
+  <div
+    aria-hidden="true"
+    class={`bg-base-100 border-b-base-300 sticky top-0 z-10 hidden h-7 items-center gap-x-2 border-b border-l-2 border-l-transparent px-3 text-xs font-medium opacity-70 lg:grid ${showStage ? COLS_STAGE : COLS}`}
+  >
+    <span>Service</span>
+    <span>Change</span>
+    <span>Size</span>
+    {showStage ? <span>Stage</span> : null}
+    <span>Review</span>
+    <span class="text-right">When</span>
+  </div>
+)
+
 export const UpdateRow: FC<{
   update: UpdateView
   /** The query that names the list this row lives in, so the URL can carry it. */
@@ -367,12 +382,30 @@ export const VerdictBlock: FC<{ update: UpdateView }> = ({ update }) => {
   if (!v) {
     return (
       <section class="border-base-300 border-t px-4 py-3 text-sm">
-        <span class="font-medium">No review.</span>{' '}
-        <span class="opacity-70">
-          {update.state === 'frozen'
-            ? 'Nothing is read until you ask for this update.'
-            : 'The changelog review has not run for this version.'}
-        </span>
+        {update.state === 'frozen' ? (
+          <>
+            <span class="font-medium">No review.</span>{' '}
+            <span class="opacity-70">Nothing is read until you ask for this update.</span>
+          </>
+        ) : update.reviewOff ? (
+          <>
+            <span class="font-medium">No review.</span>{' '}
+            <span class="opacity-70">Nothing will read this version's release notes: {update.reviewOff}.</span>{' '}
+            <a href="/status" class="link">
+              See Status
+            </a>
+          </>
+        ) : update.shipWhy === 'review pending' ? (
+          <>
+            <span class="font-medium">Review pending.</span>{' '}
+            <span class="opacity-70">The changelog is read on the next pass.</span>
+          </>
+        ) : (
+          <>
+            <span class="font-medium">No review.</span>{' '}
+            <span class="opacity-70">The changelog was not read for this version.</span>
+          </>
+        )}
       </section>
     )
   }

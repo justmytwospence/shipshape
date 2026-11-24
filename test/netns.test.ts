@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { withNamespacePeers } from '../src/deploy/run.ts'
+import { withNamespacePeers } from '../src/compose/topology.ts'
 
 /**
  * Deploying a container whose network other containers are living inside.

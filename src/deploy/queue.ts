@@ -5,13 +5,8 @@ import { notify } from '../notify/index.ts'
 import { deployChange, type DeployIo, type DeployTarget } from './run.ts'
 import { handleFailure } from './rollback.ts'
 import { readRecordedPlan, recheckServices } from './runstate.ts'
-import {
-  captureLogs,
-  DockerUnreadable,
-  inspectService,
-  projectName,
-  type ServiceObservation,
-} from './probe.ts'
+import { captureLogs, DockerUnreadable, inspectService, type ServiceObservation } from './probe.ts'
+import { projectName } from '../compose/topology.ts'
 import type { Verdict } from './verify.ts'
 import { changeText } from '../updates/vocabulary.ts'
 import { isStopping } from '../lifecycle.ts'

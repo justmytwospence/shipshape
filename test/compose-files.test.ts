@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { composeFileOfStack, discoverCompose, overrideFor } from '../src/compose/files.ts'
 import { findComposeFiles, includedStacks, scanComposeFile } from '../src/compose/scan.ts'
-import { projectName } from '../src/deploy/probe.ts'
+import { projectName } from '../src/compose/topology.ts'
 
 /** Which file is a stack's compose file, the way Compose decides. */
 

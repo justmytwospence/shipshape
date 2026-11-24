@@ -3,7 +3,7 @@ import { env, type Policy } from '../config.ts'
 import { getDb } from '../db.ts'
 import { logEvent } from '../events.ts'
 import { dockerEnvOptions } from '../deploy/docker-env.ts'
-import { projectName } from '../deploy/probe.ts'
+import { projectName } from '../compose/topology.ts'
 import { scanRepo } from '../compose/scan.ts'
 import type { Package } from './match.ts'
 

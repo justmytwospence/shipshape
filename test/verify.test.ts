@@ -1,7 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Verifier, DEFAULT_VERIFY, runVerify, type VerifyConfig } from '../src/deploy/verify.ts'
-import { DockerUnreadable, parseInspect, projectName, missing } from '../src/deploy/probe.ts'
+import { DockerUnreadable, parseInspect, missing } from '../src/deploy/probe.ts'
+import { projectName } from '../src/compose/topology.ts'
 import { expectedRef } from '../src/deploy/run.ts'
 import type { ServiceObservation, ServiceSnapshot } from '../src/deploy/probe.ts'
 

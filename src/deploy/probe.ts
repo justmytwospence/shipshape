@@ -1,9 +1,7 @@
 import { execa } from 'execa'
-import { readFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename } from 'node:path'
 import { env } from '../config.ts'
 import { includedStacks } from '../compose/scan.ts'
-import { composeFileOfStack } from '../compose/files.ts'
 import { dockerEnvOptions } from './docker-env.ts'
 
 /**
@@ -42,39 +40,6 @@ export interface ServiceObservation {
   startedAt: string | null
   /** Container IP per network, for probing the service directly. */
   ips: Record<string, string>
-}
-
-/**
- * The compose project a stack's containers carry.
- *
- * Compose derives it from the directory holding the file, so a stack directory is its
- * own project -- except the root compose file, whose project is the repository directory
- * itself. Both are normalised the way compose normalises them.
- */
-export function projectName(stack: string, repoDir = env.repoDir): string {
-  // An included stack's containers carry the root project's name, so looking for them
-  // under their own would find nothing and the verifier would report "no container"
-  // for a service that is running perfectly well.
-  const root = stack === 'root' || includedStacks(repoDir).has(stack)
-  const raw = root ? basename(repoDir) : (declaredName(join(repoDir, composeFileOfStack(repoDir, stack))) ?? stack)
-  return raw.toLowerCase().replace(/[^a-z0-9_-]/g, '')
-}
-
-/**
- * A compose file's own top-level `name:`, which overrides the directory as the project
- * name (crypto-nodes/ runs as project `payments`). Null when absent, unreadable, or built
- * from a variable this process cannot resolve the way compose would.
- */
-export function declaredName(file: string): string | null {
-  let text: string
-  try {
-    text = readFileSync(file, 'utf8')
-  } catch {
-    return null
-  }
-  const m = /^name:[ \t]*["']?([^"'\s#]+)["']?[ \t]*(?:#.*)?$/m.exec(text)
-  if (!m || m[1]!.includes('$')) return null
-  return m[1]!
 }
 
 /** Pull the fields that matter out of one `docker inspect` object. */

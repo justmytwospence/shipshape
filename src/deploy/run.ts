@@ -1,18 +1,8 @@
 import { execa } from 'execa'
-import { join } from 'node:path'
 import { env, loadPolicy, type Policy } from '../config.ts'
-import {
-  DockerUnreadable,
-  findForeign,
-  httpProbe,
-  inspectService,
-  missing,
-  projectName,
-  snapshotOf,
-  type ServiceObservation,
-  type ServiceSnapshot,
-} from './probe.ts'
-import { includedStacks, scanRepo } from '../compose/scan.ts'
+import { DockerUnreadable, findForeign, httpProbe, inspectService, missing, snapshotOf, type ServiceObservation, type ServiceSnapshot } from './probe.ts'
+import { projectName } from '../compose/topology.ts'
+import { scanRepo } from '../compose/scan.ts'
 import { composeFileOfStack, overrideFor } from '../compose/files.ts'
 import { DEFAULT_VERIFY, runVerify, type Verdict } from './verify.ts'
 import { dockerEnvOptions } from './docker-env.ts'
@@ -20,17 +10,8 @@ import { getDb } from '../db.ts'
 import { logEvent } from '../events.ts'
 import { notify, resolveIncident } from '../notify/index.ts'
 import type { DeployTrigger } from './queue.ts'
-import {
-  countsAsRunning,
-  leftClause,
-  observeSet,
-  ownerFrom,
-  planRun,
-  restoredClause,
-  type LeftService,
-  type RecordedPlan,
-  type RunPlan,
-} from './runstate.ts'
+import { countsAsRunning, leftClause, observeSet, ownerFrom, planRun, restoredClause, type LeftService, type RecordedPlan, type RunPlan } from './runstate.ts'
+import { stackPeers, buildableServices, isRootStack } from '../compose/topology.ts'
 
 /**
  * Bringing a merged change up on the host.
@@ -194,18 +175,6 @@ export const realIo: DeployIo = {
   buildable: (stack, services, policy) => buildableServices(stack, services, policy),
   rebuildable: (stack, services, policy) => buildableServices(stack, services, policy, env.repoDir, { forks: false }),
   now: () => Date.now(),
-}
-
-/**
- * Stacks that are part of the root compose project rather than their own.
- *
- * Either the root file itself, or one it `include:`s -- pihole, traefik, ddclient and
- * wireguard here. Both are addressed from the repository root with no `-f`, because
- * scoping to their own file loses the networks the root defines and compose refuses the
- * whole project.
- */
-export function isRootStack(stack: string, repoDir = env.repoDir): boolean {
-  return stack === 'root' || includedStacks(repoDir).has(stack)
 }
 
 /**
@@ -533,35 +502,6 @@ export function expectedRef(
 }
 
 /**
- * The services of a stack that the compose file builds from source now: the forks
- * (the forks guide), whose `image:` is a local name, and our own builds watched through their base
- * image (compose/dockerfile.ts), whose merged change is a `FROM` line only a build reads. A
- * plain unwatched `build:` service is never deployed by shipshape, so there is nothing to
- * build for one; a fork just retired has no `build:` block any more and drops out here,
- * which is what lets the deploy that follows the retire pull the upstream image instead.
- */
-export function buildableServices(
-  stack: string,
-  services: string[],
-  policy: Policy,
-  repoDir = env.repoDir,
-  kinds: { forks?: boolean; bases?: boolean } = {},
-): string[] {
-  const forks = kinds.forks ?? true
-  const bases = kinds.bases ?? true
-  try {
-    const scanned = scanRepo(repoDir, policy.exclude_stacks)
-    return services.filter((s) =>
-      scanned.some(
-        (x) => x.stack === stack && x.service === s && x.hasBuild && ((forks && !!x.fork) || (bases && !!x.base)),
-      ),
-    )
-  } catch {
-    return []
-  }
-}
-
-/**
  * What the compose file pins RIGHT NOW for each service of a stack, read from disk rather
  * than from the database.
  *
@@ -644,46 +584,6 @@ function tail(s: unknown): string {
     .slice(-6)
     .join('\n')
     .slice(0, 600)
-}
-
-/**
- * Services that must be recreated alongside these ones.
- *
- * `network_mode: service:x` is not a reference to a service, it is a pin to a container
- * *id*: the daemon writes `container:<id>` into the dependent's host config when it
- * starts. Recreating x gives it a new id, and the dependent is left attached to a
- * namespace that no longer exists -- still running, still listed as up, and with no
- * network at all. It is a uniquely quiet way to break a service, because every liveness
- * check still passes.
- *
- * So a deploy that touches such a container has to bring its followers with it. Pure and
- * driven off the scanned compose files, so the expansion is testable and does not depend
- * on asking a daemon what is currently pinned to what.
- */
-export function withNamespacePeers(
-  stack: string,
-  services: string[],
-  peersOf: (stack: string) => { service: string; network_mode: string | null }[],
-): string[] {
-  const all = peersOf(stack)
-  const out = [...services]
-  // One pass is enough in practice and terminates by construction: a chain of shared
-  // namespaces resolves to a single owner, and compose refuses cycles.
-  for (const target of services) {
-    for (const row of all) {
-      if (row.network_mode === `service:${target}` && !out.includes(row.service)) {
-        out.push(row.service)
-      }
-    }
-  }
-  return out
-}
-
-/** The scanned peers of a stack, for the expansion above. */
-export function stackPeers(stack: string): { service: string; network_mode: string | null }[] {
-  return getDb()
-    .prepare(`SELECT service, network_mode FROM images WHERE stack = ?`)
-    .all(stack) as { service: string; network_mode: string | null }[]
 }
 
 /**

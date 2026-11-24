@@ -42,7 +42,8 @@ const merge = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 
 
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const { buildableServices, deploy, deployChange, failureState, manualCommand, pullArgs } = await import('../src/deploy/run.ts')
+const { deploy, deployChange, failureState, manualCommand, pullArgs } = await import('../src/deploy/run.ts')
+const { buildableServices } = await import('../src/compose/topology.ts')
 const { performRollback } = await import('../src/deploy/rollback.ts')
 const { PolicySchema } = await import('../src/config.ts')
 const { composeCalls, fakeIo } = await import('./helpers/deploy-io.ts')

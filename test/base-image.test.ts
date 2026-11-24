@@ -27,7 +27,7 @@ const { getDb } = await import('../src/db.ts')
 const { buildBranch, changeTitle } = await import('../src/gitops/ship.ts')
 const { baseImageSection } = await import('../src/gitops/body.ts')
 const { PolicySchema } = await import('../src/config.ts')
-const { buildableServices } = await import('../src/deploy/run.ts')
+const { buildableServices } = await import('../src/compose/topology.ts')
 const { performRollback } = await import('../src/deploy/rollback.ts')
 const { composeCalls, fakeIo } = await import('./helpers/deploy-io.ts')
 

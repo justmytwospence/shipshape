@@ -1,0 +1,14 @@
+# The demo's policy. Every key not written here is at its default.
+paused: false
+scan:
+  cron: "0 0 3 * * *"
+ship:
+  cooldown_days: 7
+  max_per_run: 3
+review:
+  screen: "on"
+  monthly_budget_usd: 15
+security:
+  mode: shadow
+rules:
+  - { id: r1, match: { image: docker.io/louislam/uptime-kuma }, waive: [ask], because: "demo: always ship uptime-kuma" }

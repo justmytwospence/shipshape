@@ -1,0 +1,15 @@
+services:
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:v1.120.2
+    labels:
+      shipshape.watch: "true"
+      shipshape.source: immich-app/immich
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:v1.120.2
+    labels:
+      shipshape.watch: "true"
+      shipshape.source: immich-app/immich
+  redis:
+    image: docker.io/valkey/valkey:8.0.1-alpine
+    labels:
+      shipshape.watch: "true"

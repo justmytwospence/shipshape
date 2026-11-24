@@ -203,7 +203,7 @@ function summarise(counts: Record<string, number>, durationS: number): string {
 // ------------------------------------------------------------------ inventory
 
 /** Mirror the compose files into `images`, and forget services that no longer exist. */
-function syncInventory(services: ScannedService[]): void {
+export function syncInventory(services: ScannedService[]): void {
   const db = getDb()
   const now = new Date().toISOString()
   const upsert = db.prepare(
@@ -728,7 +728,7 @@ function recordComposeFiles(n: number): void {
     .run(n, now)
 }
 
-function recordTelemetry(counts: Record<string, number>, durationS: number): void {
+export function recordTelemetry(counts: Record<string, number>, durationS: number): void {
   const db = getDb()
   const now = new Date().toISOString()
   const put = db.prepare(

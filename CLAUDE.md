@@ -14,6 +14,7 @@ re-deriving the model from `config.ts`.
 
 ```
 npm run dev:ui      # sandbox UI dev server on :8081 (see below) -- use this, not `npm run dev`
+npm run dev:ui -- --demo   # examples/demo and a seeded history: every page has rows; rebuilt each run
 npm test            # node --test via tsx; needs git and the `docker compose` CLI on PATH
 npm run typecheck   # tsc --noEmit over src/ and test/
 npm run shots       # screenshot matrix, see "Look at it"

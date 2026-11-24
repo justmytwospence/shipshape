@@ -1,0 +1,6 @@
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:10.10.3
+    labels:
+      shipshape.watch: "true"
+      shipshape.source: jellyfin/jellyfin

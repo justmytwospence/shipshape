@@ -1,0 +1,7 @@
+services:
+  vaultwarden:
+    image: vaultwarden/server:1.32.4
+    labels:
+      shipshape.watch: "true"
+      shipshape.class: ask
+      shipshape.source: dani-garcia/vaultwarden

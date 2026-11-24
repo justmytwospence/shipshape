@@ -1,0 +1,6 @@
+services:
+  backup-agent:
+    build: ./backup-agent
+    labels:
+      shipshape.watch: "true"
+      shipshape.class: frozen

@@ -38,6 +38,8 @@ npm run dev:ui                          # :8081 behind a proxy that signs you in
 npm run dev:ui -- --repo <compose-repo> # a sandbox copy of a compose repository's HEAD
 npm run dev:ui -- --db <shipshape.db>   # a sandbox copy of a real database
 npm run dev:ui -- --empty               # drop the database: the unconfigured first-run state
+npm run dev:ui -- --demo                # examples/demo and a seeded history: every page has rows
+npm run dev:ui -- --password <pw>       # password sign-in instead of the proxy identity (the login page)
 ```
 
 Give it ~10s and check `curl -s http://127.0.0.1:8081/health`. If `src/styles/app.css`

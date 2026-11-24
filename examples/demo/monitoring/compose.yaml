@@ -1,0 +1,12 @@
+services:
+  uptime-kuma:
+    image: louislam/uptime-kuma:1.23.15
+    labels:
+      shipshape.watch: "true"
+      shipshape.source: louislam/uptime-kuma
+  dozzle:
+    image: amir20/dozzle:latest
+    labels:
+      shipshape.watch: "true"
+  homepage:
+    image: ${HOMEPAGE_IMAGE:-ghcr.io/gethomepage/homepage:v0.9.13}

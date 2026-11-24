@@ -28,12 +28,16 @@
  *   node bin/dev-ui.mjs --db ~/shipshape.db    # a sandbox copy of a real database
  *   node bin/dev-ui.mjs --fresh                # rebuild .dev/ from --repo / --db first
  *   node bin/dev-ui.mjs --empty                # drop the database: the first-run state again
+ *   node bin/dev-ui.mjs --demo                 # examples/demo and a seeded history: every page
+ *                                              # has rows; rebuilt on every run
+ *   node bin/dev-ui.mjs --password <pw>        # sign in with a password instead of the proxy
+ *                                              # identity (12+ characters): the login page
  *   node bin/dev-ui.mjs --port 8082            # where you browse (default 8081)
  *   node bin/dev-ui.mjs --origin http://localhost:8081
  *       the browser origin the app accepts on POST. Default http://127.0.0.1:<port>; pass
  *       this when you browse by another name, such as localhost through an SSH tunnel.
  */
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn, execFileSync } from 'node:child_process'
@@ -41,11 +45,12 @@ import { createServer, request } from 'node:http'
 
 const ROOT = resolve(join(dirname(fileURLToPath(import.meta.url)), '..'))
 const DEV = join(ROOT, '.dev')
-const DATA = join(DEV, 'data')
-const CHECKOUT = join(DEV, 'checkout')
 
 const args = process.argv.slice(2)
 const has = (f) => args.includes(f)
+const demo = has('--demo')
+const DATA = demo ? join(DEV, 'demo', 'data') : join(DEV, 'data')
+const CHECKOUT = demo ? join(DEV, 'demo', 'checkout') : join(DEV, 'checkout')
 const opt = (f, d) => {
   const i = args.indexOf(f)
   return i === -1 ? d : args[i + 1]
@@ -65,6 +70,11 @@ const repoArg = opt('--repo', null)
 const dbArg = opt('--db', null)
 if (repoArg !== null && !existsSync(repoArg)) fail(`--repo ${repoArg} does not exist`)
 if (dbArg !== null && !existsSync(dbArg)) fail(`--db ${dbArg} does not exist`)
+if (demo && (repoArg !== null || dbArg !== null || empty || fresh)) {
+  fail('--demo cannot be combined with --repo, --db, --empty or --fresh')
+}
+const password = opt('--password', null)
+if (password !== null && password.length < 12) fail('--password must be at least 12 characters')
 
 const run = (cmd, argv, opts = {}) =>
   execFileSync(cmd, argv, {
@@ -138,10 +148,25 @@ function snapshotCheckout() {
   console.log(`· checkout: git archive of ${repoArg} (throwaway repo, no remote)`)
 }
 
+/** examples/demo as a throwaway repository, rebuilt every run so its dates stay relative to now. */
+function demoCheckout() {
+  rmSync(join(DEV, 'demo'), { recursive: true, force: true })
+  cpSync(join(ROOT, 'examples', 'demo'), CHECKOUT, { recursive: true })
+  mkdirSync(DATA, { recursive: true })
+  const identity = ['-c', 'user.email=dev@localhost', '-c', 'user.name=dev']
+  run('git', ['-C', CHECKOUT, 'init', '-q', '-b', 'main'])
+  run('git', ['-C', CHECKOUT, 'add', '-A'])
+  run('git', ['-C', CHECKOUT, ...identity, 'commit', '-qm', 'chore: demo repository'])
+}
+
 mkdirSync(DEV, { recursive: true })
 writeFileSync(join(DEV, '.gitignore'), '*\n')
-snapshotDb()
-snapshotCheckout()
+if (demo) {
+  demoCheckout()
+} else {
+  snapshotDb()
+  snapshotCheckout()
+}
 
 // Everything that could reach the outside world is removed rather than left to chance.
 const env = { ...process.env }
@@ -167,6 +192,9 @@ for (const k of [
   'SHIPSHAPE_PASSWORD',
   'SHIPSHAPE_PASSWORD_FILE',
   'SHIPSHAPE_USER_HEADER',
+  'SHIPSHAPE_TRUSTED_PROXY',
+  'SHIPSHAPE_ALLOWED_USER',
+  'SHIPSHAPE_ALLOWED_ORIGIN',
   'MCP_PORT',
   'MCP_TOKEN',
   'MCP_HOST',
@@ -192,11 +220,21 @@ Object.assign(env, {
   GITHUB_REPO: 'you/compose-repo',
   // The app answers only the proxy below, as the user below, on the origin below.
   PORT: String(APP_PORT),
-  SHIPSHAPE_TRUSTED_PROXY: '127.0.0.1',
-  SHIPSHAPE_ALLOWED_USER: 'dev',
   SHIPSHAPE_ALLOWED_ORIGIN: ORIGIN,
   TZ: env.TZ ?? 'UTC',
 })
+if (password !== null) {
+  // Password sign-in: the proxy below still forwards, but asserts no identity.
+  env.SHIPSHAPE_PASSWORD = password
+} else {
+  env.SHIPSHAPE_TRUSTED_PROXY = '127.0.0.1'
+  env.SHIPSHAPE_ALLOWED_USER = 'dev'
+}
+
+if (demo) {
+  run(process.execPath, ['--import', 'tsx', 'src/bin/seed-demo.ts'], { cwd: ROOT, env })
+  console.log('· demo: examples/demo seeded (15 updates), rebuilt on every --demo run')
+}
 
 // The stand-in for the authenticating reverse proxy: forward everything to the app and
 // assert the identity it was configured to trust. Bound to loopback, so it is only as
@@ -208,7 +246,7 @@ const proxy = createServer((req, res) => {
       port: APP_PORT,
       path: req.url,
       method: req.method,
-      headers: { ...req.headers, 'remote-user': 'dev' },
+      headers: password === null ? { ...req.headers, 'remote-user': 'dev' } : req.headers,
     },
     (r) => {
       res.writeHead(r.statusCode ?? 502, r.headers)
@@ -253,6 +291,8 @@ if (existsSync(join(ROOT, 'src', 'styles', 'app.css'))) {
 }
 children.push(spawn('npx', ['tsx', 'watch', 'src/index.ts'], { cwd: ROOT, env, stdio: 'inherit', detached: true }))
 
-console.log(`\n  ${ORIGIN.replace('localhost', '127.0.0.1')}   (scheduler disabled, sandbox data, signed in as "dev")`)
+console.log(
+  `\n  ${ORIGIN.replace('localhost', '127.0.0.1')}   (scheduler disabled, sandbox data, ${password === null ? 'signed in as "dev"' : `signed out; the password is ${password}`})`,
+)
 console.log(`  another machine: ssh -L ${PORT}:127.0.0.1:${PORT} <this-host>, browse http://localhost:${PORT},`)
 console.log(`  and start this script with --origin http://localhost:${PORT}\n`)

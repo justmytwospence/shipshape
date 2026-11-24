@@ -1,0 +1,12 @@
+services:
+  app:
+    image: nextcloud:30.0.4-apache
+    labels:
+      shipshape.watch: "true"
+      shipshape.source: nextcloud/server
+  db:
+    image: postgres:16.4-alpine
+    labels:
+      shipshape.watch: "true"
+      shipshape.class: stateful
+      shipshape.snapshot: pg_dump -U nextcloud nextcloud

@@ -1,0 +1,10 @@
+services:
+  webserver:
+    image: ghcr.io/paperless-ngx/paperless-ngx:2.13.5
+    labels:
+      shipshape.watch: "true"
+      shipshape.source: paperless-ngx/paperless-ngx
+  broker:
+    image: redis:7.4.2-alpine
+    labels:
+      shipshape.watch: "true"

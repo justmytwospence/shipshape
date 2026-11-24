@@ -65,8 +65,28 @@ export async function setLabelsForServices(o: {
   stack: string
   services: string[]
   changes: LabelChange[]
+  /** False when the caller makes several commits and publishes once after the last. */
+  publish?: boolean
 }): Promise<SetServiceLabelResult> {
   return withGitLock('label-edit', () => run(o))
+}
+
+/** Publish what label edits committed, once: Watch all's commits go out together. */
+export async function publishLabelEdits(): Promise<string> {
+  return withGitLock('label-edit', publishNow)
+}
+
+async function publishNow(): Promise<string> {
+  // Best-effort: the commit exists either way, and the regular sync cycle retries.
+  // Unconfigured (tests, first run) means there is no origin to publish to.
+  if (!canPublish()) return ''
+  try {
+    const sync = await syncMain()
+    if (sync.status === 'paused' || sync.status === 'refused') return ` Publishing is deferred: ${sync.reason}.`
+  } catch (err) {
+    return ` Publishing is deferred: ${(err as Error).message.slice(0, 120)}.`
+  }
+  return ''
 }
 
 /**
@@ -102,7 +122,7 @@ function prepare(c: LabelChange): { ok: true; change: LabelChange } | { ok: fals
   }
 }
 
-async function run(o: { stack: string; services: string[]; changes: LabelChange[] }): Promise<SetServiceLabelResult> {
+async function run(o: { stack: string; services: string[]; changes: LabelChange[]; publish?: boolean }): Promise<SetServiceLabelResult> {
   const { stack, services } = o
   if (services.length === 0) return { ok: false, message: 'Nothing was asked to change.' }
 
@@ -187,19 +207,7 @@ async function run(o: { stack: string; services: string[]; changes: LabelChange[
   if (!result.changed) return { ok: true, message: `${rel} already says ${verb}; nothing to commit.` }
   const sha = result.sha ?? ''
 
-  // Publish, best-effort: the commit exists either way, and the regular sync cycle
-  // retries. Unconfigured (tests, first run) means there is no origin to publish to.
-  let publishNote = ''
-  if (canPublish()) {
-    try {
-      const sync = await syncMain()
-      if (sync.status === 'paused' || sync.status === 'refused') {
-        publishNote = ` Publishing is deferred: ${sync.reason}.`
-      }
-    } catch (err) {
-      publishNote = ` Publishing is deferred: ${(err as Error).message.slice(0, 120)}.`
-    }
-  }
+  const publishNote = o.publish === false ? '' : await publishNow()
 
   const prNote = removedPr
     ? ' Also removed the old v1 labels (shipshape.policy, shipshape.pr, shipshape.claude), which the class replaces.'

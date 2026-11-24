@@ -70,7 +70,7 @@ import {
   serviceDetail,
   serviceRows,
 } from '../updates/services.ts'
-import { setLabelsForServices, setServiceLabels, type LabelChange, type LabelKey } from '../gitops/labels.ts'
+import { publishLabelEdits, setLabelsForServices, setServiceLabels, type LabelChange, type LabelKey } from '../gitops/labels.ts'
 import { llmConfigured, llmEndpointHost, llmProvider } from '../analyze/client.ts'
 import { jevConfigured } from '../analyze/jev.ts'
 import { previewLink } from '../resolver/preview.ts'
@@ -698,7 +698,12 @@ export function createApp(): Hono {
       let okCommits = 0
       const failures: { stack: string; message: string }[] = []
       for (const g of groups.values()) {
-        const r = await setLabelsForServices({ stack: g.stack, services: g.services, changes: [{ key: 'watch', value: 'true' }] })
+        const r = await setLabelsForServices({
+          stack: g.stack,
+          services: g.services,
+          changes: [{ key: 'watch', value: 'true' }],
+          publish: false,
+        })
         if (r.ok) {
           okCount += g.services.length
           okCommits++
@@ -708,12 +713,13 @@ export function createApp(): Hono {
         }
       }
       const n = targets.length
+      const publishNote = okCommits > 0 ? await publishLabelEdits() : ''
       toastHeader(
         c,
         failures.length ? 'warn' : 'info',
         failures.length
           ? `Watching ${okCount} of ${n}. Not written: ${failures.map((f) => `${f.stack} (${f.message})`).join('; ')}`
-          : `Watching ${n} ${n === 1 ? 'service' : 'services'}, in ${okCommits} ${okCommits === 1 ? 'commit' : 'commits'}.`,
+          : `Watching ${n} ${n === 1 ? 'service' : 'services'}, in ${okCommits} ${okCommits === 1 ? 'commit' : 'commits'}.${publishNote}`,
       )
     }
     if (!c.req.header('HX-Request')) return c.redirect('/services?filter=unwatched', 303)

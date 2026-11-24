@@ -68,7 +68,7 @@ import {
   serviceDetail,
   serviceRows,
 } from '../updates/services.ts'
-import { setServiceLabels, type LabelChange, type LabelKey } from '../gitops/labels.ts'
+import { setLabelsForServices, setServiceLabels, type LabelChange, type LabelKey } from '../gitops/labels.ts'
 import { llmConfigured, llmEndpointHost, llmProvider } from '../analyze/client.ts'
 import { jevConfigured } from '../analyze/jev.ts'
 import { previewLink } from '../resolver/preview.ts'
@@ -507,6 +507,8 @@ export function createApp(): Hono {
         (ServicesList({
           services,
           total: all.length,
+          filter: ctx.filter,
+          q: ctx.q,
           grouped: ctx.grouped,
           ctx: ctxString({ ...ctx, list: 'services' }),
         }) as string) + (ListCount({ n: services.length, oob: true }) as string),
@@ -674,6 +676,60 @@ export function createApp(): Hono {
     if (!c.req.header('HX-Request')) return c.redirect(`/services/${stack}/${service}`, 303)
     const found = servicePane(stack, service, ctxOf(c, 'services'))
     return c.html(found ? (found.pane as string) : '')
+  })
+
+  /**
+   * Watch every service the Not watched filter shows (with its search), one commit per
+   * compose file. Answers with the list as the filter now sees it.
+   */
+  app.post('/services/watch', async (c) => {
+    const q = String((await c.req.parseBody()).q ?? '')
+    const targets = filterServiceRows(serviceRows(), { filter: 'unwatched', q })
+    if (targets.length === 0) {
+      toastHeader(c, 'warn', 'Nothing to watch: every service shown is already watched or cannot be.')
+    } else {
+      const groups = new Map<string, { stack: string; services: string[] }>()
+      for (const t of targets) {
+        const key = `${t.stack}\0${t.composeFile ?? ''}`
+        const g = groups.get(key) ?? { stack: t.stack, services: [] }
+        g.services.push(t.service)
+        groups.set(key, g)
+      }
+      let okCount = 0
+      let okCommits = 0
+      const failures: { stack: string; message: string }[] = []
+      for (const g of groups.values()) {
+        const r = await setLabelsForServices({ stack: g.stack, services: g.services, changes: [{ key: 'watch', value: 'true' }] })
+        if (r.ok) {
+          okCount += g.services.length
+          okCommits++
+          for (const s of g.services) refreshServiceLabels(g.stack, s)
+        } else {
+          failures.push({ stack: g.stack, message: r.message.slice(0, 120) })
+        }
+      }
+      const n = targets.length
+      toastHeader(
+        c,
+        failures.length ? 'warn' : 'info',
+        failures.length
+          ? `Watching ${okCount} of ${n}. Not written: ${failures.map((f) => `${f.stack} (${f.message})`).join('; ')}`
+          : `Watching ${n} ${n === 1 ? 'service' : 'services'}, in ${okCommits} ${okCommits === 1 ? 'commit' : 'commits'}.`,
+      )
+    }
+    if (!c.req.header('HX-Request')) return c.redirect('/services?filter=unwatched', 303)
+    const all = serviceRows()
+    const services = filterServiceRows(all, { filter: 'unwatched', q })
+    return c.html(
+      (ServicesList({
+        services,
+        grouped: false,
+        ctx: ctxString({ ...ctxOf(c, 'services'), filter: 'unwatched', q, list: 'services' }),
+        total: all.length,
+        filter: 'unwatched',
+        q,
+      }) as string) + (ListCount({ n: services.length, oob: true }) as string),
+    )
   })
 
   /** The pending region alone, so it can refresh itself while a scan runs. */

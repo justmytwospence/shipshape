@@ -243,7 +243,7 @@ export const ServicesPage: FC<{
     <Split
       list={
         <div id="services-list">
-          <ServicesList services={services} grouped={grouped} ctx={ctx} selected={selected} total={total} />
+          <ServicesList services={services} grouped={grouped} ctx={ctx} selected={selected} total={total} filter={filter} q={q} />
         </div>
       }
       pane={

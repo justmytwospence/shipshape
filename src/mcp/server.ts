@@ -135,9 +135,9 @@ export function createServer(): McpServer {
     {
       title: 'List services',
       description:
-        'Every service in the compose files with its watch state: watched, unlabelled, unwatchable (and why), unlinked (no certain upstream), or attention (errors, tag filters suppressing a release).',
+        'Every service in the compose files with its watch state: watched, unwatched (no shipshape.watch label; "unlabelled" is accepted as the old name), unwatchable (and why), unlinked (no certain upstream), or attention (errors, tag filters suppressing a release).',
       inputSchema: z.object({
-        filter: z.enum(['all', 'watched', 'unlabelled', 'unwatchable', 'unlinked', 'attention']).optional(),
+        filter: z.enum(['all', 'watched', 'unwatched', 'unlabelled', 'unwatchable', 'unlinked', 'attention']).optional(),
         q: z.string().optional().describe('Matches stack, service or image.'),
       }),
       annotations: READ,

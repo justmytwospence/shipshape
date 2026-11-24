@@ -69,3 +69,29 @@ test('only watched services without a certain upstream are unlinked', () => {
     ['likely', 'missing', 'packaged', 'unseen'],
   )
 })
+
+function unwatchable(service: string, reason: string | null, watched = false): void {
+  getDb()
+    .prepare(
+      `INSERT INTO images (stack, service, compose_file, image_ref, registry, repository,
+                           current_tag, watched, unwatchable, last_seen_at)
+       VALUES ('lab', ?, 'lab/docker-compose.yaml', 'x:1', 'docker.io', ?, '1', ?, ?, ?)`,
+    )
+    .run(service, `o/${service}`, watched ? 1 : 0, reason, new Date().toISOString())
+}
+
+test('the Not watched filter keeps builds, which can be watched, and drops what cannot be', () => {
+  unwatchable('on', null, true)
+  unwatchable('plain', null)
+  unwatchable('built', 'build')
+  unwatchable('variable', 'interpolated')
+  const names = (filter: string) => filterServices(serviceRows(), { filter }).map((r) => r.service).sort()
+  assert.deepEqual(names('unwatched'), ['built', 'plain'])
+  assert.deepEqual(names('unlabelled'), ['built', 'plain'])
+  assert.deepEqual(names('unwatchable'), ['variable'])
+})
+
+test('a watched build whose base could not be read is listed as not watchable', () => {
+  unwatchable('built-watched', 'build', true)
+  assert.deepEqual(filterServices(serviceRows(), { filter: 'unwatchable' }).map((r) => r.service), ['built-watched'])
+})

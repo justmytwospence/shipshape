@@ -54,6 +54,15 @@ export async function setServiceLabels(o: {
   service: string
   changes: LabelChange[]
 }): Promise<SetServiceLabelResult> {
+  return setLabelsForServices({ stack: o.stack, services: [o.service], changes: o.changes })
+}
+
+/** Several services of one compose file, one commit: the bulk Watch on the Not watched filter. */
+export async function setLabelsForServices(o: {
+  stack: string
+  services: string[]
+  changes: LabelChange[]
+}): Promise<SetServiceLabelResult> {
   return withGitLock('label-edit', () => run(o))
 }
 
@@ -90,8 +99,9 @@ function prepare(c: LabelChange): { ok: true; change: LabelChange } | { ok: fals
   }
 }
 
-async function run(o: { stack: string; service: string; changes: LabelChange[] }): Promise<SetServiceLabelResult> {
-  const { stack, service } = o
+async function run(o: { stack: string; services: string[]; changes: LabelChange[] }): Promise<SetServiceLabelResult> {
+  const { stack, services } = o
+  if (services.length === 0) return { ok: false, message: 'Nothing was asked to change.' }
 
   // The last word on each key, in the order given.
   const byKey = new Map<LabelKey, LabelChange>()
@@ -104,14 +114,20 @@ async function run(o: { stack: string; service: string; changes: LabelChange[] }
     changes.push(p.change)
   }
 
-  const row = getDb()
-    .prepare(`SELECT compose_file FROM images WHERE stack = ? AND service = ?`)
-    .get(stack, service) as { compose_file: string } | undefined
-  if (!row) {
-    return { ok: false, message: `No compose file is known for ${stack}/${service}.` }
+  const lookup = getDb().prepare(`SELECT compose_file FROM images WHERE stack = ? AND service = ?`)
+  const files = new Set<string>()
+  for (const service of services) {
+    const row = lookup.get(stack, service) as { compose_file: string } | undefined
+    if (!row) return { ok: false, message: `No compose file is known for ${stack}/${service}.` }
+    files.add(row.compose_file)
   }
-  const rel = row.compose_file
+  if (files.size > 1) {
+    return { ok: false, message: `${stack}: ${services.join(', ')} are not in one compose file. Nothing was changed.` }
+  }
+  const rel = [...files][0]!
   const abs = join(env.repoDir, rel)
+  const many = services.length > 1
+  const service = services[0]!
 
   const verb = changes
     .map((c) => (c.value === null ? `shipshape.${c.key} removed` : `shipshape.${c.key}=${c.value}`))
@@ -120,23 +136,27 @@ async function run(o: { stack: string; service: string; changes: LabelChange[] }
 
   const result = await commitCheckoutFile({
     rel,
-    message: `chore(shipshape): ${stack}/${service}: ${verb}`,
+    message: many
+      ? `chore(shipshape): ${stack}: ${verb} for ${services.join(', ')}`
+      : `chore(shipshape): ${stack}/${service}: ${verb}`,
     mutate: (original) => {
       if (original === null) return { error: `Cannot read ${rel}: no such file` }
       let next = original
-      for (const c of changes) {
-        const edited = setLabel(next, service, `shipshape.${c.key}`, c.value)
-        if (!edited.ok) return { error: `${rel}: ${edited.reason}` }
-        next = edited.text
+      for (const svc of services) {
+        for (const c of changes) {
+          const edited = setLabel(next, svc, `shipshape.${c.key}`, c.value)
+          if (!edited.ok) return { error: `${rel}: ${edited.reason}` }
+          next = edited.text
 
-        // A leftover v1 label holds the service to ask whatever the class says, so writing a
-        // class is the way out of that: remove them in the same commit.
-        if (c.key === 'class' && c.value !== null) {
-          for (const old of ['shipshape.policy', 'shipshape.pr']) {
-            const second = setLabel(next, service, old, null)
-            if (!second.ok) return { error: `${rel}: ${second.reason}` }
-            removedPr ||= second.text !== next
-            next = second.text
+          // A leftover v1 label holds the service to ask whatever the class says, so writing a
+          // class is the way out of that: remove them in the same commit.
+          if (c.key === 'class' && c.value !== null) {
+            for (const old of ['shipshape.policy', 'shipshape.pr']) {
+              const second = setLabel(next, svc, old, null)
+              if (!second.ok) return { error: `${rel}: ${second.reason}` }
+              removedPr ||= second.text !== next
+              next = second.text
+            }
           }
         }
       }
@@ -185,14 +205,16 @@ async function run(o: { stack: string; service: string; changes: LabelChange[] }
     level: 'info',
     kind: 'policy',
     stack,
-    service,
-    message: `${stack}/${service}: ${verb}`,
+    service: many ? undefined : service,
+    message: many ? `${stack}: ${verb} for ${services.length} services` : `${stack}/${service}: ${verb}`,
     detail: `committed ${sha}${removedPr ? ', removed shipshape.policy and shipshape.pr' : ''}`,
   })
   return {
     ok: true,
     sha,
-    message: `${rel}: ${verb}, committed as ${sha}.${prNote}${publishNote}`,
+    message: many
+      ? `${rel}: ${verb} for ${services.length} services, committed as ${sha}.${prNote}${publishNote}`
+      : `${rel}: ${verb}, committed as ${sha}.${prNote}${publishNote}`,
   }
 }
 

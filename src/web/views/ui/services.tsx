@@ -4,6 +4,7 @@ import { ExtLink, EmptyState, Mono, Relative, Search, ServiceName, Tabs } from '
 import { GroupHeader, UpdateRow } from './update.tsx'
 import type { UpdateView } from '../../../updates/queries.ts'
 import type { LinkPreview } from '../../../resolver/preview.ts'
+import type { UnwatchableReason } from '../../../compose/scan.ts'
 
 /**
  * Every service shipshape can see, and what it has been told about each one.
@@ -25,6 +26,10 @@ export interface ServiceRowData {
   lastDetail: string | null
   constrainedFrom: string | null
   lastSeenAt?: string | null
+  /** The compose file it was read from. */
+  composeFile?: string | null
+  /** v1 labels the compose file still carries, as the scan read them. */
+  legacyLabels?: string | null
   /** The service's class, when it is not the default `normal`. */
   policy?: string | null
   /** Whether the repository its release notes come from is certain, only likely, or unknown. */
@@ -36,7 +41,7 @@ export interface ServiceRowData {
 export const FILTERS = [
   { key: 'all', label: 'All' },
   { key: 'watched', label: 'Watched' },
-  { key: 'unlabelled', label: 'Unlabelled' },
+  { key: 'unwatched', label: 'Not watched' },
   { key: 'unlinked', label: 'Unlinked' },
   { key: 'unwatchable', label: 'Not watchable' },
   { key: 'attention', label: 'Needs attention' },
@@ -72,15 +77,24 @@ export const ServicesToolbar: FC<{ filter: string; q: string; grouped: boolean }
   </form>
 )
 
+const UNWATCHABLE: Record<UnwatchableReason, string> = {
+  excluded: 'excluded',
+  'no-image': 'no image',
+  build: 'built here',
+  interpolated: 'variable image',
+}
+
 function statusOf(s: ServiceRowData): { label: string; cls: string; detail?: string | null } {
   if (s.lastStatus) return { label: s.lastStatus, cls: 'badge-error', detail: s.lastDetail }
-  if (s.unwatchable) return { label: s.unwatchable, cls: 'badge-ghost' }
+  if (s.unwatchable) {
+    return { label: UNWATCHABLE[s.unwatchable as UnwatchableReason] ?? s.unwatchable, cls: 'badge-ghost' }
+  }
   if (s.watched) {
     return s.constrainedFrom
       ? { label: 'pinned', cls: 'badge-warning', detail: `${s.constrainedFrom} available` }
       : { label: 'watched', cls: 'badge-success' }
   }
-  return { label: 'unlabelled', cls: 'badge-warning' }
+  return { label: 'not watched', cls: 'badge-ghost' }
 }
 
 /** Where a row's own URL and pane request point. `ctx` names the list for the URL. */
@@ -189,7 +203,28 @@ export const ServicesList: FC<{
   selected?: { stack: string; service: string } | null
   /** Services before filtering, so an empty list can say why it is empty. */
   total: number
-}> = ({ services, grouped, ctx, selected, total }) => {
+  filter?: string
+  q?: string
+}> = ({ services, grouped, ctx, selected, total, filter, q }) => {
+  // The Not watched filter offers to watch everything it shows, in one commit per file.
+  const watchAll =
+    filter === 'unwatched' && services.length > 0 ? (
+      <>
+        <div class="border-base-300 flex min-h-11 items-center gap-2 border-b px-3 text-xs">
+          <span class="opacity-70">
+            {services.length} {services.length === 1 ? 'service is' : 'services are'} not watched.
+          </span>
+          <button type="button" class="btn btn-primary btn-xs tap ml-auto" data-open="#watch-all">
+            Watch all {services.length}
+          </button>
+        </div>
+        <WatchAllDialog
+          n={services.length}
+          files={new Set(services.map((s) => `${s.stack}\0${s.composeFile ?? ''}`)).size}
+          q={q ?? ''}
+        />
+      </>
+    ) : null
   if (services.length === 0) {
     return total === 0 ? (
       <EmptyState
@@ -205,11 +240,14 @@ export const ServicesList: FC<{
     !!selected && s.stack === selected.stack && s.service === selected.service
   if (!grouped) {
     return (
-      <div class="divide-base-300 divide-y">
-        {services.map((s) => (
-          <ServiceRow svc={s} ctx={ctx} selected={isSel(s)} />
-        ))}
-      </div>
+      <>
+        {watchAll}
+        <div class="divide-base-300 divide-y">
+          {services.map((s) => (
+            <ServiceRow svc={s} ctx={ctx} selected={isSel(s)} />
+          ))}
+        </div>
+      </>
     )
   }
   const stacks = new Map<string, ServiceRowData[]>()
@@ -220,6 +258,7 @@ export const ServicesList: FC<{
   }
   return (
     <div>
+      {watchAll}
       {[...stacks].map(([stack, rows]) => (
         <section>
           <GroupHeader
@@ -270,6 +309,10 @@ export interface ServiceDetailData {
   config: ConfigLine[]
   history: UpdateView[]
   canEdit: boolean
+  /** Whether Watch is offered: a compose file to write, and a service that is not watched but could be. */
+  canWatch?: boolean
+  /** How its tags would be compared once watched, read from the running tag; null when shipshape cannot tell. */
+  watchPattern?: string | null
   /** What the link dialog starts from: the labels as the compose file has them. */
   link?: { source: string | null; changelog: string | null; inferred: string | null }
 }
@@ -368,8 +411,17 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
             <Icon name="refresh" class="size-3.5" />
             Check now
           </button>
+        ) : data.canWatch ? (
+          <button
+            type="button"
+            class="btn btn-sm btn-primary tap gap-1"
+            data-open={`#watch-${svc.stack}-${svc.service}`}
+          >
+            <Icon name="eye" class="size-3.5" />
+            Watch this service
+          </button>
         ) : (
-          <span class="text-xs opacity-60">Not watched, so there is nothing to check.</span>
+          <span class="text-xs opacity-70">{NOT_WATCHABLE[svc.unwatchable ?? ''] ?? 'Not watched.'}</span>
         )}
         {data.canEdit ? (
           <button
@@ -396,6 +448,16 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
                   data-open={`#rung-${svc.stack}-${svc.service}`}
                 >
                   Change
+                </button>
+              ) : null,
+              line.key === 'watch' && data.canEdit && line.value === 'off' && data.canWatch ? (
+                <button type="button" class="btn btn-ghost btn-xs tap" data-open={`#watch-${svc.stack}-${svc.service}`}>
+                  Watch
+                </button>
+              ) : null,
+              line.key === 'watch' && data.canEdit && line.value === 'on' ? (
+                <button type="button" class="btn btn-ghost btn-xs tap" data-open={`#unwatch-${svc.stack}-${svc.service}`}>
+                  Stop
                 </button>
               ) : null,
               (line.key === 'upstream' || line.key === 'notes') && data.canEdit ? (
@@ -458,6 +520,10 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
       {data.fork ? <ForkSection fork={data.fork} /> : null}
 
       {data.canEdit ? <RungDialog svc={svc} ctx={ctx} /> : null}
+      {data.canEdit && data.canWatch ? (
+        <WatchDialog svc={svc} ctx={ctx} composeFile={data.composeFile ?? ''} pattern={data.watchPattern ?? null} />
+      ) : null}
+      {data.canEdit && svc.watched ? <UnwatchDialog svc={svc} ctx={ctx} composeFile={data.composeFile ?? ''} /> : null}
       {data.canEdit ? <LinkDialog svc={svc} link={data.link} ctx={ctx} /> : null}
 
       <section class="border-base-300 border-t">
@@ -540,6 +606,125 @@ const ForkSection: FC<{ fork: NonNullable<ServiceDetailData['fork']> }> = ({ for
  * folding a hand-edit into shipshape's commit, and the file in git stays the source of
  * truth -- which is the whole reason this can be edited from a browser at all.
  */
+/** Why a service that is not watched cannot be, in words. */
+const NOT_WATCHABLE: Record<string, string> = {
+  excluded: 'Its stack is excluded in the policy file (exclude_stacks), so shipshape never touches it.',
+  'no-image': 'It has no image: line, so there is nothing to compare with a registry.',
+  interpolated: 'Its image is set by a variable (${…}), which shipshape cannot compare with a registry.',
+}
+
+/** The form both watch dialogs share: one label, written into the compose file and committed. */
+const WatchForm: FC<{ svc: ServiceRowData; ctx?: string; value: 'true' | 'false'; submit: string; primary: boolean }> = ({
+  svc,
+  ctx,
+  value,
+  submit,
+  primary,
+}) => (
+  <form
+    hx-post={`/services/${svc.stack}/${svc.service}/labels${ctx ? `?${ctx}` : ''}`}
+    hx-target={`#svc-card-${svc.stack}-${svc.service}`}
+    hx-swap="outerHTML"
+    hx-disabled-elt="find button[type=submit]"
+    hx-indicator="#busy"
+    data-close-dialog
+  >
+    <input type="hidden" name="key" value="watch" />
+    <input type="hidden" name="value" value={value} />
+    <div class="modal-action">
+      <button type="button" class="btn btn-ghost btn-sm tap" data-close-dialog>
+        Cancel
+      </button>
+      <button type="submit" class={primary ? 'btn btn-primary btn-sm tap' : 'btn btn-sm tap'}>
+        {submit}
+      </button>
+    </div>
+  </form>
+)
+
+const WatchDialog: FC<{ svc: ServiceRowData; ctx?: string; composeFile: string; pattern: string | null }> = ({
+  svc,
+  ctx,
+  composeFile,
+  pattern,
+}) => {
+  const build = svc.unwatchable === 'build'
+  return (
+    <dialog id={`watch-${svc.stack}-${svc.service}`} class="modal modal-bottom sm:modal-middle">
+      <div class="modal-box pb-safe">
+        <h3 class="text-base font-semibold">Watch {svc.service}</h3>
+        <p class="mt-1 text-xs opacity-70">
+          {build
+            ? `Writes shipshape.watch: "true" into ${composeFile} and commits it. A service built here is watched through the base image its Dockerfile is built FROM.`
+            : `Writes shipshape.watch: "true" into ${composeFile} and commits it. From the next scan, shipshape compares ${svc.image ?? ''}:${svc.tag ?? ''} with the newer tags its registry has.`}
+        </p>
+        {build ? null : (
+          <p class="mt-1 text-xs opacity-70">
+            {pattern === null
+              ? `shipshape cannot tell how "${svc.tag ?? ''}" is numbered, so the service will show under Needs attention until a shipshape.pattern label says how.`
+              : `Its tags are compared as ${pattern}, read from the running tag.`}
+          </p>
+        )}
+        <WatchForm svc={svc} ctx={ctx} value="true" submit="Watch it" primary />
+      </div>
+      <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+      </form>
+    </dialog>
+  )
+}
+
+const UnwatchDialog: FC<{ svc: ServiceRowData; ctx?: string; composeFile: string }> = ({ svc, ctx, composeFile }) => (
+  <dialog id={`unwatch-${svc.stack}-${svc.service}`} class="modal modal-bottom sm:modal-middle">
+    <div class="modal-box pb-safe">
+      <h3 class="text-base font-semibold">Stop watching {svc.service}</h3>
+      <p class="mt-1 text-xs opacity-70">
+        Writes shipshape.watch: "false" into {composeFile} and commits it. shipshape stops looking for newer tags for
+        it; nothing running changes.
+      </p>
+      <WatchForm svc={svc} ctx={ctx} value="false" submit="Stop watching" primary={false} />
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button>close</button>
+    </form>
+  </dialog>
+)
+
+/** Every service the Not watched filter shows, in one commit per compose file. */
+const WatchAllDialog: FC<{ n: number; files: number; q: string }> = ({ n, files, q }) => (
+  <dialog id="watch-all" class="modal modal-bottom sm:modal-middle">
+    <div class="modal-box pb-safe">
+      <h3 class="text-base font-semibold">Watch all {n} services shown</h3>
+      <p class="mt-1 text-xs opacity-70">
+        Writes shipshape.watch: "true" for each of them, one commit per compose file ({files}{' '}
+        {files === 1 ? 'file' : 'files'}). A service whose tags shipshape cannot read shows under Needs attention
+        afterwards.
+      </p>
+      <form
+        hx-post="/services/watch"
+        hx-target="#services-list"
+        hx-swap="innerHTML"
+        hx-disabled-elt="find button[type=submit]"
+        hx-indicator="#busy"
+        data-close-dialog
+      >
+        <input type="hidden" name="q" value={q} />
+        <div class="modal-action">
+          <button type="button" class="btn btn-ghost btn-sm tap" data-close-dialog>
+            Cancel
+          </button>
+          <button type="submit" class="btn btn-primary btn-sm tap">
+            Watch {n}
+          </button>
+        </div>
+      </form>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button>close</button>
+    </form>
+  </dialog>
+)
+
 const RungDialog: FC<{ svc: ServiceRowData; ctx?: string }> = ({ svc, ctx }) => (
   <dialog id={`rung-${svc.stack}-${svc.service}`} class="modal modal-bottom sm:modal-middle">
     <div class="modal-box pb-safe">

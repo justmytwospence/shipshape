@@ -25,7 +25,7 @@ export function serviceRows(): ServiceRowData[] {
       .prepare(
         `SELECT stack, service, registry, repository, current_tag, watched, unwatchable,
                 last_status, last_detail, constrained_from, last_seen_at, legacy_labels, class_label,
-                fork_upstream
+                fork_upstream, compose_file
            FROM images ORDER BY stack, service`,
       )
       .all() as {
@@ -43,6 +43,7 @@ export function serviceRows(): ServiceRowData[] {
       legacy_labels: string | null
       class_label: string | null
       fork_upstream: string | null
+      compose_file: string | null
     }[]
   ).map((r) => ({
     stack: r.stack,
@@ -55,6 +56,8 @@ export function serviceRows(): ServiceRowData[] {
     lastDetail: r.last_detail,
     constrainedFrom: r.constrained_from,
     lastSeenAt: r.last_seen_at,
+    legacyLabels: r.legacy_labels,
+    composeFile: r.compose_file,
     policy: ((c) => (c === 'normal' ? null : c))(classFor({ classLabel: r.class_label, legacy: !!r.legacy_labels })),
     upstream: upstreamState(r),
     fork: !!r.fork_upstream,
@@ -77,11 +80,14 @@ export function filterServices(
       case 'watched':
         if (!r.watched) return false
         break
+      case 'unwatched':
       case 'unlabelled':
-        if (r.watched || r.unwatchable) return false
+        // A service built here can be watched through its base image, so it is "not
+        // watched", not "not watchable".
+        if (r.watched || (r.unwatchable !== null && r.unwatchable !== 'build')) return false
         break
       case 'unwatchable':
-        if (!r.unwatchable) return false
+        if (!r.unwatchable || (r.unwatchable === 'build' && !r.watched)) return false
         break
       case 'unlinked':
         // Watched services whose release notes have no certain source: nothing found, or
@@ -238,6 +244,8 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
     history: updatesForService(stack, service),
     // Editing writes into the compose file, which only exists where one was found.
     canEdit: !!image?.compose_file,
+    canWatch: !!image?.compose_file && !svc.watched && (svc.unwatchable === null || svc.unwatchable === 'build'),
+    watchPattern: live ? patternFor(live) : null,
     link: {
       source: live ? live.sourceLabel : null,
       changelog: live ? live.changelogLabel : null,

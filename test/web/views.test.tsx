@@ -2,7 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { renderAll, classesOf, builtCss, STATUS } from './fixtures.tsx'
+import { renderAll, classesOf, builtCss, STATUS, SERVICE } from './fixtures.tsx'
+import { ServiceDetail, ServicesList } from '../../src/web/views/ui/services.tsx'
 import { StatusBody } from '../../src/web/views/ui/status.tsx'
 import { UpdatesList } from '../../src/web/views/pages.tsx'
 
@@ -551,4 +552,43 @@ test('updates held only by pause are listed under their own heading', () => {
 test('an empty list says why it is empty', () => {
   assert.match(String(UpdatesList({ updates: [], ctx: 'list=updates', total: 0 })), /No updates yet/)
   assert.match(String(UpdatesList({ updates: [], ctx: 'list=updates', total: 3 })), /Nothing matches/)
+})
+
+const watchData = (over: Record<string, unknown>) => ({
+  svc: { ...SERVICE, watched: false },
+  composeFile: 'media/docker-compose.yaml',
+  config: [{ key: 'watch', value: 'off', source: 'label' as const }],
+  history: [],
+  canEdit: true,
+  canWatch: true,
+  watchPattern: 'semver',
+  ...over,
+})
+
+test('a service that is not watched offers to watch it, and says what that writes', () => {
+  const html = String(ServiceDetail({ data: watchData({}) as never, ctx: 'list=services' }))
+  assert.match(html, /Watch this service/)
+  assert.match(html, /name="key" value="watch"/)
+  assert.match(html, /shipshape\.watch: &quot;true&quot;/)
+  assert.match(html, /compared as semver/)
+})
+
+test('a tag shipshape cannot read says so before it is watched', () => {
+  const html = String(ServiceDetail({ data: watchData({ watchPattern: null }) as never, ctx: 'list=services' }))
+  assert.match(html, /cannot tell how/)
+})
+
+test('the Not watched filter offers to watch them all', () => {
+  const html = String(
+    ServicesList({
+      services: [{ ...SERVICE, watched: false }],
+      grouped: false,
+      ctx: 'list=services&filter=unwatched',
+      filter: 'unwatched',
+      q: '',
+      total: 1,
+    }),
+  )
+  assert.match(html, /Watch all 1/)
+  assert.match(html, /hx-post="\/services\/watch"/)
 })

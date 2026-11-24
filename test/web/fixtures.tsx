@@ -278,6 +278,8 @@ const SERVICE = {
   lastDetail: null,
   constrainedFrom: null,
   lastSeenAt: ago(6),
+  legacyLabels: null,
+  composeFile: 'media/docker-compose.yaml',
   policy: 'manual',
 }
 
@@ -526,6 +528,8 @@ const INBOX = {
 }
 
 /** Every view, keyed, for the tests that sweep across all of them. */
+export { SERVICE }
+
 export function renderAll(opts: { running?: boolean } = {}): Record<string, string> {
   const scan = { ...INBOX.scan, running: !!opts.running }
   const inbox = { ...INBOX, scan }
@@ -551,6 +555,8 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
     ],
     history: [UPDATES.waiting!],
     canEdit: true,
+    canWatch: false,
+    watchPattern: 'semver',
     link: { source: 'jellyfin/jellyfin', changelog: 'https://jellyfin.org/posts/', inferred: 'jellyfin/jellyfin' },
   }
   return {

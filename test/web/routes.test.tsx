@@ -55,6 +55,8 @@ const PAGES = [
   '/services?group=stack',
   '/services?filter=watched&q=x',
   '/services?filter=unlinked',
+  '/services?filter=unwatched',
+  '/services?filter=unlabelled',
   '/activity',
   '/activity?kind=deploy&level=problems&q=x',
   '/settings',
@@ -184,6 +186,18 @@ test('checking one service answers even when it has been removed', async () => {
   const res = await app.request('/services/nope/nope/check', { method: 'POST' })
   assert.equal(res.status, 200)
   assert.match(res.headers.get('HX-Trigger') ?? '', /no longer here/)
+})
+
+test('watching everything shown answers with the list and a sentence', async () => {
+  const res = await app.request('/services/watch', {
+    method: 'POST',
+    headers: { 'HX-Request': 'true', 'content-type': 'application/x-www-form-urlencoded' },
+    body: '',
+  })
+  assert.equal(res.status, 200)
+  const trigger = JSON.parse(res.headers.get('HX-Trigger') ?? '{}')
+  assert.match(trigger.toast?.text ?? '', /Nothing to watch/)
+  assert.doesNotMatch(await res.text(), /<html/)
 })
 
 test('"Look again" always answers, and says why when there is nothing to look up', async () => {

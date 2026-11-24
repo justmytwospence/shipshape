@@ -36,7 +36,8 @@ export function readCtx(get: (k: string) => string | undefined, fallback: ListKi
     list: list && LISTS.has(list) ? (list as ListKind) : fallback,
     stage: stage && STAGES.has(stage) ? (stage as StageFilter) : 'open',
     magnitude: get('magnitude') ?? 'all',
-    filter: get('filter') ?? 'all',
+    // `unlabelled` was the filter's name until it said what it means; old bookmarks still land.
+    filter: get('filter') === 'unlabelled' ? 'unwatched' : (get('filter') ?? 'all'),
     grouped: get('group') === 'stack',
     q: get('q') ?? '',
     stack: get('stack') || undefined,

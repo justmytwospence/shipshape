@@ -22,7 +22,7 @@ delete process.env.GITHUB_REPO
 delete process.env.GITHUB_TOKEN
 
 const { getDb } = await import('../src/db.ts')
-const { setServiceLabel, setServiceLabels } = await import('../src/gitops/labels.ts')
+const { setServiceLabel, setServiceLabels, setLabelsForServices } = await import('../src/gitops/labels.ts')
 
 after(() => {
   rmSync(data, { recursive: true, force: true })
@@ -264,4 +264,54 @@ test('removing a notes link removes its line and nothing else', async () => {
   assert.equal(r.ok, true, r.message)
   assert.equal(readFileSync(FILE, 'utf8'), COMPOSE)
   assert.equal(g(['log', '-1', '--pretty=%s']), 'chore(shipshape): media/jellyfin: shipshape.changelog removed')
+})
+
+const MEDIA = `services:
+  jellyfin:
+    image: jellyfin/jellyfin:10.9.11
+    labels:
+      shipshape.class: ask
+  jellyseerr:
+    image: fallenbagel/jellyseerr:2.1.0
+`
+
+function seedService(service: string, composeFile: string): void {
+  getDb()
+    .prepare(
+      `INSERT OR REPLACE INTO images (stack, service, compose_file, image_ref, registry,
+             repository, current_tag, watched, last_seen_at)
+       VALUES ('media', ?, ?, 'x:1', 'docker.io', 'x', '1', 0, ?)`,
+    )
+    .run(service, composeFile, new Date().toISOString())
+}
+
+test('several services in one compose file are watched in one commit', async () => {
+  resetRepo({ 'media/docker-compose.yaml': MEDIA })
+  seedService('jellyfin', 'media/docker-compose.yaml')
+  seedService('jellyseerr', 'media/docker-compose.yaml')
+  const r = await setLabelsForServices({
+    stack: 'media',
+    services: ['jellyfin', 'jellyseerr'],
+    changes: [{ key: 'watch', value: 'true' }],
+  })
+  assert.equal(r.ok, true, r.message)
+  assert.equal(g(['log', '-1', '--pretty=%s']), 'chore(shipshape): media: shipshape.watch=true for jellyfin, jellyseerr')
+  const text = readFileSync(FILE, 'utf8')
+  assert.equal(text.match(/shipshape\.watch: "true"/g)?.length, 2)
+  assert.match(text, /jellyseerr:\n    image: fallenbagel\/jellyseerr:2\.1\.0\n    labels:\n      shipshape\.watch: "true"/)
+})
+
+test('services in different files are refused', async () => {
+  resetRepo({ 'media/docker-compose.yaml': MEDIA })
+  seedService('jellyfin', 'media/docker-compose.yaml')
+  seedService('jellyseerr', 'media/other.yaml')
+  const before = readFileSync(FILE, 'utf8')
+  const r = await setLabelsForServices({
+    stack: 'media',
+    services: ['jellyfin', 'jellyseerr'],
+    changes: [{ key: 'watch', value: 'true' }],
+  })
+  assert.equal(r.ok, false)
+  assert.match(r.message, /not in one compose file/)
+  assert.equal(readFileSync(FILE, 'utf8'), before)
 })

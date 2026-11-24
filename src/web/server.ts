@@ -6,6 +6,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { configured, env, gitBranch, gitCredentialName, loadPolicy, policyFileState, type Policy } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
+import { serverHandle, type ServerHandle } from '../lifecycle.ts'
+import { version } from './version.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'
 import { buildUpdateDiff, type DiffHunk } from '../diff.ts'
 import { parseImageRef } from '../images/ref.ts'
@@ -823,7 +825,7 @@ export function createApp(): Hono {
     )?.value
 
     return {
-      version: readPackageVersion(),
+      version: version(),
       repoDir: env.repoDir,
       repo: env.githubRepo || env.gitRemote.webUrl || '',
       pushMain: policy.sync.push_main,
@@ -1164,18 +1166,9 @@ export function scanInfo(): ScanInfo {
   return { lastAt, durationS, counts, running: isScanning(), composeFiles: by.get('scan.compose_files')?.value ?? null }
 }
 
-function readPackageVersion(): string {
-  try {
-    return (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as
-      { version: string }).version
-  } catch {
-    return 'unknown'
-  }
-}
-
-export function startServer(): void {
+export function startServer(): ServerHandle {
   const app = createApp()
-  serve({ fetch: app.fetch, port: env.port }, (info) => {
+  const server = serve({ fetch: app.fetch, port: env.port }, (info) => {
     console.log(`[system] shipshape listening on :${info.port}`)
   })
   const a = describeAuth()
@@ -1188,4 +1181,5 @@ export function startServer(): void {
         : 'web UI has no sign-in configured: every page answers 503 until SHIPSHAPE_PASSWORD or SHIPSHAPE_TRUSTED_PROXY is set',
     detail: a.problems.join('; ') || undefined,
   })
+  return serverHandle(server)
 }

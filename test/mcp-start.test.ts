@@ -17,7 +17,7 @@ const { startMcpServer } = await import('../src/mcp/listen.ts')
 const { mcpEnabled } = await import('../src/config.ts')
 
 test('the listener does not start without a token, and says why', () => {
-  assert.equal(startMcpServer(), false)
+  assert.equal(startMcpServer(), null)
   const row = getDb().prepare(`SELECT level, message FROM events WHERE kind = 'system'`).get() as { level: string; message: string }
   assert.equal(row.level, 'error')
   assert.equal(row.message, 'MCP listener not started: MCP_TOKEN is not set')

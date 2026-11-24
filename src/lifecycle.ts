@@ -1,4 +1,20 @@
+import type { ServerType } from '@hono/node-server'
 import { logEvent, type EventKind } from './db.ts'
+
+/** A listener that can be closed: stops accepting, finishes the requests it has. */
+export interface ServerHandle {
+  close(): Promise<void>
+}
+
+export function serverHandle(server: ServerType): ServerHandle {
+  return {
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.close(() => resolve())
+        if ('closeIdleConnections' in server) server.closeIdleConnections()
+      }),
+  }
+}
 
 /**
  * What shipshape is still doing, and whether it has been asked to stop.

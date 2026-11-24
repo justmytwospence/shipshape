@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3'
-import { mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { paths } from './config.ts'
 
@@ -12,15 +12,31 @@ import { paths } from './config.ts'
 export type Db = Database.Database
 
 let db: Db | null = null
+let closed = false
 
 export function getDb(): Db {
   if (db) return db
+  // After shutdown closed it, a straggling request must not open the file again.
+  if (closed) throw new Error('the database is closed (shutting down)')
   mkdirSync(dirname(paths.db), { recursive: true })
+  const fresh = !existsSync(paths.db)
   db = new Database(paths.db)
+  // Only takes effect on an empty file, before the first table exists; an older database
+  // is converted once by compactOnce (src/db/retention.ts).
+  if (fresh) db.pragma('auto_vacuum = INCREMENTAL')
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
   migrate(db)
   return db
+}
+
+/** Close the database for good: the last step of shutdown. */
+export function closeDb(): void {
+  closed = true
+  if (db) {
+    db.close()
+    db = null
+  }
 }
 
 const MIGRATIONS: { id: string; sql: string }[] = [

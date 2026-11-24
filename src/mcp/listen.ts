@@ -4,6 +4,7 @@ import { createMcpHandler } from '@modelcontextprotocol/server'
 import { Hono } from 'hono'
 import { env, MCP_TOKEN_MIN } from '../config.ts'
 import { logEvent } from '../db.ts'
+import { serverHandle, type ServerHandle } from '../lifecycle.ts'
 import { createServer } from './server.ts'
 
 /**
@@ -39,8 +40,8 @@ export function createMcpApp(token: string): Hono {
 }
 
 /** Starts the listener when MCP_PORT and MCP_TOKEN allow it; says why when they do not. */
-export function startMcpServer(): boolean {
-  if (!env.mcpPort) return false
+export function startMcpServer(): ServerHandle | null {
+  if (!env.mcpPort) return null
   if (env.mcpToken.length < MCP_TOKEN_MIN) {
     logEvent({
       level: 'error',
@@ -51,10 +52,10 @@ export function startMcpServer(): boolean {
       detail:
         'set MCP_TOKEN to a random string of at least 32 characters (openssl rand -hex 32); clients send it as Authorization: Bearer <token>',
     })
-    return false
+    return null
   }
-  serve({ fetch: createMcpApp(env.mcpToken).fetch, port: env.mcpPort, hostname: env.mcpHost }, (info) => {
+  const server = serve({ fetch: createMcpApp(env.mcpToken).fetch, port: env.mcpPort, hostname: env.mcpHost }, (info) => {
     console.log(`[system] shipshape mcp listening on ${env.mcpHost}:${info.port}`)
   })
-  return true
+  return serverHandle(server)
 }

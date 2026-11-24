@@ -1,10 +1,7 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, relative } from 'node:path'
-import { execFileSync } from 'node:child_process'
 import { Cron } from 'croner'
-import { DEFAULT_CODE_MODEL, DEFAULT_READER_MODEL, botIdentity, env, gitBranch, paths, validatePolicyText, type Policy } from './config.ts'
+import { DEFAULT_CODE_MODEL, DEFAULT_READER_MODEL, gitBranch, type Policy } from './config.ts'
 import { logEvent } from './db.ts'
-import { POLICY_STARTER } from './policy-starter.ts'
+import { commitPolicyFile } from './gitops/policy-file.ts'
 
 /**
  * Editing policy.yaml from the browser.
@@ -401,109 +398,55 @@ export type ApplyResult =
   | { ok: true; applied: string[]; commit: string | null }
   | { ok: false; errors: string[] }
 
-export function applySettings(changes: Record<string, string>): ApplyResult {
-  const file = paths.policy
-  // Git wants the path relative to the repository root, wherever policy.yaml lives.
-  const rel = relative(env.repoDir, file)
-  // No file yet: start from the starter, which this save then creates. Only with a
-  // repository configured, so a sandbox without one never writes into the working directory.
-  let original: string | null
-  try {
-    original = readFileSync(file, 'utf8')
-  } catch (err) {
-    if ((err as { code?: string }).code !== 'ENOENT' || !env.repoDir) {
-      return { ok: false, errors: [`cannot read policy.yaml: ${(err as Error).message}`] }
-    }
-    original = null
-  }
-
-  // Never fold a browser edit into hand-edits sitting in the working tree -- the commit
-  // would carry changes nobody reviewed here.
-  const dirty = original === null ? '' : gitOut(['diff', '--name-only', '--', rel])
-  if (dirty) {
-    return {
-      ok: false,
-      errors: [
-        'policy.yaml has uncommitted changes in the checkout. Commit or discard them first.',
-      ],
-    }
-  }
-
+export async function applySettings(changes: Record<string, string>): Promise<ApplyResult> {
   const errors: string[] = []
   const applied: string[] = []
-  let text = original ?? POLICY_STARTER
 
-  for (const [path, rawValue] of Object.entries(changes)) {
-    const def = SETTINGS.find((s) => s.path === path)
-    if (!def || def.locked) continue
+  const result = await commitPolicyFile(
+    (current) => {
+      errors.length = 0
+      applied.length = 0
+      let text = current
+      for (const [path, rawValue] of Object.entries(changes)) {
+        const def = SETTINGS.find((s) => s.path === path)
+        if (!def || def.locked) continue
 
-    const value = rawValue.trim()
-    const validation = validate(def, value)
-    if (validation) {
-      errors.push(`${def.label}: ${validation}`)
-      continue
-    }
+        const value = rawValue.trim()
+        const validation = validate(def, value)
+        if (validation) {
+          errors.push(`${def.label}: ${validation}`)
+          continue
+        }
 
-    const spliced = setValue(text, path, format(def, value))
-    if (!spliced) {
-      // Only reachable for a path the splicer cannot even construct, which means a
-      // malformed SettingDef rather than anything about the operator's file.
-      errors.push(`${def.label}: "${path}" is not a settable key`)
-      continue
-    }
-    if (spliced !== text) {
-      text = spliced
-      applied.push(path)
-    }
-  }
+        const spliced = setValue(text, path, format(def, value))
+        if (!spliced) {
+          // Only reachable for a path the splicer cannot even construct, which means a
+          // malformed SettingDef rather than anything about the operator's file.
+          errors.push(`${def.label}: "${path}" is not a settable key`)
+          continue
+        }
+        if (spliced !== text) {
+          text = spliced
+          applied.push(path)
+        }
+      }
+      if (errors.length > 0) return { error: 'settings were refused' }
+      if (applied.length === 0) return { unchanged: true }
+      return { text }
+    },
+    () => `chore(shipshape): settings: ${applied.join(', ')}`,
+  )
 
-  if (errors.length > 0) return { ok: false, errors }
-  if (applied.length === 0) return { ok: true, applied: [], commit: null }
-
-  // A malformed file must never reach disk in a state the app would then fail to load.
-  const check = validatePolicyText(text)
-  if (!check.ok) return { ok: false, errors: [check.error] }
-
-  mkdirSync(dirname(file), { recursive: true })
-  writeFileSync(file, text)
-  try {
-    execFileSync('git', ['add', '--', rel], { cwd: env.repoDir })
-    execFileSync(
-      'git',
-      [
-        ...botIdentity(),
-        'commit',
-        '-m',
-        `chore(shipshape): settings: ${applied.join(', ')}`,
-        '--',
-        rel,
-      ],
-      { cwd: env.repoDir },
-    )
-  } catch (err) {
-    // Unstage first: `checkout -- file` restores from the index, which holds the edit.
-    execFileSync('git', ['reset', '-q', '--', rel], { cwd: env.repoDir })
-    if (original === null) rmSync(file, { force: true })
-    else writeFileSync(file, original)
-    return { ok: false, errors: [`could not commit the change: ${(err as Error).message}`] }
-  }
-
-  const sha = gitOut(['rev-parse', '--short', 'HEAD'])
+  if (errors.length > 0) return { ok: false, errors: [...errors] }
+  if (!result.ok) return { ok: false, errors: [result.reason] }
+  if (!result.changed) return { ok: true, applied: [], commit: null }
   logEvent({
     level: 'info',
     kind: 'policy',
     message: `settings changed: ${applied.join(', ')}`,
-    detail: sha ? `committed ${sha}` : undefined,
+    detail: result.sha ? `committed ${result.sha}` : undefined,
   })
-  return { ok: true, applied, commit: sha }
-}
-
-function gitOut(args: string[]): string {
-  try {
-    return execFileSync('git', args, { cwd: env.repoDir, encoding: 'utf8' }).trim()
-  } catch {
-    return ''
-  }
+  return { ok: true, applied: [...applied], commit: result.sha }
 }
 
 // Exported under fuller names so the rules themselves are testable: both are pure, and

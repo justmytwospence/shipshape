@@ -96,8 +96,8 @@ test('a failed commit leaves no file behind', async () => {
   }
 })
 
-test('the first Always ship creates the file and appends the rule', () => {
-  appendRule({ id: 'r1', match: { stack: 'a', service: 'b' }, waive: ['ask'], because: 'test' })
+test('the first Always ship creates the file and appends the rule', async () => {
+  await appendRule({ id: 'r1', match: { stack: 'a', service: 'b' }, waive: ['ask'], because: 'test' })
   const policy = PolicySchema.parse(parseYaml(readFileSync(file, 'utf8')))
   assert.equal(policy.rules[0]!.id, 'r1')
   assert.match(g(['log', '-1', '--format=%s']), /rule r1/)
@@ -112,4 +112,23 @@ test('a monthly budget of 0 is refused with a reason', async () => {
   assert.equal(res.ok, false)
   assert.match(res.ok ? '' : res.errors.join(), /at least 0\.01/)
   assert.equal(existsSync(file), false)
+})
+
+test('a staged hand-edit and a rebase in progress both refuse a browser save', async () => {
+  await applySettings({ paused: 'false' })
+  writeFileSync(file, readFileSync(file, 'utf8') + '# staged by hand\n')
+  g(['add', '--', 'shipshape.yaml'])
+  const staged = await applySettings({ 'sync.poll_idle_s': '300' })
+  assert.equal(staged.ok, false)
+  assert.match(staged.ok ? '' : staged.errors.join(), /uncommitted changes/)
+  g(['reset', '-q', '--hard', 'HEAD'])
+
+  mkdirSync(join(repo, '.git', 'rebase-merge'), { recursive: true })
+  try {
+    const busy = await applySettings({ 'sync.poll_idle_s': '300' })
+    assert.equal(busy.ok, false)
+    assert.match(busy.ok ? '' : busy.errors.join(), /rebase is in progress/)
+  } finally {
+    rmSync(join(repo, '.git', 'rebase-merge'), { recursive: true, force: true })
+  }
 })

@@ -951,7 +951,7 @@ export function createApp(): Hono {
       const v = form[def.path]
       if (typeof v === 'string') changes[def.path] = v
     }
-    const result = applySettings(changes)
+    const result = await applySettings(changes)
     // A schedule change should not wait for the old schedule to fire before applying.
     if (result.ok && result.applied.includes('scan.cron')) rescheduleScan()
     return c.html(

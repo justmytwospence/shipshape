@@ -48,8 +48,8 @@ const rule = (id = 'r1') => ({
   because: '2026-11-11, agentgateway v1.7.0 card: always ship',
 })
 
-test('a rule is appended to policy.yaml as a commit, and the file still parses', () => {
-  const { sha } = appendRule(rule())
+test('a rule is appended to policy.yaml as a commit, and the file still parses', async () => {
+  const { sha } = await appendRule(rule())
   const text = readFileSync(file, 'utf8')
   assert.match(text, /# policy/, 'comments survive')
   assert.match(text, /# the switch/)
@@ -64,27 +64,27 @@ test('a rule is appended to policy.yaml as a commit, and the file still parses',
 import { parse } from 'yaml'
 const require_yaml = (t: string) => parse(t)
 
-test('a second rule is added beside the first', () => {
-  appendRule(rule('r1'))
-  appendRule({ ...rule('r2'), match: { stack: 'books', service: 'shelfmark' }, waive: ['no-evidence', 'ask'] })
+test('a second rule is added beside the first', async () => {
+  await appendRule(rule('r1'))
+  await appendRule({ ...rule('r2'), match: { stack: 'books', service: 'shelfmark' }, waive: ['no-evidence', 'ask'] })
   const parsed = PolicySchema.parse(parse(readFileSync(file, 'utf8')))
   assert.deepEqual(parsed.rules.map((r) => r.id), ['r1', 'r2'])
   assert.equal(nextRuleId(parsed.rules), 'r3')
 })
 
-test('a file with uncommitted edits is refused with nothing written', () => {
+test('a file with uncommitted edits is refused with nothing written', async () => {
   writeFileSync(file, POLICY + '# a hand edit in flight\n')
-  assert.throws(() => appendRule(rule()), /uncommitted changes/)
+  await assert.rejects(appendRule(rule()), /uncommitted changes/)
   assert.equal(readFileSync(file, 'utf8'), POLICY + '# a hand edit in flight\n')
   assert.equal(g(['rev-list', '--count', 'HEAD']), '1')
 })
 
-test('a failed commit puts the bytes back', () => {
+test('a failed commit puts the bytes back', async () => {
   mkdirSync(join(repo, '.githooks'))
   writeFileSync(join(repo, '.githooks', 'pre-commit'), '#!/bin/sh\nexit 1\n')
   execFileSync('chmod', ['+x', join(repo, '.githooks', 'pre-commit')])
   g(['config', 'core.hooksPath', '.githooks'])
-  assert.throws(() => appendRule(rule()), /could not commit the rule/)
+  await assert.rejects(appendRule(rule()), /could not commit the rule/)
   assert.equal(readFileSync(file, 'utf8'), POLICY)
 })
 

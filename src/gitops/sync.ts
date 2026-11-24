@@ -103,7 +103,7 @@ export async function syncMain(): Promise<SyncResult> {
   return { status: 'rebased-pushed', sha }
 }
 
-async function inProgress(): Promise<string | null> {
+export async function inProgress(): Promise<string | null> {
   const gitDir = (await git(HOMELAB(), ['rev-parse', '--git-dir'])).stdout
   const abs = gitDir.startsWith('/') ? gitDir : `${HOMELAB()}/${gitDir}`
   const { existsSync } = await import('node:fs')

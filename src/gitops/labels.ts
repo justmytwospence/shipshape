@@ -1,11 +1,11 @@
-import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { execa } from 'execa'
-import { botIdentity, canPublish, env, gitBranch } from '../config.ts'
+import { canPublish, env } from '../config.ts'
 import { getDb, logEvent } from '../db.ts'
 import { setLabel } from '../compose/edit.ts'
 import { CLASS_LABELS } from '../policy.ts'
 import { parseChangelogLabel, parseSourceLabel } from '../resolver/labels.ts'
+import { commitCheckoutFile } from './policy-file.ts'
 import { git, withGitLock } from './repo.ts'
 import { syncMain } from './sync.ts'
 
@@ -104,14 +104,6 @@ async function run(o: { stack: string; service: string; changes: LabelChange[] }
     changes.push(p.change)
   }
 
-  const head = await git(env.repoDir, ['symbolic-ref', '--short', 'HEAD'], { allowFail: true })
-  if (head.exitCode !== 0 || head.stdout !== gitBranch()) {
-    return {
-      ok: false,
-      message: `The checkout is on "${head.stdout || 'a detached HEAD'}", not ${gitBranch()}. Nothing was changed.`,
-    }
-  }
-
   const row = getDb()
     .prepare(`SELECT compose_file FROM images WHERE stack = ? AND service = ?`)
     .get(stack, service) as { compose_file: string } | undefined
@@ -121,107 +113,56 @@ async function run(o: { stack: string; service: string; changes: LabelChange[] }
   const rel = row.compose_file
   const abs = join(env.repoDir, rel)
 
-  // An untracked file has no committed baseline to revert to, and `git commit -- file`
-  // would sweep the whole hand-written file into shipshape's commit.
-  const tracked = await git(env.repoDir, ['ls-files', '--error-unmatch', '--', rel], {
-    allowFail: true,
-  })
-  if (tracked.exitCode !== 0) {
-    return { ok: false, message: `${rel} is not tracked by git. Commit it first.` }
-  }
-
-  // Same refusal as applySettings, for the same reason: committing on top of a dirty
-  // file would carry changes nobody reviewed here. Staged counts as dirty -- a partial
-  // `git add` is still a hand-edit in flight.
-  const dirty = await git(env.repoDir, ['diff', '--name-only', '--', rel], { allowFail: true })
-  const staged = await git(env.repoDir, ['diff', '--cached', '--name-only', '--', rel], {
-    allowFail: true,
-  })
-  if (dirty.stdout || staged.stdout) {
-    return {
-      ok: false,
-      message: `${rel} has uncommitted changes in the checkout. Commit or discard them first.`,
-    }
-  }
-
-  let original: string
-  try {
-    original = readFileSync(abs, 'utf8')
-  } catch (err) {
-    return { ok: false, message: `Cannot read ${rel}: ${(err as Error).message}` }
-  }
-
-  let next = original
-  let removedPr = false
-  for (const c of changes) {
-    const edited = setLabel(next, service, `shipshape.${c.key}`, c.value)
-    if (!edited.ok) return { ok: false, message: `${rel}: ${edited.reason}` }
-    next = edited.text
-
-    // A leftover v1 label holds the service to ask whatever the class says, so writing a
-    // class is the way out of that: remove them in the same commit.
-    if (c.key === 'class' && c.value !== null) {
-      for (const old of ['shipshape.policy', 'shipshape.pr']) {
-        const second = setLabel(next, service, old, null)
-        if (!second.ok) return { ok: false, message: `${rel}: ${second.reason}` }
-        removedPr ||= second.text !== next
-        next = second.text
-      }
-    }
-  }
-
   const verb = changes
     .map((c) => (c.value === null ? `shipshape.${c.key} removed` : `shipshape.${c.key}=${c.value}`))
     .join(', ')
-  if (next === original) {
-    return { ok: true, message: `${rel} already says ${verb}; nothing to commit.` }
-  }
+  let removedPr = false
 
-  writeFileSync(abs, next)
+  const result = await commitCheckoutFile({
+    rel,
+    message: `chore(shipshape): ${stack}/${service}: ${verb}`,
+    mutate: (original) => {
+      if (original === null) return { error: `Cannot read ${rel}: no such file` }
+      let next = original
+      for (const c of changes) {
+        const edited = setLabel(next, service, `shipshape.${c.key}`, c.value)
+        if (!edited.ok) return { error: `${rel}: ${edited.reason}` }
+        next = edited.text
 
-  const restore = async () => {
-    await git(env.repoDir, ['reset', '-q', 'HEAD', '--', rel], { allowFail: true })
-    writeFileSync(abs, original)
-    await git(env.repoDir, ['checkout', '--', rel], { allowFail: true })
-  }
+        // A leftover v1 label holds the service to ask whatever the class says, so writing a
+        // class is the way out of that: remove them in the same commit.
+        if (c.key === 'class' && c.value !== null) {
+          for (const old of ['shipshape.policy', 'shipshape.pr']) {
+            const second = setLabel(next, service, old, null)
+            if (!second.ok) return { error: `${rel}: ${second.reason}` }
+            removedPr ||= second.text !== next
+            next = second.text
+          }
+        }
+      }
+      return next === original ? { unchanged: true } : { text: next }
+    },
+    gate: async () => {
+      // Gate A: compose must still accept the file.
+      const rejected = await composeRejects(abs)
+      if (rejected !== null) return `Compose rejected the edited file, so it was restored: ${rejected}`
 
-  // Gate A: compose must still accept the file.
-  const rejected = await composeRejects(abs)
-  if (rejected !== null) {
-    await restore()
-    return { ok: false, message: `Compose rejected the edited file, so it was restored: ${rejected}` }
-  }
-
-  // Gate B: the textual diff must contain nothing but shipshape label lines (plus the
-  // bare `labels:` line when a block was created or emptied). Anything else means the
-  // splice moved something it should not have.
-  const diff = await git(env.repoDir, ['diff', '-U0', '--', rel], { allowFail: true })
-  const changed = diff.stdout
-    .split('\n')
-    .filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l))
-  const offending = changed.filter(
-    (l) => !/^[+-]\s*(shipshape\.(policy|class|watch|pr|source|changelog):|labels:\s*$)/.test(l),
-  )
-  if (changed.length === 0 || offending.length > 0) {
-    await restore()
-    return {
-      ok: false,
-      message:
-        changed.length === 0
-          ? 'The edit produced no diff, so nothing was committed.'
-          : `The edit touched a non-label line, so it was reverted: ${offending[0]!.slice(0, 120)}`,
-    }
-  }
-
-  const commitMsg = `chore(shipshape): ${stack}/${service}: ${verb}`
-  try {
-    await git(env.repoDir, ['add', '--', rel])
-    await git(env.repoDir, [...botIdentity(), 'commit', '-m', commitMsg, '--', rel])
-  } catch (err) {
-    await restore()
-    return { ok: false, message: `Could not commit the change: ${(err as Error).message}` }
-  }
-  const sha = (await git(env.repoDir, ['rev-parse', '--short', 'HEAD'], { allowFail: true })).stdout
+      // Gate B: the textual diff must contain nothing but shipshape label lines (plus the
+      // bare `labels:` line when a block was created or emptied). Anything else means the
+      // splice moved something it should not have.
+      const diff = await git(env.repoDir, ['diff', '-U0', '--', rel], { allowFail: true })
+      const changed = diff.stdout.split('\n').filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l))
+      const offending = changed.filter(
+        (l) => !/^[+-]\s*(shipshape\.(policy|class|watch|pr|source|changelog):|labels:\s*$)/.test(l),
+      )
+      if (changed.length === 0) return 'The edit produced no diff, so nothing was committed.'
+      if (offending.length > 0) return `The edit touched a non-label line, so it was reverted: ${offending[0]!.slice(0, 120)}`
+      return null
+    },
+  })
+  if (!result.ok) return { ok: false, message: result.reason }
+  if (!result.changed) return { ok: true, message: `${rel} already says ${verb}; nothing to commit.` }
+  const sha = result.sha ?? ''
 
   // Publish, best-effort: the commit exists either way, and the regular sync cycle
   // retries. Unconfigured (tests, first run) means there is no origin to publish to.

@@ -1,13 +1,10 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, relative } from 'node:path'
-import { execFileSync } from 'node:child_process'
 import { parseDocument, YAMLMap, YAMLSeq } from 'yaml'
 import { llmClient, llmConfigured } from './analyze/client.ts'
 import { budgetExhausted, isTimeout, recordCost, recordUnanswered } from './analyze/claude.ts'
 import { toolChoiceFor } from './analyze/tools.ts'
-import { botIdentity, env, loadPolicy, paths, RuleSchema, validatePolicyText, WAIVABLE, type Rule, type Waivable } from './config.ts'
+import { loadPolicy, RuleSchema, WAIVABLE, type Rule, type Waivable } from './config.ts'
 import { getDb, logEvent } from './db.ts'
-import { POLICY_STARTER } from './policy-starter.ts'
+import { commitPolicyFile } from './gitops/policy-file.ts'
 import { withGitLock } from './gitops/repo.ts'
 import { syncMain } from './gitops/sync.ts'
 import { prompt } from './prompts/index.ts'
@@ -220,72 +217,55 @@ export function describeRule(rule: Pick<Rule, 'match' | 'waive'>): string {
 }
 
 /**
- * Append the rule to `policy.yaml` and commit it, keeping the file's comments. Mirrors the
- * settings writer: refuse a file with uncommitted edits, validate before writing, and put
- * the bytes back if the commit fails.
+ * Append the rule to the policy file and commit it, keeping the file's comments. Goes through
+ * the same locked writer as the settings page: refuse a file with uncommitted edits, validate
+ * before writing, and put the bytes back if the commit fails. Throws the reason it refused.
  */
-export function appendRule(rule: Rule): { sha: string } {
-  const file = paths.policy
-  const rel = relative(env.repoDir, file)
-  // No file yet: the first rule creates it from the starter.
-  let original: string | null
-  try {
-    original = readFileSync(file, 'utf8')
-  } catch (err) {
-    if ((err as { code?: string }).code !== 'ENOENT' || !env.repoDir) throw err
-    original = null
+export async function appendRule(rule: Rule): Promise<{ sha: string }> {
+  const result = await commitPolicyFile(
+    (current) => {
+      const doc = parseDocument(current)
+      let rules = doc.get('rules') as YAMLSeq | undefined
+      if (!(rules instanceof YAMLSeq)) {
+        rules = new YAMLSeq()
+        doc.set('rules', rules)
+      }
+      const entry = new YAMLMap()
+      entry.flow = true
+      entry.set('id', rule.id)
+      const match = new YAMLMap()
+      match.flow = true
+      for (const [k, v] of Object.entries(rule.match)) if (v !== undefined) match.set(k, v)
+      entry.set('match', match)
+      const waive = new YAMLSeq()
+      waive.flow = true
+      for (const w of rule.waive) waive.add(w)
+      entry.set('waive', waive)
+      entry.set('because', rule.because)
+      rules.add(entry)
+      return { text: doc.toString() }
+    },
+    `chore(shipshape): rule ${rule.id}: always ship ${describeRule(rule)}`,
+  )
+  if (!result.ok) {
+    if (result.code === 'invalid') throw new Error(`the policy file would not load with this rule: ${result.reason}`)
+    if (result.code === 'commit') {
+      throw new Error(`could not commit the rule: ${result.reason.replace(/^Could not commit the change: /, '')}`)
+    }
+    throw new Error(result.reason)
   }
-  if (original !== null) {
-    const dirty = execFileSync('git', ['diff', '--name-only', '--', rel], { cwd: env.repoDir }).toString().trim()
-    if (dirty) throw new Error('policy.yaml has uncommitted changes; commit or discard them first')
-  }
-
-  const doc = parseDocument(original ?? POLICY_STARTER)
-  let rules = doc.get('rules') as YAMLSeq | undefined
-  if (!(rules instanceof YAMLSeq)) {
-    rules = new YAMLSeq()
-    doc.set('rules', rules)
-  }
-  const entry = new YAMLMap()
-  entry.flow = true
-  entry.set('id', rule.id)
-  const match = new YAMLMap()
-  match.flow = true
-  for (const [k, v] of Object.entries(rule.match)) if (v !== undefined) match.set(k, v)
-  entry.set('match', match)
-  const waive = new YAMLSeq()
-  waive.flow = true
-  for (const w of rule.waive) waive.add(w)
-  entry.set('waive', waive)
-  entry.set('because', rule.because)
-  rules.add(entry)
-  const text = doc.toString()
-
-  const check = validatePolicyText(text)
-  if (!check.ok) throw new Error(`the rule would make policy.yaml invalid: ${check.error}`)
-
-  mkdirSync(dirname(file), { recursive: true })
-  writeFileSync(file, text)
-  try {
-    execFileSync('git', ['add', '--', rel], { cwd: env.repoDir })
-    execFileSync(
-      'git',
-      [...botIdentity(), 'commit', '-m', `chore(shipshape): rule ${rule.id}: always ship ${describeRule(rule)}`, '--', rel],
-      { cwd: env.repoDir },
-    )
-  } catch (err) {
-    // Unstage first: `checkout -- file` restores from the index, which now holds the rule.
-    execFileSync('git', ['reset', '-q', '--', rel], { cwd: env.repoDir })
-    if (original === null) rmSync(file, { force: true })
-    else writeFileSync(file, original)
-    throw new Error(`could not commit the rule: ${(err as Error).message.slice(0, 160)}`)
-  }
-  const sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: env.repoDir }).toString().trim()
+  const sha = result.sha ?? ''
   logEvent({ level: 'info', kind: 'policy', message: `rule ${rule.id} added: always ship`, detail: `${describeRule(rule)} (${sha})` })
   return { sha }
 }
 
-/** Publish the rule commit. Separate from `appendRule` so the file write stays synchronous. */
+/** Publish the rule commit. Separate from `appendRule` so answering the button does not wait on the network. */
 export async function publishRule(): Promise<void> {
-  await withGitLock('rule', () => syncMain()).catch(() => undefined)
+  const sync = await withGitLock('rule', () => syncMain()).catch((err: unknown) => ({
+    status: 'refused' as const,
+    reason: (err as Error).message.slice(0, 200),
+  }))
+  if (sync.status === 'paused' || sync.status === 'refused') {
+    logEvent({ level: 'warn', kind: 'policy', message: 'rule committed, but not published yet', detail: sync.reason })
+  }
 }

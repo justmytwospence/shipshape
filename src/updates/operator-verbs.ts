@@ -107,7 +107,7 @@ async function alwaysShip(id: number): Promise<VerbResult> {
   }
   let sha: string
   try {
-    sha = appendRule(rule).sha
+    sha = (await appendRule(rule)).sha
   } catch (err) {
     return { ok: false, message: (err as Error).message }
   }

@@ -5,7 +5,8 @@ import { getRepo } from '../upstream/github.ts'
 import { releaseIndex } from '../upstream/releases.ts'
 import { sameVersion, versionKey, type VersionKey } from '../versions/key.ts'
 import { parseChangelogLabel, parseSourceLabel } from './labels.ts'
-import { sourceForSync, type ResolutionTier } from './index.ts'
+import { sourceForSync } from './index.ts'
+import { type ResolutionTier } from './types.ts'
 
 /**
  * What a repository or notes link would give a service, before it is written.

@@ -17,9 +17,9 @@ delete process.env.GITHUB_TOKEN
 
 const { getDb } = await import('../src/db.ts')
 const { setMinSpacingForTests } = await import('../src/registry/http.ts')
-const { lookUpImage, resolveWatched, sourceFor, sourceForSync, resetResolverMemo, RESOLVER_VERSION } = await import(
-  '../src/resolver/index.ts'
-)
+const { resolveWatched, sourceFor, sourceForSync, resetResolverMemo } = await import('../src/resolver/index.ts')
+const { lookUpImage } = await import('../src/resolver/tiers.ts')
+const { RESOLVER_VERSION } = await import('../src/resolver/types.ts')
 const { mockFetch, assertAllMocked, json, text, status } = await import('./helpers/http.ts')
 type Route = import('./helpers/http.ts').Route
 

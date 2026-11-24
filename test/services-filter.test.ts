@@ -15,7 +15,7 @@ delete process.env.REPO_DIR
 
 const { getDb } = await import('../src/db.ts')
 const { serviceRows, filterServices } = await import('../src/updates/services.ts')
-const { RESOLVER_VERSION } = await import('../src/resolver/index.ts')
+const { RESOLVER_VERSION } = await import('../src/resolver/types.ts')
 
 after(() => rmSync(dir, { recursive: true, force: true }))
 beforeEach(() => getDb().exec(`DELETE FROM images; DELETE FROM resolutions;`))

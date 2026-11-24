@@ -188,8 +188,8 @@ into one place, so keep it there:
 - **A failure to look is never `none`.** A rate limit, a timeout or a Hub budget stop is
   recorded as an error and retried with backoff. Only a clean answer is written as "nothing
   found", and a repository already found survives a failed lookup.
-- **Bump `RESOLVER_VERSION`** whenever tier logic changes, so rows written by the old logic
-  are looked at again.
+- **Bump `RESOLVER_VERSION`** (`src/resolver/types.ts`) whenever tier logic changes, so
+  rows written by the old logic are looked at again.
 - **Upstream calls go through the clients**: `src/upstream/github.ts` (classified failures,
   ETag cache) and `src/upstream/safe-fetch.ts` for any link an operator typed, which must
   never reach an address inside the lab. Tests use `test/helpers/http.ts` — `mockFetch`

@@ -230,19 +230,19 @@ export function verifiedFix(updateId: number): SecurityFix | null {
   return views.find((v) => v.critical) ?? views[0]!
 }
 
-/** Reachable from outside WireGuard: a Traefik router gated neither by ClientIP in its rule nor by the lan-only middleware. */
-export function isPublic(s: ScannedService | undefined): boolean {
+/** Reachable from the internet: a Traefik router gated neither by ClientIP in its rule nor by one of security.private_middlewares. */
+export function isPublic(s: ScannedService | undefined, privateMiddlewares: readonly string[] = []): boolean {
   if (!s) return false
   if (String(s.labels['traefik.enable']).toLowerCase() !== 'true') return false
   return Object.entries(s.labels).some(([k, v]) => {
     const router = /^traefik\.http\.routers\.([^.]+)\.rule$/.exec(k)?.[1]
     if (!router || /ClientIP\(/.test(v)) return false
     const middlewares = String(s.labels[`traefik.http.routers.${router}.middlewares`] ?? '')
-    return !middlewares.split(',').some((m) => /^lan-only(@file)?$/.test(m.trim()))
+    return !middlewares.split(',').some((m) => privateMiddlewares.includes(m.trim().split('@')[0]!))
   })
 }
 
-/** How loud an exposure card is (rule 4 of the homelab's notification model). */
+/** How loud an exposure card is (how loud an exposure is). */
 export function priorityOf(severity: string | null, exploitedInWild: boolean, publicFacing: boolean): Priority {
   const critical = severity === 'critical'
   if (critical && exploitedInWild && publicFacing) return 5
@@ -303,13 +303,13 @@ export async function syncSecurityCards(policy: Policy): Promise<number> {
     const key = `${KEY}${slug}`
     live.add(key)
     const all = [...lines.values()]
-    const pub = all.some((l) => isPublic(svc(l.stack, l.service)))
+    const pub = all.some((l) => isPublic(svc(l.stack, l.service), policy.security.private_middlewares))
     const priority = priorityOf(inc.severity, exploited(inc.tags), pub)
     const body = all
       .map((l) => {
         const name = l.stack === l.service ? l.service : `${l.stack}/${l.service}`
         const fix = l.fix ? `fix: ${l.fix.to}` : 'no fix available yet'
-        return `- ${name}${isPublic(svc(l.stack, l.service)) ? ' (public)' : ''}: ${l.pkgs} · ${fix}`
+        return `- ${name}${isPublic(svc(l.stack, l.service), policy.security.private_middlewares) ? ' (public)' : ''}: ${l.pkgs} · ${fix}`
       })
       .join('\n')
     const actions: IncidentAction[] | undefined = mcpEnabled()

@@ -543,6 +543,8 @@ export const PolicySchema = z.object({
       syft_image: z
         .string()
         .default('anchore/syft:v1.54.1@sha256:3eb5379ba7b409c3f4069b686110527af0c47df993fa5c10d13e7cf34f49b1aa'),
+      // Traefik middlewares that keep a router off the internet (an IP allowlist, a VPN-only gate). A router using one is not public.
+      private_middlewares: z.array(z.string().min(1)).default([]),
     })
     .prefault({}),
   /** How much happens on its own. */

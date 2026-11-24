@@ -48,7 +48,7 @@ globalThis.fetch = (async (_url: unknown, init: { body: unknown }) => {
 }) as unknown as typeof fetch
 
 const { getDb } = await import('../src/db.ts')
-const { loadPolicy } = await import('../src/config.ts')
+const { loadPolicy, PolicySchema } = await import('../src/config.ts')
 const { parseIndex, storeIncidents } = await import('../src/security/feed.ts')
 const { runExtraction, normaliseTargets, incidentTargets } = await import('../src/security/extract.ts')
 const { computeExposures, recordExposures, verifyFixes, securityFixFor, syncSecurityCards, candidateRef, isPublic, priorityOf } =
@@ -261,7 +261,7 @@ test('helpers: candidate refs, public routers, loudness, syft output', () => {
   assert.equal(isPublic(svc({ 'traefik.enable': 'true', 'traefik.http.routers.a.rule': 'Host(`a`) && ClientIP(`10.0.0.0/8`)' })), false)
   assert.equal(isPublic(svc({ 'traefik.http.routers.a.rule': 'Host(`a`)' })), false)
   assert.equal(
-    isPublic(svc({ 'traefik.enable': 'true', 'traefik.http.routers.a.rule': 'Host(`a`)', 'traefik.http.routers.a.middlewares': 'lan-only@file, authelia, error-pages' })),
+    isPublic(svc({ 'traefik.enable': 'true', 'traefik.http.routers.a.rule': 'Host(`a`)', 'traefik.http.routers.a.middlewares': 'lan-only@file, authelia, error-pages' }), ['lan-only']),
     false,
   )
   assert.equal(
@@ -276,9 +276,18 @@ test('helpers: candidate refs, public routers, loudness, syft output', () => {
         'traefik.http.routers.a.middlewares': 'lan-only@file',
         'traefik.http.routers.b.rule': 'Host(`b`)',
       }),
+      ['lan-only'],
     ),
     true,
   )
+  const lanOnly = svc({
+    'traefik.enable': 'true',
+    'traefik.http.routers.a.rule': 'Host(`a`)',
+    'traefik.http.routers.a.middlewares': 'lan-only@file',
+  })
+  assert.equal(isPublic(lanOnly), true, 'no private middleware is configured')
+  assert.equal(isPublic(lanOnly, ['lan-only']), false)
+  assert.deepEqual(PolicySchema.parse({}).security.private_middlewares, [])
   assert.equal(priorityOf('critical', true, true), 5)
   assert.equal(priorityOf('critical', false, true), 4)
   assert.equal(priorityOf('high', true, false), 4)

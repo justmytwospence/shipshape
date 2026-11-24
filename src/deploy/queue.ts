@@ -13,8 +13,8 @@ import {
 } from './probe.ts'
 import type { Verdict } from './verify.ts'
 import { changeText } from '../gitops/body.ts'
-import { withGitLock } from '../gitops/repo.ts'
-import { syncMain } from '../gitops/sync.ts'
+import { isStopping } from '../lifecycle.ts'
+import { inFlightDeployIds, runClaimedDeploy, stackBusy, syncBeforeDeploy } from './runner.ts'
 
 /**
  * The deploy queue, and why a merge needs one.
@@ -158,40 +158,106 @@ export function hasPendingDeploys(): boolean {
 }
 
 /**
- * Reclaim rows that were mid-flight when the process stopped.
+ * What an interrupted deploy becomes: the updates go back to where they were before it
+ * started. A merge that did not come up is still merged (deploying it again is a retry);
+ * a rolling redeploy never merged anything, so it goes back to `detected`.
+ */
+function interruptedState(trigger: string): 'detected' | 'merged' {
+  return trigger === 'redeploy' ? 'detected' : 'merged'
+}
+
+/**
+ * One `running` row that is not running any more: the process stopped under it (`restart`),
+ * or nothing has moved for longer than a deploy can take (`stale`).
  *
- * A `running` row can only mean one of two things: a deploy is happening right now, or
- * one was happening when shipshape died. The clock distinguishes them, since no deploy
- * legitimately outlives the stale threshold.
+ * - A rollback is never run again by itself. Whether its revert commit landed is unknown,
+ *   and re-running it as an ordinary deploy would mark the updates `deployed` against a
+ *   reverted file. The operator is told and decides.
+ * - Otherwise one retry (`pending`), and after that a person's problem (`error`) with the
+ *   updates handed back so a button is offered again.
+ */
+function reclaimRow(
+  row: { id: number; stack: string; attempts: number; trigger: string },
+  why: 'restart' | 'stale',
+  now: string,
+): void {
+  const db = getDb()
+  const cause = why === 'restart' ? 'by a restart' : '(no progress for 30 minutes)'
+  if (row.trigger === 'rollback') {
+    db.prepare(`UPDATE deploys SET status = 'error', finished_at = ?, detail = ? WHERE id = ?`).run(
+      now,
+      why === 'restart' ? 'interrupted by a restart' : 'interrupted (no progress for 30 minutes)',
+      row.id,
+    )
+    logEvent({
+      level: 'error',
+      kind: 'deploy',
+      stack: row.stack,
+      message: `rollback of ${row.stack} was interrupted ${cause}`,
+      detail:
+        'The revert may or may not have been committed. Check the checkout, and roll back again from the update page if the service is still on the new version.',
+    })
+    return
+  }
+  if (row.attempts >= MAX_ATTEMPTS) {
+    db.prepare(`UPDATE deploys SET status = 'error', finished_at = ?, detail = ? WHERE id = ?`).run(
+      now,
+      why === 'restart' ? 'interrupted by a restart, twice' : 'interrupted (no progress for 30 minutes), twice',
+      row.id,
+    )
+    markUpdates(row.id, interruptedState(row.trigger))
+    logEvent({
+      level: 'error',
+      kind: 'deploy',
+      stack: row.stack,
+      message: `deploy of ${row.stack} was interrupted twice and will not be retried`,
+      detail: 'Try again from the update page, or deploy by hand.',
+    })
+    return
+  }
+  db.prepare(`UPDATE deploys SET status = 'pending', detail = ? WHERE id = ?`).run(
+    why === 'restart' ? `interrupted by a restart at ${now}` : `interrupted (no progress for 30 minutes) at ${now}`,
+    row.id,
+  )
+  logEvent({
+    level: 'warn',
+    kind: 'deploy',
+    stack: row.stack,
+    message: `deploy of ${row.stack} was interrupted ${cause}; it runs again on the next pass`,
+  })
+}
+
+/**
+ * Reclaim rows that were mid-flight when the process stopped, for a deploy of this same
+ * process that outlived the stale threshold. The runner knows which ids it is running:
+ * those are slow, not stuck, and are left alone.
  */
 function reclaimStale(): void {
   const db = getDb()
+  const now = new Date().toISOString()
   const cutoff = new Date(Date.now() - STALE_MS).toISOString()
+  const mine = JSON.stringify([...inFlightDeployIds()])
   const stuck = db
-    .prepare(`SELECT id, stack, attempts FROM deploys WHERE status = 'running' AND started_at < ?`)
-    .all(cutoff) as { id: number; stack: string; attempts: number }[]
+    .prepare(
+      `SELECT id, stack, attempts, trigger FROM deploys
+        WHERE status = 'running' AND started_at < ? AND id NOT IN (SELECT value FROM json_each(?))`,
+    )
+    .all(cutoff, mine) as { id: number; stack: string; attempts: number; trigger: string }[]
+  for (const row of stuck) db.transaction(() => reclaimRow(row, 'stale', now))()
+}
 
-  for (const row of stuck) {
-    if (row.attempts >= MAX_ATTEMPTS) {
-      db.prepare(`UPDATE deploys SET status = 'error', finished_at = ? WHERE id = ?`).run(
-        new Date().toISOString(),
-        row.id,
-      )
-      logEvent({
-        level: 'error',
-        kind: 'deploy',
-        message: `deploy #${row.id} was interrupted twice and will not be retried`,
-        detail: 'Try again from the update page, or run it by hand',
-      })
-    } else {
-      db.prepare(`UPDATE deploys SET status = 'pending' WHERE id = ?`).run(row.id)
-      logEvent({
-        level: 'warn',
-        kind: 'deploy',
-        message: `deploy #${row.id} of ${row.stack} was interrupted; retrying`,
-      })
-    }
-  }
+/**
+ * At startup, every `running` row is interrupted: no deploy can be running before the
+ * server and the scheduler have started, so no clock is needed to tell. Returns how many.
+ */
+export function reclaimInterrupted(): number {
+  const db = getDb()
+  const now = new Date().toISOString()
+  const rows = db
+    .prepare(`SELECT id, stack, attempts, trigger FROM deploys WHERE status = 'running'`)
+    .all() as { id: number; stack: string; attempts: number; trigger: string }[]
+  for (const row of rows) db.transaction(() => reclaimRow(row, 'restart', now))()
+  return rows.length
 }
 
 /** Queued work, oldest first — a merge should not overtake one that landed before it. */
@@ -205,18 +271,7 @@ export function dueJobs(limit = MAX_PER_TICK): DeployJob[] {
 }
 
 export async function drainDeployQueue(): Promise<{ ran: number }> {
-  // Pause does not gate this any more, and that is deliberate.
-  //
-  // It used to return here, which meant a merge the operator pressed themselves produced
-  // a deploy that then sat waiting for a second press. Pause is about what shipshape may
-  // *decide* -- it still stops auto-merge dead (see automerge.ts) -- and a merge is a
-  // decision already taken. What is queued here is the carrying out of one, and carrying
-  // it out under a health check is safer than leaving it to happen unwatched the next
-  // time something recreates the stack.
-  //
-  // Services that must not be touched without a person present say so for themselves, per
-  // service, on the `attended` and on-request rungs: those enqueue as `ready`, which no
-  // drain claims. That is now the only thing that holds a deploy back.
+  // Pause gates what shipshape decides, not carrying out a ship already made.
 
   reclaimStale()
   const jobs = dueJobs()
@@ -227,7 +282,7 @@ export async function drainDeployQueue(): Promise<{ ran: number }> {
   // content first. If it cannot be, the jobs stay pending -- deploying against a stale
   // tree would quietly bring up the version the merge replaced and record it as a
   // success.
-  const sync = await withGitLock('pre-deploy-sync', () => syncMain())
+  const sync = await syncBeforeDeploy()
   if (sync.status === 'paused' || sync.status === 'refused') {
     logEvent({
       level: 'warn',
@@ -242,9 +297,12 @@ export async function drainDeployQueue(): Promise<{ ran: number }> {
   for (const job of jobs) {
     // Claim rather than assume: an operator may have pressed Deploy on this very row
     // between `dueJobs` reading it and this line.
+    if (isStopping()) break
+    // An operator's deploy of this stack is running: this one waits for the next pass.
+    if (stackBusy(job.stack)) continue
     const claimed = claimJob(job.id)
     if (!claimed) continue
-    if (await runDeployJob(claimed)) ran++
+    if (await runClaimedDeploy(claimed)) ran++
   }
   return { ran }
 }

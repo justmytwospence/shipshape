@@ -7,6 +7,7 @@ import { join } from 'node:path'
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'shipshape-test-'))
 
 const { getDb } = await import('../src/db.ts')
+const { reclaimInterrupted, drainDeployQueue } = await import('../src/deploy/queue.ts')
 const {
   carriedUpdates,
   enqueueDeploy,
@@ -356,4 +357,76 @@ test('claimed jobs know who asked for them', () => {
   const id = (getDb().prepare(`SELECT id FROM deploys WHERE stack = 'asked'`).get() as { id: number }).id
   assert.equal(dueJobs().find((j) => j.id === id)!.trigger, 'queue')
   assert.equal(claimJob(id)!.trigger, 'queue')
+})
+
+/** A deploy of `stack`, linked to one update in `state`, as the queue would have left it mid-flight. */
+function inFlight(o: { stack: string; trigger?: string; attempts?: number; startedAgoMs?: number; updateState?: string }): {
+  deployId: number
+  updateId: number
+} {
+  const db = getDb()
+  const stamp = new Date().toISOString()
+  const u = db
+    .prepare(
+      `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at)
+       VALUES (?, 'svc', 'img', '1.0.0', '1.1.0', 'minor', 'normal', ?, ?, ?)`,
+    )
+    .run(o.stack, o.updateState ?? 'deploying', stamp, stamp)
+  const d = db
+    .prepare(
+      `INSERT INTO deploys (stack, services, strategy, ok, healthy, status, attempts, created_at, started_at, trigger)
+       VALUES (?, 'svc', 'up', 0, 0, 'running', ?, ?, ?, ?)`,
+    )
+    .run(o.stack, o.attempts ?? 1, stamp, new Date(Date.now() - (o.startedAgoMs ?? 1000)).toISOString(), o.trigger ?? 'queue')
+  const deployId = Number(d.lastInsertRowid)
+  const updateId = Number(u.lastInsertRowid)
+  linkDeployUpdates(deployId, null, [updateId])
+  return { deployId, updateId }
+}
+const deployRow = (id: number) =>
+  getDb().prepare(`SELECT status, attempts, detail FROM deploys WHERE id = ?`).get(id) as {
+    status: string
+    attempts: number
+    detail: string | null
+  }
+const updateStateOf = (id: number) => (getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(id) as { state: string }).state
+
+test('a deploy a previous process left running is pending again at startup', () => {
+  const { deployId } = inFlight({ stack: 'a', attempts: 1 })
+  assert.equal(reclaimInterrupted(), 1)
+  assert.equal(deployRow(deployId).status, 'pending')
+  assert.match(deployRow(deployId).detail ?? '', /^interrupted by a restart at /)
+})
+
+test('one interrupted twice is an error at startup and its updates go back to merged', () => {
+  const { deployId, updateId } = inFlight({ stack: 'a', attempts: 2 })
+  reclaimInterrupted()
+  assert.equal(deployRow(deployId).status, 'error')
+  assert.equal(updateStateOf(updateId), 'merged')
+  const redeploy = inFlight({ stack: 'b', attempts: 2, trigger: 'redeploy' })
+  reclaimInterrupted()
+  assert.equal(updateStateOf(redeploy.updateId), 'detected', 'a rolling redeploy never merged anything')
+})
+
+test('an interrupted rollback is never re-run', () => {
+  const { deployId, updateId } = inFlight({ stack: 'a', attempts: 1, trigger: 'rollback' })
+  reclaimInterrupted()
+  assert.equal(deployRow(deployId).status, 'error')
+  assert.equal(updateStateOf(updateId), 'deploying', 'whether the revert landed is unknown, so the update is left as it was')
+  const event = getDb().prepare(`SELECT message FROM events WHERE message LIKE 'rollback of a was interrupted%'`).get()
+  assert.ok(event)
+})
+
+test('a deploy stuck past the threshold twice gives up and hands its updates back', async () => {
+  const { deployId, updateId } = inFlight({ stack: 'a', attempts: 2, startedAgoMs: 3_600_000 })
+  await drainDeployQueue()
+  assert.equal(deployRow(deployId).status, 'error')
+  assert.equal(updateStateOf(updateId), 'merged')
+})
+
+test('a stuck rollback is never re-run', async () => {
+  const { deployId, updateId } = inFlight({ stack: 'a', attempts: 1, trigger: 'rollback', startedAgoMs: 3_600_000 })
+  await drainDeployQueue()
+  assert.equal(deployRow(deployId).status, 'error')
+  assert.equal(updateStateOf(updateId), 'deploying')
 })

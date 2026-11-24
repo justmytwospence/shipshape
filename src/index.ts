@@ -1,11 +1,14 @@
 import { env, loadPolicy, policyFileState } from './config.ts'
 import { getDb, logEvent } from './db.ts'
+import { reclaimInterrupted } from './deploy/queue.ts'
 import { startScheduler } from './scheduler.ts'
 import { startServer } from './web/server.ts'
 import { startMcpServer } from './mcp/listen.ts'
 
 function main(): void {
   getDb()
+  // Whatever was running when the last process stopped is not running now.
+  reclaimInterrupted()
   const { policy, error, missing } = loadPolicy()
   if (error) {
     logEvent({ level: 'error', kind: 'system', message: 'policy load failed', detail: error })

@@ -1,7 +1,8 @@
 import { getDb, logEvent } from '../db.ts'
 import { setState, type UpdateState } from './state.ts'
 import { actionsFor, refusalFor, type ActionContext, type Verb } from './actions.ts'
-import { carriedFor, claimJob, linkDeployUpdates, runDeployJob } from '../deploy/queue.ts'
+import { carriedFor, linkDeployUpdates } from '../deploy/queue.ts'
+import { launchDeploy, launchOnStack, stackBusy } from '../deploy/runner.ts'
 import { performRollback, revertArgs } from '../deploy/rollback.ts'
 import { env } from '../config.ts'
 import { holdsForRow, type HoldRow } from './holds.ts'
@@ -9,7 +10,7 @@ import { stackPeers, withNamespacePeers, type DeployIo, type DeployTarget } from
 import { syncMain } from '../gitops/sync.ts'
 import { withGitLock } from '../gitops/repo.ts'
 import { runAnalysisPass } from '../analyze/run.ts'
-import { background } from '../lifecycle.ts'
+import { background, isStopping } from '../lifecycle.ts'
 
 /**
  * The things a person can do to an update.
@@ -256,17 +257,17 @@ function rerunReview(row: UpdateRow): VerbResult {
 async function startQueuedDeploy(row: UpdateRow, io?: DeployIo): Promise<VerbResult> {
   const latest = latestDeployId(row.id)
   if (!latest) return { ok: false, message: 'there is no queued deploy for this update' }
-  const job = claimJob(latest.id)
-  if (!job) return { ok: false, message: 'that deploy is already running' }
-
-  background(runDeployJob(job, { io }), `deploy of ${row.stack}`, 'deploy')
-  // Said before the outcome is known, so it states the rule rather than promising a start
-  // that may not happen.
-  return {
-    ok: true,
-    transient: true,
-    message: `Deploying ${row.stack} — anything not running is left stopped.`,
+  const l = launchDeploy(latest.id, row.stack, { label: `deploy of ${row.stack}`, io })
+  if (l.started) {
+    // Said before the outcome is known, so it states the rule rather than promising a
+    // start that may not happen.
+    return {
+      ok: true,
+      transient: true,
+      message: `Deploying ${row.stack} — anything not running is left stopped.`,
+    }
   }
+  return l.queued ? { ok: true, transient: true, message: l.message } : { ok: false, message: l.message }
 }
 
 /**
@@ -289,15 +290,15 @@ async function startRedeploy(row: UpdateRow, io?: DeployIo): Promise<VerbResult>
   const deployId = Number(info.lastInsertRowid)
   linkDeployUpdates(deployId, null, [row.id])
 
-  const job = claimJob(deployId)
-  if (!job) return { ok: false, message: 'that deploy is already running' }
-
-  background(runDeployJob(job, { pull: true, io }), `redeploy of ${row.stack}`, 'deploy')
-  return {
-    ok: true,
-    transient: true,
-    message: `Redeploying ${row.stack} — anything not running is left stopped.`,
+  const l = launchDeploy(deployId, target.stack, { label: `redeploy of ${row.stack}`, pull: true, io })
+  if (l.started) {
+    return {
+      ok: true,
+      transient: true,
+      message: `Redeploying ${row.stack} — anything not running is left stopped.`,
+    }
   }
+  return l.queued ? { ok: true, transient: true, message: l.message } : { ok: false, message: l.message }
 }
 
 /**
@@ -336,10 +337,9 @@ async function retry(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Promise
       .run(prId?.pr_id ?? null, target.stack, target.services.join(' '), target.strategy, now)
     const deployId = Number(info.lastInsertRowid)
     linkDeployUpdates(deployId, prId?.pr_id ?? null, members.map((m) => m.id))
-    const job = claimJob(deployId)
-    if (!job) return { ok: false, message: 'that deploy is already running' }
-    background(runDeployJob(job, { io }), `retry of ${row.stack}`, 'deploy')
-    return { ok: true, transient: true, message: `Deploying ${row.stack} again.` }
+    const l = launchDeploy(deployId, target.stack, { label: `retry of ${row.stack}`, io })
+    if (l.started) return { ok: true, transient: true, message: `Deploying ${row.stack} again.` }
+    return l.queued ? { ok: true, transient: true, message: l.message } : { ok: false, message: l.message }
   }
 
   // Back to the top of the pipeline. The tier is left as it was: a major that needed a
@@ -374,6 +374,12 @@ async function rollback(row: UpdateRow, ctx: ActionContext, prId: number | null,
     row.stack,
     members.map((m) => m.service),
   )
+  // Refused before anything is written: a rollback is not queued behind a deploy, because
+  // what it reverts may be what that deploy is bringing up.
+  if (isStopping()) return { ok: false, message: 'shipshape is restarting. Try again once it is back.' }
+  if (stackBusy(target.stack)) {
+    return { ok: false, message: `A deploy of ${target.stack} is running. Try again when it finishes.` }
+  }
   const now = new Date().toISOString()
   const info = db
     .prepare(
@@ -393,8 +399,7 @@ async function rollback(row: UpdateRow, ctx: ActionContext, prId: number | null,
   // goes back up. Read now, before this row records a plan of its own.
   const carried = carriedFor(target.stack, target.services, deployId)
 
-  background(
-    (async () => {
+  const launched = launchOnStack(target.stack, `rollback of ${row.stack}`, async () => {
       const result = await performRollback(target, sha, {
         carried,
         io,
@@ -434,10 +439,15 @@ async function rollback(row: UpdateRow, ctx: ActionContext, prId: number | null,
           detail: `${result.detail}. Undo it by hand: git ${(await revertArgs(env.repoDir, sha)).join(' ')}`,
         })
       }
-    })(),
-    `rollback of ${row.stack}`,
-    'deploy',
-  )
+  })
+  if (!launched.started) {
+    db.prepare(`UPDATE deploys SET status = 'error', detail = ?, finished_at = ? WHERE id = ?`).run(
+      launched.message,
+      new Date().toISOString(),
+      deployId,
+    )
+    return { ok: false, message: launched.message }
+  }
 
   return {
     ok: true,

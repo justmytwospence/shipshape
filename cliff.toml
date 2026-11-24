@@ -1,0 +1,58 @@
+# git-cliff configuration: CHANGELOG.md and each GitHub release's notes are generated
+# from the conventional commits on main. https://git-cliff.org/docs/configuration
+#
+#   npm run changelog          rewrite CHANGELOG.md, unreleased commits included
+#   npm version <x.y.z> ...    does it as part of the release commit (the `version` script)
+
+[changelog]
+header = """
+# Changelog
+
+Every notable change to shipshape, newest first. Versions follow
+[Semantic Versioning](https://semver.org/). While the version is 0.x, a minor release may
+change behaviour or configuration; such changes are listed first, under **Breaking**.
+"""
+body = """
+{% if version -%}
+## [{{ version | trim_start_matches(pat="v") }}](https://github.com/justmytwospence/shipshape/releases/tag/{{ version }}) - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+## Unreleased
+{% endif -%}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim }}
+{% for commit in commits %}
+- {% if commit.scope and commit.scope != "security" %}**{{ commit.scope }}:** {% endif %}{{ commit.message | split(pat="\n") | first | trim | upper_first }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/justmytwospence/shipshape/commit/{{ commit.id }}))
+{%- endfor %}
+{% endfor %}
+"""
+footer = ""
+# Keep the blank lines the templates write between releases and sections.
+trim = false
+# One blank line between blocks, and none at the end of the file.
+postprocessors = [
+  { pattern = "\n{3,}", replace = "\n\n" },
+]
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+protect_breaking_commits = true
+filter_commits = true
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+# v0.1.0 marks the code as it stood before the first public release (d303138). Its
+# 200-odd commits predate the changelog and are left out of it.
+skip_tags = "^v0\\.1\\.0$"
+topo_order = false
+sort_commits = "newest"
+commit_parsers = [
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^[a-z]+(\\([^)]*\\))?!:", group = "<!-- 0 -->Breaking" },
+  { footer = "^BREAKING[ -]CHANGE", group = "<!-- 0 -->Breaking" },
+  { message = "^feat", group = "<!-- 1 -->Features" },
+  { message = "^fix\\(security\\)", group = "<!-- 2 -->Security" },
+  { message = "^fix", group = "<!-- 3 -->Fixes" },
+  { message = "^perf", group = "<!-- 4 -->Performance" },
+  { message = "^revert", group = "<!-- 5 -->Reverted" },
+  { message = ".*", skip = true },
+]

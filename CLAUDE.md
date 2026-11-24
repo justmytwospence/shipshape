@@ -222,3 +222,20 @@ Find the address with
 If the compose repository carries this repository as a submodule, commit the new pointer
 there. shipshape excludes its own stack, so it never updates itself -- that rebuild is
 always by hand.
+
+## Releasing
+
+Releases are tags on main; GitHub Actions builds and publishes everything else.
+
+```
+npm run release -- 0.3.0         # typecheck + test, bump, CHANGELOG.md from git-cliff,
+                                 # commit "chore(release): v0.3.0", tag v0.3.0
+git tidy                         # read it; the release commit is the last one
+git push origin main --follow-tags
+gh run watch                     # release.yml: checks, then ghcr.io/justmytwospence/shipshape
+                                 # :0.3.0, :0.3, :latest, attestation, GitHub release
+```
+
+Every push to main that passes CI is also published as `:edge` and `:sha-<short>`. A
+`fix(security): ...` commit is listed under Security in the notes; `feat!:` / `refactor!:`
+under Breaking. While on 0.x, a breaking change bumps the minor.

@@ -2,7 +2,7 @@
   "name": "shipshape",
   "version": "0.1.0",
   "private": true,
-  "description": "Docker image update bot: registry polling, GitHub PRs, Claude-analyzed changelogs, and a web UI.",
+  "description": "Docker Compose image updates for a homelab kept in git: reads the changelog, ships what nothing holds back, deploys, verifies and rolls back.",
   "license": "FSL-1.1-ALv2",
   "type": "module",
   "engines": {
@@ -26,7 +26,11 @@
     "pretest": "npm run css && node bin/check-test-prereqs.mjs",
     "lint": "biome lint .",
     "format": "biome format --write .",
-    "check": "biome check ."
+    "check": "biome check .",
+    "changelog": "git-cliff --output CHANGELOG.md",
+    "preversion": "npm run typecheck && npm test",
+    "version": "git-cliff --tag \"v$npm_package_version\" --output CHANGELOG.md && git add CHANGELOG.md",
+    "release": "npm version --message 'chore(release): v%s'"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
@@ -46,8 +50,17 @@
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.15.3",
     "daisyui": "^5.7.17",
+    "git-cliff": "^2.14.2",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.20.0",
     "typescript": "^5.9.2"
+  },
+  "homepage": "https://justmytwospence.github.io/shipshape/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/justmytwospence/shipshape.git"
+  },
+  "bugs": {
+    "url": "https://github.com/justmytwospence/shipshape/issues"
   }
 }

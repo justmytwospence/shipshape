@@ -1,0 +1,104 @@
+name: release
+
+# Pushing a tag vX.Y.Z (made by `npm run release -- X.Y.Z`) runs the checks on that commit,
+# publishes ghcr.io/<repo>:X.Y.Z, :X.Y and :latest (a prerelease such as v0.3.0-rc.1 gets
+# only its own tag), and creates the GitHub release with notes from git-cliff.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      # The pre-launch baseline the changelog starts after; it is never published.
+      - '!v0.1.0'
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: The tag names the version in package.json
+        run: |
+          want="v$(node -p "require('./package.json').version")"
+          if [ "$want" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json ($want)"
+            exit 1
+          fi
+
+  ci:
+    needs: version
+    # The permissions ci.yml's edge job declares; it is skipped for a tag.
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: ci
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    uses: ./.github/workflows/publish.yml
+    with:
+      release: true
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Release notes
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+        run: |
+          notes="$RUNNER_TEMP/notes.md"
+          npx --no-install git-cliff --latest --strip header --output "$notes"
+          version="${GITHUB_REF_NAME#v}"
+          image="ghcr.io/${GITHUB_REPOSITORY}"
+          {
+            echo
+            echo "### Image"
+            echo
+            echo '```'
+            echo "docker pull ${image}:${version}"
+            echo '```'
+            echo
+            echo "linux/amd64 and linux/arm64, index digest \`${DIGEST}\`. Check where it was built:"
+            echo
+            echo '```'
+            echo "gh attestation verify oci://${image}:${version} --repo ${GITHUB_REPOSITORY}"
+            echo '```'
+            echo
+            echo "Upgrading: https://justmytwospence.github.io/shipshape/guides/upgrading/"
+          } >> "$notes"
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""
+          case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md" $pre

@@ -2,7 +2,16 @@ import { execa } from 'execa'
 import { loadPolicy } from '../config.ts'
 import type { Policy } from '../policy-schema.ts'
 import { env } from '../env.ts'
-import { DockerUnreadable, findForeign, httpProbe, inspectService, missing, snapshotOf, type ServiceObservation, type ServiceSnapshot } from './probe.ts'
+import {
+  DockerUnreadable,
+  findForeign,
+  httpProbe,
+  inspectService,
+  missing,
+  snapshotOf,
+  type ServiceObservation,
+  type ServiceSnapshot,
+} from './probe.ts'
 import { projectName, stackPeers, buildableServices } from '../compose/topology.ts'
 import { scanRepo } from '../compose/scan.ts'
 import { DEFAULT_VERIFY, runVerify, type Verdict } from './verify.ts'
@@ -11,7 +20,15 @@ import { getDb } from '../db/index.ts'
 import { logEvent } from '../events.ts'
 import { notify, resolveIncident } from '../notify/index.ts'
 import type { DeployTrigger } from './queue.ts'
-import { leftClause, observeSet, ownerFrom, planRun, restoredClause, type RecordedPlan, type RunPlan } from './runstate.ts'
+import {
+  leftClause,
+  observeSet,
+  ownerFrom,
+  planRun,
+  restoredClause,
+  type RecordedPlan,
+  type RunPlan,
+} from './runstate.ts'
 import type { DeployIo, DeployTarget, DeployOutcome } from './types.ts'
 import { pullArgs, buildArgs, removeArgs, composeArgs } from './compose-cmd.ts'
 import { downAfter, nextStep, failureState } from './outcome.ts'
@@ -53,7 +70,6 @@ import { downAfter, nextStep, failureState } from './outcome.ts'
  *    and the one exception for shipshape's own failed attempts, are in runstate.ts.
  */
 
-
 export const realIo: DeployIo = {
   observe: (project, service) => inspectService(project, service),
   foreign: (project, stack, service) => findForeign(project, stack, service),
@@ -73,10 +89,7 @@ export const realIo: DeployIo = {
  * Separated from the execution so the reasons are testable without a Docker daemon,
  * and so the dashboard can explain a held deploy without attempting one.
  */
-export function refuseReason(
-  target: DeployTarget,
-  opts: { selfStack: string; excluded: string[] },
-): string | null {
+export function refuseReason(target: DeployTarget, opts: { selfStack: string; excluded: string[] }): string | null {
   if (target.stack === opts.selfStack) {
     return 'shipshape does not deploy itself — the container running the deploy would be replaced mid-command'
   }
@@ -244,7 +257,13 @@ export async function deploy(
     const rm = removeArgs(upTarget)
     const r = await io.exec(rm.args, { cwd: rm.cwd, timeout: 120_000 })
     if ((r.exitCode ?? 1) !== 0) {
-      return { ok: false, phase: 'rm', reason: 'could not remove the old container', stderr: tail(r.stderr), plan: recorded }
+      return {
+        ok: false,
+        phase: 'rm',
+        reason: 'could not remove the old container',
+        stderr: tail(r.stderr),
+        plan: recorded,
+      }
     }
   }
 
@@ -430,9 +449,7 @@ export async function deployChange(
         : undefined,
   })
   const now = new Date().toISOString()
-  const detail = outcome.ok
-    ? outcome.detail
-    : `${outcome.reason}${outcome.stderr ? `\n${outcome.stderr}` : ''}`
+  const detail = outcome.ok ? outcome.detail : `${outcome.reason}${outcome.stderr ? `\n${outcome.stderr}` : ''}`
   // Nothing brought up is its own status, not `deployed`: nothing is soaking, and nothing
   // is verified. `healthy` stays 0 for it, which is what keeps it from ever being carried.
   const status = !outcome.ok
@@ -470,14 +487,7 @@ export async function deployChange(
         `UPDATE deploys SET ok = ?, healthy = ?, detail = ?, status = ?, finished_at = ?
          WHERE id = ?`,
       )
-      .run(
-        outcome.ok ? 1 : 0,
-        outcome.ok && outcome.healthy ? 1 : 0,
-        detail,
-        status,
-        now,
-        deployId,
-      )
+      .run(outcome.ok ? 1 : 0, outcome.ok && outcome.healthy ? 1 : 0, detail, status, now, deployId)
   }
 
   if (!outcome.ok) {
@@ -498,9 +508,7 @@ export async function deployChange(
     await notify({
       eventClass: 'broken',
       key: `shipshape:deploy:${target.stack}`,
-      title: down
-        ? `shipshape: ${target.stack} is DOWN — deploy failed`
-        : `shipshape: deploy failed — ${target.stack}`,
+      title: down ? `shipshape: ${target.stack} is DOWN — deploy failed` : `shipshape: deploy failed — ${target.stack}`,
       body: `The change shipped but ${named.join(', ')} did not deploy.\n\n${outcome.reason}\n\n${failureState(outcome, target.strategy)}\n\n${next}`,
       priority: down ? 5 : 4,
       tags: ['rotating_light'],

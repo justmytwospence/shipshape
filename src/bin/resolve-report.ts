@@ -27,7 +27,9 @@ const flagValue = (flag: string) => {
 
 const mode = has('--write') ? 'write' : has('--dry-run') ? 'dry-run' : has('--snapshot') ? 'snapshot' : null
 if (!mode) {
-  console.error('usage: resolve-report --snapshot | --dry-run [--allow-billed] [--only <text>] [--without-overrides] [--why] | --write [--allow-billed] [--only <text>]')
+  console.error(
+    'usage: resolve-report --snapshot | --dry-run [--allow-billed] [--only <text>] [--without-overrides] [--why] | --write [--allow-billed] [--only <text>]',
+  )
   process.exit(2)
 }
 const only = flagValue('--only')
@@ -51,9 +53,15 @@ const images = (
 const answer = (repo: string | null, tier: string, confidence: string | null) =>
   repo ? `${tier}/${confidence ?? '?'} ${repo}` : 'none'
 
-const nowOf = (s: SourceInfo) => (s.inferred ? answer(s.inferred.repo, s.inferred.tier, s.inferred.confidence) : 'not looked up')
+const nowOf = (s: SourceInfo) =>
+  s.inferred ? answer(s.inferred.repo, s.inferred.tier, s.inferred.confidence) : 'not looked up'
 
-const extras = (o: { packagingRepo: string | null; error?: string | null; failure?: string | null; label?: string | null }) =>
+const extras = (o: {
+  packagingRepo: string | null
+  error?: string | null
+  failure?: string | null
+  label?: string | null
+}) =>
   [
     o.label ? `label=${o.label}` : '',
     o.packagingRepo ? `packaging=${o.packagingRepo}` : '',
@@ -89,10 +97,16 @@ for (const image of images) {
   const changed = nowOf(before) !== after ? '*' : ' '
   console.log(`${changed} ${key}\t${nowOf(before)} -> ${after}\t${extras({ ...l, label: before.label?.repo })}`)
   if (has('--why')) {
-    for (const c of l.evidence.candidates) console.log(`      ${c.tier} ${c.repo}: ${c.confidence ?? 'rejected'} -- ${c.why}`)
+    for (const c of l.evidence.candidates)
+      console.log(`      ${c.tier} ${c.repo}: ${c.confidence ?? 'rejected'} -- ${c.why}`)
     for (const s of l.evidence.skipped) console.log(`      skipped ${s}`)
     if (l.detail) console.log(`      detail: ${l.detail}`)
   }
 }
 
-console.log(`\n${images.length} images: ${[...tally].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} ${k}`).join(', ')}`)
+console.log(
+  `\n${images.length} images: ${[...tally]
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => `${n} ${k}`)
+    .join(', ')}`,
+)

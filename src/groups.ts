@@ -78,7 +78,11 @@ export function groupUpdates(
       continue
     }
     const [stack, identity, tag] = key.split('|') as [string, string, string]
-    const short = identity.replace(/^(label|src):/, '').split('/').pop() ?? 'group'
+    const short =
+      identity
+        .replace(/^(label|src):/, '')
+        .split('/')
+        .pop() ?? 'group'
     const branchKey = `${stack}--group-${sanitise(short)}`
     out.push({ key: `${branchKey}--${sanitise(tag)}`, branchKey, members })
   }
@@ -110,9 +114,12 @@ export function makeLookups(services: { stack: string; service: string; groupLab
   sourceRepoFor: (stack: string, service: string) => string | null
   groupLabelFor: (stack: string, service: string) => string | null
 } {
-  const rows = getDb()
-    .prepare(`SELECT stack, service, registry, repository FROM images`)
-    .all() as { stack: string; service: string; registry: string; repository: string }[]
+  const rows = getDb().prepare(`SELECT stack, service, registry, repository FROM images`).all() as {
+    stack: string
+    service: string
+    registry: string
+    repository: string
+  }[]
 
   const bySvc = new Map(rows.map((r) => [`${r.stack}/${r.service}`, r]))
   const labels = new Map(services.map((s) => [`${s.stack}/${s.service}`, s.groupLabel]))
@@ -120,10 +127,7 @@ export function makeLookups(services: { stack: string; service: string; groupLab
     sourceRepoFor: (stack, service) => {
       const r = bySvc.get(`${stack}/${service}`)
       if (!r) return null
-      const source = sourceForSync(
-        { registry: r.registry, repository: r.repository },
-        { service: { stack, service } },
-      )
+      const source = sourceForSync({ registry: r.registry, repository: r.repository }, { service: { stack, service } })
       // Fall back to the repository path itself: n8n and n8n-import share one image,
       // which is the same identity even before any resolution exists.
       return source.repo ?? r.repository

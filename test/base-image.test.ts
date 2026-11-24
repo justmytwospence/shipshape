@@ -77,7 +77,12 @@ test('every FROM naming the base moves, and nothing else does', () => {
   const r = rewriteFroms(text, `node:22-slim@${OLD}`, `node:22-slim@${NEW}`)
   assert.ok(r.ok)
   assert.equal(r.count, 2)
-  assert.equal(r.text, text.replace(`FROM node:22-slim@${OLD} AS`, `FROM node:22-slim@${NEW} AS`).replace(`FROM node:22-slim@${OLD}\nCOPY`, `FROM node:22-slim@${NEW}\nCOPY`))
+  assert.equal(
+    r.text,
+    text
+      .replace(`FROM node:22-slim@${OLD} AS`, `FROM node:22-slim@${NEW} AS`)
+      .replace(`FROM node:22-slim@${OLD}\nCOPY`, `FROM node:22-slim@${NEW}\nCOPY`),
+  )
   assert.match(r.text, new RegExp(`RUN echo node:22-slim@${OLD}`), 'a mention outside FROM is left alone')
 
   const again = rewriteFroms(r.text, `node:22-slim@${OLD}`, `node:22-slim@${NEW}`)
@@ -191,7 +196,18 @@ beforeEach(() => {
 const group = (from: string, to: string, image = `node:22-slim@${OLD}`): UpdateGroup => ({
   key: null,
   branchKey: null,
-  members: [{ id: 7, stack: 'obsidian', service: 'obsidian-sync', image, from_tag: from, to_tag: to, magnitude: 'digest', tier: 'manual' }],
+  members: [
+    {
+      id: 7,
+      stack: 'obsidian',
+      service: 'obsidian-sync',
+      image,
+      from_tag: from,
+      to_tag: to,
+      magnitude: 'digest',
+      tier: 'manual',
+    },
+  ],
 })
 
 const deps = (digest: string | null = NEW) => ({
@@ -209,10 +225,18 @@ test('a digest move edits the Dockerfile and commits nothing else', async () => 
   assert.ok(r.ok, (r as { reason?: string }).reason)
   assert.deepEqual(sh(repo, ['diff', '--name-only', 'origin/main', 'HEAD']).split('\n'), ['obsidian/Dockerfile'])
   assert.equal(readFileSync(join(repo, 'obsidian', 'Dockerfile'), 'utf8'), DOCKERFILE.replaceAll(OLD, NEW))
-  assert.deepEqual(r.bases.get(7), { dockerfile: 'obsidian/Dockerfile', fromRef: `node:22-slim@${OLD}`, toRef: `node:22-slim@${NEW}`, lines: 2 })
+  assert.deepEqual(r.bases.get(7), {
+    dockerfile: 'obsidian/Dockerfile',
+    fromRef: `node:22-slim@${OLD}`,
+    toRef: `node:22-slim@${NEW}`,
+    lines: 2,
+  })
 
   const title = changeTitle(g, r.forks, r.bases)
-  assert.equal(title, `chore(deps): obsidian: rebuild obsidian-sync on node 22-slim@${OLD.slice(7, 19)} -> 22-slim@${NEW.slice(7, 19)}`)
+  assert.equal(
+    title,
+    `chore(deps): obsidian: rebuild obsidian-sync on node 22-slim@${OLD.slice(7, 19)} -> 22-slim@${NEW.slice(7, 19)}`,
+  )
   assert.equal(sh(repo, ['log', '-1', '--format=%s']), title)
   const body = baseImageSection(g, r.bases)
   assert.match(body, /### Base image/)
@@ -232,7 +256,7 @@ test('a version bump on a pinned base keeps the pin, or refuses to lose it', asy
   assert.match(refused.reason, /digest pin would be lost/)
 })
 
-test('a Dockerfile already past the bump retires the update; one edited by hand is a person\'s', async () => {
+test("a Dockerfile already past the bump retires the update; one edited by hand is a person's", async () => {
   const repo = workRepo()
   writeFileSync(join(repo, 'obsidian', 'Dockerfile'), DOCKERFILE.replaceAll(OLD, NEW))
   execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qam', 'by hand'], { cwd: repo })
@@ -248,7 +272,10 @@ test('a Dockerfile already past the bump retires the update; one edited by hand 
 // ------------------------------------------------------------------ deploy and rollback
 
 mkdirSync(join(live, 'obsidian'), { recursive: true })
-writeFileSync(join(live, 'obsidian', 'docker-compose.yaml'), `${COMPOSE}  plain:\n    build: ./plain\n  web:\n    image: nginx:1.27.0\n`)
+writeFileSync(
+  join(live, 'obsidian', 'docker-compose.yaml'),
+  `${COMPOSE}  plain:\n    build: ./plain\n  web:\n    image: nginx:1.27.0\n`,
+)
 writeFileSync(join(live, 'obsidian', 'Dockerfile'), DOCKERFILE)
 const q = { cwd: live, stdio: 'ignore' as const }
 execFileSync('git', ['init', '-q'], q)
@@ -265,8 +292,15 @@ test('a deploy builds the watched build; an unwatched build is still never built
 })
 
 test('a rollback rebuilds on the old base, because the image name never moved', async () => {
-  const io = fakeIo({ 'obsidian-sync': 'running' }, { rebuildable: (s, svcs) => buildableServices(s, svcs, policy, live, { forks: false }) })
-  const r = await performRollback({ stack: 'obsidian', services: ['obsidian-sync'], strategy: 'up', build: ['obsidian-sync'] }, merge, { io })
+  const io = fakeIo(
+    { 'obsidian-sync': 'running' },
+    { rebuildable: (s, svcs) => buildableServices(s, svcs, policy, live, { forks: false }) },
+  )
+  const r = await performRollback(
+    { stack: 'obsidian', services: ['obsidian-sync'], strategy: 'up', build: ['obsidian-sync'] },
+    merge,
+    { io },
+  )
   assert.ok(r.ok, r.detail)
   assert.match(readFileSync(join(live, 'obsidian', 'Dockerfile'), 'utf8'), new RegExp(OLD))
   assert.deepEqual(composeCalls(io.calls), [
@@ -292,7 +326,10 @@ test('the update page previews the Dockerfile hunk the branch would carry', asyn
   assert.ok(!('error' in d), (d as { error?: string }).error)
   const changed = d.hunks.flatMap((h) => h.lines.filter((l) => l.kind !== 'ctx').map((l) => `${l.kind} ${l.text}`))
   assert.equal(d.hunks[0]!.file, 'obsidian/Dockerfile')
-  assert.deepEqual(changed.filter((l) => l.startsWith('add')), [`add FROM node:22-slim@${C} AS build`, `add FROM node:22-slim@${C}`])
+  assert.deepEqual(
+    changed.filter((l) => l.startsWith('add')),
+    [`add FROM node:22-slim@${C} AS build`, `add FROM node:22-slim@${C}`],
+  )
 
   // A version bump on a pinned base, with no digest seen for the new tag yet, says what
   // the pull request will do rather than showing an unpinned line it would never carry.

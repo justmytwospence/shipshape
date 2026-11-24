@@ -60,8 +60,7 @@ export function includedStacks(repoDir: string): Set<string> {
     return out
   }
   for (const entry of Array.isArray(doc?.include) ? doc.include : []) {
-    const path =
-      typeof entry === 'string' ? entry : ((entry as { path?: unknown })?.path as string | undefined)
+    const path = typeof entry === 'string' ? entry : ((entry as { path?: unknown })?.path as string | undefined)
     if (typeof path !== 'string') continue
     const stack = path.replace(/^(\.\/)+/, '').split('/')[0]
     if (stack && stack !== '.') out.add(stack)
@@ -273,7 +272,7 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
       typeof svc.build === 'string'
         ? svc.build
         : svc.build && typeof svc.build === 'object' && typeof (svc.build as { context?: unknown }).context === 'string'
-          ? ((svc.build as { context: string }).context)
+          ? (svc.build as { context: string }).context
           : null
 
     // `dockhand.*` was read as a fallback while the rename swept 140 services. None
@@ -304,11 +303,7 @@ export function scanComposeFile(repoRoot: string, file: string, excludeStacks: s
     // `shipshape.probe: off` opts out; `shipshape.probe: <port>` overrides.
     const probeLabel = label('probe')
     const probePort =
-      probeLabel === 'off'
-        ? null
-        : /^\d+$/.test(probeLabel ?? '')
-          ? Number(probeLabel)
-          : traefikPort(labels)
+      probeLabel === 'off' ? null : /^\d+$/.test(probeLabel ?? '') ? Number(probeLabel) : traefikPort(labels)
     const networkMode = typeof svc.network_mode === 'string' ? svc.network_mode : null
     const proposeLabel = label('propose')
     const groupLabel = label('group')

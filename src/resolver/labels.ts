@@ -38,7 +38,11 @@ export function parseChangelogLabel(raw: string | null | undefined): ParsedChang
     return checked.ok ? { ok: true, kind: 'url', url: value } : { ok: false, reason: checked.reason }
   }
   const path = value.replace(/^\.\//, '').replace(/\/+$/, '')
-  if (value.startsWith('/') || !/^[A-Za-z0-9._\-/]{1,200}$/.test(path) || path.split('/').some((s) => s === '' || s === '..')) {
+  if (
+    value.startsWith('/') ||
+    !/^[A-Za-z0-9._\-/]{1,200}$/.test(path) ||
+    path.split('/').some((s) => s === '' || s === '..')
+  ) {
     return { ok: false, reason: 'write an https:// link, or a path inside the repository such as CHANGELOG.md' }
   }
   return { ok: true, kind: 'path', path }
@@ -90,7 +94,6 @@ export interface LabelRow {
   changelog_label: string | null
 }
 
-
 export function readLabels(image: ImageKey): LabelRow[] {
   return getDb()
     .prepare(
@@ -102,7 +105,6 @@ export function readLabels(image: ImageKey): LabelRow[] {
     )
     .all(image.registry, image.repository) as LabelRow[]
 }
-
 
 /**
  * The notes link that applies: the service's own, else the first valid one on another service
@@ -130,7 +132,11 @@ export function pickChangelog(
     const p = parseChangelogLabel(r.changelog_label)
     if (p.ok) {
       return {
-        changelog: { value: r.changelog_label.trim(), from: { stack: r.stack, service: r.service }, target: targetOf(p) },
+        changelog: {
+          value: r.changelog_label.trim(),
+          from: { stack: r.stack, service: r.service },
+          target: targetOf(p),
+        },
         invalidChangelog,
       }
     }
@@ -138,17 +144,13 @@ export function pickChangelog(
   return { changelog: null, invalidChangelog }
 }
 
-
 const targetOf = (p: ChangelogTarget): ChangelogTarget =>
   p.kind === 'url' ? { kind: 'url', url: p.url } : { kind: 'path', path: p.path }
-
 
 export const sameService = (a: ServiceKey | undefined, b: ServiceKey): boolean =>
   !!a && a.stack === b.stack && a.service === b.service
 
-
 export const sameRepo = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase()
-
 
 export function pickLabel(
   rows: LabelRow[],
@@ -174,7 +176,8 @@ export function pickLabel(
   for (const r of rows) {
     if (sameService(me, r) || !r.source_label?.trim()) continue
     const p = parseSourceLabel(r.source_label)
-    if (p.ok) siblings.push({ from: { stack: r.stack, service: r.service }, value: r.source_label.trim(), repo: p.repo })
+    if (p.ok)
+      siblings.push({ from: { stack: r.stack, service: r.service }, value: r.source_label.trim(), repo: p.repo })
   }
 
   const chosen = own ?? siblings[0] ?? null
@@ -183,9 +186,7 @@ export function pickLabel(
   return {
     label: {
       ...chosen,
-      conflicts: others
-        .filter((o) => !sameRepo(o.repo, chosen.repo))
-        .map((o) => ({ ...o.from, value: o.value })),
+      conflicts: others.filter((o) => !sameRepo(o.repo, chosen.repo)).map((o) => ({ ...o.from, value: o.value })),
     },
     invalidLabel,
   }

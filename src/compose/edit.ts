@@ -20,12 +20,7 @@ const refuse = (reason: string): SetLabelResult => ({ ok: false, reason })
  * Removing a key that is not there returns the text unchanged: idempotent, so a caller
  * cleaning up `shipshape.policy` does not have to check whether the line exists first.
  */
-export function setLabel(
-  text: string,
-  service: string,
-  key: string,
-  value: string | null,
-): SetLabelResult {
+export function setLabel(text: string, service: string, key: string, value: string | null): SetLabelResult {
   const doc = parseDocument(text, { keepSourceTokens: true })
   if (doc.errors.length > 0) {
     return refuse(`the file is not valid YAML: ${doc.errors[0]!.message}`)
@@ -120,12 +115,7 @@ function pairEnd(pair: Pair<unknown, unknown>): number {
   return isScalar(v) && v.range ? Math.max(v.range[1], k.range![1]) : k.range![1]
 }
 
-function deleteLabelLine(
-  text: string,
-  svc: YAMLMap,
-  labels: YAMLMap,
-  pair: Pair<unknown, unknown>,
-): SetLabelResult {
+function deleteLabelLine(text: string, svc: YAMLMap, labels: YAMLMap, pair: Pair<unknown, unknown>): SetLabelResult {
   const k = pair.key
   if (!isScalar(k) || !k.range) return refuse('the label key has no source range')
   const { start, end } = lineBounds(text, k.range[0], pairEnd(pair))
@@ -144,12 +134,7 @@ function deleteLabelLine(
   return { ok: true, text: text.slice(0, start) + text.slice(end) }
 }
 
-function insertAfterLastLabel(
-  text: string,
-  labels: YAMLMap,
-  key: string,
-  formatted: string,
-): SetLabelResult {
+function insertAfterLastLabel(text: string, labels: YAMLMap, key: string, formatted: string): SetLabelResult {
   const last = labels.items[labels.items.length - 1]!
   const k = last.key
   if (!isScalar(k) || !k.range) return refuse('the last label has no source range')
@@ -169,12 +154,7 @@ function insertAfterLastLabel(
  * present but empty, otherwise directly under `image:` -- the line every service has
  * and the one an operator scanning the file reads first.
  */
-function insertLabelsBlock(
-  text: string,
-  svc: YAMLMap,
-  key: string,
-  formatted: string,
-): SetLabelResult {
+function insertLabelsBlock(text: string, svc: YAMLMap, key: string, formatted: string): SetLabelResult {
   const emptyLabels = findPair(svc, 'labels')
   if (emptyLabels) {
     const lk = emptyLabels.key
@@ -195,10 +175,7 @@ function insertLabelsBlock(
   if (!/^[ \t]*$/.test(indent)) return refuse('the anchor line does not start with its key')
   return {
     ok: true,
-    text:
-      text.slice(0, end) +
-      `${indent}labels:\n${indent}  ${key}: ${formatted}\n` +
-      text.slice(end),
+    text: text.slice(0, end) + `${indent}labels:\n${indent}  ${key}: ${formatted}\n` + text.slice(end),
   }
 }
 

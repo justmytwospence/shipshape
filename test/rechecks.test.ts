@@ -138,7 +138,9 @@ test('a soak that fails keeps what the deploy said about the service it left', a
     at: now,
     seen: [],
     up: ['n8n'],
-    left: [{ service: 'n8n-import', state: 'exited', why: 'not-running', restartPolicy: 'no', oldRef: 'n8nio/n8n:2.38.5' }],
+    left: [
+      { service: 'n8n-import', state: 'exited', why: 'not-running', restartPolicy: 'no', oldRef: 'n8nio/n8n:2.38.5' },
+    ],
     restored: [],
   })
   const id = Number(
@@ -148,7 +150,8 @@ test('a soak that fails keeps what the deploy said about the service it left', a
                               recheck_at, created_at, started_at, finished_at)
          VALUES (91, 'n8n', 'n8n-import n8n', 'up', 1, 1, ?, 'deployed', ?, ?, ?, ?, ?)`,
       )
-      .run(`n8n up in 41s; ${clause}`, plan, new Date(Date.now() - 60_000).toISOString(), now, now, now).lastInsertRowid,
+      .run(`n8n up in 41s; ${clause}`, plan, new Date(Date.now() - 60_000).toISOString(), now, now, now)
+      .lastInsertRowid,
   )
   db.prepare(`INSERT INTO deploy_updates (deploy_id, update_id) VALUES (?, ?), (?, ?)`).run(id, left, id, up)
 

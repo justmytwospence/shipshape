@@ -118,14 +118,25 @@ const planJson = (up: string[], left: string[] = []) =>
     at: now(),
     seen: [],
     up,
-    left: left.map((service) => ({ service, state: 'exited', why: 'not-running', restartPolicy: 'unless-stopped', oldRef: null })),
+    left: left.map((service) => ({
+      service,
+      state: 'exited',
+      why: 'not-running',
+      restartPolicy: 'unless-stopped',
+      oldRef: null,
+    })),
     restored: [],
   })
 
 const deployRow = (id: number) =>
-  db()
-    .prepare(`SELECT status, ok, healthy, detail, recheck_at, snapshot FROM deploys WHERE id = ?`)
-    .get(id) as { status: string; ok: number; healthy: number; detail: string; recheck_at: string | null; snapshot: string | null }
+  db().prepare(`SELECT status, ok, healthy, detail, recheck_at, snapshot FROM deploys WHERE id = ?`).get(id) as {
+    status: string
+    ok: number
+    healthy: number
+    detail: string
+    recheck_at: string | null
+    snapshot: string | null
+  }
 
 const stateOf = (updateId: number) =>
   (db().prepare(`SELECT state FROM updates WHERE id = ?`).get(updateId) as { state: string }).state
@@ -217,13 +228,14 @@ test('a partial group deploys the running half and leaves the other', async () =
   assert.match(row.detail, new RegExp(`^n8n up in \\d+s; ${clause.replace(/[().]/g, '\\$&')}$`))
   assert.equal(stateOf(n8nId), 'deployed')
   assert.equal(stateOf(importId), 'left-stopped')
-
 })
 
 test('the soak only looks at what came up', async () => {
   const { ids, id } = await partialGroup()
   const [importId, n8nId] = ids as [number, number]
-  db().prepare(`UPDATE deploys SET recheck_at = ? WHERE id = ?`).run(new Date(Date.now() - 60_000).toISOString(), id)
+  db()
+    .prepare(`UPDATE deploys SET recheck_at = ? WHERE id = ?`)
+    .run(new Date(Date.now() - 60_000).toISOString(), id)
 
   const looked: string[] = []
   await runRechecks({
@@ -308,7 +320,14 @@ test('verified weeks ago is not a licence to start it', () => {
   assert.equal(carriedFor('svc', ['svc'], next).size, 0, 'a later plan that left it is the later word')
 
   db().exec(`DELETE FROM deploys`)
-  insertDeploy({ stack: 'svc', status: 'rolled-back', ok: 1, healthy: 1, trigger: 'rollback', snapshot: planJson(['svc']) })
+  insertDeploy({
+    stack: 'svc',
+    status: 'rolled-back',
+    ok: 1,
+    healthy: 1,
+    trigger: 'rollback',
+    snapshot: planJson(['svc']),
+  })
   next = insertDeploy({ stack: 'svc', status: 'pending' })
   assert.equal(carriedFor('svc', ['svc'], next).size, 0, 'an operator rollback that came back healthy')
 
@@ -321,7 +340,10 @@ test('verified weeks ago is not a licence to start it', () => {
 
 // ---------------------------------------------------------------- redeploys
 
-const rolling = { from: 'latest@sha256:cb4826a1b2c3d4e5f60718293a4b5c6d', to: 'latest@sha256:09fb11d4e5f6a7b8c9d0e1f2a3b4c5d6' }
+const rolling = {
+  from: 'latest@sha256:cb4826a1b2c3d4e5f60718293a4b5c6d',
+  to: 'latest@sha256:09fb11d4e5f6a7b8c9d0e1f2a3b4c5d6',
+}
 
 function redeployClaimed(): { job: DeployJob; id: number; updateId: number } {
   const updateId = seedUpdate({ stack: 'actual', service: 'actual', ...rolling, state: 'detected' })

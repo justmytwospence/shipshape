@@ -44,7 +44,11 @@ export interface RestoreIo {
   /** The running container for a service, or null when it is not running. */
   containerId(stack: string, service: string): Promise<string | null>
   /** Run `command` in the container and write its gzipped stdout to `path`. */
-  dump(container: string, command: string, path: string): Promise<{ ok: true; bytes: number } | { ok: false; reason: string }>
+  dump(
+    container: string,
+    command: string,
+    path: string,
+  ): Promise<{ ok: true; bytes: number } | { ok: false; reason: string }>
   now(): Date
   fetch?: Fetch
   /** For the offsite-only restore point, which waits on the backup. */
@@ -57,7 +61,9 @@ const realRestoreIo: RestoreIo = {
   async containerId(stack, service) {
     const args = ['compose', ...fileArgs(stack), 'ps', '-q', service]
     const r = await execa('docker', args, { cwd: env.repoDir, reject: false, timeout: 30_000, ...dockerEnvOptions() })
-    const id = String(r.stdout ?? '').trim().split('\n')[0]
+    const id = String(r.stdout ?? '')
+      .trim()
+      .split('\n')[0]
     return r.exitCode === 0 && id ? id : null
   },
 
@@ -86,7 +92,12 @@ const realRestoreIo: RestoreIo = {
     const r = await sub
     if (r.exitCode !== 0 || bytes === 0) {
       rmSync(path, { force: true })
-      const why = r.exitCode !== 0 ? `exit ${r.exitCode}: ${String(r.stderr ?? '').trim().slice(-160)}` : 'the dump was empty'
+      const why =
+        r.exitCode !== 0
+          ? `exit ${r.exitCode}: ${String(r.stderr ?? '')
+              .trim()
+              .slice(-160)}`
+          : 'the dump was empty'
       return { ok: false, reason: why }
     }
     return { ok: true, bytes: statSync(path).size }
@@ -95,7 +106,11 @@ const realRestoreIo: RestoreIo = {
   now: () => new Date(),
 }
 
-const stamp = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')
+const stamp = (d: Date) =>
+  d
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d+Z$/, 'Z')
 
 export type RestoreResult =
   | { ok: true; points: { service: string; path: string; bytes: number }[] }
@@ -133,7 +148,9 @@ export async function takeRestorePoint(
 ): Promise<RestoreResult> {
   const db = getDb()
   const services = db
-    .prepare(`SELECT service, snapshot_label, backup_job_label FROM images WHERE stack = ? AND snapshot_label IS NOT NULL ORDER BY service`)
+    .prepare(
+      `SELECT service, snapshot_label, backup_job_label FROM images WHERE stack = ? AND snapshot_label IS NOT NULL ORDER BY service`,
+    )
     .all(stack) as { service: string; snapshot_label: string; backup_job_label: string | null }[]
 
   const cfg = policy.restore_points.offsite
@@ -188,7 +205,11 @@ export async function takeRestorePoint(
     const label = services.find((s) => s.backup_job_label)?.backup_job_label ?? null
     const res = await runOffsite(stack, label, cfg, io.fetch)
     for (const p of points) {
-      db.prepare(`UPDATE restore_points SET offsite_status = ?, offsite_detail = ? WHERE id = ?`).run(res.status, res.detail, p.id)
+      db.prepare(`UPDATE restore_points SET offsite_status = ?, offsite_detail = ? WHERE id = ?`).run(
+        res.status,
+        res.detail,
+        p.id,
+      )
     }
     if (res.status === 'error') {
       logEvent({ level: 'warn', kind: 'deploy', stack, message: 'offsite backup not taken', detail: res.detail })
@@ -208,7 +229,9 @@ export async function takeRestorePoint(
 function prune(stack: string, service: string, keep: number): void {
   const db = getDb()
   const old = db
-    .prepare(`SELECT id, path FROM restore_points WHERE stack = ? AND service = ? ORDER BY created_at DESC, id DESC LIMIT -1 OFFSET ?`)
+    .prepare(
+      `SELECT id, path FROM restore_points WHERE stack = ? AND service = ? ORDER BY created_at DESC, id DESC LIMIT -1 OFFSET ?`,
+    )
     .all(stack, service, keep) as { id: number; path: string }[]
   for (const o of old) {
     if (!o.path.startsWith('offsite:')) rmSync(o.path, { force: true })

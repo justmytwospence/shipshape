@@ -15,10 +15,13 @@ import { type Policy, PolicySchema, retiredKeys, retiredKeysMessage } from './po
  * are required, and their absence produces setup instructions rather than a crash.
  */
 
-
 /** Where the policy file is, repo-relative, and whether it exists yet. */
 export function policyFileState(): { path: string; rel: string; exists: boolean } {
-  return { path: paths.policy, rel: relative(env.repoDir, paths.policy) || paths.policy, exists: existsSync(paths.policy) }
+  return {
+    path: paths.policy,
+    rel: relative(env.repoDir, paths.policy) || paths.policy,
+    exists: existsSync(paths.policy),
+  }
 }
 
 const FALLBACK: Policy = PolicySchema.parse({})

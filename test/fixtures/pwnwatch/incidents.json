@@ -10,26 +10,14 @@
       "severity": "critical",
       "patchStatus": "patched",
       "product": "Postiz (gitroomhq/postiz-app), self-hosted",
-      "stacks": [
-        "node"
-      ],
-      "tags": [
-        "node",
-        "postiz",
-        "account-takeover",
-        "path-traversal"
-      ],
-      "cveIds": [
-        "CVE-2026-115933",
-        "CVE-2026-115932"
-      ],
+      "stacks": ["node"],
+      "tags": ["node", "postiz", "account-takeover", "path-traversal"],
+      "cveIds": ["CVE-2026-115933", "CVE-2026-115932"],
       "affectedVersions": [
         "postiz-app 2.15.0 to before 2.25.3 (CVE-2026-115933, forged tokens)",
         "postiz-app 2.23.0 to before 2.25.3 (CVE-2026-115932, path traversal; main route needs the Discord provider configured)"
       ],
-      "fixedVersions": [
-        "postiz-app 2.25.3"
-      ],
+      "fixedVersions": ["postiz-app 2.25.3"],
       "startedAt": "2026-10-24",
       "closedAt": null,
       "updatedAt": "2026-10-24T14:55:16Z",
@@ -47,30 +35,11 @@
       "severity": "critical",
       "patchStatus": "patched",
       "product": "Pillow (Python imaging library)",
-      "stacks": [
-        "python",
-        "pypi"
-      ],
-      "tags": [
-        "python",
-        "pypi",
-        "pillow",
-        "heap-overflow",
-        "rce",
-        "image-processing"
-      ],
-      "cveIds": [
-        "CVE-2026-112398",
-        "CVE-2026-112900",
-        "CVE-2026-112393",
-        "CVE-2026-112403"
-      ],
-      "affectedVersions": [
-        "pillow <= 12.3.0"
-      ],
-      "fixedVersions": [
-        "pillow 13.0.0"
-      ],
+      "stacks": ["python", "pypi"],
+      "tags": ["python", "pypi", "pillow", "heap-overflow", "rce", "image-processing"],
+      "cveIds": ["CVE-2026-112398", "CVE-2026-112900", "CVE-2026-112393", "CVE-2026-112403"],
+      "affectedVersions": ["pillow <= 12.3.0"],
+      "fixedVersions": ["pillow 13.0.0"],
       "startedAt": "2026-10-23",
       "closedAt": null,
       "updatedAt": "2026-10-24T14:55:16Z",
@@ -92,10 +61,7 @@
       "severity": "critical",
       "patchStatus": "patched",
       "product": "Node.js",
-      "stacks": [
-        "node",
-        "python"
-      ],
+      "stacks": ["node", "python"],
       "tags": [
         "node",
         "python",
@@ -158,23 +124,10 @@
       "patchStatus": "patched",
       "product": "Plex Media Server",
       "stacks": [],
-      "tags": [
-        "plex",
-        "cisa-kev",
-        "rce"
-      ],
-      "cveIds": [
-        "CVE-2026-96652",
-        "CVE-2026-96654",
-        "CVE-2026-96655",
-        "CVE-2026-96656"
-      ],
-      "affectedVersions": [
-        "Before 1.43.3.10861"
-      ],
-      "fixedVersions": [
-        "1.43.3.10861+"
-      ],
+      "tags": ["plex", "cisa-kev", "rce"],
+      "cveIds": ["CVE-2026-96652", "CVE-2026-96654", "CVE-2026-96655", "CVE-2026-96656"],
+      "affectedVersions": ["Before 1.43.3.10861"],
+      "fixedVersions": ["1.43.3.10861+"],
       "startedAt": "2026-10-16",
       "closedAt": null,
       "updatedAt": "2026-10-23T21:26:09Z",
@@ -193,22 +146,10 @@
       "patchStatus": "patched",
       "product": "Fortinet FortiMail",
       "stacks": [],
-      "tags": [
-        "fortinet",
-        "zero-day",
-        "cisa-kev"
-      ],
-      "cveIds": [
-        "CVE-2026-104286"
-      ],
-      "affectedVersions": [
-        "7.2.0–7.2.9, 7.4.0–7.4.8, 7.6.0–7.6.6, 8.0.0–8.0.1 (migrate/upgrade per Fortinet matrix)"
-      ],
-      "fixedVersions": [
-        "8.0.2+",
-        "7.6.7+",
-        "7.4.9+; 7.2.x migrate to 7.4.9+"
-      ],
+      "tags": ["fortinet", "zero-day", "cisa-kev"],
+      "cveIds": ["CVE-2026-104286"],
+      "affectedVersions": ["7.2.0–7.2.9, 7.4.0–7.4.8, 7.6.0–7.6.6, 8.0.0–8.0.1 (migrate/upgrade per Fortinet matrix)"],
+      "fixedVersions": ["8.0.2+", "7.6.7+", "7.4.9+; 7.2.x migrate to 7.4.9+"],
       "startedAt": "2026-09-30",
       "closedAt": null,
       "updatedAt": "2026-10-23T21:26:09Z",

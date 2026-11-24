@@ -16,7 +16,6 @@ export function fileArgs(stack: string, repoDir = env.repoDir): string[] {
   return ['-f', file, ...(override ? ['-f', override] : [])]
 }
 
-
 /**
  * `compose up` for exactly the services a deploy means, and nothing they depend on.
  *
@@ -33,10 +32,7 @@ export function fileArgs(stack: string, repoDir = env.repoDir): string[] {
  * this, so the command an operator pastes carries the flag too. `pullArgs` slices at
  * `up`, so a pull never sees it.
  */
-export function composeArgs(
-  target: DeployTarget,
-  repoDir = env.repoDir,
-): { cwd: string; args: string[] } {
+export function composeArgs(target: DeployTarget, repoDir = env.repoDir): { cwd: string; args: string[] } {
   const cwd = repoDir
   // Deduped here rather than at the call site: this is the one function that turns a
   // target into a command, so it is the one place that can guarantee the executed and
@@ -45,15 +41,11 @@ export function composeArgs(
   return { cwd, args: ['compose', ...fileArgs(target.stack, repoDir), 'up', '-d', '--no-deps', ...services] }
 }
 
-
 /**
  * `compose pull` for the same target, so the command that runs and the command the pull
  * request suggests are built by the same function rather than resembling each other.
  */
-export function pullArgs(
-  target: DeployTarget,
-  repoDir = env.repoDir,
-): { cwd: string; args: string[] } {
+export function pullArgs(target: DeployTarget, repoDir = env.repoDir): { cwd: string; args: string[] } {
   const up = composeArgs(target, repoDir)
   const head = up.args.slice(0, up.args.indexOf('up'))
   // A fork's `image:` is a local build name no registry has; `--ignore-buildable` keeps
@@ -62,16 +54,12 @@ export function pullArgs(
   return { cwd: up.cwd, args: [...head, 'pull', ...flags, ...new Set(target.services)] }
 }
 
-
 /**
  * `compose build` for the services of the target that are built from source, before `up`.
  * Its own step rather than `up --build`, so a build that fails has recreated nothing and
  * says so, and so the command an operator pastes shows the build it needs.
  */
-export function buildArgs(
-  target: DeployTarget,
-  repoDir = env.repoDir,
-): { cwd: string; args: string[] } | null {
+export function buildArgs(target: DeployTarget, repoDir = env.repoDir): { cwd: string; args: string[] } | null {
   const build = [...new Set((target.build ?? []).filter((s) => target.services.includes(s)))]
   if (build.length === 0) return null
   const up = composeArgs(target, repoDir)
@@ -79,12 +67,10 @@ export function buildArgs(
   return { cwd: up.cwd, args: [...head, 'build', ...build] }
 }
 
-
 export function removeArgs(target: DeployTarget, repoDir = env.repoDir): { cwd: string; args: string[] } {
   const cwd = repoDir
   return { cwd, args: ['compose', ...fileArgs(target.stack, repoDir), 'rm', '-sf', ...new Set(target.services)] }
 }
-
 
 /**
  * The command an operator runs by hand, built from the same function the automatic path

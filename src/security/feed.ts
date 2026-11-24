@@ -76,9 +76,12 @@ export function storeIncidents(incidents: FeedIncident[], categories: readonly s
   const db = getDb()
   const now = new Date().toISOString()
   const existing = new Map(
-    (db.prepare(`SELECT slug, updated_at FROM security_incidents`).all() as { slug: string; updated_at: string | null }[]).map(
-      (r) => [r.slug, r.updated_at],
-    ),
+    (
+      db.prepare(`SELECT slug, updated_at FROM security_incidents`).all() as {
+        slug: string
+        updated_at: string | null
+      }[]
+    ).map((r) => [r.slug, r.updated_at]),
   )
   const upsert = db.prepare(
     `INSERT INTO security_incidents
@@ -143,7 +146,12 @@ export async function pollFeed(policy: Policy, fetchImpl: typeof fetch = fetch):
   ).run(url, res.headers.get('etag'), new Date().toISOString())
 
   if (malformed > 0) {
-    logEvent({ level: 'warn', kind: 'system', message: 'security feed: some incidents could not be read', detail: `${malformed} skipped` })
+    logEvent({
+      level: 'warn',
+      kind: 'system',
+      message: 'security feed: some incidents could not be read',
+      detail: `${malformed} skipped`,
+    })
   }
   return { unchanged: false, stored, malformed }
 }
@@ -166,7 +174,12 @@ export function readIncident(slug: string): StoredIncident | null {
     | (Omit<StoredIncident, 'tags' | 'cve_ids' | 'raw'> & { tags: string; cve_ids: string; raw: string })
     | undefined
   if (!r) return null
-  return { ...r, tags: JSON.parse(r.tags) as string[], cve_ids: JSON.parse(r.cve_ids) as string[], raw: JSON.parse(r.raw) as FeedIncident }
+  return {
+    ...r,
+    tags: JSON.parse(r.tags) as string[],
+    cve_ids: JSON.parse(r.cve_ids) as string[],
+    raw: JSON.parse(r.raw) as FeedIncident,
+  }
 }
 
 /** Exploited in the wild, by the feed's own tags. */

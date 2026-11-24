@@ -14,7 +14,6 @@ export interface Milestone {
   level?: 'info' | 'warn' | 'error'
 }
 
-
 /**
  * One update's whole story, in order.
  *
@@ -35,11 +34,16 @@ export function updateTimeline(id: number): Milestone[] {
   })
 
   if (v.change) {
-    const c = getDb()
-      .prepare(`SELECT created_at, merged_at, state FROM prs WHERE id = ?`)
-      .get(v.change.id) as { created_at: string; merged_at: string | null; state: string } | undefined
+    const c = getDb().prepare(`SELECT created_at, merged_at, state FROM prs WHERE id = ?`).get(v.change.id) as
+      | { created_at: string; merged_at: string | null; state: string }
+      | undefined
     if (v.change.scope === 'proposed') {
-      out.push({ at: c?.created_at ?? null, kind: 'drafted', label: 'config changes drafted', detail: 'they ship with the update' })
+      out.push({
+        at: c?.created_at ?? null,
+        kind: 'drafted',
+        label: 'config changes drafted',
+        detail: 'they ship with the update',
+      })
     }
   }
 
@@ -62,17 +66,25 @@ export function updateTimeline(id: number): Milestone[] {
   }
 
   if (v.holds.length > 0 && v.state === 'detected') {
-    out.push({ at: null, kind: 'decision', label: 'waiting on you', detail: v.holds.map((h) => h.text).join('; '), level: 'warn' })
+    out.push({
+      at: null,
+      kind: 'decision',
+      label: 'waiting on you',
+      detail: v.holds.map((h) => h.text).join('; '),
+      level: 'warn',
+    })
   }
   if (v.snoozedUntil) out.push({ at: null, kind: 'snoozed', label: `snoozed until ${v.snoozedUntil.slice(0, 10)}` })
   if (v.approvedAt) out.push({ at: v.approvedAt, kind: 'approved', label: 'you said ship' })
-  for (const h of v.waived) out.push({ at: null, kind: 'waived', label: `rule ${h.waivedBy} waived a hold`, detail: h.text })
+  for (const h of v.waived)
+    out.push({ at: null, kind: 'waived', label: `rule ${h.waivedBy} waived a hold`, detail: h.text })
 
   if (v.change) {
-    const c = getDb()
-      .prepare(`SELECT merged_at, state FROM prs WHERE id = ?`)
-      .get(v.change.id) as { merged_at: string | null; state: string } | undefined
-    for (const p of v.restorePoints) out.push({ at: p.createdAt, kind: 'restore', label: `restore point: ${p.service}`, detail: p.path })
+    const c = getDb().prepare(`SELECT merged_at, state FROM prs WHERE id = ?`).get(v.change.id) as
+      | { merged_at: string | null; state: string }
+      | undefined
+    for (const p of v.restorePoints)
+      out.push({ at: p.createdAt, kind: 'restore', label: `restore point: ${p.service}`, detail: p.path })
     if (c?.merged_at) {
       out.push({ at: c.merged_at, kind: 'merged', label: `shipped: a merge commit on ${gitBranch()}` })
     } else if (c?.state === 'closed') {
@@ -120,11 +132,9 @@ export function updateTimeline(id: number): Milestone[] {
     // left-stopped once a later merge overtakes the update and it reads superseded, and the
     // history then claimed "verified" for the member that was never started. A row that
     // rolled back, or could not be run, is named by what it did instead.
-    const leftHere =
-      readRecordedPlan(d?.snapshot ?? null)?.left.some((l) => l.service === v.service) ?? false
+    const leftHere = readRecordedPlan(d?.snapshot ?? null)?.left.some((l) => l.service === v.service) ?? false
     const key =
-      v.state === 'left-stopped' ||
-      (leftHere && v.deploy.status !== 'rolled-back' && v.deploy.status !== 'error')
+      v.state === 'left-stopped' || (leftHere && v.deploy.status !== 'rolled-back' && v.deploy.status !== 'error')
         ? 'left-stopped'
         : v.deploy.status
     const f = finished[key]
@@ -156,7 +166,6 @@ export function updateTimeline(id: number): Milestone[] {
 
   return out
 }
-
 
 function verifyDetail(json: string | null | undefined): string | null {
   if (!json) return null

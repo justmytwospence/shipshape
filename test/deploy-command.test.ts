@@ -22,10 +22,7 @@ const target = (over: Partial<DeployTarget> = {}): DeployTarget => ({
 })
 
 test('the pasted command matches what the automatic path would run', () => {
-  assert.equal(
-    manualCommand(target()),
-    'docker compose -f jellyfin/docker-compose.yaml up -d --no-deps jellyfin',
-  )
+  assert.equal(manualCommand(target()), 'docker compose -f jellyfin/docker-compose.yaml up -d --no-deps jellyfin')
 })
 
 test('the root stack gets no -f, because that is the invocation that fails', () => {

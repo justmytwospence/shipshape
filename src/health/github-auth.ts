@@ -144,21 +144,33 @@ export type ProbeMethod = 'api' | 'ls-remote' | 'none'
  * that is also the git credential: a GIT_TOKEN for some other host must never reach
  * api.github.com. Every other https remote is asked with `git ls-remote`.
  */
-export function probeMethod(i: { remote: GitRemote; githubRepo: string; gitToken: string; githubToken: string }): ProbeMethod {
+export function probeMethod(i: {
+  remote: GitRemote
+  githubRepo: string
+  gitToken: string
+  githubToken: string
+}): ProbeMethod {
   if (i.remote.kind !== 'https' || !i.gitToken) return 'none'
   if (i.remote.host === 'github.com' && i.githubRepo && i.gitToken === i.githubToken) return 'api'
   return 'ls-remote'
 }
 
 const currentMethod = () =>
-  probeMethod({ remote: env.gitRemote, githubRepo: env.githubRepo, gitToken: env.gitToken, githubToken: env.githubToken })
+  probeMethod({
+    remote: env.gitRemote,
+    githubRepo: env.githubRepo,
+    gitToken: env.gitToken,
+    githubToken: env.githubToken,
+  })
 
 async function probeApi(): Promise<AuthState> {
   const r = await ghRequest<unknown>(`/repos/${env.githubRepo}`, { token: env.githubToken })
   if (r.ok) return { ok: true }
   if (r.kind === 'not-found') return classifyProbe(404, '')
   if (r.kind === 'auth') {
-    return r.status === 401 ? classifyProbe(401, '') : classifyProbe(r.status ?? 403, 'the token cannot read this repository')
+    return r.status === 401
+      ? classifyProbe(401, '')
+      : classifyProbe(r.status ?? 403, 'the token cannot read this repository')
   }
   // Rate-limited, network, server: not a credential fault.
   return { ok: true }
@@ -181,9 +193,14 @@ async function probeLsRemote(): Promise<AuthState> {
   let state: AuthState
   // 2: reachable, no HEAD (an empty repository).
   if (r.exitCode === 0 || r.exitCode === 2) state = { ok: true }
-  else if (looksLikeGitAuthFailure(stderr)) state = { ok: false, kind: 'rejected', reason: `${host} refused the credentials (${first})` }
+  else if (looksLikeGitAuthFailure(stderr))
+    state = { ok: false, kind: 'rejected', reason: `${host} refused the credentials (${first})` }
   else if (/not found|does not exist|404/i.test(stderr)) {
-    state = { ok: false, kind: 'unreachable', reason: `${host} has no repository at ${env.gitRemote.webUrl} that these credentials can see` }
+    state = {
+      ok: false,
+      kind: 'unreachable',
+      reason: `${host} has no repository at ${env.gitRemote.webUrl} that these credentials can see`,
+    }
   } else state = { ok: true } // a network failure is not a credential fault
   lsRemoteMemo = { at: Date.now(), state }
   return state

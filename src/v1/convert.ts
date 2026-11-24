@@ -55,7 +55,8 @@ export function planServiceLabels(file: string, service: string, labels: Record<
   const edits: LabelEdit[] = []
   const set = (key: string, value: string) =>
     edits.push({ file, service, key, value, was: labels[key] === undefined ? '(none)' : `${key}: ${labels[key]}` })
-  const remove = (k: string) => edits.push({ file, service, key: `shipshape.${k}`, value: null, was: `shipshape.${k}: ${raw(k)}` })
+  const remove = (k: string) =>
+    edits.push({ file, service, key: `shipshape.${k}`, value: null, was: `shipshape.${k}: ${raw(k)}` })
 
   // The class first. v1's `skip` beat a class; anything else lost to one.
   if (policy === 'skip') set('shipshape.class', 'skip')

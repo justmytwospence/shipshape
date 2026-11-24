@@ -29,10 +29,22 @@ test('the Anthropic key goes to api.anthropic.com even when ANTHROPIC_BASE_URL s
       {
         url: 'https://api.anthropic.com/v1/messages',
         reply: () =>
-          json({ id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }),
+          json({
+            id: 'm',
+            type: 'message',
+            role: 'assistant',
+            model: 'x',
+            content: [],
+            stop_reason: 'end_turn',
+            usage: { input_tokens: 1, output_tokens: 1 },
+          }),
       },
     ])
-    await llmClient(0).messages.create({ model: 'claude-sonnet-5-5', max_tokens: 10, messages: [{ role: 'user', content: 'x' }] })
+    await llmClient(0).messages.create({
+      model: 'claude-sonnet-5-5',
+      max_tokens: 10,
+      messages: [{ role: 'user', content: 'x' }],
+    })
     assertAllMocked(h)
   } finally {
     delete process.env.ANTHROPIC_BASE_URL

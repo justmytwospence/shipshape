@@ -81,10 +81,22 @@ test('readForkPin refuses shapes the editor could not bump', () => {
     assert.match((r as { reason: string }).reason, re)
   }
   bad(`services:\n  app:\n    image: x:1\n`, /no build\.context/)
-  bad(`services:\n  app:\n    build:\n      context: https://x/y.git#main\n    image: x:1-abc1234\n`, /not pinned to a commit/)
-  bad(`services:\n  app:\n    build:\n      context: https://x/y.git#${OLD_SHA}\n    image: x:v1\n`, /does not end with the pinned commit/)
-  bad(`services:\n  app:\n    build:\n      context: https://x/y.git#${OLD_SHA}\n    image: x:v1-ecca03b\n`, /no shipshape\.fork\.upstream/)
-  bad(`services:\n  app:\n    build:\n      context: https://x/y.git#${OLD_SHA}\n    image: x\n    labels:\n      shipshape.fork.upstream: u:1\n`, /has no tag/)
+  bad(
+    `services:\n  app:\n    build:\n      context: https://x/y.git#main\n    image: x:1-abc1234\n`,
+    /not pinned to a commit/,
+  )
+  bad(
+    `services:\n  app:\n    build:\n      context: https://x/y.git#${OLD_SHA}\n    image: x:v1\n`,
+    /does not end with the pinned commit/,
+  )
+  bad(
+    `services:\n  app:\n    build:\n      context: https://x/y.git#${OLD_SHA}\n    image: x:v1-ecca03b\n`,
+    /no shipshape\.fork\.upstream/,
+  )
+  bad(
+    `services:\n  app:\n    build:\n      context: https://x/y.git#${OLD_SHA}\n    image: x\n    labels:\n      shipshape.fork.upstream: u:1\n`,
+    /has no tag/,
+  )
 })
 
 test('bumpFork rewrites exactly the four places, and the args follow', () => {
@@ -146,7 +158,10 @@ test('bumpFork handles list-form build args and a fork with none', () => {
     `APP_REVISION=${NEW_SHA}`,
   ])
 
-  const none = FIXTURE.replace(`      args:\n        APP_VERSION: v3.3.3-fork.ecca03b\n        APP_REVISION: ${OLD_SHA}\n`, '')
+  const none = FIXTURE.replace(
+    `      args:\n        APP_VERSION: v3.3.3-fork.ecca03b\n        APP_REVISION: ${OLD_SHA}\n`,
+    '',
+  )
   const n = bumpFork(none, 'grimmory', BUMP)
   assert.ok(n.ok, (n as { reason?: string }).reason)
   assert.equal(parse(n.text).services.grimmory.build.args, undefined)

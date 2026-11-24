@@ -50,7 +50,12 @@ export function startScheduler(): void {
   try {
     logRetired(retireOvertaken())
   } catch (err) {
-    logEvent({ level: 'warn', kind: 'system', message: 'could not retire overtaken updates', detail: (err as Error).message })
+    logEvent({
+      level: 'warn',
+      kind: 'system',
+      message: 'could not retire overtaken updates',
+      detail: (err as Error).message,
+    })
   }
   schedule()
   startLoop()
@@ -83,7 +88,8 @@ function startLoop(): void {
         logEvent({
           level: 'error',
           kind: 'policy',
-          message: 'the policy file is invalid; running on the last version that loaded, or the defaults (paused) if none did',
+          message:
+            'the policy file is invalid; running on the last version that loaded, or the defaults (paused) if none did',
           detail: policyError,
         })
       }
@@ -116,7 +122,12 @@ function startLoop(): void {
       // One card per decision waiting on you, kept in line with the Inbox. Never allowed
       // to stop the tick: a card is a convenience, the Inbox is the record.
       await syncDecisionCards().catch((err) =>
-        logEvent({ level: 'warn', kind: 'system', message: 'decision cards not synced', detail: (err as Error).message }),
+        logEvent({
+          level: 'warn',
+          kind: 'system',
+          message: 'decision cards not synced',
+          detail: (err as Error).message,
+        }),
       )
       // Asked on the tick rather than where the budget is spent, so the question has an
       // answer even when nothing is being analysed.
@@ -268,4 +279,3 @@ async function runScanSafely(trigger: 'cron' | 'manual'): Promise<void> {
     })
   }
 }
-

@@ -136,7 +136,9 @@ test('reclaimStale never touches a deploy this process is running', async () => 
       return { status: 'in-sync', sha: 'x' }
     },
   })
-  getDb().prepare(`UPDATE deploys SET started_at = ? WHERE id = ?`).run(new Date(Date.now() - 3_600_000).toISOString(), id)
+  getDb()
+    .prepare(`UPDATE deploys SET started_at = ? WHERE id = ?`)
+    .run(new Date(Date.now() - 3_600_000).toISOString(), id)
   await drainDeployQueue()
   assert.equal(row(id).status, 'running', 'slow is not stuck')
   hold.open()

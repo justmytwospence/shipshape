@@ -74,16 +74,22 @@ test('packages match by ecosystem and normalised name', () => {
       { type: 'python', name: 'pillow', version: '12.3.0' },
     ],
   )
-  assert.deepEqual(
-    hits.map((h) => `${h.type}:${h.name}@${h.version}`).sort(),
-    ['binary:node@24.21.0', 'python:brotli@1.2.0'],
-  )
+  assert.deepEqual(hits.map((h) => `${h.type}:${h.name}@${h.version}`).sort(), [
+    'binary:node@24.21.0',
+    'python:brotli@1.2.0',
+  ])
 })
 
 test('an `any` target catches a vendor package wherever it is', () => {
   const plex: Target = { ecosystem: 'any', names: ['plexmediaserver'], affected: [{ lt: '1.43.3.10861' }], fixed: [] }
-  assert.equal(matchPackages([plex], [{ type: 'deb', name: 'plexmediaserver', version: '1.43.4.10903-e5521bd8c' }]).length, 0)
-  assert.equal(matchPackages([plex], [{ type: 'deb', name: 'plexmediaserver', version: '1.43.2.10000-aaaaaaaa' }]).length, 1)
+  assert.equal(
+    matchPackages([plex], [{ type: 'deb', name: 'plexmediaserver', version: '1.43.4.10903-e5521bd8c' }]).length,
+    0,
+  )
+  assert.equal(
+    matchPackages([plex], [{ type: 'deb', name: 'plexmediaserver', version: '1.43.2.10000-aaaaaaaa' }]).length,
+    1,
+  )
 })
 
 test('a fix is verified only when the candidate carries a fixed version of every exposed package', () => {
@@ -112,7 +118,10 @@ test('a fix is verified only when the candidate carries a fixed version of every
 
 test('a target with no ranges matches nothing', () => {
   assert.equal(
-    matchPackages([{ ecosystem: 'any', names: ['node'], affected: [], fixed: [] }], [{ type: 'binary', name: 'node', version: '1.0.0' }]).length,
+    matchPackages(
+      [{ ecosystem: 'any', names: ['node'], affected: [], fixed: [] }],
+      [{ type: 'binary', name: 'node', version: '1.0.0' }],
+    ).length,
     0,
   )
 })

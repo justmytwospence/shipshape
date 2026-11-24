@@ -188,9 +188,7 @@ async function fixingCommit(ref: ParsedRef): Promise<FixLookup> {
   }
 }
 
-export type Containment =
-  | { ok: true; contains: boolean; tag: string }
-  | { ok: false; detail: string }
+export type Containment = { ok: true; contains: boolean; tag: string } | { ok: false; detail: string }
 
 /**
  * Whether `tag` contains `sha`, by GitHub's compare: with `sha...tag`, the tag is `ahead`
@@ -223,10 +221,7 @@ export async function tagContains(repo: string, sha: string, tag: string): Promi
  */
 export async function resolveForkRef(ref: string, newestTag: string | null): Promise<ForkRefResolution> {
   const parsed = parseForkRef(ref)
-  const out = (
-    state: ForkRefState,
-    o: Partial<Omit<ForkRefResolution, 'ref' | 'state'>> = {},
-  ): ForkRefResolution => ({
+  const out = (state: ForkRefState, o: Partial<Omit<ForkRefResolution, 'ref' | 'state'>> = {}): ForkRefResolution => ({
     ref,
     state,
     fixSha: o.fixSha ?? null,

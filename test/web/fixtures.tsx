@@ -79,7 +79,11 @@ function base(over: Partial<UpdateView>): UpdateView {
     change: null,
     holds: [
       { kind: 'ask', waivable: true, text: 'this service always asks' },
-      { kind: 'needs-action', waivable: false, text: 'Needs: Re-select the hardware acceleration device after upgrading' },
+      {
+        kind: 'needs-action',
+        waivable: false,
+        text: 'Needs: Re-select the hardware acceleration device after upgrading',
+      },
     ],
     waived: [],
     shipStatus: 'decision',
@@ -216,7 +220,14 @@ const UPDATES: Record<string, UpdateView> = {
   verified: update({
     id: 13,
     state: 'verified',
-    change: { id: 22, state: 'merged', scope: 'tag-only' as const, branch: 'b22', mergeCommitSha: 'abc1234', url: 'https://github.com/you/repo/commit/abc1234' },
+    change: {
+      id: 22,
+      state: 'merged',
+      scope: 'tag-only' as const,
+      branch: 'b22',
+      mergeCommitSha: 'abc1234',
+      url: 'https://github.com/you/repo/commit/abc1234',
+    },
     holds: [],
     shipStatus: null,
     deploy: {
@@ -240,7 +251,14 @@ const UPDATES: Record<string, UpdateView> = {
     fromTag: '1.37.2',
     toTag: '1.37.3',
     state: 'left-stopped',
-    change: { id: 101, state: 'merged', scope: 'tag-only' as const, branch: 'b101', mergeCommitSha: 'abc1234', url: 'https://github.com/you/repo/commit/abc1234' },
+    change: {
+      id: 101,
+      state: 'merged',
+      scope: 'tag-only' as const,
+      branch: 'b101',
+      mergeCommitSha: 'abc1234',
+      url: 'https://github.com/you/repo/commit/abc1234',
+    },
     holds: [],
     shipStatus: null,
     deploy: {
@@ -302,7 +320,8 @@ const FORK_SERVICE = {
 }
 
 const FORK = {
-  upstream: 'ghcr.io/grimmory-tools/grimmory:v3.3.3@sha256:fffd0ae0bfccd64ca00441e8fa58a14e286b9115e5df1cb47eecf294ad09e6ff',
+  upstream:
+    'ghcr.io/grimmory-tools/grimmory:v3.3.3@sha256:fffd0ae0bfccd64ca00441e8fa58a14e286b9115e5df1cb47eecf294ad09e6ff',
   refs: [
     {
       ref: 'grimmory-tools/grimmory#2952',
@@ -357,10 +376,7 @@ const CHROME = {
 const SETTING_GROUPS = [
   {
     title: 'Shipping',
-    prose: [
-      'An update ships on its own unless a hold says a person is needed.',
-      'Pause stops that, and nothing else.',
-    ],
+    prose: ['An update ships on its own unless a hold says a person is needed.', 'Pause stops that, and nothing else.'],
     items: [
       {
         def: {
@@ -463,9 +479,7 @@ export const STATUS = {
   budgetUsd: 10,
   upstream: { total: 96, linked: 58, likely: 4, notFound: 12, notLooked: 20, failing: 2 },
   spentUsd: 8.03,
-  deploys: [
-    { at: ago(2), stack: 'media', services: 'jellyfin', status: 'verified', trigger: 'queue' },
-  ],
+  deploys: [{ at: ago(2), stack: 'media', services: 'jellyfin', status: 'verified', trigger: 'queue' }],
   // Every key the real table holds, so the filter that drops the ones stated in words
   // elsewhere on the page is actually exercised rather than assumed.
   budgets: [
@@ -544,7 +558,12 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
     svc: SERVICE,
     composeFile: 'media/docker-compose.yaml',
     config: [
-      { key: 'class', value: 'frozen', source: 'locked' as const, note: 'the stack is disabled, so nothing moves on its own' },
+      {
+        key: 'class',
+        value: 'frozen',
+        source: 'locked' as const,
+        note: 'the stack is disabled, so nothing moves on its own',
+      },
       { key: 'watch', value: 'on', source: 'label' as const },
       { key: 'pattern', value: 'semver', source: 'inferred' as const },
       {
@@ -553,7 +572,12 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
         source: 'label' as const,
         note: 'label on media/jellyfin-web, which runs the same image',
       },
-      { key: 'notes', value: 'https://jellyfin.org/posts/', source: 'label' as const, note: 'read alongside any GitHub releases' },
+      {
+        key: 'notes',
+        value: 'https://jellyfin.org/posts/',
+        source: 'label' as const,
+        note: 'read alongside any GitHub releases',
+      },
     ],
     history: [UPDATES.waiting!],
     canEdit: true,
@@ -644,9 +668,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
         chrome: CH,
       }),
     ),
-    'settings-page': String(
-      SettingsPage({ groups: SETTING_GROUPS, readyCount: 2, chrome: CH }),
-    ),
+    'settings-page': String(SettingsPage({ groups: SETTING_GROUPS, readyCount: 2, chrome: CH })),
     'status-page': String(StatusPage({ data: STATUS, chrome: CH })),
     'status-page-unpriced': String(
       StatusPage({
@@ -681,14 +703,10 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
     'inbox-paused': String(InboxList({ data: { ...inbox, needsYou: [], pausedOnly: [UPDATES.waiting!] } })),
     'inbox-aside': String(InboxAside({ data: inbox })),
     'update-detail': String(detail(UPDATES.waiting!, 'list=updates&stage=open', '/updates')),
-    'update-detail-hold': String(
-      detail(UPDATES.snoozed!, 'list=updates&stage=open', '/updates'),
-    ),
+    'update-detail-hold': String(detail(UPDATES.snoozed!, 'list=updates&stage=open', '/updates')),
     'update-row': String(UpdateRow({ update: UPDATES.waiting!, ctx: 'list=inbox' })),
     'update-row-transient': String(UpdateRow({ update: UPDATES.deploying!, ctx: 'list=inbox' })),
-    'update-row-stage': String(
-      UpdateRow({ update: UPDATES.ready!, ctx: 'list=updates&stage=open', showStage: true }),
-    ),
+    'update-row-stage': String(UpdateRow({ update: UPDATES.ready!, ctx: 'list=updates&stage=open', showStage: true })),
     'update-verified': String(detail(UPDATES.verified!, 'list=updates&stage=done', '/updates')),
     'update-screened': String(
       detail(
@@ -702,7 +720,13 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
             model: 'example/screen-1',
             createdAt: ago(1),
             flags: [{ label: 'Setting removed or renamed', p: 0.93 }],
-            actionable: [{ text: 'The `hwaccel` key is now `hardware_acceleration`', version: 'v10.10.3', url: 'https://github.com/jellyfin/jellyfin/releases/tag/v10.10.3' }],
+            actionable: [
+              {
+                text: 'The `hwaccel` key is now `hardware_acceleration`',
+                version: 'v10.10.3',
+                url: 'https://github.com/jellyfin/jellyfin/releases/tag/v10.10.3',
+              },
+            ],
             notable: [{ text: 'Trickplay previews', version: 'v10.10.3', url: null }],
           },
         }),
@@ -710,9 +734,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
         '/updates',
       ),
     ),
-    'update-attended': String(
-      detail(update({ id: 21, cls: 'lifeline' }), 'list=updates&stage=open', '/updates'),
-    ),
+    'update-attended': String(detail(update({ id: 21, cls: 'lifeline' }), 'list=updates&stage=open', '/updates')),
     // Merge in the overflow menu rather than as the primary button.
     'update-secondary-merge': String(
       detail(
@@ -722,16 +744,20 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
       ),
     ),
     'update-left-stopped': String(detail(UPDATES.leftStopped!, 'list=updates&stage=done', '/updates')),
-    'update-review-failed': String(
-      detail(UPDATES.reviewFailed!, 'list=updates&stage=open', '/updates'),
+    'update-review-failed': String(detail(UPDATES.reviewFailed!, 'list=updates&stage=open', '/updates')),
+    services: String(
+      ServicesList({ services: [SERVICE, FORK_SERVICE], grouped: false, ctx: 'list=services', total: 2 }),
     ),
-    services: String(ServicesList({ services: [SERVICE, FORK_SERVICE], grouped: false, ctx: 'list=services', total: 2 })),
     'service-detail-fork-conflict': String(
       ServiceDetail({
         data: {
           ...serviceData,
           svc: FORK_SERVICE,
-          fork: { ...FORK, conflict: 'ecca03b "fix: keep the reading statistics (#2952)" conflicts with upstream v3.5.1 in src/kobo.ts' },
+          fork: {
+            ...FORK,
+            conflict:
+              'ecca03b "fix: keep the reading statistics (#2952)" conflicts with upstream v3.5.1 in src/kobo.ts',
+          },
           composeFile: 'books/docker-compose.yaml',
           config: [],
           history: [],
@@ -747,7 +773,8 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
           state: 'detected',
           change: null,
           fork: true,
-          forkConflict: 'ecca03b "fix: keep the reading statistics (#2952)" conflicts with upstream v3.5.1 in src/kobo.ts',
+          forkConflict:
+            'ecca03b "fix: keep the reading statistics (#2952)" conflicts with upstream v3.5.1 in src/kobo.ts',
         },
         'list=updates&stage=open',
         '/updates',
@@ -762,8 +789,16 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
               header: '@@ -81,6 +81,6 @@ grimmory',
               lines: [
                 { kind: 'ctx', no: 81, text: '    build:' },
-                { kind: 'del', no: 82, text: '      context: https://github.com/justmytwospence/grimmory.git#ecca03b9b1b03f2aa6023ac34f5dc5dadbdbe4dd' },
-                { kind: 'add', no: null, text: '      context: https://github.com/justmytwospence/grimmory.git#9f1c2d3e4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d' },
+                {
+                  kind: 'del',
+                  no: 82,
+                  text: '      context: https://github.com/justmytwospence/grimmory.git#ecca03b9b1b03f2aa6023ac34f5dc5dadbdbe4dd',
+                },
+                {
+                  kind: 'add',
+                  no: null,
+                  text: '      context: https://github.com/justmytwospence/grimmory.git#9f1c2d3e4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d',
+                },
                 { kind: 'ctx', no: 83, text: '      args:' },
               ],
             },
@@ -774,8 +809,23 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
             tag: 'shipshape/v3.5.1-9f1c2d3',
             forkUrl: 'https://github.com/justmytwospence/grimmory.git',
             upstreamRef: 'ghcr.io/grimmory-tools/grimmory:v3.5.1@sha256:' + '0'.repeat(64),
-            carried: [{ sha: 'c'.repeat(40), short: 'ccccccc', subject: 'fix: keep the reading statistics (#2952)', author: 'Spencer' }],
-            dropped: [{ sha: 'd'.repeat(40), short: 'ddddddd', subject: 'fix: opds paging', author: 'Spencer', reason: 'upstream v3.5.1 carries the same change' }],
+            carried: [
+              {
+                sha: 'c'.repeat(40),
+                short: 'ccccccc',
+                subject: 'fix: keep the reading statistics (#2952)',
+                author: 'Spencer',
+              },
+            ],
+            dropped: [
+              {
+                sha: 'd'.repeat(40),
+                short: 'ddddddd',
+                subject: 'fix: opds paging',
+                author: 'Spencer',
+                reason: 'upstream v3.5.1 carries the same change',
+              },
+            ],
             waitsOn: [{ ref: 'grimmory-tools/grimmory#2952', state: 'merged-unreleased', releasedIn: null }],
           },
         },
@@ -805,9 +855,7 @@ export function renderAll(opts: { running?: boolean } = {}): Record<string, stri
     'services-grouped': String(
       ServicesList({ services: [SERVICE], grouped: true, ctx: 'list=services&group=stack', total: 1 }),
     ),
-    'service-detail': String(
-      ServiceDetail({ data: serviceData, ctx: 'list=services', listHref: '/services' }),
-    ),
+    'service-detail': String(ServiceDetail({ data: serviceData, ctx: 'list=services', listHref: '/services' })),
     'link-preview': String(LinkPreviewPane({ preview: LINK_PREVIEW as never, ctx: 'list=services' })),
     'link-preview-refused': String(LinkPreviewPane({ preview: LINK_PREVIEW_REFUSED as never, ctx: 'list=services' })),
     activity: String(ActivityList({ rows: ACTIVITY, more: null, filtered: false })),
@@ -834,7 +882,10 @@ export function classesOf(html: string): string[] {
   for (const m of html.matchAll(/class="([^"]*)"/g)) {
     // The renderer escapes the attribute; a `[&::-webkit-details-marker]` variant comes
     // back with `&amp;` in it, and the stylesheet knows it by the bare character.
-    const raw = m[1]!.replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+    const raw = m[1]!
+      .replace(/&amp;/g, '&')
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, '"')
     out.push(...raw.split(/\s+/).filter(Boolean))
   }
   return out

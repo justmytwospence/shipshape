@@ -86,11 +86,17 @@ function fingerprintKey(dataDir: string): { ok: true; key: Buffer } | { ok: fals
     }
     const hex = readFileSync(file, 'utf8').trim()
     if (!/^[0-9a-f]{64}$/.test(hex)) {
-      return { ok: false, problem: `${file} is not a key shipshape wrote. Delete it and restart: everyone is signed out once.` }
+      return {
+        ok: false,
+        problem: `${file} is not a key shipshape wrote. Delete it and restart: everyone is signed out once.`,
+      }
     }
     return { ok: true, key: Buffer.from(hex, 'hex') }
   } catch (err) {
-    return { ok: false, problem: `cannot create ${file} (${(err as { code?: string }).code ?? 'error'}): DATA_DIR must be writable.` }
+    return {
+      ok: false,
+      problem: `cannot create ${file} (${(err as { code?: string }).code ?? 'error'}): DATA_DIR must be writable.`,
+    }
   }
 }
 
@@ -103,7 +109,9 @@ export function parsePasswordConfig(env: NodeJS.ProcessEnv): PasswordParse {
     try {
       password = readFileSync(env.SHIPSHAPE_PASSWORD_FILE, 'utf8').replace(/\r?\n$/, '')
     } catch (err) {
-      problems.push(`SHIPSHAPE_PASSWORD_FILE: cannot read "${env.SHIPSHAPE_PASSWORD_FILE}" (${(err as { code?: string }).code ?? 'error'}).`)
+      problems.push(
+        `SHIPSHAPE_PASSWORD_FILE: cannot read "${env.SHIPSHAPE_PASSWORD_FILE}" (${(err as { code?: string }).code ?? 'error'}).`,
+      )
     }
   } else {
     password = env.SHIPSHAPE_PASSWORD ?? ''
@@ -141,7 +149,10 @@ export function parsePasswordConfig(env: NodeJS.ProcessEnv): PasswordParse {
 }
 
 const forbidden = () =>
-  new Response('Forbidden', { status: 403, headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=UTF-8' } })
+  new Response('Forbidden', {
+    status: 403,
+    headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=UTF-8' },
+  })
 
 /**
  * The Origin check for a request that changes something.

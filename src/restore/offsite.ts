@@ -19,7 +19,10 @@ import { logEvent } from '../events.ts'
 
 export type OffsiteResult = { status: 'ok' | 'error'; detail: string }
 
-export type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>
+export type Fetch = (
+  url: string,
+  init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal },
+) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>
 
 type OffsiteConfig = NonNullable<Policy['restore_points']['offsite']>
 
@@ -119,7 +122,8 @@ export async function runOffsiteAndWait(
 ): Promise<OffsiteResult> {
   const job = offsiteJob(cfg.job, stack, label)
   const started = await callTool(cfg.url, cfg.tool, { job }, io.fetch)
-  if (!started.ok) return { status: 'error', detail: `backup job ${job} did not start: ${started.detail}`.slice(0, 200) }
+  if (!started.ok)
+    return { status: 'error', detail: `backup job ${job} did not start: ${started.detail}`.slice(0, 200) }
   const s = parse(started.text)
   const run = s?.run
   if (run === undefined || run === null) {
@@ -134,7 +138,8 @@ export async function runOffsiteAndWait(
     const st = await callTool(cfg.url, cfg.status_tool, { run }, io.fetch)
     if (!st.ok) {
       // A blip in reading the status is not the backup failing; give it a few.
-      if (++misses >= 5) return { status: 'error', detail: `backup job ${job}: status unreadable: ${st.detail}`.slice(0, 200) }
+      if (++misses >= 5)
+        return { status: 'error', detail: `backup job ${job}: status unreadable: ${st.detail}`.slice(0, 200) }
       continue
     }
     misses = 0
@@ -175,13 +180,20 @@ export async function refreshOffsiteJobs(
   const r = await callTool(cfg.url, cfg.list_tool, {}, doFetch)
   if (!r.ok) {
     // Keep what we had, and say so: a backup check that cannot list jobs looks like none exist.
-    logEvent({ level: 'warn', kind: 'system', message: 'offsite backup jobs could not be listed', detail: `${cfg.url}: ${r.detail}` })
+    logEvent({
+      level: 'warn',
+      kind: 'system',
+      message: 'offsite backup jobs could not be listed',
+      detail: `${cfg.url}: ${r.detail}`,
+    })
     return
   }
   const list = parse(r.text)?.jobs
   if (!Array.isArray(list)) return
   const names = list
-    .map((j) => (typeof j === 'string' ? j : (j as { job?: unknown; name?: unknown })?.job ?? (j as { name?: unknown })?.name))
+    .map((j) =>
+      typeof j === 'string' ? j : ((j as { job?: unknown; name?: unknown })?.job ?? (j as { name?: unknown })?.name),
+    )
     .filter((n): n is string => typeof n === 'string')
   jobs = { at: Date.now(), names: new Set(names) }
 }

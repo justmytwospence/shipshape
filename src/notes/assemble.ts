@@ -129,7 +129,9 @@ export async function assembleNotes(o: {
 
   if (!repo) {
     if (linked?.kind === 'path') {
-      b.notes.push(`shipshape.changelog names ${linked.path}, a path in the upstream repository, and no upstream repository is known.`)
+      b.notes.push(
+        `shipshape.changelog names ${linked.path}, a path in the upstream repository, and no upstream repository is known.`,
+      )
     }
     b.notes.push(
       b.external
@@ -258,7 +260,11 @@ function taggedAs(ref: ImageRef, digest: string | null): { key: VersionKey | nul
     const k = versionKey(r.tag)
     if (k && !k.partial && (!key || (compareKeys(k, key) ?? 0) > 0)) key = k
   }
-  const seen = rows.map((r) => r.at).filter((a): a is string => !!a).sort()[0] ?? null
+  const seen =
+    rows
+      .map((r) => r.at)
+      .filter((a): a is string => !!a)
+      .sort()[0] ?? null
   return { key, seen }
 }
 
@@ -271,7 +277,11 @@ function placed(r: IndexedRelease, range: Range): boolean {
 // ------------------------------------------------------------------ releases
 
 async function releases(b: NotesBundle, repo: string, range: Range): Promise<IndexedRelease[]> {
-  const index = await releaseIndex(repo, { until: range.from && !range.from.partial ? range.from : null, maxPages: 5, bodies: true })
+  const index = await releaseIndex(repo, {
+    until: range.from && !range.from.partial ? range.from : null,
+    maxPages: 5,
+    bodies: true,
+  })
   if (!index.ok) {
     failed(b, 'releases', index.kind, `${repo}'s GitHub releases`, index.detail, index.resetAt)
     return []
@@ -307,8 +317,14 @@ async function releases(b: NotesBundle, repo: string, range: Range): Promise<Ind
     outcome: b.releases.length > 0 ? 'found' : 'none',
     detail: `${b.releases.length} of ${index.releases.length} read are in the range`,
   })
-  if (!index.complete && range.from && !index.releases.some((r) => r.key && (compareKeys(r.key, range.from!) ?? 1) <= 0)) {
-    b.notes.push(`Only the newest ${index.releases.length} of ${repo}'s releases were read; older ones in the range may be missing.`)
+  if (
+    !index.complete &&
+    range.from &&
+    !index.releases.some((r) => r.key && (compareKeys(r.key, range.from!) ?? 1) <= 0)
+  ) {
+    b.notes.push(
+      `Only the newest ${index.releases.length} of ${repo}'s releases were read; older ones in the range may be missing.`,
+    )
   }
   return index.releases
 }
@@ -334,7 +350,11 @@ async function changelog(
   override: string | null,
 ): Promise<void> {
   if (!range.to) {
-    b.fetches.push({ what: 'changelog', outcome: 'skipped', detail: 'the tags name no versions to find in a changelog' })
+    b.fetches.push({
+      what: 'changelog',
+      outcome: 'skipped',
+      detail: 'the tags name no versions to find in a changelog',
+    })
     return
   }
 
@@ -380,7 +400,11 @@ async function changelog(
     }
     const sections = sectionize(text.text, { filename: found.file.name, family: range.to.family })
     const inRangeCount = sectionsInRange(sections, range.from, range.to, Number.POSITIVE_INFINITY).sections.length
-    const { sections: kept, omitted } = sectionsInRange(sections.filter((s) => !covered(s)), range.from, range.to)
+    const { sections: kept, omitted } = sectionsInRange(
+      sections.filter((s) => !covered(s)),
+      range.from,
+      range.to,
+    )
     b.changelog = { file: found.file.path, sections: kept, omitted }
     b.fetches.push({
       what: 'changelog',
@@ -398,7 +422,11 @@ async function changelog(
     if (!dir.ok) {
       if (dir.kind !== 'not-found') failed(b, 'changelog', dir.kind, found.dir.path, dir.detail)
       else if (override) {
-        b.fetches.push({ what: 'changelog', outcome: 'not-found', detail: `shipshape.changelog names ${override}, which ${repo} does not have` })
+        b.fetches.push({
+          what: 'changelog',
+          outcome: 'not-found',
+          detail: `shipshape.changelog names ${override}, which ${repo} does not have`,
+        })
         b.notes.push(`shipshape.changelog names ${override}, which ${repo} does not have.`)
       }
       return
@@ -408,7 +436,7 @@ async function changelog(
       .filter((e) => e.type === 'file')
       .map((e) => ({ e, key: fileVersion(e.name, range.to!.family) }))
       .filter((f): f is { e: Entry; key: VersionKey } => !!f.key && inRange(f.key, range.from, range.to!))
-      .sort((x, y) => (compareKeys(y.key, x.key) ?? 0))
+      .sort((x, y) => compareKeys(y.key, x.key) ?? 0)
       .slice(0, DIRECTORY_FILES)
     const sections: Section[] = []
     for (const f of files) {
@@ -425,7 +453,12 @@ async function changelog(
         body: body.length > SECTION_CAP ? `${body.slice(0, SECTION_CAP)}\n[the rest of this file was cut]` : body,
       })
     }
-    const { sections: kept, omitted } = sectionsInRange(sections.filter((s) => !covered(s)), range.from, range.to, TOTAL_CAP)
+    const { sections: kept, omitted } = sectionsInRange(
+      sections.filter((s) => !covered(s)),
+      range.from,
+      range.to,
+      TOTAL_CAP,
+    )
     b.changelog = { file: `${found.dir.path}/`, sections: kept, omitted }
     b.fetches.push({
       what: 'changelog',
@@ -447,13 +480,13 @@ function pick(entries: Entry[]): { file: Entry | null; dir: Entry | null } {
     const i = FILE_RANK.indexOf(stem)
     return i === -1 ? FILE_RANK.length : i
   }
-  const file = entries
-    .filter((e) => e.type === 'file' && CHANGELOG_FILE.test(e.name))
-    .sort((a, b) => rank(a.name) - rank(b.name))[0] ?? null
+  const file =
+    entries
+      .filter((e) => e.type === 'file' && CHANGELOG_FILE.test(e.name))
+      .sort((a, b) => rank(a.name) - rank(b.name))[0] ?? null
   const dir = entries.find((e) => e.type === 'dir' && CHANGELOG_DIR.test(e.name)) ?? null
   return { file, dir }
 }
-
 
 async function listing(
   repo: string,
@@ -464,7 +497,11 @@ async function listing(
     cacheKey: `github:${api}`,
     trim: (raw) =>
       Array.isArray(raw)
-        ? raw.map((e: Record<string, unknown>) => ({ name: String(e.name ?? ''), path: String(e.path ?? ''), type: String(e.type ?? '') }))
+        ? raw.map((e: Record<string, unknown>) => ({
+            name: String(e.name ?? ''),
+            path: String(e.path ?? ''),
+            type: String(e.type ?? ''),
+          }))
         : [],
   })
   return res.ok ? { ok: true, entries: res.data } : res
@@ -513,7 +550,11 @@ async function commits(
       // GitHub lists the oldest first. The newest are nearest the proposed version.
       const subjects = res.data.subjects.slice(-COMMITS_SHOWN).reverse()
       b.commits = { from: a, to: c, total: res.data.total, subjects }
-      b.fetches.push({ what: 'commits', outcome: 'found', detail: `${subjects.length} of ${res.data.total} between ${a} and ${c}` })
+      b.fetches.push({
+        what: 'commits',
+        outcome: 'found',
+        detail: `${subjects.length} of ${res.data.total} between ${a} and ${c}`,
+      })
       return
     }
     if (res.kind !== 'not-found') {
@@ -536,7 +577,11 @@ async function containerChanges(b: NotesBundle, ref: ImageRef): Promise<void> {
       signal: AbortSignal.timeout(20_000),
     })
     if (!res.ok) {
-      b.fetches.push({ what: 'container changes', outcome: 'unreachable', detail: `the LinuxServer API answered ${res.status}` })
+      b.fetches.push({
+        what: 'container changes',
+        outcome: 'unreachable',
+        detail: `the LinuxServer API answered ${res.status}`,
+      })
       return
     }
     const body = (await res.json()) as {
@@ -546,7 +591,11 @@ async function containerChanges(b: NotesBundle, ref: ImageRef): Promise<void> {
       const hit = list.find((i) => i.name === name)
       if (hit?.changelog) {
         b.container = hit.changelog.slice(0, 12)
-        b.fetches.push({ what: 'container changes', outcome: 'found', detail: `${b.container.length} from LinuxServer` })
+        b.fetches.push({
+          what: 'container changes',
+          outcome: 'found',
+          detail: `${b.container.length} from LinuxServer`,
+        })
         return
       }
     }
@@ -559,11 +608,20 @@ async function containerChanges(b: NotesBundle, ref: ImageRef): Promise<void> {
 
 // ------------------------------------------------------------------ saying what failed
 
-function failed(b: NotesBundle, what: string, kind: GhFailure, subject: string, detail: string, resetAt?: string): void {
+function failed(
+  b: NotesBundle,
+  what: string,
+  kind: GhFailure,
+  subject: string,
+  detail: string,
+  resetAt?: string,
+): void {
   switch (kind) {
     case 'rate-limited':
       b.fetches.push({ what, outcome: 'rate-limited', detail })
-      b.notes.push(`GitHub's rate limit was reached${resetAt ? ` (it resets ${resetAt})` : ''}, so ${subject} could not be read.`)
+      b.notes.push(
+        `GitHub's rate limit was reached${resetAt ? ` (it resets ${resetAt})` : ''}, so ${subject} could not be read.`,
+      )
       b.incomplete = true
       return
     case 'not-found':

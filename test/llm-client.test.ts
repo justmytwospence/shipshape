@@ -28,9 +28,7 @@ const ALL = files(SRC)
 const read = (f: string) => readFileSync(join(SRC, f), 'utf8')
 
 test('only the client module constructs an Anthropic client', () => {
-  const offenders = ALL.filter((f) => f !== 'analyze/client.ts').filter((f) =>
-    /\bnew Anthropic\s*\(/.test(read(f)),
-  )
+  const offenders = ALL.filter((f) => f !== 'analyze/client.ts').filter((f) => /\bnew Anthropic\s*\(/.test(read(f)))
   assert.deepEqual(offenders, [])
 })
 
@@ -51,8 +49,6 @@ test('only the Jev module talks to the Decisions endpoint', () => {
 })
 
 test('nothing outside the client module hardcodes the Anthropic API host', () => {
-  const offenders = ALL.filter((f) => f !== 'analyze/client.ts').filter((f) =>
-    /api\.anthropic\.com/.test(read(f)),
-  )
+  const offenders = ALL.filter((f) => f !== 'analyze/client.ts').filter((f) => /api\.anthropic\.com/.test(read(f)))
   assert.deepEqual(offenders, [])
 })

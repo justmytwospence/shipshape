@@ -11,14 +11,11 @@ export const MODEL_DEFAULTS: Record<LlmProvider, { reader: string; code: string 
   custom: { reader: '', code: '' },
 }
 
-
 /** The reader: a reading is a summary of release notes, so the mid-sized model does it. */
 export const DEFAULT_READER_MODEL = MODEL_DEFAULTS[providerOf(env)].reader
 
-
 /** Drafting and rule scope, where a wrong edit costs more than the call. */
 export const DEFAULT_CODE_MODEL = MODEL_DEFAULTS[providerOf(env)].code
-
 
 /**
  * The holds an operator may waive with a rule ("always ship"). `lifeline`, `unsafe`,
@@ -27,9 +24,7 @@ export const DEFAULT_CODE_MODEL = MODEL_DEFAULTS[providerOf(env)].code
  */
 export const WAIVABLE = ['ask', 'no-evidence', 'irreversible', 'no-restore-point'] as const
 
-
 export type Waivable = (typeof WAIVABLE)[number]
-
 
 /** One standing "always ship" decision, written by the always-ship verb (src/rules.ts). */
 export const RuleSchema = z.object({
@@ -48,18 +43,13 @@ export const RuleSchema = z.object({
   because: z.string().default(''),
 })
 
-
 export type Rule = z.infer<typeof RuleSchema>
-
 
 export const EVENT_CLASSES = ['decision', 'broken', 'security', 'system'] as const
 
-
 export type EventClass = (typeof EVENT_CLASSES)[number]
 
-
 const Events = z.array(z.enum(EVENT_CLASSES)).optional()
-
 
 /** Where notifications go. Delivery is a list of sinks; which ones are on is policy. */
 export const SinkSchema = z.discriminatedUnion('type', [
@@ -78,7 +68,12 @@ export const SinkSchema = z.discriminatedUnion('type', [
     events: Events,
   }),
   z.object({ type: z.literal('discord'), url_env: z.string().default('DISCORD_WEBHOOK_URL'), events: Events }),
-  z.object({ type: z.literal('gotify'), url: z.string().url(), token_env: z.string().default('GOTIFY_TOKEN'), events: Events }),
+  z.object({
+    type: z.literal('gotify'),
+    url: z.string().url(),
+    token_env: z.string().default('GOTIFY_TOKEN'),
+    events: Events,
+  }),
   z.object({
     type: z.literal('apprise'),
     url: z.string().url(),
@@ -88,15 +83,12 @@ export const SinkSchema = z.discriminatedUnion('type', [
   }),
 ])
 
-
 export type Sink = z.infer<typeof SinkSchema>
-
 
 /** Exported so the defaults themselves can be asserted on; parse through
  *  `validatePolicyText` or `loadPolicy` in application code. */
 /** A prefix of a git tag name: no leading '-', no '..' or '//'. Empty is allowed. */
 const GIT_REF_PREFIX = /^(?!-)(?!.*\.\.)(?!.*\/\/)[A-Za-z0-9._/-]*$/
-
 
 export const PolicySchema = z.object({
   /**
@@ -246,7 +238,12 @@ export const PolicySchema = z.object({
       categories: z.array(z.enum(['patch', 'supply-chain', 'breach'])).default(['patch', 'supply-chain']),
       // Minutes between feed reads. Inventory work runs on the same clock, more often while
       // there is a backlog.
-      interval_m: z.number().int().min(5).max(24 * 60).default(15),
+      interval_m: z
+        .number()
+        .int()
+        .min(5)
+        .max(24 * 60)
+        .default(15),
       // Image inventories taken per pass, at most. Each one is 20-60 s of syft.
       sbom_per_pass: z.number().int().min(1).max(50).default(6),
       // The scanner, pinned by digest. Run as its own short-lived container so a large
@@ -312,9 +309,7 @@ export const PolicySchema = z.object({
   exclude_stacks: z.array(z.string()).default([]),
 })
 
-
 export type Policy = z.infer<typeof PolicySchema>
-
 
 /**
  * Keys of the pull-request era (v1). A policy file that still carries any of them is
@@ -339,11 +334,9 @@ const RETIRED_KEYS = [
   'notify.email',
 ] as const
 
-
 export function retiredKeysMessage(keys: string[]): string {
   return `policy.yaml still uses keys this version no longer reads: ${keys.join(', ')}. Rewrite them with npm run convert-v1 -- --write (in the container: node dist/bin/convert-v1.js --write), or remove them by hand. Until then the last policy that loaded applies, or the defaults (paused) if none did.`
 }
-
 
 export function retiredKeys(raw: string): string[] {
   let doc: unknown

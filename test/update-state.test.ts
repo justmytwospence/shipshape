@@ -1,12 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  UPDATE_STATES,
-  LIVE_STATES,
-  REFUSED_STATES,
-  isUpdateState,
-  sqlIn,
-} from '../src/updates/state.ts'
+import { UPDATE_STATES, LIVE_STATES, REFUSED_STATES, isUpdateState, sqlIn } from '../src/updates/state.ts'
 import { nextAttemptAt } from '../src/analyze/run.ts'
 
 test('the live set is the one the worklist and the scan already used', () => {

@@ -3,8 +3,7 @@ import assert from 'node:assert/strict'
 import { scopeFor, boundaryFor, canWrite, isForbidden } from '../src/propose/paths.ts'
 import { applyOps } from '../src/propose/apply.ts'
 
-const b = (scope: Parameters<typeof boundaryFor>[0]) =>
-  boundaryFor(scope, 'authelia/docker-compose.yaml')
+const b = (scope: Parameters<typeof boundaryFor>[0]) => boundaryFor(scope, 'authelia/docker-compose.yaml')
 
 test('the boundary comes from where the compose file sits', () => {
   assert.equal(b('compose-dir').root, 'authelia')
@@ -129,10 +128,7 @@ test('the operator can rule out a path at every scope', () => {
   // A ruled-out prefix must not swallow a sibling that merely starts with the same text.
   assert.equal(canWrite('traefik/dynamic-notes.yaml', t('compose-dir'), 'shipshape', undefined, never).ok, true)
   // ...and it is still reachable by the long way round.
-  assert.equal(
-    canWrite('traefik/x/../dynamic/mcp.yaml', t('compose-dir'), 'shipshape', undefined, never).ok,
-    false,
-  )
+  assert.equal(canWrite('traefik/x/../dynamic/mcp.yaml', t('compose-dir'), 'shipshape', undefined, never).ok, false)
 })
 
 test('a config-typed boundary refuses anything that runs', () => {
@@ -196,9 +192,7 @@ test('path ops edit a non-compose YAML file, byte-exactly', () => {
 
 test('a path op will not invent the structure it needs', () => {
   // Conjuring intermediate mappings is how a plausible edit lands in the wrong place.
-  const r = applyOps(CONFIG, 'x', [
-    { op: 'set_path', path: ['nothing', 'here', 'deep'], value: '1' },
-  ])
+  const r = applyOps(CONFIG, 'x', [{ op: 'set_path', path: ['nothing', 'here', 'deep'], value: '1' }])
   assert.equal(r.ok, false)
   assert.match(r.ok === false ? r.reason : '', /no mapping at/)
 })

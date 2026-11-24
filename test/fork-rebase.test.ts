@@ -14,7 +14,9 @@ const root = mkdtempSync(join(tmpdir(), 'shipshape-fork-rebase-'))
 process.env.DATA_DIR = join(root, 'data')
 after(() => rmSync(root, { recursive: true, force: true }))
 
-const { prepareFork, forkWorkDir, matchTag, mentions, shippedRefs, upstreamUrlFor } = await import('../src/forks/rebase.ts')
+const { prepareFork, forkWorkDir, matchTag, mentions, shippedRefs, upstreamUrlFor } = await import(
+  '../src/forks/rebase.ts'
+)
 
 const ID = ['-c', 'user.name=t', '-c', 'user.email=t@t']
 function sh(cwd: string, args: string[], env: Record<string, string> = {}): string {
@@ -22,7 +24,12 @@ function sh(cwd: string, args: string[], env: Record<string, string> = {}): stri
     cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z', ...env },
+    env: {
+      ...process.env,
+      GIT_AUTHOR_DATE: '2026-01-01T00:00:00Z',
+      GIT_COMMITTER_DATE: '2026-01-01T00:00:00Z',
+      ...env,
+    },
   }).trim()
 }
 
@@ -56,7 +63,10 @@ function world(name: string, fixSubject = 'fix: keep the reading statistics (#7)
   sh(dir, ['clone', '-q', upstream, work])
   sh(work, ['checkout', '-q', '-b', 'homelab', 'v1.0.0'])
   writeFileSync(join(work, 'app.txt'), 'line one\nline two\nthe fix\n')
-  sh(work, ['commit', '-qam', fixSubject], { GIT_AUTHOR_DATE: '2026-02-02T00:00:00Z', GIT_COMMITTER_DATE: '2026-02-02T00:00:00Z' })
+  sh(work, ['commit', '-qam', fixSubject], {
+    GIT_AUTHOR_DATE: '2026-02-02T00:00:00Z',
+    GIT_COMMITTER_DATE: '2026-02-02T00:00:00Z',
+  })
   const pinned = sh(work, ['rev-parse', 'HEAD'])
   sh(work, ['push', '-q', fork, 'homelab'])
   return { upstream, fork, pinned, fixSubject }
@@ -65,11 +75,15 @@ function world(name: string, fixSubject = 'fix: keep the reading statistics (#7)
 /** A new upstream release on top of main, editing one file. */
 function release(w: World, tag: string, file: string, content: string, subject = `upstream ${tag}`): void {
   writeFileSync(join(w.upstream, file), content)
-  sh(w.upstream, ['commit', '-qam', subject], { GIT_AUTHOR_DATE: '2026-03-03T00:00:00Z', GIT_COMMITTER_DATE: '2026-03-03T00:00:00Z' })
+  sh(w.upstream, ['commit', '-qam', subject], {
+    GIT_AUTHOR_DATE: '2026-03-03T00:00:00Z',
+    GIT_COMMITTER_DATE: '2026-03-03T00:00:00Z',
+  })
   sh(w.upstream, ['tag', tag])
 }
 
-const forkRefs = (w: World): string[] => sh(w.fork, ['for-each-ref', '--format=%(refname) %(objectname)']).split('\n').filter(Boolean)
+const forkRefs = (w: World): string[] =>
+  sh(w.fork, ['for-each-ref', '--format=%(refname) %(objectname)']).split('\n').filter(Boolean)
 
 const base = (w: World) => ({
   forkUrl: w.fork,
@@ -91,7 +105,10 @@ test('a clean replay pushes a new sha, tagged, and moves homelab with a lease', 
   assert.equal(r.upstreamTag, 'v1.1.0')
   assert.equal(r.tag, `homelab/v1.1.0-${r.short}`)
   assert.equal(r.short, r.sha.slice(0, 7))
-  assert.deepEqual(r.carried.map((c) => c.subject), [w.fixSubject])
+  assert.deepEqual(
+    r.carried.map((c) => c.subject),
+    [w.fixSubject],
+  )
   assert.deepEqual(r.dropped, [])
   assert.equal(r.alreadyPushed, false)
 
@@ -167,7 +184,12 @@ test('a conflicting upstream change names the commit and the file, and pushes no
   if (r.kind !== 'conflict') return
   assert.equal(r.commit.subject, w.fixSubject)
   assert.deepEqual(r.files, ['app.txt'])
-  assert.match(r.detail, new RegExp(`^${r.commit.short} "fix: keep the reading statistics \\(#7\\)" conflicts with upstream v1\\.1\\.0 in app\\.txt$`))
+  assert.match(
+    r.detail,
+    new RegExp(
+      `^${r.commit.short} "fix: keep the reading statistics \\(#7\\)" conflicts with upstream v1\\.1\\.0 in app\\.txt$`,
+    ),
+  )
   assert.deepEqual(forkRefs(w), before)
   // The work clone is left clean, so the next attempt starts fresh.
   const work = join(root, 'work', 'e')
@@ -196,7 +218,10 @@ test('a fork the token cannot push to is a clear refusal, and the upstream tag m
 })
 
 test('the helpers: work dir, upstream URL, tag matching, mentions, shipped refs', () => {
-  assert.equal(forkWorkDir('https://github.com/justmytwospence/grimmory.git', '/data'), '/data/forks/justmytwospence-grimmory')
+  assert.equal(
+    forkWorkDir('https://github.com/justmytwospence/grimmory.git', '/data'),
+    '/data/forks/justmytwospence-grimmory',
+  )
   assert.equal(forkWorkDir('https://github.com/o/r', '/data'), '/data/forks/o-r')
   assert.equal(upstreamUrlFor('grimmory-tools/grimmory', []), 'https://github.com/grimmory-tools/grimmory.git')
   assert.equal(upstreamUrlFor(null, ['o/r#1']), 'https://github.com/o/r.git')
@@ -230,7 +255,7 @@ test('the helpers: work dir, upstream URL, tag matching, mentions, shipped refs'
   )
 })
 
-test('the branch and the tag prefix are the caller\'s', async () => {
+test("the branch and the tag prefix are the caller's", async () => {
   const w = world('named')
   release(w, 'v1.1.0', 'other.txt', 'other, changed upstream\n')
   const r = await prepareFork({
@@ -245,5 +270,8 @@ test('the branch and the tag prefix are the caller\'s', async () => {
   assert.equal(r.tag, `x/v1.1.0-${r.short}`)
   const refs = forkRefs(w)
   assert.ok(refs.includes(`refs/heads/carried ${r.sha}`), refs.join('\n'))
-  assert.ok(refs.some((l) => l.startsWith(`refs/tags/x/v1.1.0-${r.short} `)), refs.join('\n'))
+  assert.ok(
+    refs.some((l) => l.startsWith(`refs/tags/x/v1.1.0-${r.short} `)),
+    refs.join('\n'),
+  )
 })

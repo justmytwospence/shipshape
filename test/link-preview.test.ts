@@ -32,18 +32,32 @@ beforeEach(() => {
 })
 
 const none = { source: null, changelog: null }
-const ask = (o: { source?: string; changelog?: string; current?: { source: string | null; changelog: string | null } }) =>
-  previewLink({ stack: 'media', service: 'jellyfin', source: o.source ?? '', changelog: o.changelog ?? '', current: o.current ?? none })
+const ask = (o: {
+  source?: string
+  changelog?: string
+  current?: { source: string | null; changelog: string | null }
+}) =>
+  previewLink({
+    stack: 'media',
+    service: 'jellyfin',
+    source: o.source ?? '',
+    changelog: o.changelog ?? '',
+    current: o.current ?? none,
+  })
 
 test('a repository is shown as GitHub names it, with its releases and the running version', async (t) => {
   const h = mockFetch(t, [
-    { url: 'https://api.github.com/repos/JellyFin/Jellyfin', reply: () => json({ full_name: 'jellyfin/jellyfin', fork: false, archived: false }) },
+    {
+      url: 'https://api.github.com/repos/JellyFin/Jellyfin',
+      reply: () => json({ full_name: 'jellyfin/jellyfin', fork: false, archived: false }),
+    },
     {
       url: 'https://api.github.com/repos/jellyfin/jellyfin/releases?per_page=100&page=1',
-      reply: () => json([
-        { tag_name: 'v10.10.0', prerelease: false, draft: false },
-        { tag_name: 'v10.9.11', prerelease: false, draft: false },
-      ]),
+      reply: () =>
+        json([
+          { tag_name: 'v10.10.0', prerelease: false, draft: false },
+          { tag_name: 'v10.9.11', prerelease: false, draft: false },
+        ]),
     },
   ])
   const p = await ask({ source: 'https://github.com/JellyFin/Jellyfin' })
@@ -91,7 +105,10 @@ test('a notes link shows what was read, and whether the running version has a se
   const h = mockFetch(t, [
     {
       url: 'https://notes.example/jellyfin.md',
-      reply: () => text('# Changes\n## 10.9.11\n- Fixed subtitles\n## 10.9.10\n- Older', { headers: { 'content-type': 'text/markdown' } }),
+      reply: () =>
+        text('# Changes\n## 10.9.11\n- Fixed subtitles\n## 10.9.10\n- Older', {
+          headers: { 'content-type': 'text/markdown' },
+        }),
     },
   ])
   const p = await ask({ changelog: 'https://notes.example/jellyfin.md' })

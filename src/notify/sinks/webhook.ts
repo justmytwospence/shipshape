@@ -19,7 +19,9 @@ import type { IncidentAction, IncidentStatus, Message, Priority } from '../types
 type WebhookSink = Extract<Sink, { type: 'webhook' }>
 
 /** Where to post, and the bearer if one is set. A token is optional: unset, no Authorization header is sent. */
-export function endpointOf(sink: Pick<WebhookSink, 'url_env' | 'token_env'>): { url: string; token: string | null } | null {
+export function endpointOf(
+  sink: Pick<WebhookSink, 'url_env' | 'token_env'>,
+): { url: string; token: string | null } | null {
   const url = process.env[sink.url_env] ?? ''
   const token = process.env[sink.token_env] ?? ''
   return url ? { url, token: token || null } : null
@@ -83,7 +85,11 @@ export async function sendIncident(sink: WebhookSink, opts: Message): Promise<vo
   await deliver(sink, slot, payload)
 }
 
-async function deliver(sink: Pick<WebhookSink, 'url_env' | 'token_env'>, slot: string, payload: Payload): Promise<boolean> {
+async function deliver(
+  sink: Pick<WebhookSink, 'url_env' | 'token_env'>,
+  slot: string,
+  payload: Payload,
+): Promise<boolean> {
   const ep = endpointOf(sink)
   if (!ep) return false
   try {
@@ -96,7 +102,8 @@ async function deliver(sink: Pick<WebhookSink, 'url_env' | 'token_env'>, slot: s
     if (!res.ok) throw new Error(`${res.status} ${await res.text().catch(() => '')}`.slice(0, 200))
     const db = getDb()
     if (slot.startsWith('~event:')) db.prepare(`DELETE FROM incidents WHERE key = ?`).run(slot)
-    else db.prepare(`UPDATE incidents SET pending = NULL WHERE key = ? AND pending = ?`).run(slot, JSON.stringify(payload))
+    else
+      db.prepare(`UPDATE incidents SET pending = NULL WHERE key = ? AND pending = ?`).run(slot, JSON.stringify(payload))
     return true
   } catch (err) {
     // A missed notification must never break the operation that triggered it. It stays

@@ -5,9 +5,7 @@ import { HOUR } from './types.ts'
  *  never gives (it points at the packaging repo). One request covers every lsio image. */
 const LSIO_URL = 'https://api.linuxserver.io/api/v1/images?include_config=false&include_deprecated=false'
 
-
 const LSIO_TTL_MS = 6 * HOUR
-
 
 interface LsioProject {
   /** The project URL, when it is a GitHub repository. */
@@ -15,7 +13,6 @@ interface LsioProject {
   /** The project URL as given, when it is not. */
   home: string | null
 }
-
 
 /** Only a successful fetch is remembered. A failed one used to be, which emptied this tier
  *  for the life of the process after a single outage. */
@@ -25,7 +22,6 @@ let lsioMemo: { at: number; projects: Map<string, LsioProject> } | null = null
 export function resetLsioMemo(): void {
   lsioMemo = null
 }
-
 
 export async function lsioProjects(): Promise<
   { ok: true; projects: Map<string, LsioProject> } | { ok: false; error: string }

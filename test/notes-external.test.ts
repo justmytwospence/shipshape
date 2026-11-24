@@ -47,11 +47,17 @@ const PAGE = `<h1>Release notes</h1>
 test('a vendor page is fetched, cut by version, and only the range is kept', async (t) => {
   resolver(t)
   const h = mockFetch(t, [
-    { url: 'https://vendor.example/notes', reply: () => text(PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } }) },
+    {
+      url: 'https://vendor.example/notes',
+      reply: () => text(PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } }),
+    },
   ])
   const r = await externalNotes({ kind: 'url', url: 'https://vendor.example/notes' }, null, range('1.0.0', '1.2.0'))
   assert.ok(r.ok, JSON.stringify(r))
-  assert.deepEqual(r.notes.sections.map((s) => s.heading), ['1.2.0', '1.1.0'])
+  assert.deepEqual(
+    r.notes.sections.map((s) => s.heading),
+    ['1.2.0', '1.1.0'],
+  )
   assert.match(r.notes.sections[0]!.body, /- Fixed the thing/)
   assert.equal(r.notes.totalSections, 3)
   assertAllMocked(h)
@@ -80,7 +86,11 @@ test('a redirect is checked again at the hop, and one into the lab goes nowhere'
   const plain = mockFetch(t, [
     { url: 'https://public.example/other', reply: () => status(301, { location: 'http://public.example/other' }) },
   ])
-  const downgraded = await externalNotes({ kind: 'url', url: 'https://public.example/other' }, null, range('1.0.0', '1.2.0'))
+  const downgraded = await externalNotes(
+    { kind: 'url', url: 'https://public.example/other' },
+    null,
+    range('1.0.0', '1.2.0'),
+  )
   assert.match(downgraded.ok ? '' : downgraded.reason, /only https/)
   assert.equal(plain.calls.length, 1)
 })
@@ -90,9 +100,16 @@ test('more than 2 MB is refused while reading, and what is not text is not read 
   const big = 'x'.repeat(2 * 1024 * 1024 + 10)
   const h = mockFetch(t, [
     { url: 'https://big.example/notes.md', reply: () => text(big, { headers: { 'content-type': 'text/markdown' } }) },
-    { url: 'https://pdf.example/notes.pdf', reply: () => text('%PDF', { headers: { 'content-type': 'application/pdf' } }) },
+    {
+      url: 'https://pdf.example/notes.pdf',
+      reply: () => text('%PDF', { headers: { 'content-type': 'application/pdf' } }),
+    },
   ])
-  const tooBig = await externalNotes({ kind: 'url', url: 'https://big.example/notes.md' }, null, range('1.0.0', '1.2.0'))
+  const tooBig = await externalNotes(
+    { kind: 'url', url: 'https://big.example/notes.md' },
+    null,
+    range('1.0.0', '1.2.0'),
+  )
   assert.match(tooBig.ok ? '' : tooBig.reason, /larger than 2 MB/)
   const pdf = await externalNotes({ kind: 'url', url: 'https://pdf.example/notes.pdf' }, null, range('1.0.0', '1.2.0'))
   assert.match(pdf.ok ? '' : pdf.reason, /application\/pdf, which is not text to read/)
@@ -102,20 +119,29 @@ test('more than 2 MB is refused while reading, and what is not text is not read 
 test('a page read within the last six hours is not fetched again', async (t) => {
   resolver(t)
   const h = mockFetch(t, [
-    { url: 'https://vendor.example/notes.md', reply: () => text('## 1.2.0\n- a\n## 1.1.0\n- b', { headers: { 'content-type': 'text/markdown' } }) },
+    {
+      url: 'https://vendor.example/notes.md',
+      reply: () => text('## 1.2.0\n- a\n## 1.1.0\n- b', { headers: { 'content-type': 'text/markdown' } }),
+    },
   ])
   const link = { kind: 'url' as const, url: 'https://vendor.example/notes.md' }
   await externalNotes(link, null, range('1.1.0', '1.2.0'))
   const again = await externalNotes(link, null, range('1.1.0', '1.2.0'))
   assert.ok(again.ok)
-  assert.deepEqual(again.notes.sections.map((s) => s.heading), ['1.2.0'])
+  assert.deepEqual(
+    again.notes.sections.map((s) => s.heading),
+    ['1.2.0'],
+  )
   assert.equal(h.calls.length, 1)
 })
 
 test('a page with no version headings is shown from the top, and says so', async (t) => {
   resolver(t)
   const h = mockFetch(t, [
-    { url: 'https://vendor.example/news', reply: () => text('Big improvements this month.\n\nMore to come.', { headers: { 'content-type': 'text/plain' } }) },
+    {
+      url: 'https://vendor.example/news',
+      reply: () => text('Big improvements this month.\n\nMore to come.', { headers: { 'content-type': 'text/plain' } }),
+    },
   ])
   const r = await externalNotes({ kind: 'url', url: 'https://vendor.example/news' }, null, range('1.0.0', '1.2.0'))
   assert.ok(r.ok)
@@ -126,8 +152,18 @@ test('a page with no version headings is shown from the top, and says so', async
 
 test('GitHub links are read through GitHub, at the ref they name', async (t) => {
   const dnsLog = resolver(t)
-  assert.deepEqual(githubLink('https://github.com/o/r/blob/v2/docs/NEWS.md'), { kind: 'blob', repo: 'o/r', ref: 'v2', path: 'docs/NEWS.md' })
-  assert.deepEqual(githubLink('https://github.com/o/r/tree/main/changelog'), { kind: 'tree', repo: 'o/r', ref: 'main', path: 'changelog' })
+  assert.deepEqual(githubLink('https://github.com/o/r/blob/v2/docs/NEWS.md'), {
+    kind: 'blob',
+    repo: 'o/r',
+    ref: 'v2',
+    path: 'docs/NEWS.md',
+  })
+  assert.deepEqual(githubLink('https://github.com/o/r/tree/main/changelog'), {
+    kind: 'tree',
+    repo: 'o/r',
+    ref: 'main',
+    path: 'changelog',
+  })
   assert.deepEqual(githubLink('https://github.com/o/r/releases/tag/v1'), { kind: 'releases', repo: 'o/r' })
   assert.deepEqual(githubLink('https://github.com/o/r.git'), { kind: 'repo', repo: 'o/r' })
   assert.equal(githubLink('https://gitlab.com/o/r'), null)
@@ -135,9 +171,16 @@ test('GitHub links are read through GitHub, at the ref they name', async (t) => 
   const h = mockFetch(t, [
     { url: 'https://raw.githubusercontent.com/o/r/v2/docs/NEWS.md', reply: () => text('## 1.2.0\n- a\n## 1.1.0\n- b') },
   ])
-  const r = await externalNotes({ kind: 'url', url: 'https://github.com/o/r/blob/v2/docs/NEWS.md' }, null, range('1.1.0', '1.2.0'))
+  const r = await externalNotes(
+    { kind: 'url', url: 'https://github.com/o/r/blob/v2/docs/NEWS.md' },
+    null,
+    range('1.1.0', '1.2.0'),
+  )
   assert.ok(r.ok)
-  assert.deepEqual(r.notes.sections.map((s) => s.heading), ['1.2.0'])
+  assert.deepEqual(
+    r.notes.sections.map((s) => s.heading),
+    ['1.2.0'],
+  )
   assert.deepEqual(dnsLog.asked, [], 'no name was resolved: nothing went through the open fetch')
   assertAllMocked(h)
 })
@@ -151,7 +194,8 @@ test('plex: with no repository known at all, the linked page is the notes', asyn
     },
     {
       url: 'https://forums.plex.example/notes',
-      reply: () => text('<h3>1.43.5</h3><p>New</p><h3>1.43.4</h3><p>Running</p>', { headers: { 'content-type': 'text/html' } }),
+      reply: () =>
+        text('<h3>1.43.5</h3><p>New</p><h3>1.43.4</h3><p>Running</p>', { headers: { 'content-type': 'text/html' } }),
     },
   ])
   const b = await assembleNotes({
@@ -164,10 +208,16 @@ test('plex: with no repository known at all, the linked page is the notes', asyn
       confidence: null,
       detail: null,
       packagingRepo: 'linuxserver/docker-plex',
-      changelog: { value: 'https://forums.plex.example/notes', target: { kind: 'url', url: 'https://forums.plex.example/notes' } },
+      changelog: {
+        value: 'https://forums.plex.example/notes',
+        target: { kind: 'url', url: 'https://forums.plex.example/notes' },
+      },
     },
   })
-  assert.deepEqual(b.external?.sections.map((s) => s.heading), ['1.43.5'])
+  assert.deepEqual(
+    b.external?.sections.map((s) => s.heading),
+    ['1.43.5'],
+  )
   assert.equal(notesInRange(b), 1)
   assert.match(b.notes.join('\n'), /the notes linked by shipshape\.changelog are what there is/)
   assertAllMocked(h)
@@ -176,7 +226,10 @@ test('plex: with no repository known at all, the linked page is the notes', asyn
 test('a path in shipshape.changelog replaces discovery', async (t) => {
   const h = mockFetch(t, [
     { url: 'https://api.github.com/repos/o/r/releases?per_page=100&page=1', reply: () => json([]) },
-    { url: 'https://raw.githubusercontent.com/o/r/HEAD/docs/HISTORY.md', reply: () => text('## 2.1.0\n- new\n## 2.0.0\n- old') },
+    {
+      url: 'https://raw.githubusercontent.com/o/r/HEAD/docs/HISTORY.md',
+      reply: () => text('## 2.1.0\n- new\n## 2.0.0\n- old'),
+    },
     { url: /compare/, reply: () => status(404) },
     // No contents listing: the path is not searched for.
   ])
@@ -184,9 +237,18 @@ test('a path in shipshape.changelog replaces discovery', async (t) => {
     image: 'o/r:2.0.0',
     fromTag: '2.0.0',
     toTag: '2.1.0',
-    source: { repo: 'o/r', tier: 'label', confidence: 'high', detail: null, changelog: { value: 'docs/HISTORY.md', target: { kind: 'path', path: 'docs/HISTORY.md' } } },
+    source: {
+      repo: 'o/r',
+      tier: 'label',
+      confidence: 'high',
+      detail: null,
+      changelog: { value: 'docs/HISTORY.md', target: { kind: 'path', path: 'docs/HISTORY.md' } },
+    },
   })
-  assert.deepEqual(b.changelog?.sections.map((s) => s.heading), ['2.1.0'])
+  assert.deepEqual(
+    b.changelog?.sections.map((s) => s.heading),
+    ['2.1.0'],
+  )
   assert.equal(b.changelog?.file, 'docs/HISTORY.md')
   assertAllMocked(h)
 })

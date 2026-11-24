@@ -17,8 +17,6 @@ export function summarise(counts: Record<string, number>, durationS: number): st
   return `${parts.join(', ')} in ${durationS}s`
 }
 
-
-
 export function recordComposeFiles(n: number): void {
   const now = new Date().toISOString()
   getDb()
@@ -29,7 +27,6 @@ export function recordComposeFiles(n: number): void {
     .run(n, now)
 }
 
-
 export function recordTelemetry(counts: Record<string, number>, durationS: number): void {
   const db = getDb()
   const now = new Date().toISOString()
@@ -39,10 +36,14 @@ export function recordTelemetry(counts: Record<string, number>, durationS: numbe
                                     updated_at = excluded.updated_at`,
   )
   put.run('scan.last_duration_s', durationS, null, now)
-  put.run('scan.last_counts', Object.values(counts).reduce((a, b) => a + b, 0), JSON.stringify(counts), now)
+  put.run(
+    'scan.last_counts',
+    Object.values(counts).reduce((a, b) => a + b, 0),
+    JSON.stringify(counts),
+    now,
+  )
   put.run('scan.last_at', Date.parse(now), now, now)
 }
-
 
 /**
  * Say so, once per scan, when a service carries a `shipshape.*` key nothing reads.
@@ -53,7 +54,13 @@ export function recordTelemetry(counts: Record<string, number>, durationS: numbe
  * repeats into a count, so a label left in place is one row rather than one a night.
  */
 export function reportUnknownLabels(
-  services: { stack: string; service: string; unknownLabels: string[]; legacyLabels: string[]; labelProblems: string[] }[],
+  services: {
+    stack: string
+    service: string
+    unknownLabels: string[]
+    legacyLabels: string[]
+    labelProblems: string[]
+  }[],
 ): void {
   for (const s of services) {
     const n = s.legacyLabels.length

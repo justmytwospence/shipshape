@@ -61,7 +61,12 @@ export async function sendApprise(sink: AppriseSink, opts: Message, doFetch: typ
     if (!res.ok) throw new Error(`${res.status}`)
   } catch (err) {
     once.forget(opts.key)
-    logEvent({ level: 'warn', kind: 'system', message: 'could not notify through Apprise', detail: (err as Error).message })
+    logEvent({
+      level: 'warn',
+      kind: 'system',
+      message: 'could not notify through Apprise',
+      detail: (err as Error).message,
+    })
   }
 }
 

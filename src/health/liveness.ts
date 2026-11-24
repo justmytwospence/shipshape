@@ -8,9 +8,10 @@ import { version } from '../version.ts'
  * main loop has stopped doing its job. The body never says why (it answers without
  * sign-in); the reason goes to Activity.
  */
-export function health(
-  deps: { dbOk?: () => boolean; stalled?: () => boolean } = {},
-): { status: 200 | 503; body: { ok: boolean; version: string } } {
+export function health(deps: { dbOk?: () => boolean; stalled?: () => boolean } = {}): {
+  status: 200 | 503
+  body: { ok: boolean; version: string }
+} {
   const dbOk =
     deps.dbOk ??
     (() => {

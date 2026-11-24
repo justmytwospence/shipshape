@@ -39,9 +39,7 @@ export function registerActivityRoutes(app: Hono): void {
     const query = activityQuery(c)
     const rows = activityRows(query)
     if (c.req.header('HX-Request')) {
-      return c.html(
-        ActivityList({ rows, more: moreLink(c, rows), filtered: activityFiltered(query) }) as string,
-      )
+      return c.html(ActivityList({ rows, more: moreLink(c, rows), filtered: activityFiltered(query) }) as string)
     }
     return c.html(
       ActivityPage({

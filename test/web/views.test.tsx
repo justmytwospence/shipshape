@@ -84,7 +84,17 @@ test('every bespoke class is actually used', () => {
   // weight that outlives the markup it was for.
   const source = builtCss()
   const rendered = new Set(Object.values(VIEWS).flatMap((h) => classesOf(h)))
-  for (const cls of ['pb-safe', 'pb-dock', 'actionbar', 'savebar', 'tap', 'scroll-x', 'dl', 'tl-future', 'dirty-note']) {
+  for (const cls of [
+    'pb-safe',
+    'pb-dock',
+    'actionbar',
+    'savebar',
+    'tap',
+    'scroll-x',
+    'dl',
+    'tl-future',
+    'dirty-note',
+  ]) {
     assert.ok(source.includes(`.${cls}`), `${cls} is declared`)
     if (cls === 'dl' || cls === 'tl-future') continue // rendered only with a diff or a soak
     assert.ok(rendered.has(cls), `${cls} is used by some view`)
@@ -122,7 +132,10 @@ test('the installable bits are all present', () => {
   assert.match(html, /apple-mobile-web-app-capable/)
   assert.match(html, /rel="apple-touch-icon"/)
   assert.match(html, /<script src="\/static\/app\.js\?v=[0-9a-f]{10}"/)
-  assert.match(readFileSync(join(import.meta.dirname, '../../public/app.js'), 'utf8'), /navigator\.serviceWorker\.register\('\/sw\.js'\)/)
+  assert.match(
+    readFileSync(join(import.meta.dirname, '../../public/app.js'), 'utf8'),
+    /navigator\.serviceWorker\.register\('\/sw\.js'\)/,
+  )
 })
 
 test('both navigations exist, keyed to the same breakpoint', () => {
@@ -494,7 +507,10 @@ test('a link the model or a feed supplied is only ever http(s)', async () => {
   const u = update()
   const html = String(
     UpdateDetail({
-      update: { ...u, verdict: { ...u.verdict!, sources: ['javascript://github.com/%0aalert(1)', 'https://github.com/a/b'] } },
+      update: {
+        ...u,
+        verdict: { ...u.verdict!, sources: ['javascript://github.com/%0aalert(1)', 'https://github.com/a/b'] },
+      },
       milestones: [],
       warnings: [],
       ctx: '',
@@ -698,7 +714,11 @@ test('a pane says why nothing will read the notes', async () => {
   const { update, MILESTONES } = await import('./fixtures.tsx')
   const { UpdateDetail } = await import('../../src/web/views/ui/update.tsx')
   const html = String(
-    UpdateDetail({ update: update({ verdict: null, reviewOff: 'no model provider is set' }), milestones: MILESTONES, ctx: 'list=updates' }),
+    UpdateDetail({
+      update: update({ verdict: null, reviewOff: 'no model provider is set' }),
+      milestones: MILESTONES,
+      ctx: 'list=updates',
+    }),
   )
   assert.match(html, /Nothing will read this version(&#39;|')s release notes: no model provider is set/)
 })
@@ -715,7 +735,14 @@ test('a setting that was refused says why beside itself', async () => {
   const def = SETTINGS.find((d) => d.kind === 'int' && !d.locked)!
   const html = String(
     SettingsForm({
-      groups: [{ title: 'X', tagline: 'x', items: [{ def, value: '-1', changed: true, error: 'must be at least 0' }], more: [] }] as never,
+      groups: [
+        {
+          title: 'X',
+          tagline: 'x',
+          items: [{ def, value: '-1', changed: true, error: 'must be at least 0' }],
+          more: [],
+        },
+      ] as never,
     }),
   )
   assert.match(html, /aria-invalid="true"/)
@@ -727,12 +754,20 @@ test('number settings are number inputs with a floor', async () => {
   const { SettingsForm } = await import('../../src/web/views/ui/settings.tsx')
   const { SETTINGS } = await import('../../src/settings/defs.ts')
   const def = SETTINGS.find((d) => d.kind === 'int' && !d.locked && d.min !== undefined)!
-  const html = String(SettingsForm({ groups: [{ title: 'X', tagline: 'x', items: [{ def, value: '3', changed: false }], more: [] }] as never }))
+  const html = String(
+    SettingsForm({
+      groups: [{ title: 'X', tagline: 'x', items: [{ def, value: '3', changed: false }], more: [] }] as never,
+    }),
+  )
   assert.match(html, /type="number"[^>]*min="\d/)
 })
 
 test('rules read as words', async () => {
   const { RulesList } = await import('../../src/web/views/ui/settings.tsx')
-  const html = String(RulesList({ rules: [{ id: 'r1', match: { image: 'ghcr.io/example/app' }, waive: ['ask'], because: 'x' }] as never }))
+  const html = String(
+    RulesList({
+      rules: [{ id: 'r1', match: { image: 'ghcr.io/example/app' }, waive: ['ask'], because: 'x' }] as never,
+    }),
+  )
   assert.match(html, /every service running ghcr\.io\/example\/app, waiving ask/)
 })

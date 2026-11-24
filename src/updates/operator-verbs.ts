@@ -85,7 +85,11 @@ function shipDecision(id: number): VerbResult {
     stack: members[0]?.stack,
     message: `ship approved: ${names(members)}`,
   })
-  return { ok: true, transient: true, message: `Shipping ${names(members)}. It lands on ${gitBranch()} within a minute, then deploys.` }
+  return {
+    ok: true,
+    transient: true,
+    message: `Shipping ${names(members)}. It lands on ${gitBranch()} within a minute, then deploys.`,
+  }
 }
 
 function snoozeDecision(id: number): VerbResult {
@@ -138,7 +142,12 @@ function skipDecision(id: number): VerbResult {
       .all(m.id) as { id: number }[]
     for (const p of open) closeLocalChange(p.id, 'skipped by the operator')
   }
-  logEvent({ level: 'info', kind: 'ship', stack: members[0]?.stack, message: `${names(members)} dismissed by the operator` })
+  logEvent({
+    level: 'info',
+    kind: 'ship',
+    stack: members[0]?.stack,
+    message: `${names(members)} dismissed by the operator`,
+  })
   return { ok: true, message: 'Skipped. It will not be offered again unless you ask for it.' }
 }
 

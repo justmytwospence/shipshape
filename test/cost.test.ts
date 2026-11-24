@@ -15,8 +15,7 @@ const usage = (o: Partial<Record<string, number>> = {}) =>
 test('published rates, not remembered ones', () => {
   // These numbers were wrong once — $15/$75 for Opus, guessed rather than checked —
   // and over-reported spend threefold. A wrong number here is worse than none.
-  const m = (model: string, i: number, o: number) =>
-    costOf(usage({ input_tokens: i, output_tokens: o }), model).cost
+  const m = (model: string, i: number, o: number) => costOf(usage({ input_tokens: i, output_tokens: o }), model).cost
 
   assert.equal(m('claude-opus-5', 1e6, 0), 5)
   assert.equal(m('claude-opus-5', 0, 1e6), 25)
@@ -66,7 +65,7 @@ test('the fetch budget states its own worst case', () => {
   assert.equal(worstCaseFetchTokens({ searches: 4, fetches: 5, content_tokens: 12_000 }), 60_000)
 })
 
-test('a gateway on the operator\'s own key reports the provider charge separately', () => {
+test("a gateway on the operator's own key reports the provider charge separately", () => {
   // OpenRouter BYOK: `cost` is only its own fee, and the provider's charge is upstream.
   // Reading `cost` alone recorded every Opus draft at $0 from 2026-09-29 on.
   const byok = {
@@ -81,7 +80,10 @@ test('a gateway on the operator\'s own key reports the provider charge separatel
   const silent = { input_tokens: 1e6, output_tokens: 0, cost: 0, is_byok: true }
   assert.equal(costOf(silent as never, 'anthropic/claude-opus-5.5').cost, 4)
   // Not BYOK: `cost` is the whole charge, as before.
-  assert.equal(costOf({ input_tokens: 1e6, output_tokens: 0, cost: 0.5 } as never, 'anthropic/claude-opus-5.5').cost, 0.5)
+  assert.equal(
+    costOf({ input_tokens: 1e6, output_tokens: 0, cost: 0.5 } as never, 'anthropic/claude-opus-5.5').cost,
+    0.5,
+  )
 })
 
 test('models that refuse a forced tool choice are asked, not forced', () => {
@@ -98,14 +100,22 @@ test('a custom endpoint never forces a tool choice', async () => {
 
 test('unpricedCost reports tokens and no cost', async () => {
   const { unpricedCost } = await import('../src/analyze/pricing.ts')
-  assert.deepEqual(unpricedCost({ input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 2, cache_read_input_tokens: 1 } as never), {
-    cost: 0,
-    input: 10,
-    output: 5,
-    cacheWrite: 2,
-    cacheRead: 1,
-    searches: 0,
-  })
+  assert.deepEqual(
+    unpricedCost({
+      input_tokens: 10,
+      output_tokens: 5,
+      cache_creation_input_tokens: 2,
+      cache_read_input_tokens: 1,
+    } as never),
+    {
+      cost: 0,
+      input: 10,
+      output: 5,
+      cacheWrite: 2,
+      cacheRead: 1,
+      searches: 0,
+    },
+  )
 })
 
 test('web tools follow review.web', async () => {

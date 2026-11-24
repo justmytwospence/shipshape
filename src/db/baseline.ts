@@ -72,6 +72,9 @@ export function renderSchemaModule(sql: string, through: string): string {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const id = MIGRATIONS.at(-1)!.id
-  writeFileSync(fileURLToPath(new URL('./schema.ts', import.meta.url)), renderSchemaModule(generateBaseline(MIGRATIONS, id), id))
+  writeFileSync(
+    fileURLToPath(new URL('./schema.ts', import.meta.url)),
+    renderSchemaModule(generateBaseline(MIGRATIONS, id), id),
+  )
   console.log(`wrote src/db/schema.ts through ${id}`)
 }

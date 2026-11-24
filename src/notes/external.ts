@@ -45,10 +45,18 @@ export type Linked =
     }
   | { ok: false; reason: string; transient: boolean }
 
-export async function fetchLinked(target: ChangelogTarget, repo: string | null, family?: VersionKey['family']): Promise<Linked> {
+export async function fetchLinked(
+  target: ChangelogTarget,
+  repo: string | null,
+  family?: VersionKey['family'],
+): Promise<Linked> {
   if (target.kind === 'path') {
     if (!repo) {
-      return { ok: false, reason: `${target.path} is a path in the upstream repository, and no upstream repository is known`, transient: false }
+      return {
+        ok: false,
+        reason: `${target.path} is a path in the upstream repository, and no upstream repository is known`,
+        transient: false,
+      }
     }
     return fromRepo(repo, target.path, 'HEAD', family)
   }
@@ -64,7 +72,15 @@ export async function fetchLinked(target: ChangelogTarget, repo: string | null, 
   } catch {
     filename = null
   }
-  return { ok: true, where: page.url, bytes: page.bytes, contentType: page.contentType, text: page.text, filename, sections: null }
+  return {
+    ok: true,
+    where: page.url,
+    bytes: page.bytes,
+    contentType: page.contentType,
+    text: page.text,
+    filename,
+    sections: null,
+  }
 }
 
 export async function externalNotes(
@@ -75,7 +91,8 @@ export async function externalNotes(
   const got = await fetchLinked(target, repo, range.to?.family)
   if (!got.ok) return got
   const link = target.kind === 'url' ? target.url : target.path
-  const all = got.sections ?? sectionize(got.text ?? '', { filename: got.filename ?? undefined, family: range.to?.family })
+  const all =
+    got.sections ?? sectionize(got.text ?? '', { filename: got.filename ?? undefined, family: range.to?.family })
 
   if (all.length > 0 && range.to) {
     const { sections, omitted } = sectionsInRange(all, range.from, range.to, EXTERNAL_CAP)
@@ -86,7 +103,13 @@ export async function externalNotes(
   const text = (got.text ?? all.map((s) => `## ${s.heading}\n${s.body}`).join('\n\n')).trim()
   return {
     ok: true,
-    notes: { link, sections: [], omitted: [], excerpt: text ? text.slice(0, EXTERNAL_CAP) : null, totalSections: all.length },
+    notes: {
+      link,
+      sections: [],
+      omitted: [],
+      excerpt: text ? text.slice(0, EXTERNAL_CAP) : null,
+      totalSections: all.length,
+    },
   }
 }
 
@@ -98,7 +121,10 @@ type GithubLink =
 
 /** `github.com/o/r`, `.../releases`, `.../blob/<ref>/<path>`, `.../tree/<ref>/<path>`. */
 export function githubLink(url: string): GithubLink | null {
-  const m = /^https:\/\/(?:www\.)?github\.com\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]+?)(?:\.git)?(\/.*)?$/.exec(url.replace(/[?#].*$/, ''))
+  const m =
+    /^https:\/\/(?:www\.)?github\.com\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]+?)(?:\.git)?(\/.*)?$/.exec(
+      url.replace(/[?#].*$/, ''),
+    )
   if (!m) return null
   const repo = `${m[1]}/${m[2]}`
   const rest = (m[3] ?? '').replace(/\/+$/, '')
@@ -134,7 +160,11 @@ async function fromRepo(repo: string, path: string, ref: string, family?: Versio
     cacheKey: `github:${api}`,
     trim: (raw) =>
       Array.isArray(raw)
-        ? raw.map((e: Record<string, unknown>) => ({ name: String(e.name ?? ''), path: String(e.path ?? ''), type: String(e.type ?? '') }))
+        ? raw.map((e: Record<string, unknown>) => ({
+            name: String(e.name ?? ''),
+            path: String(e.path ?? ''),
+            type: String(e.type ?? ''),
+          }))
         : [],
   })
   if (!dir.ok) {
@@ -161,9 +191,22 @@ async function fromRepo(repo: string, path: string, ref: string, family?: Versio
     }
     bytes += Buffer.byteLength(text.text)
     const body = text.text.trim()
-    sections.push({ heading: f.e.name, key: f.key, unreleased: false, body: body.length > SECTION_CAP ? `${body.slice(0, SECTION_CAP)}\n[the rest of this file was cut]` : body })
+    sections.push({
+      heading: f.e.name,
+      key: f.key,
+      unreleased: false,
+      body: body.length > SECTION_CAP ? `${body.slice(0, SECTION_CAP)}\n[the rest of this file was cut]` : body,
+    })
   }
-  return { ok: true, where: `https://github.com/${repo}/tree/${ref}/${path}`, bytes, contentType: null, text: null, filename: null, sections }
+  return {
+    ok: true,
+    where: `https://github.com/${repo}/tree/${ref}/${path}`,
+    bytes,
+    contentType: null,
+    text: null,
+    filename: null,
+    sections,
+  }
 }
 
 /** Another repository's GitHub releases: the notes of a project published from elsewhere. */

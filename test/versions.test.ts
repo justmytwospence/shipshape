@@ -5,18 +5,21 @@ import { inferPattern, parseTag, classify } from '../src/versions/patterns.ts'
 
 test('plain semver picks the newest and classifies the slot', () => {
   const tags = ['2.16.9', '2.17.0', '2.17.1', '3.0.0']
-  assert.deepEqual(
-    selectUpdate({ currentTag: '2.17.0', availableTags: tags, kind: 'semver' }),
-    { status: 'update', tag: '3.0.0', magnitude: 'major' },
-  )
-  assert.deepEqual(
-    selectUpdate({ currentTag: '2.17.0', availableTags: ['2.17.1', '2.16.0'], kind: 'semver' }),
-    { status: 'update', tag: '2.17.1', magnitude: 'patch' },
-  )
-  assert.deepEqual(
-    selectUpdate({ currentTag: '2.17.0', availableTags: ['2.18.0'], kind: 'semver' }),
-    { status: 'update', tag: '2.18.0', magnitude: 'minor' },
-  )
+  assert.deepEqual(selectUpdate({ currentTag: '2.17.0', availableTags: tags, kind: 'semver' }), {
+    status: 'update',
+    tag: '3.0.0',
+    magnitude: 'major',
+  })
+  assert.deepEqual(selectUpdate({ currentTag: '2.17.0', availableTags: ['2.17.1', '2.16.0'], kind: 'semver' }), {
+    status: 'update',
+    tag: '2.17.1',
+    magnitude: 'patch',
+  })
+  assert.deepEqual(selectUpdate({ currentTag: '2.17.0', availableTags: ['2.18.0'], kind: 'semver' }), {
+    status: 'update',
+    tag: '2.18.0',
+    magnitude: 'minor',
+  })
 })
 
 // The trap AGENTS.md documents at length: a bare \d+ in the major slot matches a
@@ -101,16 +104,14 @@ test('date tags order correctly', () => {
 })
 
 test('latest and digest series are reported as not-orderable, not up-to-date', () => {
-  assert.deepEqual(
-    selectUpdate({ currentTag: 'latest', availableTags: ['latest'], kind: 'latest' }),
-    { status: 'not-orderable' },
-  )
+  assert.deepEqual(selectUpdate({ currentTag: 'latest', availableTags: ['latest'], kind: 'latest' }), {
+    status: 'not-orderable',
+  })
   // bluesky/pds pins `0.4@sha256:...` where 0.4 is a moving alias -- comparing the tag
   // string would be meaningless, so digest watching handles it instead.
-  assert.deepEqual(
-    selectUpdate({ currentTag: '0.4', availableTags: ['0.4', '0.5'], kind: 'digest' }),
-    { status: 'not-orderable' },
-  )
+  assert.deepEqual(selectUpdate({ currentTag: '0.4', availableTags: ['0.4', '0.5'], kind: 'digest' }), {
+    status: 'not-orderable',
+  })
 })
 
 test('tag.include refines the candidate set', () => {
@@ -153,10 +154,9 @@ test('custom regex uses named groups when present', () => {
 })
 
 test('downgrades and equal tags are never proposed', () => {
-  assert.deepEqual(
-    selectUpdate({ currentTag: '3.0.0', availableTags: ['2.9.9', '3.0.0'], kind: 'semver' }),
-    { status: 'up-to-date' },
-  )
+  assert.deepEqual(selectUpdate({ currentTag: '3.0.0', availableTags: ['2.9.9', '3.0.0'], kind: 'semver' }), {
+    status: 'up-to-date',
+  })
 })
 
 test('intermediate tags give the analyzer every release in the range', () => {

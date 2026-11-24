@@ -26,7 +26,7 @@ Emit an **operation** only when upstream documentation says this update requires
 
 - the image was renamed or moved
 - an environment variable was renamed, removed, or is newly required
-- a default changed in a way that matters *given the configuration you were shown*
+- a default changed in a way that matters _given the configuration you were shown_
 
 Everything else is a **note**: data migrations, volume ownership, values only the
 operator knows, changes to binary files, and any change to volumes,

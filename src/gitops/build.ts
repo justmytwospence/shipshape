@@ -4,7 +4,12 @@ import { loadPolicy } from '../config.ts'
 import { gitBranch } from '../env.ts'
 import { bumpFork, readForkPin, retireFork } from '../compose/fork-edit.ts'
 import { clearForkConflict, forkRefs, recordForkConflict, recordForkPrepared } from '../forks.ts'
-import { prepareFork as realPrepareFork, upstreamUrlFor, type PrepareForkInput, type PrepareForkResult } from '../forks/rebase.ts'
+import {
+  prepareFork as realPrepareFork,
+  upstreamUrlFor,
+  type PrepareForkInput,
+  type PrepareForkResult,
+} from '../forks/rebase.ts'
 import { headDigest } from '../registry/index.ts'
 import { sameVersion, versionKey } from '../versions/key.ts'
 import { parseImageRef, formatImageRef } from '../images/ref.ts'
@@ -37,7 +42,6 @@ export interface BuildDeps {
   sourceRepoFor: (m: GroupMember) => Promise<string | null>
 }
 
-
 const realDeps: BuildDeps = {
   prepareFork: realPrepareFork,
   digestFor: headDigest,
@@ -55,11 +59,9 @@ const realDeps: BuildDeps = {
   },
 }
 
-
 export type BuildResult =
   | { ok: true; sha: string; forks: Map<number, ForkPrInfo>; bases: Map<number, BasePrInfo> }
   | { ok: false; alreadyApplied?: boolean; conflict?: boolean; reason: string }
-
 
 export async function buildBranch(
   repoDir: string,
@@ -108,7 +110,6 @@ export async function buildBranch(
   return { ok: true, sha: (await git(repoDir, ['rev-parse', 'HEAD'])).stdout, forks, bases }
 }
 
-
 /**
  * Our own build's bump: the final stage's `FROM` moves to the new base (compose/dockerfile.ts),
  * and nothing else in the Dockerfile or the compose file changes. A digest pin is kept: the
@@ -140,7 +141,6 @@ async function buildBaseMember(
   if (diff.exitCode === 0) return { ok: false, reason: `${dockerfile}: the edit produced no diff` }
   return { ok: true, info: { dockerfile, fromRef: m.image, toRef: next.ref, lines: edit.count } }
 }
-
 
 /**
  * A fork's bump is a replay of our fixes onto the new release (src/forks/rebase.ts),
@@ -174,14 +174,19 @@ async function buildForkMember(
     // No fork pin to read: retired already -- by an earlier pass, or by hand -- is done,
     // and anything else is a shape to look at.
     const retired = retireFork(text, m.service, { expectedSha: '', upstreamRef: upstreamRef.ref })
-    if (!retired.ok && retired.alreadyApplied) return { ok: false, alreadyApplied: true, reason: `${who}: ${retired.reason}` }
+    if (!retired.ok && retired.alreadyApplied)
+      return { ok: false, alreadyApplied: true, reason: `${who}: ${retired.reason}` }
     return { ok: false, reason: `${who}: ${read.reason}` }
   }
   const pin = read.pin
   // The same assertion bumpImage makes on an image line: the file must still be where
   // this update was computed from. Past it means done; anywhere else means a person.
   if (sameTag(pin.baseTag, targetTag)) {
-    return { ok: false, alreadyApplied: true, reason: `${file} already builds ${m.service} from ${targetTag} (${pin.sha.slice(0, 7)})` }
+    return {
+      ok: false,
+      alreadyApplied: true,
+      reason: `${file} already builds ${m.service} from ${targetTag} (${pin.sha.slice(0, 7)})`,
+    }
   }
   if (!sameTag(pin.baseTag, fromTag)) {
     return { ok: false, reason: `${file} now builds ${m.service} from ${pin.baseTag}, expected ${fromTag}` }
@@ -189,7 +194,10 @@ async function buildForkMember(
 
   const refs = forkRefs(m.stack, m.service)
   const waitsOn = refs.map((r) => ({ ref: r.ref, state: r.state, releasedIn: r.releasedIn }))
-  const upstreamUrl = upstreamUrlFor(await deps.sourceRepoFor(m), refs.map((r) => r.ref))
+  const upstreamUrl = upstreamUrlFor(
+    await deps.sourceRepoFor(m),
+    refs.map((r) => r.ref),
+  )
   if (!upstreamUrl) {
     return {
       ok: false,
@@ -256,7 +264,6 @@ async function buildForkMember(
   return { ok: true, info }
 }
 
-
 /** The same version in either spelling (`v3.5.1` / `3.5.1`), or the same string. */
 function sameTag(a: string, b: string): boolean {
   if (a === b) return true
@@ -264,7 +271,6 @@ function sameTag(a: string, b: string): boolean {
   const kb = versionKey(b)
   return !!ka && !!kb && sameVersion(ka, kb)
 }
-
 
 /**
  * The upstream reference at the new version: the tag, keeping a digest pin when the
@@ -287,14 +293,19 @@ export async function upstreamRefAt(
   try {
     digest = await digestFor(ref.registry, ref.repository, toTag)
   } catch (err) {
-    return { ok: false, reason: `could not resolve the digest of ${ref.repository}:${toTag} (${(err as Error).message}); the digest pin would be lost` }
+    return {
+      ok: false,
+      reason: `could not resolve the digest of ${ref.repository}:${toTag} (${(err as Error).message}); the digest pin would be lost`,
+    }
   }
   if (!digest) {
-    return { ok: false, reason: `could not resolve the digest of ${ref.repository}:${toTag}; the digest pin would be lost` }
+    return {
+      ok: false,
+      reason: `could not resolve the digest of ${ref.repository}:${toTag}; the digest pin would be lost`,
+    }
   }
   return { ok: true, ref: formatImageRef(ref, toTag, digest) }
 }
-
 
 function rewriteRef(currentRef: string, toTag: string): string | null {
   const ref = parseImageRef(currentRef)

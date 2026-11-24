@@ -94,11 +94,7 @@ const VARIANT_KINDS = new Set<PatternKind>(['semver-variant', 'semver-minor-vari
  * -- which is how `latest`, `stable`, `nightly-*`, and unrelated variants get excluded
  * from comparison rather than mis-ranked.
  */
-export function parseTag(
-  tag: string,
-  kind: PatternKind,
-  customRegex?: string | null,
-): ParsedTag | null {
+export function parseTag(tag: string, kind: PatternKind, customRegex?: string | null): ParsedTag | null {
   if (kind === 'latest' || kind === 'digest') {
     // Not orderable. Movement is detected by digest, never by comparing tag strings.
     return null
@@ -117,9 +113,7 @@ export function parseTag(
     // Prefer named groups when supplied (major/minor/patch/build), else positional.
     const g = m.groups
     const nums = g
-      ? ['major', 'minor', 'patch', 'build', 'revision']
-          .map((k) => g[k])
-          .filter((v): v is string => v !== undefined)
+      ? ['major', 'minor', 'patch', 'build', 'revision'].map((k) => g[k]).filter((v): v is string => v !== undefined)
       : m.slice(1)
     const parts = nums.map((v) => Number(v)).filter((n) => Number.isFinite(n))
     return { raw: tag, parts, suffix: '', variant: g?.variant ?? '' }

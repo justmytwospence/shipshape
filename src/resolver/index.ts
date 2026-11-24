@@ -5,7 +5,6 @@ import { resetLsioMemo } from './lsio.ts'
 import { compose, readRow, isStale, currentTagFor, type ResolutionRow, writeResolution } from './cache.ts'
 import { lookUpImage } from './tiers.ts'
 
-
 /**
  * Image -> upstream source repository, and the one way to ask.
  *
@@ -56,7 +55,6 @@ import { lookUpImage } from './tiers.ts'
  * requires it: see analyze/screen/decide.ts).
  * A likely one is still good enough to read release notes from.
  */
-
 
 // ------------------------------------------------------------------ the accessor
 
@@ -166,9 +164,7 @@ function watchedImages(): ImageKey[] {
 
 // ------------------------------------------------------------------ labels
 
-
 // ------------------------------------------------------------------ the cache
-
 
 async function resolveImage(
   image: ImageKey,

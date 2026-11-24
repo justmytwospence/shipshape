@@ -27,7 +27,11 @@ export function createSession(fingerprint: string, now = Date.now()): string {
   return token
 }
 
-export function lookupSession(token: string, fingerprint: string, now = Date.now()): { valid: boolean; renewed: boolean } {
+export function lookupSession(
+  token: string,
+  fingerprint: string,
+  now = Date.now(),
+): { valid: boolean; renewed: boolean } {
   if (token.length !== 43) return { valid: false, renewed: false }
   const db = getDb()
   const row = db
@@ -49,7 +53,8 @@ export function destroySession(token: string): void {
 
 /** Rows deleted: expired sessions and those made with another password. */
 export function pruneSessions(fingerprint: string, now = Date.now()): number {
-  return getDb().prepare(`DELETE FROM sessions WHERE expires_at <= ? OR pw_fingerprint != ?`).run(iso(now), fingerprint).changes
+  return getDb().prepare(`DELETE FROM sessions WHERE expires_at <= ? OR pw_fingerprint != ?`).run(iso(now), fingerprint)
+    .changes
 }
 
 let lastPrune = 0

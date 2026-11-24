@@ -23,7 +23,9 @@ const { composeFileFor } = await import('../src/images/rows.ts')
 
 const APP = join(repo, 'app', 'docker-compose.yaml')
 const services = () =>
-  (getDb().prepare(`SELECT stack || '/' || service AS s FROM images ORDER BY s`).all() as { s: string }[]).map((r) => r.s)
+  (getDb().prepare(`SELECT stack || '/' || service AS s FROM images ORDER BY s`).all() as { s: string }[]).map(
+    (r) => r.s,
+  )
 
 writeFileSync(APP, 'services:\n  api:\n    image: example/api:1.0.0\n  worker:\n    image: example/worker:1.0.0\n')
 writeFileSync(join(repo, 'web', 'docker-compose.yaml'), 'services:\n  web:\n    image: example/web:1.0.0\n')
@@ -36,7 +38,9 @@ test('a compose file with a syntax error keeps its services and says so', async 
   await runScan('manual')
   assert.deepEqual(services(), ['app/api', 'app/worker', 'web/web'])
   const ev = getDb()
-    .prepare(`SELECT level, kind, detail FROM events WHERE message = 'compose file could not be read: app/docker-compose.yaml'`)
+    .prepare(
+      `SELECT level, kind, detail FROM events WHERE message = 'compose file could not be read: app/docker-compose.yaml'`,
+    )
     .all() as { level: string; kind: string; detail: string }[]
   assert.equal(ev.length, 1)
   assert.deepEqual([ev[0]!.level, ev[0]!.kind], ['warn', 'scan'])

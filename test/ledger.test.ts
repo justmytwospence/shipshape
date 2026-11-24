@@ -18,9 +18,7 @@ delete process.env.REPO_DIR
 
 const { getDb } = await import('../src/db/index.ts')
 const { PolicySchema } = await import('../src/policy-schema.ts')
-const { recordCost, recordUnanswered, recordSpend, monthlySpend, isTimeout } = await import(
-  '../src/analyze/claude.ts'
-)
+const { recordCost, recordUnanswered, recordSpend, monthlySpend, isTimeout } = await import('../src/analyze/claude.ts')
 
 const policy = PolicySchema.parse({})
 

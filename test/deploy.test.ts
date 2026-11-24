@@ -43,15 +43,7 @@ test('root-compose services come up from the repository root, without -f', () =>
 
 test('an ordinary stack is addressed by its own compose file', () => {
   const { args } = composeArgs(target())
-  assert.deepEqual(args, [
-    'compose',
-    '-f',
-    'jellyfin/docker-compose.yaml',
-    'up',
-    '-d',
-    '--no-deps',
-    'jellyfin',
-  ])
+  assert.deepEqual(args, ['compose', '-f', 'jellyfin/docker-compose.yaml', 'up', '-d', '--no-deps', 'jellyfin'])
 })
 
 test('a deploy never starts a stopped dependency as a side effect', () => {

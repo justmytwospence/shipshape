@@ -161,11 +161,7 @@ function isConfigType(relPath: string): boolean {
  * apply: a wide file scope still only reaches the services its rung permits inside a
  * compose file.
  */
-export function allowedServices(
-  scope: ProposeScope,
-  primary: string,
-  siblings: string[],
-): string[] {
+export function allowedServices(scope: ProposeScope, primary: string, siblings: string[]): string[] {
   if (scope === 'none') return []
   if (scope === 'service') return [primary]
   // Every wider rung permits the whole compose file.
@@ -187,11 +183,7 @@ export interface Boundary {
 }
 
 /** The boundary for a service, derived from where its compose file lives. */
-export function boundaryFor(
-  scope: ProposeScope,
-  composeFile: string,
-  types: 'any' | 'config' = 'any',
-): Boundary {
+export function boundaryFor(scope: ProposeScope, composeFile: string, types: 'any' | 'config' = 'any'): Boundary {
   if (scope === 'compose-dir') {
     const dir = dirname(composeFile).split(sep).join('/')
     return { scope, root: dir === '.' ? '' : dir, composeFile, types }
@@ -243,9 +235,7 @@ export function canWrite(
   if (boundary.scope === 'compose-dir') {
     const root = boundary.root ?? ''
     const inside = root === '' ? !p.includes('/') : p === root || p.startsWith(`${root}/`)
-    return inside
-      ? { ok: true }
-      : { ok: false, reason: `this proposal may only change files under ${root}/` }
+    return inside ? { ok: true } : { ok: false, reason: `this proposal may only change files under ${root}/` }
   }
 
   return { ok: true } // repo, past the exclusions above
@@ -280,11 +270,7 @@ export function realRelPath(
 }
 
 /** What the model is told it may touch. Kept in step with what canWrite enforces. */
-export function describeBoundary(
-  boundary: Boundary,
-  primary: string,
-  allowedServices: string[],
-): string {
+export function describeBoundary(boundary: Boundary, primary: string, allowedServices: string[]): string {
   const services =
     allowedServices.length > 1
       ? `Within ${boundary.composeFile} you may change these services: ${allowedServices.join(', ')}. Name the service on each operation; operations without one apply to ${primary}.`

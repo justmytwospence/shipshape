@@ -71,7 +71,11 @@ test("a service's labels are read from the compose file now, not at the next sca
 `)
   seed('jellyfin', { policy: 'auto', source: null })
   assert.equal(refreshServiceLabels('media', 'jellyfin'), true)
-  assert.deepEqual(row('jellyfin'), { legacy_labels: 'shipshape.policy: manual', source_label: 'jellyfin/jellyfin', watched: 1 })
+  assert.deepEqual(row('jellyfin'), {
+    legacy_labels: 'shipshape.policy: manual',
+    source_label: 'jellyfin/jellyfin',
+    watched: 1,
+  })
 })
 
 test('it touches one row and deletes nothing', () => {

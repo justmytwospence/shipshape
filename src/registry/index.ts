@@ -59,9 +59,7 @@ async function listDockerHubTags(repository: string): Promise<TagInfo[]> {
   // Official images live under the `library` namespace; parseImageRef already
   // normalised `postgres` to `library/postgres`.
   const out: TagInfo[] = []
-  let url =
-    `https://hub.docker.com/v2/repositories/${repository}/tags` +
-    `?page_size=100&ordering=last_updated`
+  let url = `https://hub.docker.com/v2/repositories/${repository}/tags` + `?page_size=100&ordering=last_updated`
 
   // Newest-first ordering means the first pages hold everything that matters. Cap the
   // walk: images like `library/postgres` carry 1000+ tags and there is no reason to
@@ -99,9 +97,7 @@ async function listQuayTags(repository: string): Promise<TagInfo[]> {
   const out: TagInfo[] = []
   // Quay's ordering is not date-descending either, so page generously.
   for (let page = 1; page <= 40; page++) {
-    const url =
-      `https://quay.io/api/v1/repository/${repository}/tag/` +
-      `?limit=100&onlyActiveTags=true&page=${page}`
+    const url = `https://quay.io/api/v1/repository/${repository}/tag/` + `?limit=100&onlyActiveTags=true&page=${page}`
     let body: QuayTagsPage
     try {
       body = await fetchJson<QuayTagsPage>(url, { cacheKey: url })
@@ -175,9 +171,7 @@ async function listOciTags(registry: string, repository: string): Promise<TagInf
     // Still more pages when the cap ran out. Refusing is the only safe answer: the
     // newest tags live at the end of an oldest-first list, so a partial result here
     // would confidently report that a stale image is current.
-    throw new TagListTooLarge(
-      `tag list for ${registry}/${repository} exceeds ${OCI_MAX_PAGES} pages`,
-    )
+    throw new TagListTooLarge(`tag list for ${registry}/${repository} exceeds ${OCI_MAX_PAGES} pages`)
   }
 
   return tags.map((tag) => ({ tag }))

@@ -24,7 +24,10 @@ delete process.env.MCP_PORT
 
 function writePolicy(security: string): void {
   mkdirSync(join(repo, 'shipshape', 'config'), { recursive: true })
-  writeFileSync(join(repo, 'shipshape', 'config', 'policy.yaml'), `paused: false\nnotify:\n  sinks:\n    - { type: webhook }\nsecurity:\n${security}\n`)
+  writeFileSync(
+    join(repo, 'shipshape', 'config', 'policy.yaml'),
+    `paused: false\nnotify:\n  sinks:\n    - { type: webhook }\nsecurity:\n${security}\n`,
+  )
 }
 writePolicy('  mode: on\n  auto_merge: true')
 mkdirSync(join(repo, 'immich'), { recursive: true })
@@ -52,8 +55,16 @@ const { loadPolicy } = await import('../src/config.ts')
 const { PolicySchema } = await import('../src/policy-schema.ts')
 const { parseIndex, storeIncidents } = await import('../src/security/feed.ts')
 const { runExtraction, normaliseTargets, incidentTargets } = await import('../src/security/extract.ts')
-const { computeExposures, recordExposures, verifyFixes, securityFixFor, syncSecurityCards, candidateRef, isPublic, priorityOf } =
-  await import('../src/security/act.ts')
+const {
+  computeExposures,
+  recordExposures,
+  verifyFixes,
+  securityFixFor,
+  syncSecurityCards,
+  candidateRef,
+  isPublic,
+  priorityOf,
+} = await import('../src/security/act.ts')
 const { packagesOf } = await import('../src/security/sbom.ts')
 
 after(() => {
@@ -61,7 +72,9 @@ after(() => {
   rmSync(data, { recursive: true, force: true })
 })
 
-const fixture = JSON.parse(readFileSync(new URL('./fixtures/pwnwatch/incidents.json', import.meta.url), 'utf8')) as unknown
+const fixture = JSON.parse(
+  readFileSync(new URL('./fixtures/pwnwatch/incidents.json', import.meta.url), 'utf8'),
+) as unknown
 
 const NODE_TARGETS = {
   applicable: true,
@@ -78,14 +91,16 @@ const NODE_TARGETS = {
 
 function inventory(imageId: string, pkgs: [string, string, string][]): void {
   const db = getDb()
-  db.prepare(`INSERT OR REPLACE INTO sbom_images (image_id, ref, scanned_at, error, packages) VALUES (?, ?, ?, NULL, ?)`).run(
-    imageId,
-    imageId,
-    new Date().toISOString(),
-    pkgs.length,
-  )
+  db.prepare(
+    `INSERT OR REPLACE INTO sbom_images (image_id, ref, scanned_at, error, packages) VALUES (?, ?, ?, NULL, ?)`,
+  ).run(imageId, imageId, new Date().toISOString(), pkgs.length)
   for (const [type, name, version] of pkgs) {
-    db.prepare(`INSERT INTO sbom_packages (image_id, type, name, version) VALUES (?, ?, ?, ?)`).run(imageId, type, name, version)
+    db.prepare(`INSERT INTO sbom_packages (image_id, type, name, version) VALUES (?, ?, ?, ?)`).run(
+      imageId,
+      type,
+      name,
+      version,
+    )
   }
 }
 
@@ -117,7 +132,10 @@ test('the model output is cleaned: unknown ecosystems, empty ranges and applianc
       { ecosystem: 'npm', names: ['y'], affected: [{ lt: 'latest' }], fixed: [] },
     ],
   })
-  assert.deepEqual(r.targets.map((t) => t.names), [['node']])
+  assert.deepEqual(
+    r.targets.map((t) => t.names),
+    [['node']],
+  )
   assert.equal(normaliseTargets({ applicable: false, targets: NODE_TARGETS.targets }).targets.length, 0)
 })
 
@@ -127,7 +145,19 @@ test('extraction runs once per version text, through the injected reader', async
     calls++
     if (/Node2Shell/.test(user)) return { input: NODE_TARGETS }
     if (/Plex/.test(user)) {
-      return { input: { applicable: true, targets: [{ ecosystem: 'any', names: ['plexmediaserver'], affected: [{ lt: '1.43.3.10861' }], fixed: ['1.43.3.10861'] }] } }
+      return {
+        input: {
+          applicable: true,
+          targets: [
+            {
+              ecosystem: 'any',
+              names: ['plexmediaserver'],
+              affected: [{ lt: '1.43.3.10861' }],
+              fixed: ['1.43.3.10861'],
+            },
+          ],
+        },
+      }
     }
     return { input: { applicable: false, targets: [] } }
   }, 10)
@@ -143,20 +173,29 @@ test('extraction runs once per version text, through the injected reader', async
   }, 10)
   assert.equal(again.extracted, 0)
   assert.equal(calls, 5)
-  assert.deepEqual([...incidentTargets().keys()].sort(), ['nodejs-october-2026-security-releases', 'plex2shell-cve-2026-96652'])
+  assert.deepEqual([...incidentTargets().keys()].sort(), [
+    'nodejs-october-2026-security-releases',
+    'plex2shell-cve-2026-96652',
+  ])
 })
 
 test('a re-read that finds nothing keeps the earlier targets', async () => {
   const db = getDb()
   // The advisory's text is edited: the extraction is due again.
-  db.prepare(`UPDATE security_incidents SET versions_hash = 'edited' WHERE slug = 'nodejs-october-2026-security-releases'`).run()
+  db.prepare(
+    `UPDATE security_incidents SET versions_hash = 'edited' WHERE slug = 'nodejs-october-2026-security-releases'`,
+  ).run()
   const r = await runExtraction(async (_s, user) => {
     if (/Node2Shell/.test(user)) return { input: { applicable: false, targets: [] } }
     return { error: 'not due' }
   }, 10)
   assert.equal(r.extracted, 1)
   assert.ok(incidentTargets().has('nodejs-october-2026-security-releases'))
-  const row = db.prepare(`SELECT targets_hash, extract_error FROM security_incidents WHERE slug = 'nodejs-october-2026-security-releases'`).get() as {
+  const row = db
+    .prepare(
+      `SELECT targets_hash, extract_error FROM security_incidents WHERE slug = 'nodejs-october-2026-security-releases'`,
+    )
+    .get() as {
     targets_hash: string
     extract_error: string
   }
@@ -177,20 +216,35 @@ test('trust-store packages never become targets', () => {
       { ecosystem: 'pypi', names: ['pip', 'requests'], affected: [{ lt: '9.0' }], fixed: [] },
     ],
   })
-  assert.deepEqual(r.targets.map((t) => t.names), [['requests']])
+  assert.deepEqual(
+    r.targets.map((t) => t.names),
+    [['requests']],
+  )
 })
 
 test('exposures, verified fixes and the gate follow the inventories, not the advisory', async () => {
   const db = getDb()
-  inventory('sha256:server-old', [['binary', 'node', '24.21.0'], ['npm', 'sharp', '0.34.5']])
-  inventory('sha256:ml-old', [['python', 'pillow', '12.3.0'], ['binary', 'python', '3.13.16']])
-  inventory('sha256:server-new', [['binary', 'node', '24.22.1'], ['npm', 'sharp', '0.34.5']])
+  inventory('sha256:server-old', [
+    ['binary', 'node', '24.21.0'],
+    ['npm', 'sharp', '0.34.5'],
+  ])
+  inventory('sha256:ml-old', [
+    ['python', 'pillow', '12.3.0'],
+    ['binary', 'python', '3.13.16'],
+  ])
+  inventory('sha256:server-new', [
+    ['binary', 'node', '24.22.1'],
+    ['npm', 'sharp', '0.34.5'],
+  ])
   const now = new Date().toISOString()
   const ins = db.prepare(
     `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at)
      VALUES (?, ?, ?, ?, ?, 'patch', 'auto', 'detected', ?, ?)`,
   )
-  const id = Number(ins.run('immich', 'immich-server', 'ghcr.io/immich-app/immich-server:v3.3.3', 'v3.3.3', 'v3.3.5', now, now).lastInsertRowid)
+  const id = Number(
+    ins.run('immich', 'immich-server', 'ghcr.io/immich-app/immich-server:v3.3.3', 'v3.3.3', 'v3.3.5', now, now)
+      .lastInsertRowid,
+  )
   db.prepare(`INSERT INTO security_candidates (update_id, image_ref, image_id, checked_at) VALUES (?, ?, ?, ?)`).run(
     id,
     'ghcr.io/immich-app/immich-server:v3.3.5',
@@ -204,7 +258,10 @@ test('exposures, verified fixes and the gate follow the inventories, not the adv
   ]
   const targets = incidentTargets()
   const found = computeExposures(targets, running)
-  assert.deepEqual([...found.values()].map((f) => `${f.slug} ${f.r.service}`), ['nodejs-october-2026-security-releases immich-server'])
+  assert.deepEqual(
+    [...found.values()].map((f) => `${f.slug} ${f.r.service}`),
+    ['nodejs-october-2026-security-releases immich-server'],
+  )
   assert.equal(recordExposures(found), 1)
   assert.equal(verifyFixes(targets, found), 1)
 
@@ -248,25 +305,48 @@ test('a card opens for exposure nobody is fixing, and resolves when it is gone',
   // Exposure gone: resolved, silently.
   db.exec(`DELETE FROM exposures`)
   await syncSecurityCards(loadPolicy().policy)
-  assert.deepEqual(wire[1], { key: 'shipshape:security:nodejs-october-2026-security-releases', source: 'shipshape', status: 'resolved' })
+  assert.deepEqual(wire[1], {
+    key: 'shipshape:security:nodejs-october-2026-security-releases',
+    source: 'shipshape',
+    status: 'resolved',
+  })
 })
 
 test('helpers: candidate refs, public routers, loudness, syft output', () => {
-  assert.equal(candidateRef('ghcr.io/immich-app/immich-server:v3.3.3', 'v3.3.5'), 'ghcr.io/immich-app/immich-server:v3.3.5')
+  assert.equal(
+    candidateRef('ghcr.io/immich-app/immich-server:v3.3.3', 'v3.3.5'),
+    'ghcr.io/immich-app/immich-server:v3.3.5',
+  )
   assert.equal(
     candidateRef('huginn/huginn-single-process:latest@sha256:aaa', 'latest@sha256:bbb'),
     'huginn/huginn-single-process:latest@sha256:bbb',
   )
   const svc = (labels: Record<string, string>) => ({ labels }) as never
   assert.equal(isPublic(svc({ 'traefik.enable': 'true', 'traefik.http.routers.a.rule': 'Host(`a`)' })), true)
-  assert.equal(isPublic(svc({ 'traefik.enable': 'true', 'traefik.http.routers.a.rule': 'Host(`a`) && ClientIP(`10.0.0.0/8`)' })), false)
+  assert.equal(
+    isPublic(svc({ 'traefik.enable': 'true', 'traefik.http.routers.a.rule': 'Host(`a`) && ClientIP(`10.0.0.0/8`)' })),
+    false,
+  )
   assert.equal(isPublic(svc({ 'traefik.http.routers.a.rule': 'Host(`a`)' })), false)
   assert.equal(
-    isPublic(svc({ 'traefik.enable': 'true', 'traefik.http.routers.a.rule': 'Host(`a`)', 'traefik.http.routers.a.middlewares': 'lan-only@file, authelia, error-pages' }), ['lan-only']),
+    isPublic(
+      svc({
+        'traefik.enable': 'true',
+        'traefik.http.routers.a.rule': 'Host(`a`)',
+        'traefik.http.routers.a.middlewares': 'lan-only@file, authelia, error-pages',
+      }),
+      ['lan-only'],
+    ),
     false,
   )
   assert.equal(
-    isPublic(svc({ 'traefik.enable': 'true', 'traefik.http.routers.a.rule': 'Host(`a`)', 'traefik.http.routers.a.middlewares': 'authelia' })),
+    isPublic(
+      svc({
+        'traefik.enable': 'true',
+        'traefik.http.routers.a.rule': 'Host(`a`)',
+        'traefik.http.routers.a.middlewares': 'authelia',
+      }),
+    ),
     true,
   )
   assert.equal(

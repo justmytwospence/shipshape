@@ -51,9 +51,11 @@ interface Row {
   compose_file: string | null
 }
 
-const rows: Row[] = fromDump ? [] : (getDb()
-  .prepare(
-    `SELECT v.image, v.from_tag, v.to_tag, v.recommendation, v.breaking_changes, v.migration_steps,
+const rows: Row[] = fromDump
+  ? []
+  : (getDb()
+      .prepare(
+        `SELECT v.image, v.from_tag, v.to_tag, v.recommendation, v.breaking_changes, v.migration_steps,
             u.stack, u.service, u.magnitude, u.detected_at, i.compose_file
        FROM verdicts v
        JOIN updates u ON u.id = (SELECT MIN(u2.id) FROM updates u2
@@ -64,8 +66,8 @@ const rows: Row[] = fromDump ? [] : (getDb()
         AND v.created_at >= ?
       ORDER BY v.created_at DESC
       LIMIT ?`,
-  )
-  .all(since, limit) as Row[])
+      )
+      .all(since, limit) as Row[])
 
 const list = (s: string): string[] => {
   try {
@@ -111,7 +113,9 @@ for (const r of rows) {
       stack: r.stack,
       service: r.service,
       detected_at: r.detected_at,
-      carriers: [{ stack: r.stack, service: r.service, composeFile: r.compose_file ?? composeFileOfStack(env.repoDir, r.stack) }],
+      carriers: [
+        { stack: r.stack, service: r.service, composeFile: r.compose_file ?? composeFileOfStack(env.repoDir, r.stack) },
+      ],
     },
     { purpose: 'replay' },
   )
@@ -165,7 +169,8 @@ const median = (xs: number[]) => (xs.length ? [...xs].sort((a, b) => a - b)[Math
 if (approved.length > 0) {
   const fl = approved.map((j) => flagsOf(j.answers!))
   console.log(`\nmedian answer on ${approved.length} reader-approved updates:`)
-  for (const k of Object.keys(fl[0]!.risk)) console.log(`  ${k.padEnd(28)} ${median(fl.map((f) => f.risk[k as keyof typeof f.risk])).toFixed(2)}`)
+  for (const k of Object.keys(fl[0]!.risk))
+    console.log(`  ${k.padEnd(28)} ${median(fl.map((f) => f.risk[k as keyof typeof f.risk])).toFixed(2)}`)
   console.log(`  ${'affects_this_deployment'.padEnd(28)} ${median(fl.map((f) => f.affects)).toFixed(2)}`)
   console.log(`  ${'risk score (0..2)'.padEnd(28)} ${median(fl.map((f) => f.score)).toFixed(2)}`)
   console.log(`  ${'risk score confidence'.padEnd(28)} ${median(fl.map((f) => f.scoreConfidence)).toFixed(2)}`)
@@ -174,7 +179,9 @@ if (approved.length > 0) {
 // --------------------------------------------------------------------- sweep
 // Re-decided from the stored answers: no further calls. Misses must stay at zero; the
 // loosest row with none is as far as the routine thresholds may move.
-console.log('\nthreshold sweep -- R: every risk answer below; S: score below; C: score confidence at least; N: at most N notes')
+console.log(
+  '\nthreshold sweep -- R: every risk answer below; S: score below; C: score confidence at least; N: at most N notes',
+)
 console.log('   R     S     C    N   routine   misses   share of patch/minor')
 const eligible = judged.filter((j) => j.row.magnitude === 'patch' || j.row.magnitude === 'minor').length
 for (const R of [0.2, 0.3]) {
@@ -208,7 +215,9 @@ for (const m of misses) {
   console.log(
     `  ${m.row.stack}/${m.row.service} ${m.row.from_tag} -> ${m.row.to_tag}: reader ${m.row.recommendation}; ` +
       `steps ${list(m.row.migration_steps).length}, breaking ${list(m.row.breaking_changes).length}` +
-      (f ? `; max risk ${Math.max(...Object.values(f.risk)).toFixed(2)}, affects ${f.affects.toFixed(2)}, score ${f.score.toFixed(2)}` : ''),
+      (f
+        ? `; max risk ${Math.max(...Object.values(f.risk)).toFixed(2)}, affects ${f.affects.toFixed(2)}, score ${f.score.toFixed(2)}`
+        : ''),
   )
 }
 

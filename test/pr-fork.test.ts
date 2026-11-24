@@ -68,7 +68,9 @@ function workRepo(): string {
 const sh = (cwd: string, args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
 
 beforeEach(() => {
-  getDb().exec(`DELETE FROM images; DELETE FROM fork_refs; DELETE FROM updates; DELETE FROM events; DELETE FROM incidents`)
+  getDb().exec(
+    `DELETE FROM images; DELETE FROM fork_refs; DELETE FROM updates; DELETE FROM events; DELETE FROM incidents`,
+  )
   getDb()
     .prepare(
       `INSERT INTO images (stack, service, compose_file, image_ref, registry, repository, current_tag, current_digest,
@@ -102,7 +104,9 @@ const group = (toTag = 'v3.5.1'): UpdateGroup => ({
   ],
 })
 
-const carried = [{ sha: 'c'.repeat(40), short: 'ccccccc', subject: 'fix: keep the reading statistics (#2952)', author: 'Spencer' }]
+const carried = [
+  { sha: 'c'.repeat(40), short: 'ccccccc', subject: 'fix: keep the reading statistics (#2952)', author: 'Spencer' },
+]
 
 function deps(result: PrepareForkResult, over: Partial<{ digest: string | null; inputs: PrepareForkInput[] }> = {}) {
   const inputs: PrepareForkInput[] = over.inputs ?? []
@@ -181,8 +185,14 @@ test('a fork group builds its branch through bumpFork, from the replay it was ha
   const body = carriedFixesSection(group(), r.forks)
   assert.match(body, /### Carried fixes/)
   assert.match(body, /\[`9f1c2d3`\]|`shipshape\/v3\.5\.1-9f1c2d3`/)
-  assert.match(body, /\[`ccccccc`\]\(https:\/\/github\.com\/justmytwospence\/grimmory\/commit\/c{40}\) fix: keep the reading statistics \(#2952\) — Spencer/)
-  assert.match(body, /grimmory-tools\/grimmory#2952\]\(https:\/\/github\.com\/grimmory-tools\/grimmory\/issues\/2952\): merged, not released/)
+  assert.match(
+    body,
+    /\[`ccccccc`\]\(https:\/\/github\.com\/justmytwospence\/grimmory\/commit\/c{40}\) fix: keep the reading statistics \(#2952\) — Spencer/,
+  )
+  assert.match(
+    body,
+    /grimmory-tools\/grimmory#2952\]\(https:\/\/github\.com\/grimmory-tools\/grimmory\/issues\/2952\): merged, not released/,
+  )
 })
 
 test('a retire group builds its branch through retireFork and says so in the title and body', async () => {
@@ -260,14 +270,22 @@ test('a digest-pinned upstream keeps its pin, or the edit is refused', async () 
   const { deps: d, inputs } = deps(bump, { digest: null })
   const r = await buildBranch(repo, group(), 'shipshape/books-grimmory', d)
   assert.equal(r.ok, false)
-  assert.match((r as { reason: string }).reason, /could not resolve the digest of grimmory-tools\/grimmory:v3\.5\.1; the digest pin would be lost/)
+  assert.match(
+    (r as { reason: string }).reason,
+    /could not resolve the digest of grimmory-tools\/grimmory:v3\.5\.1; the digest pin would be lost/,
+  )
   assert.equal(inputs.length, 0, 'nothing was replayed or pushed for an edit that could not be written')
   assert.equal(readFileSync(join(repo, 'books', 'docker-compose.yaml'), 'utf8'), COMPOSE)
 })
 
 test('an overtaken fork change is rebuilt from main onto the newer target', async () => {
   const repo = workRepo()
-  const first = await buildBranch(repo, group('v3.5.0'), 'shipshape/books-grimmory', deps({ ...bump, tag: 'shipshape/v3.5.0-9f1c2d3', upstreamTag: 'v3.5.0' }).deps)
+  const first = await buildBranch(
+    repo,
+    group('v3.5.0'),
+    'shipshape/books-grimmory',
+    deps({ ...bump, tag: 'shipshape/v3.5.0-9f1c2d3', upstreamTag: 'v3.5.0' }).deps,
+  )
   assert.ok(first.ok)
   const later = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
   const second = await buildBranch(

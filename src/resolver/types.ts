@@ -11,21 +11,17 @@ export type ResolutionTier =
   | 'lookup'
   | 'none'
 
-
 export type SourceConfidence = 'high' | 'medium' | 'low'
-
 
 export interface ImageKey {
   registry: string
   repository: string
 }
 
-
 export interface ServiceKey {
   stack: string
   service: string
 }
-
 
 export interface SourceLabelInfo {
   value: string
@@ -36,13 +32,11 @@ export interface SourceLabelInfo {
   conflicts: (ServiceKey & { value: string })[]
 }
 
-
 export interface InvalidLabel {
   value: string
   from: ServiceKey
   reason: string
 }
-
 
 export interface ChangelogLabelInfo {
   value: string
@@ -50,7 +44,6 @@ export interface ChangelogLabelInfo {
   from: ServiceKey
   target: ChangelogTarget
 }
-
 
 export interface SourceInfo {
   repo: string | null
@@ -76,7 +69,6 @@ export interface SourceInfo {
   pending: boolean
 }
 
-
 export interface SourceOpts {
   /** The service asking. Its own label wins over a sibling's. */
   service?: ServiceKey
@@ -98,7 +90,6 @@ export interface SourceOpts {
   allowBilled?: boolean
 }
 
-
 /** What one lookup considered, for the report and for anyone asking why. */
 export interface ResolutionEvidence {
   candidates: { tier: ResolutionTier; repo: string; confidence: SourceConfidence | null; why: string }[]
@@ -107,7 +98,6 @@ export interface ResolutionEvidence {
   /** The billed walk was skipped and could still change the answer. */
   billedPending: boolean
 }
-
 
 export interface Lookup {
   repo: string | null
@@ -120,20 +110,15 @@ export interface Lookup {
   evidence: ResolutionEvidence
 }
 
-
 /** Bump when tier logic changes, so rows written by the previous logic are looked at again. */
 export const RESOLVER_VERSION = 2
 
-
 export const HOUR = 60 * 60_000
-
 
 export const DAY = 24 * HOUR
 
-
 /** A clean "nothing found" is not forever: an image can gain an annotation. */
 export const NONE_TTL_MS = 7 * DAY
-
 
 /** A likely answer is looked at again now and then, in case something more certain appears. */
 export const MEDIUM_TTL_MS = 30 * DAY

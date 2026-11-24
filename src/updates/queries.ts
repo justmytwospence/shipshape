@@ -39,7 +39,9 @@ export const STAGE_FILTERS = {
  */
 export type StageFilter = keyof typeof STAGE_FILTERS | 'all' | 'releases'
 
-export function listUpdates(opts: { stage?: StageFilter; q?: string; magnitude?: string; limit?: number } = {}): UpdateView[] {
+export function listUpdates(
+  opts: { stage?: StageFilter; q?: string; magnitude?: string; limit?: number } = {},
+): UpdateView[] {
   const stage = opts.stage ?? 'open'
   const where: string[] = []
   const args: unknown[] = []
@@ -85,9 +87,7 @@ export interface ReleaseView extends UpdateView {
   registry: string
 }
 
-export function listReleases(
-  opts: { q?: string; magnitude?: string; limit?: number } = {},
-): ReleaseView[] {
+export function listReleases(opts: { q?: string; magnitude?: string; limit?: number } = {}): ReleaseView[] {
   const where: string[] = []
   const args: unknown[] = []
 

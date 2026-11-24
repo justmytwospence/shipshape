@@ -179,9 +179,11 @@ export function bumpFork(text: string, service: string, input: BumpForkInput): F
   const image = scalarAt(['services', service, 'image'])
   const upstream = scalarAt(['services', service, 'labels', 'shipshape.fork.upstream'])
   if (!context || !image || !upstream) return refuse('a pinned value has no source range')
-  if (context.type && context.type !== 'PLAIN') return refuse('build.context is quoted; the editor only rewrites plain scalars')
+  if (context.type && context.type !== 'PLAIN')
+    return refuse('build.context is quoted; the editor only rewrites plain scalars')
   if (image.type && image.type !== 'PLAIN') return refuse('image: is quoted; the editor only rewrites plain scalars')
-  if (upstream.type && upstream.type !== 'PLAIN') return refuse('shipshape.fork.upstream is quoted; the editor only rewrites plain scalars')
+  if (upstream.type && upstream.type !== 'PLAIN')
+    return refuse('shipshape.fork.upstream is quoted; the editor only rewrites plain scalars')
   splice(context, newContext)
   splice(image, newImage)
   splice(upstream, input.newUpstream)
@@ -200,7 +202,12 @@ export function bumpFork(text: string, service: string, input: BumpForkInput): F
       const next = follow(old)
       expectedArgs[key] = next
       if (next !== old) {
-        if (p.value.type && p.value.type !== 'PLAIN' && p.value.type !== 'QUOTE_DOUBLE' && p.value.type !== 'QUOTE_SINGLE') {
+        if (
+          p.value.type &&
+          p.value.type !== 'PLAIN' &&
+          p.value.type !== 'QUOTE_DOUBLE' &&
+          p.value.type !== 'QUOTE_SINGLE'
+        ) {
           return refuse(`build.args.${key} is not a plain or quoted scalar`)
         }
         splice(p.value, next)
@@ -233,7 +240,9 @@ export function bumpFork(text: string, service: string, input: BumpForkInput): F
   if (e.build.args !== undefined) {
     e.build.args = Array.isArray(e.build.args)
       ? (e.build.args as unknown[]).map((x) =>
-          typeof x === 'string' && x.includes('=') ? `${x.slice(0, x.indexOf('='))}=${expectedArgs[x.slice(0, x.indexOf('='))] ?? x.slice(x.indexOf('=') + 1)}` : x,
+          typeof x === 'string' && x.includes('=')
+            ? `${x.slice(0, x.indexOf('='))}=${expectedArgs[x.slice(0, x.indexOf('='))] ?? x.slice(x.indexOf('=') + 1)}`
+            : x,
         )
       : Object.fromEntries(
           Object.entries(e.build.args as Record<string, unknown>).map(([k, v]) => [
@@ -307,13 +316,20 @@ export function retireFork(text: string, service: string, input: RetireForkInput
     const build = doc.getIn(['services', service, 'build'])
     const fork = doc.getIn(['services', service, 'labels', 'shipshape.fork.upstream'])
     if (image === input.upstreamRef && build === undefined && fork === undefined) {
-      return { ok: false, alreadyApplied: true, reason: `${service} already runs the upstream image ${input.upstreamRef}` }
+      return {
+        ok: false,
+        alreadyApplied: true,
+        reason: `${service} already runs the upstream image ${input.upstreamRef}`,
+      }
     }
     return refuse(read.reason)
   }
   const pin = read.pin
   if (pin.sha !== input.expectedSha) {
-    return { ok: false, reason: `${service} now builds from ${pin.sha.slice(0, 7)}, expected ${input.expectedSha.slice(0, 7)}` }
+    return {
+      ok: false,
+      reason: `${service} now builds from ${pin.sha.slice(0, 7)}, expected ${input.expectedSha.slice(0, 7)}`,
+    }
   }
 
   const doc = parseDocument(text, { keepSourceTokens: true })
@@ -324,7 +340,9 @@ export function retireFork(text: string, service: string, input: RetireForkInput
   if (!isScalar(image) || !image.range) return refuse('image: has no source range')
   if (image.type && image.type !== 'PLAIN') return refuse('image: is quoted; the editor only rewrites plain scalars')
 
-  const buildPair = svc.items.find((p) => isScalar(p.key) && p.key.value === 'build') as Pair<Scalar, unknown> | undefined
+  const buildPair = svc.items.find((p) => isScalar(p.key) && p.key.value === 'build') as
+    | Pair<Scalar, unknown>
+    | undefined
   if (!buildPair || !buildPair.key.range) return refuse('build: has no source range')
   const buildEnd = nodeEnd(buildPair)
   if (buildEnd === null) return refuse('build: block has no source range')
@@ -371,7 +389,13 @@ function nodeEnd(pair: Pair<unknown, unknown>): number | null {
   if (isMap(v) || isSeq(v)) {
     let end: number | null = v.range ? v.range[1] : null
     for (const item of v.items) {
-      const e = isMap(v) ? nodeEnd(item as Pair<unknown, unknown>) : isScalar(item) ? (item.range ? item.range[1] : null) : nodeEnd({ key: null, value: item } as Pair<unknown, unknown>)
+      const e = isMap(v)
+        ? nodeEnd(item as Pair<unknown, unknown>)
+        : isScalar(item)
+          ? item.range
+            ? item.range[1]
+            : null
+          : nodeEnd({ key: null, value: item } as Pair<unknown, unknown>)
       if (e !== null && (end === null || e > end)) end = e
     }
     return end

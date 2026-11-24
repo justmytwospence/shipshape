@@ -49,21 +49,222 @@ interface DemoUpdate {
 }
 
 const UPDATES: DemoUpdate[] = [
-  { id: 1, stack: 'vaultwarden', service: 'vaultwarden', image: 'vaultwarden/server:1.32.4', from: '1.32.4', to: '1.32.5', magnitude: 'patch', tier: 'ask', state: 'detected', detected: 30, updated: 30, decisionSince: 30, source: 'dani-garcia/vaultwarden' },
-  { id: 2, stack: 'immich', service: 'immich-server', image: 'ghcr.io/immich-app/immich-server:v1.120.2', from: 'v1.120.2', to: 'v1.121.0', magnitude: 'minor', tier: 'normal', state: 'detected', detected: 20, updated: 20, decisionSince: 19, source: 'immich-app/immich' },
-  { id: 3, stack: 'immich', service: 'immich-machine-learning', image: 'ghcr.io/immich-app/immich-machine-learning:v1.120.2', from: 'v1.120.2', to: 'v1.121.0', magnitude: 'minor', tier: 'normal', state: 'detected', detected: 20, updated: 20, decisionSince: 19, source: 'immich-app/immich' },
-  { id: 4, stack: 'nextcloud', service: 'db', image: 'postgres:16.4-alpine', from: '16.4-alpine', to: '17.2-alpine', magnitude: 'major', tier: 'stateful', state: 'detected', detected: 50, updated: 50, decisionSince: 49, source: 'postgres/postgres' },
-  { id: 5, stack: 'traefik', service: 'traefik', image: 'traefik:v3.2.1', from: 'v3.2.1', to: 'v3.2.2', magnitude: 'patch', tier: 'lifeline', state: 'detected', detected: 72, updated: 70, snoozedUntil: -120, decisionSince: 71, source: 'traefik/traefik' },
-  { id: 6, stack: 'paperless', service: 'webserver', image: 'ghcr.io/paperless-ngx/paperless-ngx:2.13.5', from: '2.13.5', to: '2.14.0', magnitude: 'minor', tier: 'normal', state: 'detected', detected: 40, updated: 40, source: 'paperless-ngx/paperless-ngx' },
-  { id: 7, stack: 'jellyfin', service: 'jellyfin', image: 'jellyfin/jellyfin:10.9.11', from: '10.9.11', to: '10.10.3', magnitude: 'minor', tier: 'normal', state: 'verified', detected: 216, updated: 26, source: 'jellyfin/jellyfin' },
-  { id: 8, stack: 'monitoring', service: 'uptime-kuma', image: 'louislam/uptime-kuma:1.23.15', from: '1.23.15', to: '1.23.16', magnitude: 'patch', tier: 'normal', state: 'failed', detail: 'rolled back: the health check failed within the verify window', detected: 240, updated: 5, source: 'louislam/uptime-kuma' },
-  { id: 9, stack: 'paperless', service: 'broker', image: 'redis:7.4.1-alpine', from: '7.4.1-alpine', to: '7.4.2-alpine', magnitude: 'patch', tier: 'normal', state: 'deployed', detected: 192, updated: 0.4, source: 'redis/redis' },
-  { id: 10, stack: 'monitoring', service: 'dozzle', image: 'amir20/dozzle:latest', from: `latest@sha256:${DOZZLE_OLD}`, to: `latest@sha256:${DOZZLE_NEW}`, magnitude: 'digest', tier: 'normal', state: 'detected', detail: 'rolling', detected: 3, updated: 3 },
-  { id: 11, stack: 'tools', service: 'backup-agent', image: `python:3.12-slim@sha256:${PY_OLD}`, from: `3.12-slim@sha256:${PY_OLD}`, to: `3.12-slim@sha256:${PY_NEW}`, magnitude: 'digest', tier: 'frozen', state: 'frozen', detected: 60, updated: 60 },
-  { id: 12, stack: 'nextcloud', service: 'app', image: 'nextcloud:30.0.2-apache', from: '30.0.2-apache', to: '30.0.4-apache', magnitude: 'patch', tier: 'normal', state: 'left-stopped', detected: 120, updated: 96, source: 'nextcloud/server' },
-  { id: 13, stack: 'vaultwarden', service: 'vaultwarden', image: 'vaultwarden/server:1.32.3', from: '1.32.3', to: '1.32.4', magnitude: 'patch', tier: 'ask', state: 'verified', detected: 480, updated: 432, approved: 440, source: 'dani-garcia/vaultwarden' },
-  { id: 14, stack: 'immich', service: 'immich-server', image: 'ghcr.io/immich-app/immich-server:v1.119.1', from: 'v1.119.1', to: 'v1.120.2', magnitude: 'minor', tier: 'normal', state: 'verified', detected: 288, updated: 264, source: 'immich-app/immich' },
-  { id: 15, stack: 'immich', service: 'redis', image: 'docker.io/valkey/valkey:8.0.1-alpine', from: '8.0.1-alpine', to: '8.0.2-alpine', magnitude: 'patch', tier: 'normal', state: 'skipped', detected: 150, updated: 144 },
+  {
+    id: 1,
+    stack: 'vaultwarden',
+    service: 'vaultwarden',
+    image: 'vaultwarden/server:1.32.4',
+    from: '1.32.4',
+    to: '1.32.5',
+    magnitude: 'patch',
+    tier: 'ask',
+    state: 'detected',
+    detected: 30,
+    updated: 30,
+    decisionSince: 30,
+    source: 'dani-garcia/vaultwarden',
+  },
+  {
+    id: 2,
+    stack: 'immich',
+    service: 'immich-server',
+    image: 'ghcr.io/immich-app/immich-server:v1.120.2',
+    from: 'v1.120.2',
+    to: 'v1.121.0',
+    magnitude: 'minor',
+    tier: 'normal',
+    state: 'detected',
+    detected: 20,
+    updated: 20,
+    decisionSince: 19,
+    source: 'immich-app/immich',
+  },
+  {
+    id: 3,
+    stack: 'immich',
+    service: 'immich-machine-learning',
+    image: 'ghcr.io/immich-app/immich-machine-learning:v1.120.2',
+    from: 'v1.120.2',
+    to: 'v1.121.0',
+    magnitude: 'minor',
+    tier: 'normal',
+    state: 'detected',
+    detected: 20,
+    updated: 20,
+    decisionSince: 19,
+    source: 'immich-app/immich',
+  },
+  {
+    id: 4,
+    stack: 'nextcloud',
+    service: 'db',
+    image: 'postgres:16.4-alpine',
+    from: '16.4-alpine',
+    to: '17.2-alpine',
+    magnitude: 'major',
+    tier: 'stateful',
+    state: 'detected',
+    detected: 50,
+    updated: 50,
+    decisionSince: 49,
+    source: 'postgres/postgres',
+  },
+  {
+    id: 5,
+    stack: 'traefik',
+    service: 'traefik',
+    image: 'traefik:v3.2.1',
+    from: 'v3.2.1',
+    to: 'v3.2.2',
+    magnitude: 'patch',
+    tier: 'lifeline',
+    state: 'detected',
+    detected: 72,
+    updated: 70,
+    snoozedUntil: -120,
+    decisionSince: 71,
+    source: 'traefik/traefik',
+  },
+  {
+    id: 6,
+    stack: 'paperless',
+    service: 'webserver',
+    image: 'ghcr.io/paperless-ngx/paperless-ngx:2.13.5',
+    from: '2.13.5',
+    to: '2.14.0',
+    magnitude: 'minor',
+    tier: 'normal',
+    state: 'detected',
+    detected: 40,
+    updated: 40,
+    source: 'paperless-ngx/paperless-ngx',
+  },
+  {
+    id: 7,
+    stack: 'jellyfin',
+    service: 'jellyfin',
+    image: 'jellyfin/jellyfin:10.9.11',
+    from: '10.9.11',
+    to: '10.10.3',
+    magnitude: 'minor',
+    tier: 'normal',
+    state: 'verified',
+    detected: 216,
+    updated: 26,
+    source: 'jellyfin/jellyfin',
+  },
+  {
+    id: 8,
+    stack: 'monitoring',
+    service: 'uptime-kuma',
+    image: 'louislam/uptime-kuma:1.23.15',
+    from: '1.23.15',
+    to: '1.23.16',
+    magnitude: 'patch',
+    tier: 'normal',
+    state: 'failed',
+    detail: 'rolled back: the health check failed within the verify window',
+    detected: 240,
+    updated: 5,
+    source: 'louislam/uptime-kuma',
+  },
+  {
+    id: 9,
+    stack: 'paperless',
+    service: 'broker',
+    image: 'redis:7.4.1-alpine',
+    from: '7.4.1-alpine',
+    to: '7.4.2-alpine',
+    magnitude: 'patch',
+    tier: 'normal',
+    state: 'deployed',
+    detected: 192,
+    updated: 0.4,
+    source: 'redis/redis',
+  },
+  {
+    id: 10,
+    stack: 'monitoring',
+    service: 'dozzle',
+    image: 'amir20/dozzle:latest',
+    from: `latest@sha256:${DOZZLE_OLD}`,
+    to: `latest@sha256:${DOZZLE_NEW}`,
+    magnitude: 'digest',
+    tier: 'normal',
+    state: 'detected',
+    detail: 'rolling',
+    detected: 3,
+    updated: 3,
+  },
+  {
+    id: 11,
+    stack: 'tools',
+    service: 'backup-agent',
+    image: `python:3.12-slim@sha256:${PY_OLD}`,
+    from: `3.12-slim@sha256:${PY_OLD}`,
+    to: `3.12-slim@sha256:${PY_NEW}`,
+    magnitude: 'digest',
+    tier: 'frozen',
+    state: 'frozen',
+    detected: 60,
+    updated: 60,
+  },
+  {
+    id: 12,
+    stack: 'nextcloud',
+    service: 'app',
+    image: 'nextcloud:30.0.2-apache',
+    from: '30.0.2-apache',
+    to: '30.0.4-apache',
+    magnitude: 'patch',
+    tier: 'normal',
+    state: 'left-stopped',
+    detected: 120,
+    updated: 96,
+    source: 'nextcloud/server',
+  },
+  {
+    id: 13,
+    stack: 'vaultwarden',
+    service: 'vaultwarden',
+    image: 'vaultwarden/server:1.32.3',
+    from: '1.32.3',
+    to: '1.32.4',
+    magnitude: 'patch',
+    tier: 'ask',
+    state: 'verified',
+    detected: 480,
+    updated: 432,
+    approved: 440,
+    source: 'dani-garcia/vaultwarden',
+  },
+  {
+    id: 14,
+    stack: 'immich',
+    service: 'immich-server',
+    image: 'ghcr.io/immich-app/immich-server:v1.119.1',
+    from: 'v1.119.1',
+    to: 'v1.120.2',
+    magnitude: 'minor',
+    tier: 'normal',
+    state: 'verified',
+    detected: 288,
+    updated: 264,
+    source: 'immich-app/immich',
+  },
+  {
+    id: 15,
+    stack: 'immich',
+    service: 'redis',
+    image: 'docker.io/valkey/valkey:8.0.1-alpine',
+    from: '8.0.1-alpine',
+    to: '8.0.2-alpine',
+    magnitude: 'patch',
+    tier: 'normal',
+    state: 'skipped',
+    detected: 150,
+    updated: 144,
+  },
 ]
 
 interface DemoVerdict {
@@ -87,7 +288,8 @@ const VERDICTS: Record<number, DemoVerdict> = {
   2: {
     recommendation: 'block',
     confidence: 'high',
-    summary: 'The server now requires the VectorChord build of Postgres and drops endpoints that older mobile apps call.',
+    summary:
+      'The server now requires the VectorChord build of Postgres and drops endpoints that older mobile apps call.',
     breaking: [
       'The database must run the VectorChord image before the server will start.',
       'The /api/server-info routes are gone; mobile apps older than 1.121 cannot sign in.',
@@ -122,10 +324,15 @@ const VERDICTS: Record<number, DemoVerdict> = {
   7: {
     recommendation: 'approve',
     confidence: 'high',
-    summary: 'A larger release: a new playback engine, trickplay previews and media segments. No configuration changes are needed.',
+    summary:
+      'A larger release: a new playback engine, trickplay previews and media segments. No configuration changes are needed.',
     features: ['Trickplay previews while seeking.', 'Media segments for skipping intros.'],
   },
-  8: { recommendation: 'approve', confidence: 'medium', summary: 'Fixes notification retries and updates the bundled Chromium.' },
+  8: {
+    recommendation: 'approve',
+    confidence: 'medium',
+    summary: 'Fixes notification retries and updates the bundled Chromium.',
+  },
   9: { recommendation: 'approve', confidence: 'high', summary: 'Security and bug fixes.' },
   12: { recommendation: 'approve', confidence: 'high', summary: 'Bug fixes.' },
   13: { recommendation: 'approve', confidence: 'high', summary: 'Bug fixes.' },
@@ -138,7 +345,10 @@ export function seedDemo(now = Date.now()): { updates: number; events: number } 
   if (!setup.ok) throw new Error('seed-demo: REPO_DIR and GITHUB_REPO must point at the demo repository first.')
   const db = getDb()
   const count = (sql: string) => (db.prepare(sql).get() as { n: number }).n
-  if (count(`SELECT COUNT(*) AS n FROM updates`) > 0 || count(`SELECT COUNT(*) AS n FROM events WHERE kind != 'system'`) > 0) {
+  if (
+    count(`SELECT COUNT(*) AS n FROM updates`) > 0 ||
+    count(`SELECT COUNT(*) AS n FROM events WHERE kind != 'system'`) > 0
+  ) {
     throw new Error(`seed-demo: ${paths.db} already has history; the demo seeds only an empty database.`)
   }
 
@@ -146,8 +356,7 @@ export function seedDemo(now = Date.now()): { updates: number; events: number } 
   const at = (h: number) => new Date(now - h * 3_600_000).toISOString()
   const month = new Date(now).toISOString().slice(0, 7)
   const byId = new Map(UPDATES.map((u) => [u.id, u]))
-  const release = (u: DemoUpdate) =>
-    u.source ? `https://github.com/${u.source}/releases/tag/${u.to}` : null
+  const release = (u: DemoUpdate) => (u.source ? `https://github.com/${u.source}/releases/tag/${u.to}` : null)
 
   // 1. The inventory, through the scanner.
   const { policy } = loadPolicy()
@@ -163,8 +372,18 @@ export function seedDemo(now = Date.now()): { updates: number; events: number } 
     )
     for (const u of UPDATES) {
       insertUpdate.run(
-        u.id, u.stack, u.service, u.image, u.from, u.to, u.magnitude, u.tier, u.state, u.detail ?? null,
-        at(u.detected), at(u.updated),
+        u.id,
+        u.stack,
+        u.service,
+        u.image,
+        u.from,
+        u.to,
+        u.magnitude,
+        u.tier,
+        u.state,
+        u.detail ?? null,
+        at(u.detected),
+        at(u.updated),
         u.approved !== undefined ? at(u.approved) : null,
         u.snoozedUntil !== undefined ? at(u.snoozedUntil) : null,
         u.decisionSince !== undefined ? at(u.decisionSince) : null,
@@ -193,12 +412,22 @@ export function seedDemo(now = Date.now()): { updates: number; events: number } 
       const u = byId.get(Number(id))!
       const link = release(u)
       insertVerdict.run(
-        u.image, u.from, u.to, v.summary,
-        JSON.stringify(v.breaking ?? []), JSON.stringify(v.migration ?? []),
-        v.recommendation, v.confidence, JSON.stringify(link ? [link] : []),
-        v.source === 'screen' ? null : 'claude-sonnet-5-5', v.source === 'screen' ? 0.0005 : 0.0375,
-        at(u.detected - 1), '{"releases":1}', JSON.stringify(v.features ?? []),
-        v.source ?? 'reader', v.irreversible ? 1 : 0,
+        u.image,
+        u.from,
+        u.to,
+        v.summary,
+        JSON.stringify(v.breaking ?? []),
+        JSON.stringify(v.migration ?? []),
+        v.recommendation,
+        v.confidence,
+        JSON.stringify(link ? [link] : []),
+        v.source === 'screen' ? null : 'claude-sonnet-5-5',
+        v.source === 'screen' ? 0.0005 : 0.0375,
+        at(u.detected - 1),
+        '{"releases":1}',
+        JSON.stringify(v.features ?? []),
+        v.source ?? 'reader',
+        v.irreversible ? 1 : 0,
       )
     }
 
@@ -211,24 +440,45 @@ export function seedDemo(now = Date.now()): { updates: number; events: number } 
     const u2 = byId.get(2)!
     const r2 = release(u2)
     insertScreen.run(
-      u2.image, u2.from, u2.to, 'finding', 'the notes name a manual step and a removed endpoint',
+      u2.image,
+      u2.from,
+      u2.to,
+      'finding',
+      'the notes name a manual step and a removed endpoint',
       JSON.stringify({
         config_removed_or_renamed: { type: 'noul', noul: 0.86 },
         manual_step_required: { type: 'noul', noul: 0.93 },
         affects_this_deployment: { type: 'noul', noul: 0.71 },
       }),
       JSON.stringify([
-        { version: 'v1.121.0', text: 'Breaking: the server no longer starts against the old vector extension; switch the database image first.', url: r2 },
-        { version: 'v1.121.0', text: 'Removed /api/server-info; mobile apps older than 1.121 cannot sign in.', url: r2 },
+        {
+          version: 'v1.121.0',
+          text: 'Breaking: the server no longer starts against the old vector extension; switch the database image first.',
+          url: r2,
+        },
+        {
+          version: 'v1.121.0',
+          text: 'Removed /api/server-info; mobile apps older than 1.121 cannot sign in.',
+          url: r2,
+        },
         { version: 'v1.121.0', text: 'Faces can now be merged from the people page.', url: r2 },
       ]),
-      JSON.stringify([0, 1]), JSON.stringify([2]), at(u2.detected - 0.5),
+      JSON.stringify([0, 1]),
+      JSON.stringify([2]),
+      at(u2.detected - 0.5),
     )
     const u6 = byId.get(6)!
     insertScreen.run(
-      u6.image, u6.from, u6.to, 'routine', 'no setting, step or migration is mentioned', JSON.stringify({}),
+      u6.image,
+      u6.from,
+      u6.to,
+      'routine',
+      'no setting, step or migration is mentioned',
+      JSON.stringify({}),
       JSON.stringify([{ version: '2.14.0', text: 'Newer OCR engine with better table detection.', url: release(u6) }]),
-      JSON.stringify([]), JSON.stringify([0]), at(u6.detected - 0.5),
+      JSON.stringify([]),
+      JSON.stringify([0]),
+      at(u6.detected - 0.5),
     )
 
     // 6. What shipped, and the deploy that followed each.
@@ -245,7 +495,11 @@ export function seedDemo(now = Date.now()): { updates: number; events: number } 
     const linkDeploy = db.prepare(`INSERT INTO deploy_updates (deploy_id, update_id) VALUES (?, ?)`)
     const DEPLOYS: Record<number, { status: string; finished: number; detail?: string; recheck?: number }> = {
       7: { status: 'verified', finished: byId.get(7)!.updated },
-      8: { status: 'rolled-back', finished: 5, detail: 'the health check failed within the verify window; 1.23.15 was put back' },
+      8: {
+        status: 'rolled-back',
+        finished: 5,
+        detail: 'the health check failed within the verify window; 1.23.15 was put back',
+      },
       9: { status: 'deployed', finished: 0.3, recheck: -0.35 },
       12: { status: 'left-stopped', finished: 96 },
       13: { status: 'verified', finished: byId.get(13)!.updated },
@@ -262,7 +516,16 @@ export function seedDemo(now = Date.now()): { updates: number; events: number } 
       const good = d.status === 'verified' || d.status === 'deployed' ? 1 : 0
       const deployId = Number(
         insertDeploy.run(
-          prId, u.stack, u.service, good, good, d.detail ?? null, merged, d.status, merged, at(d.finished),
+          prId,
+          u.stack,
+          u.service,
+          good,
+          good,
+          d.detail ?? null,
+          merged,
+          d.status,
+          merged,
+          at(d.finished),
           d.recheck !== undefined ? at(d.recheck) : null,
         ).lastInsertRowid,
       )
@@ -276,8 +539,12 @@ export function seedDemo(now = Date.now()): { updates: number; events: number } 
                                        updated_at, raw, fetched_at, versions_hash, relevant, targets)
        VALUES (?, 'patch', ?, 'high', 'patched', 'live', '[]', ?, ?, ?, '{}', ?, 'demo', 1, ?)`,
     ).run(
-      slug, 'libexpat: integer overflow in nextScaffoldPart (CVE-2024-45492)', '["CVE-2024-45492"]',
-      'https://nvd.nist.gov/vuln/detail/CVE-2024-45492', at(72), at(1),
+      slug,
+      'libexpat: integer overflow in nextScaffoldPart (CVE-2024-45492)',
+      '["CVE-2024-45492"]',
+      'https://nvd.nist.gov/vuln/detail/CVE-2024-45492',
+      at(72),
+      at(1),
       '[{"ecosystem":"deb","names":["libexpat1"],"affected":[{"lt":"2.6.3"}],"fixed":["2.6.3"]}]',
     )
     db.prepare(
@@ -285,10 +552,14 @@ export function seedDemo(now = Date.now()): { updates: number; events: number } 
        VALUES (?, 'paperless', 'webserver', 'deb', 'libexpat1', '2.5.0-1', '2.6.3', ?, ?)`,
     ).run(slug, at(70), at(1))
     db.prepare(`INSERT INTO security_fixes (update_id, slug, evidence, verified_at) VALUES (6, ?, ?, ?)`).run(
-      slug, '[{"type":"deb","name":"libexpat1","from":"2.5.0-1","to":["2.6.3-1"]}]', at(30),
+      slug,
+      '[{"type":"deb","name":"libexpat1","from":"2.5.0-1","to":["2.6.3-1"]}]',
+      at(30),
     )
     const running = db
-      .prepare(`SELECT stack, service, image_ref FROM images WHERE watched = 1 AND NOT (stack = 'tools' AND service = 'backup-agent')`)
+      .prepare(
+        `SELECT stack, service, image_ref FROM images WHERE watched = 1 AND NOT (stack = 'tools' AND service = 'backup-agent')`,
+      )
       .all() as { stack: string; service: string; image_ref: string }[]
     const insertRunning = db.prepare(
       `INSERT INTO security_running (stack, service, image_id, image_ref, seen_at) VALUES (?, ?, ?, ?, ?)`,
@@ -313,9 +584,9 @@ export function seedDemo(now = Date.now()): { updates: number; events: number } 
       if (k <= 8) insertCall.run('claude-sonnet-5-5', 'verdict', 9000, 700, 0.0375, at(k), 'anthropic')
       else insertCall.run('screen', 'screen', 1200, 40, 0.0005, at(k), 'openrouter')
     }
-    db.prepare(`INSERT OR REPLACE INTO budgets (key, value, window, updated_at) VALUES ('claude.spend_usd', 0.307, ?, ?)`).run(
-      month, at(1),
-    )
+    db.prepare(
+      `INSERT OR REPLACE INTO budgets (key, value, window, updated_at) VALUES ('claude.spend_usd', 0.307, ?, ?)`,
+    ).run(month, at(1))
   })()
 
   // 9. The scan clock.
@@ -330,21 +601,44 @@ export function seedDemo(now = Date.now()): { updates: number; events: number } 
   const LOG: [number, 'info' | 'warn' | 'error', EventKind, string | null, string | null, string, string | null][] = [
     [432, 'info', 'ship', 'vaultwarden', 'vaultwarden', 'shipped vaultwarden 1.32.3 -> 1.32.4', null],
     [264, 'info', 'deploy', 'immich', 'immich-server', 'deploy verified', 'immich-server v1.120.2'],
-    [96, 'info', 'deploy', 'nextcloud', 'app', 'left stopped: nextcloud was not running', 'the compose file now carries 30.0.4-apache'],
+    [
+      96,
+      'info',
+      'deploy',
+      'nextcloud',
+      'app',
+      'left stopped: nextcloud was not running',
+      'the compose file now carries 30.0.4-apache',
+    ],
     [27, 'info', 'ship', 'jellyfin', 'jellyfin', 'shipped jellyfin 10.9.11 -> 10.10.3', null],
     [26, 'info', 'deploy', 'jellyfin', 'jellyfin', 'deploy verified', 'jellyfin 10.10.3'],
     [20, 'info', 'analysis', 'immich', 'immich-server', 'reviewed: Breaking changes, high confidence', null],
     [19, 'info', 'analysis', 'nextcloud', 'db', 'reviewed: Read first, high confidence', null],
     [6, 'info', 'ship', 'monitoring', 'uptime-kuma', 'shipped uptime-kuma 1.23.15 -> 1.23.16', null],
     [6, 'info', 'scan', null, null, 'scan complete (cron)', '4 update(s), 1 rolling image(s) moved in 41s'],
-    [5.5, 'error', 'deploy', 'monitoring', 'uptime-kuma', 'deploy failed: rolled back', 'the health check failed within the verify window; 1.23.15 was put back'],
+    [
+      5.5,
+      'error',
+      'deploy',
+      'monitoring',
+      'uptime-kuma',
+      'deploy failed: rolled back',
+      'the health check failed within the verify window; 1.23.15 was put back',
+    ],
     [3, 'warn', 'scan', 'monitoring', 'homepage', 'image is set by a variable, so it cannot be watched', null],
     [1, 'info', 'sync', null, null, 'checkout fast-forwarded', '2 commits'],
     [0.5, 'info', 'ship', 'paperless', 'broker', 'shipped redis 7.4.1-alpine -> 7.4.2-alpine', null],
     [0.4, 'info', 'deploy', 'paperless', 'broker', 'deployed; soaking', 'verified in 20 minutes'],
   ]
   for (const [h, level, kind, stack, service, message, detail] of LOG) {
-    logEvent({ level, kind, stack: stack ?? undefined, service: service ?? undefined, message, detail: detail ?? undefined })
+    logEvent({
+      level,
+      kind,
+      stack: stack ?? undefined,
+      service: service ?? undefined,
+      message,
+      detail: detail ?? undefined,
+    })
     backdate.run(at(h))
   }
 

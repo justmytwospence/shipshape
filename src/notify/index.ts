@@ -92,7 +92,8 @@ export function sinkCredentials(): { name: string; state: 'set' | 'missing'; not
   }
   const set = (name: string) => (process.env[name] ? 'set' : 'missing')
   for (const s of policy.notify.sinks) {
-    if (s.type === 'webhook') add(s.url_env, set(s.url_env), process.env[s.token_env] ? `bearer from ${s.token_env}` : 'no bearer')
+    if (s.type === 'webhook')
+      add(s.url_env, set(s.url_env), process.env[s.token_env] ? `bearer from ${s.token_env}` : 'no bearer')
     if (s.type === 'discord') add(s.url_env, discordUrl(s) ? 'set' : 'missing', 'a Discord webhook URL (https)')
     if (s.type === 'gotify') add(s.token_env, set(s.token_env), `Gotify app token for ${s.url}`)
     if (s.type === 'apprise' && s.auth_env) add(s.auth_env, set(s.auth_env), 'Apprise basic auth, user:password')

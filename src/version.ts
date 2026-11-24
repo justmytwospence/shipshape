@@ -9,7 +9,6 @@ import { readFileSync } from 'node:fs'
  */
 let cached: string | null = null
 
-
 export function version(): string {
   if (cached !== null) return cached
   try {

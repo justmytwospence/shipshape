@@ -58,7 +58,11 @@ function currentPath(c: Context): string {
 export function authMiddleware(auth: AuthConfig): MiddlewareHandler {
   const allow = staticAllowlist()
   return async (c, next) => {
-    const isUpgrade = c.req.header('Upgrade')?.split(',').some((t) => t.trim().toLowerCase() === 'websocket') ?? false
+    const isUpgrade =
+      c.req
+        .header('Upgrade')
+        ?.split(',')
+        .some((t) => t.trim().toLowerCase() === 'websocket') ?? false
     // The raw method: Hono also dispatches HEAD through GET handlers.
     const method = c.req.method
     const unsafe = isUpgrade || !['GET', 'HEAD', 'OPTIONS'].includes(method)
@@ -92,7 +96,8 @@ export function authMiddleware(auth: AuthConfig): MiddlewareHandler {
 
     // Password mode.
     const cfg = auth.password
-    const login = (path === '/login' && ['GET', 'HEAD', 'POST'].includes(method)) || (path === '/logout' && method === 'POST')
+    const login =
+      (path === '/login' && ['GET', 'HEAD', 'POST'].includes(method)) || (path === '/logout' && method === 'POST')
     if (login) {
       if (unsafe) {
         const bad = checkPasswordOrigin(c, cfg)
@@ -153,7 +158,10 @@ export function registerAuthRoutes(app: Hono, auth: AuthConfig): void {
       const minutes = Math.max(1, Math.ceil(wait / 60))
       c.header('Retry-After', String(wait))
       return c.html(
-        LoginPage({ next, error: `Too many attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.` }) as string,
+        LoginPage({
+          next,
+          error: `Too many attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+        }) as string,
         429,
       )
     }

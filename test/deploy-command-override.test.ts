@@ -27,5 +27,11 @@ test('a stack whose file is compose.yaml deploys with it, and with its override'
 })
 
 test('the root stack gets no -f even when it has an override', () => {
-  assert.deepEqual(composeArgs({ stack: 'root', services: ['dns'], strategy: 'up' }, dir).args, ['compose', 'up', '-d', '--no-deps', 'dns'])
+  assert.deepEqual(composeArgs({ stack: 'root', services: ['dns'], strategy: 'up' }, dir).args, [
+    'compose',
+    'up',
+    '-d',
+    '--no-deps',
+    'dns',
+  ])
 })

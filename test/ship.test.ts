@@ -29,7 +29,8 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 const { getDb } = await import('../src/db/index.ts')
 const { runShipPass, reconcilePushing, shipHooks } = await import('../src/gitops/ship.ts')
 
-const g = (cwd: string, args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd, encoding: 'utf8' }).trim()
+const g = (cwd: string, args: string[]) =>
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd, encoding: 'utf8' }).trim()
 
 const COMPOSE = (service: string, tag: string, cls?: string) =>
   `services:\n  ${service}:\n    image: example/${service}:${tag}\n    labels:\n      shipshape.watch: "true"\n${cls ? `      shipshape.class: ${cls}\n` : ''}`
@@ -69,11 +70,23 @@ function seed(name: string, cls = 'normal') {
   )
 }
 
-const policy = (extra = '') => writeFileSync(process.env.POLICY_FILE!, `paused: false\nship:\n  cooldown_days: 0\n${extra}`)
+const policy = (extra = '') =>
+  writeFileSync(process.env.POLICY_FILE!, `paused: false\nship:\n  cooldown_days: 0\n${extra}`)
 
 beforeEach(() => {
   const db = getDb()
-  for (const t of ['deploy_updates', 'deploys', 'restore_points', 'proposals', 'pr_updates', 'prs', 'updates', 'verdicts', 'images', 'events']) {
+  for (const t of [
+    'deploy_updates',
+    'deploys',
+    'restore_points',
+    'proposals',
+    'pr_updates',
+    'prs',
+    'updates',
+    'verdicts',
+    'images',
+    'events',
+  ]) {
     db.prepare(`DELETE FROM ${t}`).run()
   }
   policy()
@@ -119,12 +132,20 @@ test('an update that needs a decision commits nothing, and starts the escalation
   const r = await runShipPass()
   assert.deepEqual([r.shipped, r.decisions], [0, 1])
   assert.equal(g(origin, ['rev-parse', 'main']), before)
-  const row = getDb().prepare(`SELECT decision_since, state FROM updates WHERE id = ?`).get(id) as { decision_since: string | null; state: string }
+  const row = getDb().prepare(`SELECT decision_since, state FROM updates WHERE id = ?`).get(id) as {
+    decision_since: string | null
+    state: string
+  }
   assert.ok(row.decision_since)
   assert.equal(row.state, 'detected')
   const again = await runShipPass()
   assert.equal(again.decisions, 1)
-  assert.equal((getDb().prepare(`SELECT decision_since FROM updates WHERE id = ?`).get(id) as { decision_since: string }).decision_since, row.decision_since, 'the clock does not restart')
+  assert.equal(
+    (getDb().prepare(`SELECT decision_since FROM updates WHERE id = ?`).get(id) as { decision_since: string })
+      .decision_since,
+    row.decision_since,
+    'the clock does not restart',
+  )
 })
 
 test('you saying ship is enough: it overrides the hold, pause and the cooldown', async () => {
@@ -157,7 +178,9 @@ test('ship.max_per_run caps one pass; the rest go on the next', async () => {
   assert.equal((await runShipPass()).shipped, 1)
   assert.equal((await runShipPass()).shipped, 1)
   assert.equal((await runShipPass()).shipped, 0)
-  const merges = originLog().split('\n').filter((l) => l.split('|')[0]!.split(' ').length === 2)
+  const merges = originLog()
+    .split('\n')
+    .filter((l) => l.split('|')[0]!.split(' ').length === 2)
   assert.equal(merges.length, 2, 'one merge commit per ship')
 })
 
@@ -179,7 +202,10 @@ test('an update the file already carries is retired, not shipped and not failed'
   g(live, ['push', '-q', origin, 'main:main'])
   const r = await runShipPass()
   assert.equal(r.shipped, 0)
-  assert.equal((getDb().prepare(`SELECT state, detail FROM updates WHERE id = ?`).get(id) as { state: string }).state, 'superseded')
+  assert.equal(
+    (getDb().prepare(`SELECT state, detail FROM updates WHERE id = ?`).get(id) as { state: string }).state,
+    'superseded',
+  )
 })
 
 test('a ship leaves no local branch behind and takes no restore point for a normal service', async () => {
@@ -214,10 +240,12 @@ test('one tap on a stack card ships everything in it as one merge commit', async
        VALUES ('media', ?, 'media/docker-compose.yaml', ?, 'docker.io', ?, ?, 1, 'now')`,
     ).run(service, `example/${service}:${from}`, `example/${service}`, from)
     return Number(
-      db.prepare(
-        `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at, approved_at)
+      db
+        .prepare(
+          `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at, approved_at)
          VALUES ('media', ?, ?, ?, ?, 'minor', 'ask', 'detected', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', '2026-02-02T00:00:00Z')`,
-      ).run(service, `example/${service}:${from}`, from, to).lastInsertRowid,
+        )
+        .run(service, `example/${service}:${from}`, from, to).lastInsertRowid,
     )
   }
   ins('app', '1.0.0', '1.1.0')
@@ -237,10 +265,12 @@ test('an update for a service that is in no compose file any more is retired, no
   setup([{ name: 'web' }])
   const db = getDb()
   const id = Number(
-    db.prepare(
-      `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at, approved_at)
+    db
+      .prepare(
+        `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at, approved_at)
        VALUES ('media', 'app', 'example/app:1.0.0', '1.0.0', '1.1.0', 'patch', 'ask', 'detected', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', '2026-02-02T00:00:00Z')`,
-    ).run().lastInsertRowid,
+      )
+      .run().lastInsertRowid,
   )
   const r = await runShipPass()
   assert.deepEqual([r.shipped, r.failed], [0, 0])
@@ -279,7 +309,9 @@ test('a draft whose review was read again with no work is closed, not merged', a
   const row = getDb().prepare(`SELECT state FROM prs WHERE id = ?`).get(pr) as { state: string }
   assert.equal(row.state, 'closed')
   assert.equal((getDb().prepare(`SELECT COUNT(*) c FROM proposals WHERE pr_id = ?`).get(pr) as { c: number }).c, 0)
-  const ev = getDb().prepare(`SELECT detail FROM events WHERE message = 'a drafted change was closed'`).get() as { detail: string }
+  const ev = getDb().prepare(`SELECT detail FROM events WHERE message = 'a drafted change was closed'`).get() as {
+    detail: string
+  }
   assert.match(ev.detail, /read again/)
   assert.notEqual(g(origin, ['rev-parse', 'main']), before, 'the tag-only change shipped instead')
   assert.match(g(origin, ['log', '-1', '--format=%s', 'main']), /bump app/)
@@ -293,7 +325,10 @@ test('a draft still justified by its review waits for you', async () => {
   await runShipPass()
   assert.equal(g(origin, ['rev-parse', 'main']), before)
   assert.equal((getDb().prepare(`SELECT state FROM prs WHERE id = ?`).get(pr) as { state: string }).state, 'open')
-  assert.ok((getDb().prepare(`SELECT decision_since FROM updates WHERE id = ?`).get(id) as { decision_since: string | null }).decision_since)
+  assert.ok(
+    (getDb().prepare(`SELECT decision_since FROM updates WHERE id = ?`).get(id) as { decision_since: string | null })
+      .decision_since,
+  )
 })
 
 // ------------------------------------------------------------------ crash between push and record
@@ -307,7 +342,8 @@ function crashAfterPush<T>(run: () => Promise<T>): Promise<T> {
   })
 }
 
-const prState = () => getDb().prepare(`SELECT id, state, scope FROM prs`).all() as { id: number; state: string; scope: string }[]
+const prState = () =>
+  getDb().prepare(`SELECT id, state, scope FROM prs`).all() as { id: number; state: string; scope: string }[]
 
 /** A `pushing` row for `updateId` whose merge commit is `sha`, as a crash would leave it. */
 function pushingRow(updateId: number, sha: string, scope = 'tag-only'): number {
@@ -329,16 +365,26 @@ test('a crash after the push is reconciled into a shipped change and a queued de
   const id = seed('web')
   const r = await crashAfterPush(() => runShipPass())
   assert.equal(r.failed, 1)
-  assert.deepEqual(prState().map((p) => p.state), ['pushing'])
+  assert.deepEqual(
+    prState().map((p) => p.state),
+    ['pushing'],
+  )
   assert.equal((getDb().prepare(`SELECT COUNT(*) c FROM deploys`).get() as { c: number }).c, 0)
 
   const out = await reconcilePushing()
   assert.deepEqual(out, { landed: 1, dropped: 0, unknown: 0 })
-  assert.deepEqual(prState().map((p) => p.state), ['merged'])
+  assert.deepEqual(
+    prState().map((p) => p.state),
+    ['merged'],
+  )
   assert.equal((getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(id) as { state: string }).state, 'merged')
   const dep = getDb().prepare(`SELECT status, stack FROM deploys`).get() as { status: string; stack: string }
   assert.deepEqual([dep.status, dep.stack], ['pending', 'web'])
-  assert.deepEqual(await reconcilePushing(), { landed: 0, dropped: 0, unknown: 0 }, 'and a second look has nothing to do')
+  assert.deepEqual(
+    await reconcilePushing(),
+    { landed: 0, dropped: 0, unknown: 0 },
+    'and a second look has nothing to do',
+  )
 })
 
 test('an update whose ship is being confirmed is never retired as applied elsewhere', async () => {
@@ -347,7 +393,10 @@ test('an update whose ship is being confirmed is never retired as applied elsewh
   await crashAfterPush(() => runShipPass())
   const again = await runShipPass()
   assert.deepEqual([again.shipped, again.failed], [0, 0])
-  const u = getDb().prepare(`SELECT state, detail FROM updates WHERE id = ?`).get(id) as { state: string; detail: string | null }
+  const u = getDb().prepare(`SELECT state, detail FROM updates WHERE id = ?`).get(id) as {
+    state: string
+    detail: string | null
+  }
   assert.equal(u.state, 'detected')
   assert.notEqual(u.detail, 'applied elsewhere')
 })
@@ -383,5 +432,8 @@ test('a failed push closes the change it recorded', async () => {
     rmSync(hook, { force: true })
   }
   assert.equal(prState().filter((p) => p.state === 'pushing').length, 0)
-  assert.deepEqual(prState().map((p) => p.state), ['closed'])
+  assert.deepEqual(
+    prState().map((p) => p.state),
+    ['closed'],
+  )
 })

@@ -147,7 +147,11 @@ async function previewSource(
     forkOf: r.data.fork ? (r.data.parent ?? 'another repository') : null,
     archived: r.data.archived,
     releases: index.ok
-      ? { count: index.releases.length, newest: index.releases[0]?.tag ?? null, newestPrerelease: index.releases[0]?.prerelease ?? false }
+      ? {
+          count: index.releases.length,
+          newest: index.releases[0]?.tag ?? null,
+          newestPrerelease: index.releases[0]?.prerelease ?? false,
+        }
       : null,
     runningRelease:
       index.ok && running ? (index.releases.find((x) => x.key && sameVersion(x.key, running))?.tag ?? null) : null,
@@ -171,11 +175,16 @@ async function previewNotes(input: string, repo: string | null, running: Version
   const p = parseChangelogLabel(input)
   if (!p.ok) return { ...base, ok: false, reason: p.reason }
 
-  const got = await fetchLinked(p.kind === 'url' ? { kind: 'url', url: p.url } : { kind: 'path', path: p.path }, repo, running?.family)
+  const got = await fetchLinked(
+    p.kind === 'url' ? { kind: 'url', url: p.url } : { kind: 'path', path: p.path },
+    repo,
+    running?.family,
+  )
   // A link that answers "not now" may still be right; one that is refused or missing is not.
   if (!got.ok) return { ...base, ok: got.transient, reason: got.reason }
 
-  const sections = got.sections ?? sectionize(got.text ?? '', { filename: got.filename ?? undefined, family: running?.family })
+  const sections =
+    got.sections ?? sectionize(got.text ?? '', { filename: got.filename ?? undefined, family: running?.family })
   const first = (sections[0]?.body ?? got.text ?? '').trim()
   return {
     ...base,

@@ -34,7 +34,13 @@ delete process.env.SMTP_URL
 
 const sent: { title: string; body: string; priority: string; key?: string; status: string }[] = []
 globalThis.fetch = (async (_url: unknown, init: { body: unknown }) => {
-  const p = JSON.parse(String(init.body)) as { title?: string; message?: string; priority?: number; key?: string; status: string }
+  const p = JSON.parse(String(init.body)) as {
+    title?: string
+    message?: string
+    priority?: number
+    key?: string
+    status: string
+  }
   // Resolutions are bookkeeping, not messages: kept apart so counts mean "what was said".
   if (p.status === 'resolved') resolved.push(p.key!)
   else sent.push({ title: p.title!, body: p.message!, priority: String(p.priority), key: p.key, status: p.status })
@@ -248,9 +254,13 @@ test('an attempt that throws is retried once before anyone is told', async () =>
   assert.equal(first.attempts, 1)
   await runDeployJob(first, { io: crashing({ minuspod: 'running' }) })
 
-  const row = () => db.prepare(`SELECT status, attempts FROM deploys WHERE id = ?`).get(id) as { status: string; attempts: number }
+  const row = () =>
+    db.prepare(`SELECT status, attempts FROM deploys WHERE id = ?`).get(id) as { status: string; attempts: number }
   assert.equal(row().status, 'pending', 'the first throw is retried, not given up on')
-  assert.ok(dueJobs().some((j) => j.id === id), 'and the next drain will pick it up')
+  assert.ok(
+    dueJobs().some((j) => j.id === id),
+    'and the next drain will pick it up',
+  )
   assert.equal(sent.length, 0, 'nobody is paged about an attempt that is about to be retried')
 
   // The retry finds the container the first attempt removed, and puts it back: its own
@@ -261,7 +271,7 @@ test('an attempt that throws is retried once before anyone is told', async () =>
   await runDeployJob(second, { io })
   assert.ok(io.calls.includes('compose -f minuspod/docker-compose.yaml up -d --no-deps minuspod'), io.calls.join('\n'))
 
-  assert.equal(row().status, 'error', 'the second throw is a person\'s problem')
+  assert.equal(row().status, 'error', "the second throw is a person's problem")
   assert.equal(sent.length, 1)
   assert.match(sent[0]!.title, /could not be run/)
 })

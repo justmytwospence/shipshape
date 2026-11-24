@@ -55,7 +55,10 @@ beforeEach(() => {
 })
 
 test('a stack with no deploy says so', async () => {
-  assert.deepEqual(await runStackVerb('nothing', 'retry'), { ok: false, message: 'there is no deploy of nothing to retry' })
+  assert.deepEqual(await runStackVerb('nothing', 'retry'), {
+    ok: false,
+    message: 'there is no deploy of nothing to retry',
+  })
 })
 
 test('a verb the newest deploy does not allow comes back as the refusal, and changes nothing', async () => {
@@ -76,10 +79,12 @@ test('the newest deploy is the one addressed', () => {
 
 test('deploy incidents carry retry and roll back; others carry nothing', () => {
   const actions = deployActions('shipshape:deploy:paseo')!
-  assert.deepEqual(actions.map((a) => [a.emoji, a.do.verb, (a.do as { stack: string }).stack]), [
-    ['🔁', 'retry', 'paseo'],
-    ['⏪', 'rollback', 'paseo'],
-  ])
+  assert.deepEqual(
+    actions.map((a) => [a.emoji, a.do.verb, (a.do as { stack: string }).stack]),
+    [
+      ['🔁', 'retry', 'paseo'],
+      ['⏪', 'rollback', 'paseo'],
+    ],
+  )
   assert.equal(deployActions('shipshape:sync'), undefined)
 })
-

@@ -63,16 +63,25 @@ test('ask always asks, and a rule may waive it', () => {
 
 test('block is unsafe and names what breaks; neither is waivable', () => {
   const h = holdsFor(input({ verdict: verdict({ recommendation: 'block', breaking: ['the config file moved'] }) }))
-  assert.deepEqual(h.map((x) => x.kind), ['unsafe'])
+  assert.deepEqual(
+    h.map((x) => x.kind),
+    ['unsafe'],
+  )
   assert.equal(h[0]!.text, 'Unsafe: the config file moved')
   assert.equal(h[0]!.waivable, false)
 })
 
 test('a step to take is work, and an approval that lists a breaking change is work too', () => {
   const steps = holdsFor(input({ verdict: verdict({ steps: ['rename X to Y'] }) }))
-  assert.deepEqual(steps.map((x) => [x.kind, x.text, x.waivable]), [['needs-action', 'Needs: rename X to Y', false]])
+  assert.deepEqual(
+    steps.map((x) => [x.kind, x.text, x.waivable]),
+    [['needs-action', 'Needs: rename X to Y', false]],
+  )
   const breaking = holdsFor(input({ verdict: verdict({ breaking: ['Y removed'] }) }))
-  assert.deepEqual(breaking.map((x) => x.kind), ['needs-action'])
+  assert.deepEqual(
+    breaking.map((x) => x.kind),
+    ['needs-action'],
+  )
 })
 
 test('no evidence holds a major, a stateful service, or a fail-closed one -- and nothing else', () => {
@@ -80,7 +89,11 @@ test('no evidence holds a major, a stateful service, or a fail-closed one -- and
   assert.deepEqual(kinds({ magnitude: 'major', verdict: verdict(none) }), ['no-evidence'])
   assert.deepEqual(kinds({ cls: 'stateful', verdict: verdict(none) }), ['no-evidence'])
   assert.deepEqual(kinds({ required: true, verdict: verdict(none) }), ['no-evidence'])
-  assert.deepEqual(kinds({ magnitude: 'patch', verdict: verdict(none) }), [], 'a patch with no notes ships: rollback covers it')
+  assert.deepEqual(
+    kinds({ magnitude: 'patch', verdict: verdict(none) }),
+    [],
+    'a patch with no notes ships: rollback covers it',
+  )
   assert.deepEqual(kinds({ magnitude: 'minor', verdict: verdict({ confidence: 'low' }) }), [])
   assert.deepEqual(kinds({ magnitude: 'major', verdict: verdict({ confidence: 'low' }) }), ['no-evidence'])
 })
@@ -101,7 +114,10 @@ test('a one-way migration holds, and says a restore point is taken when one can 
 test('a stateful service needs a restore point: no snapshot, or one that failed, holds it', () => {
   assert.deepEqual(kinds({ cls: 'stateful', hasSnapshot: false }), ['no-restore-point'])
   const failed = holdsFor(input({ cls: 'stateful', restoreError: 'the dump was empty' }))
-  assert.deepEqual(failed.map((h) => [h.kind, h.text]), [['no-restore-point', 'the dump was empty']])
+  assert.deepEqual(
+    failed.map((h) => [h.kind, h.text]),
+    [['no-restore-point', 'the dump was empty']],
+  )
   assert.deepEqual(kinds({ cls: 'stateful' }), [])
   assert.deepEqual(kinds({ cls: 'normal', hasSnapshot: false }), [], 'only stateful services need one')
 })
@@ -110,9 +126,17 @@ test('a digest rebuild of the running version needs neither release notes nor a 
   const thin = { verdict: null, verdictState: 'unavailable' as const }
   assert.deepEqual(kinds({ cls: 'stateful', magnitude: 'digest', hasSnapshot: false, ...thin }), [])
   assert.deepEqual(kinds({ cls: 'normal', magnitude: 'digest', required: true, ...thin }), [])
-  assert.deepEqual(kinds({ cls: 'stateful', magnitude: 'patch', hasSnapshot: false, ...thin }), ['no-evidence', 'no-restore-point'], 'a version move still asks')
+  assert.deepEqual(
+    kinds({ cls: 'stateful', magnitude: 'patch', hasSnapshot: false, ...thin }),
+    ['no-evidence', 'no-restore-point'],
+    'a version move still asks',
+  )
   assert.deepEqual(kinds({ cls: 'ask', magnitude: 'digest', ...thin }), ['ask'], 'the class still asks')
-  assert.deepEqual(kinds({ magnitude: 'digest', verdict: verdict({ recommendation: 'block', breaking: ['x'] }) }), ['unsafe'], 'evidence of risk still holds')
+  assert.deepEqual(
+    kinds({ magnitude: 'digest', verdict: verdict({ recommendation: 'block', breaking: ['x'] }) }),
+    ['unsafe'],
+    'evidence of risk still holds',
+  )
 })
 
 test('a verified security fix lifts ask and no-evidence, and nothing that is a real warning', () => {
@@ -146,16 +170,40 @@ test('a rule matches by image repository, stack, service or base build; every ke
 
 test('applyRules waives only the waivable kinds a matching rule names', () => {
   const holds = holdsFor(input({ cls: 'ask', magnitude: 'major', verdict: verdict({ notesInRange: 0, steps: ['x'] }) }))
-  assert.deepEqual(holds.map((h) => h.kind), ['ask', 'needs-action', 'no-evidence'])
-  const out = applyRules(holds, [rule({ id: 'r7', waive: ['ask', 'no-evidence'], match: { image: 'ghcr.io/example/auth-proxy' } })], target)
-  assert.deepEqual(out.map((h) => [h.kind, h.waivedBy ?? null]), [['ask', 'r7'], ['needs-action', null], ['no-evidence', 'r7']])
-  assert.deepEqual(blocking(out).map((h) => h.kind), ['needs-action'])
+  assert.deepEqual(
+    holds.map((h) => h.kind),
+    ['ask', 'needs-action', 'no-evidence'],
+  )
+  const out = applyRules(
+    holds,
+    [rule({ id: 'r7', waive: ['ask', 'no-evidence'], match: { image: 'ghcr.io/example/auth-proxy' } })],
+    target,
+  )
+  assert.deepEqual(
+    out.map((h) => [h.kind, h.waivedBy ?? null]),
+    [
+      ['ask', 'r7'],
+      ['needs-action', null],
+      ['no-evidence', 'r7'],
+    ],
+  )
+  assert.deepEqual(
+    blocking(out).map((h) => h.kind),
+    ['needs-action'],
+  )
 })
 
 test('a rule can never waive what is not waivable, even if it says so', () => {
   const holds = holdsFor(input({ cls: 'lifeline' }))
-  const out = applyRules(holds, [{ id: 'r1', match: { image: 'ghcr.io/example/auth-proxy' }, waive: ['ask'], because: '' }], target)
-  assert.deepEqual(blocking(out).map((h) => h.kind), ['lifeline'])
+  const out = applyRules(
+    holds,
+    [{ id: 'r1', match: { image: 'ghcr.io/example/auth-proxy' }, waive: ['ask'], because: '' }],
+    target,
+  )
+  assert.deepEqual(
+    blocking(out).map((h) => h.kind),
+    ['lifeline'],
+  )
 })
 
 test('the first matching rule that names a hold wins', () => {
@@ -195,7 +243,10 @@ test('shipStatus: you saying ship beats holds, cooldown and pause', () => {
 })
 
 test('shipStatus: a review still on its way waits', () => {
-  assert.deepEqual(shipStatus(ship({ verdictState: 'pending', verdict: null })), { status: 'waiting', why: 'review pending' })
+  assert.deepEqual(shipStatus(ship({ verdictState: 'pending', verdict: null })), {
+    status: 'waiting',
+    why: 'review pending',
+  })
 })
 
 test('shipStatus: blocking holds are a decision, until snoozed', () => {
@@ -225,8 +276,16 @@ test('the policy schema accepts rules and sinks', () => {
   })
   assert.equal(p.rules[0]!.id, 'r1')
   assert.equal(p.notify.sinks[0]!.type, 'ntfy')
-  assert.equal(PolicySchema.safeParse({ rules: [{ id: 'r1', match: {}, waive: ['ask'] }] }).success, false, 'an empty match is refused')
-  assert.equal(PolicySchema.safeParse({ rules: [{ id: 'r1', match: { image: 'x' }, waive: ['lifeline'] }] }).success, false, 'lifeline is not waivable')
+  assert.equal(
+    PolicySchema.safeParse({ rules: [{ id: 'r1', match: {}, waive: ['ask'] }] }).success,
+    false,
+    'an empty match is refused',
+  )
+  assert.equal(
+    PolicySchema.safeParse({ rules: [{ id: 'r1', match: { image: 'x' }, waive: ['lifeline'] }] }).success,
+    false,
+    'lifeline is not waivable',
+  )
 
   assert.equal(PolicySchema.parse({}).ship.cooldown_days, 7)
   assert.equal(PolicySchema.parse({}).ship.max_per_run, 3)
@@ -241,8 +300,15 @@ test('a drafted change holds, and no rule can waive it', () => {
   assert.equal(h!.kind, 'draft')
   assert.equal(h!.waivable, false)
   assert.equal(h!.text, 'a drafted change is waiting to be read')
-  const all = rule({ id: 'r9', waive: ['ask', 'no-evidence', 'irreversible', 'no-restore-point'], match: { image: 'ghcr.io/example/auth-proxy' } })
-  assert.deepEqual(blocking(applyRules(holds, [all], target)).map((x) => x.kind), ['draft'])
+  const all = rule({
+    id: 'r9',
+    waive: ['ask', 'no-evidence', 'irreversible', 'no-restore-point'],
+    match: { image: 'ghcr.io/example/auth-proxy' },
+  })
+  assert.deepEqual(
+    blocking(applyRules(holds, [all], target)).map((x) => x.kind),
+    ['draft'],
+  )
 })
 
 test('shipStatus: a pending draft is a decision even when nothing else holds', () => {

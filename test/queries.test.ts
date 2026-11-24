@@ -122,11 +122,7 @@ test('the inbox is only what is waiting on a person', () => {
   addUpdate({ service: 'skipped', state: 'skipped' })
 
   const kinds = inboxNeedsYou().map((i) => `${i.kind}:${i.update.service}`)
-  assert.deepEqual(kinds.sort(), [
-    'decision:waiting',
-    'ready-to-deploy:ready',
-    'rolling-moved:rolling',
-  ])
+  assert.deepEqual(kinds.sort(), ['decision:waiting', 'ready-to-deploy:ready', 'rolling-moved:rolling'])
 })
 
 test('the worst thing comes first', () => {
@@ -171,7 +167,10 @@ test('a queued deploy is not waiting on you; one that waits for the button is', 
   addDeploy(queued, { status: 'pending', finishedAt: null })
   const waiting = addUpdate({ service: 'waiting', state: 'merged' })
   addDeploy(waiting, { status: 'ready', finishedAt: null })
-  assert.deepEqual(inboxNeedsYou().map((i) => `${i.kind}:${i.update.service}`), ['ready-to-deploy:waiting'])
+  assert.deepEqual(
+    inboxNeedsYou().map((i) => `${i.kind}:${i.update.service}`),
+    ['ready-to-deploy:waiting'],
+  )
 })
 
 test('a failure leaves the inbox once a newer update of the service has shipped', () => {
@@ -214,10 +213,7 @@ test('the timeline tells the whole story, including what has not happened yet', 
      VALUES ('img','1.0.0','1.1.0','caution','medium','read the release notes',?)`,
   ).run(ago(19))
   const dep = addDeploy(id, { status: 'deployed', prId, finishedAt: ago(1) })
-  db.prepare(`UPDATE deploys SET recheck_at = ? WHERE id = ?`).run(
-    new Date(Date.now() + 1800_000).toISOString(),
-    dep,
-  )
+  db.prepare(`UPDATE deploys SET recheck_at = ? WHERE id = ?`).run(new Date(Date.now() + 1800_000).toISOString(), dep)
 
   const kinds = updateTimeline(id).map((m) => m.kind)
   assert.deepEqual(kinds, ['detected', 'review', 'merged', 'deploying', 'deployed', 'verified'])
@@ -328,7 +324,10 @@ test('a left-stopped member still reads left stopped once a later merge overtake
 
   const timeline = updateTimeline(left)
   const kinds = timeline.map((m) => m.kind).join(', ')
-  assert.ok(timeline.some((m) => m.kind === 'left-stopped'), kinds)
+  assert.ok(
+    timeline.some((m) => m.kind === 'left-stopped'),
+    kinds,
+  )
   assert.ok(!timeline.some((m) => m.kind === 'verified'), `never started, so never verified: ${kinds}`)
   assert.ok(!timeline.some((m) => m.future), kinds)
 
@@ -354,19 +353,33 @@ test('a service page shows its whole history, not just what is live', () => {
 
 test('an update held only by pause is listed apart from decisions', async () => {
   const { inboxPausedOnly } = await import('../src/updates/inbox.ts')
-  const id = addUpdate({ service: 'paused-only', state: 'detected', tier: 'normal', fromTag: '2.0.0', toTag: '2.0.1', magnitude: 'patch' })
+  const id = addUpdate({
+    service: 'paused-only',
+    state: 'detected',
+    tier: 'normal',
+    fromTag: '2.0.0',
+    toTag: '2.0.1',
+    magnitude: 'patch',
+  })
   // Past the cooldown, so Pause is the only thing left holding it.
-  getDb().prepare(`UPDATE updates SET detected_at = ? WHERE id = ?`).run(ago(24 * 30), id)
+  getDb()
+    .prepare(`UPDATE updates SET detected_at = ? WHERE id = ?`)
+    .run(ago(24 * 30), id)
   const v = updateView(id)!
   assert.equal(v.shipWhy, 'paused', JSON.stringify({ status: v.shipStatus, why: v.shipWhy }))
-  assert.deepEqual(inboxPausedOnly().map((u) => u.id), [id])
+  assert.deepEqual(
+    inboxPausedOnly().map((u) => u.id),
+    [id],
+  )
   assert.ok(!inboxNeedsYou().some((i) => i.update.id === id))
 })
 
 test('a ship is not also reported as drafted', () => {
   const id = addUpdate({ service: 'no-phantom-draft', state: 'merged' })
   addPr(id, { number: 0, state: 'merged', scope: 'tag-only' })
-  const kinds = inboxRecent(24).filter((r) => r.updateId === id).map((r) => r.kind)
+  const kinds = inboxRecent(24)
+    .filter((r) => r.updateId === id)
+    .map((r) => r.kind)
   assert.ok(!kinds.includes('opened'), kinds.join(','))
   const drafted = addUpdate({ service: 'real-draft', state: 'detected' })
   addPr(drafted, { number: 0, state: 'open', scope: 'proposed' })

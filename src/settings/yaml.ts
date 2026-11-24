@@ -47,7 +47,6 @@ export function setValue(text: string, path: string, formatted: string): string 
   return insertValue(text, parts, formatted)
 }
 
-
 /**
  * Replace an existing key, or null when it is not in the file.
  *
@@ -67,7 +66,6 @@ export function spliceValue(text: string, path: string, formatted: string): stri
   lines[found.line] = `${m[1]}${formatted}${trailing}`
   return lines.join('\n')
 }
-
 
 /**
  * Remove a key and everything nested under it, with the comment lines directly above it
@@ -113,12 +111,8 @@ export function removeValue(text: string, path: string): string | null {
   return removeValue(out, parent.join('.'))
 }
 
-
 /** Where a dotted path's final key sits, or null when any segment is absent. */
-function locate(
-  lines: string[],
-  parts: string[],
-): { line: number; key: string; indent: string } | null {
+function locate(lines: string[], parts: string[]): { line: number; key: string; indent: string } | null {
   let from = 0
   let to = lines.length
   let depth = 0
@@ -143,7 +137,6 @@ function locate(
   return null
 }
 
-
 /** The first line at or above `depth` after `start` -- i.e. where that block stops. */
 function blockEnd(lines: string[], start: number, depth: number): number {
   const want = depth * 2
@@ -158,7 +151,6 @@ function blockEnd(lines: string[], start: number, depth: number): number {
   }
   return lines.length
 }
-
 
 /**
  * Insert a key that is not in the file yet, creating any parent blocks it needs.
@@ -213,7 +205,6 @@ function insertValue(text: string, parts: string[], formatted: string): string {
   return lines.join('\n')
 }
 
-
 /** Index of the first trailing blank line, so an append does not add to the gap. */
 function trailingBlank(lines: string[]): number {
   let i = lines.length
@@ -221,14 +212,12 @@ function trailingBlank(lines: string[]): number {
   return i
 }
 
-
 /** Step back over blank lines so an insertion hugs the block it belongs to. */
 function backUpOverBlanks(lines: string[], at: number): number {
   let i = at
   while (i > 0 && lines[i - 1]!.trim() === '') i--
   return i
 }
-
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

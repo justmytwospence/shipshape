@@ -128,27 +128,18 @@ test('a container replaced mid-verify fails', () => {
 test('a one-shot that finished cleanly is a success', () => {
   // Restart policy distinguishes it, which beats the hard-coded service list kept
   // elsewhere in this repo.
-  const out = v().push(
-    [{ obs: obs({ state: 'exited', exitCode: 0, restartPolicy: 'no' }) }],
-    5000,
-  )
+  const out = v().push([{ obs: obs({ state: 'exited', exitCode: 0, restartPolicy: 'no' }) }], 5000)
   assert.equal(out?.kind, 'passed')
 })
 
 test('a service that exited non-zero fails', () => {
-  const out = v().push(
-    [{ obs: obs({ state: 'exited', exitCode: 1, restartPolicy: 'no' }) }],
-    5000,
-  )
+  const out = v().push([{ obs: obs({ state: 'exited', exitCode: 1, restartPolicy: 'no' }) }], 5000)
   assert.equal(out?.kind, 'failed')
 })
 
 test('a long-running service that exited zero still fails', () => {
   // unless-stopped means it was meant to keep running; a clean exit is still gone.
-  const out = v().push(
-    [{ obs: obs({ state: 'exited', exitCode: 0, restartPolicy: 'unless-stopped' }) }],
-    5000,
-  )
+  const out = v().push([{ obs: obs({ state: 'exited', exitCode: 0, restartPolicy: 'unless-stopped' }) }], 5000)
   assert.equal(out?.kind, 'failed')
 })
 
@@ -163,10 +154,7 @@ test('a deploy that did not change the image fails', () => {
 })
 
 test('a matching image is not a finding', () => {
-  assert.equal(
-    v().push([{ obs: obs({ imageRef: 'app:2.0' }), expectedImageRef: 'app:2.0' }], 1000),
-    null,
-  )
+  assert.equal(v().push([{ obs: obs({ imageRef: 'app:2.0' }), expectedImageRef: 'app:2.0' }], 1000), null)
 })
 
 /**

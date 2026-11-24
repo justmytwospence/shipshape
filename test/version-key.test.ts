@@ -15,7 +15,10 @@ const k = (tag: string) => {
 }
 
 test('image and release shapes reduce to the same version', () => {
-  const table: [string, { core: number[]; pre?: string | null; build?: number[]; partial?: boolean; family?: string }][] = [
+  const table: [
+    string,
+    { core: number[]; pre?: string | null; build?: number[]; partial?: boolean; family?: string },
+  ][] = [
     ['2.96.17-cpu', { core: [2, 96, 17] }],
     ['v2.96.22', { core: [2, 96, 22] }],
     ['n8n@2.39.0', { core: [2, 39, 0] }],
@@ -44,7 +47,15 @@ test('image and release shapes reduce to the same version', () => {
 })
 
 test('things that are not versions have no key', () => {
-  for (const tag of ['latest', 'main', 'RELEASE.2025-09-07T16-13-09Z', 'e5521bd8c', '3f9d2c1a7b6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c', '', 'nightly-build']) {
+  for (const tag of [
+    'latest',
+    'main',
+    'RELEASE.2025-09-07T16-13-09Z',
+    'e5521bd8c',
+    '3f9d2c1a7b6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c',
+    '',
+    'nightly-build',
+  ]) {
     assert.equal(versionKey(tag), null, tag)
   }
 })

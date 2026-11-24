@@ -91,7 +91,15 @@ test('probeMethod: the API only with GITHUB_TOKEN as the git credential, ls-remo
   const gh = parseRemote('', 'me/c')
   assert.equal(probeMethod({ remote: gh, githubRepo: 'me/c', gitToken: 'g', githubToken: 'g' }), 'api')
   assert.equal(probeMethod({ remote: gh, githubRepo: 'me/c', gitToken: 'x', githubToken: 'g' }), 'ls-remote')
-  assert.equal(probeMethod({ remote: parseRemote('https://git.example.test/a/b', ''), githubRepo: '', gitToken: 'x', githubToken: 'g' }), 'ls-remote')
+  assert.equal(
+    probeMethod({
+      remote: parseRemote('https://git.example.test/a/b', ''),
+      githubRepo: '',
+      gitToken: 'x',
+      githubToken: 'g',
+    }),
+    'ls-remote',
+  )
   assert.equal(probeMethod({ remote: parseRemote('/r', ''), githubRepo: '', gitToken: '', githubToken: '' }), 'none')
   assert.equal(probeMethod({ remote: gh, githubRepo: 'me/c', gitToken: '', githubToken: '' }), 'none')
 })

@@ -72,9 +72,7 @@ export function claimJob(id: number): DeployJob | null {
     .run(new Date().toISOString(), id)
   if (claimed.changes === 0) return null
   return db
-    .prepare(
-      `SELECT id, stack, services, strategy, attempts, trigger FROM deploys WHERE id = ?`,
-    )
+    .prepare(`SELECT id, stack, services, strategy, attempts, trigger FROM deploys WHERE id = ?`)
     .get(id) as DeployJob
 }
 
@@ -132,24 +130,20 @@ export function enqueueDeploy(opts: {
  */
 export function linkDeployUpdates(deployId: number, prId?: number | null, ids?: number[]): void {
   const db = getDb()
-  const link = db.prepare(
-    `INSERT OR IGNORE INTO deploy_updates (deploy_id, update_id) VALUES (?, ?)`,
-  )
+  const link = db.prepare(`INSERT OR IGNORE INTO deploy_updates (deploy_id, update_id) VALUES (?, ?)`)
   const explicit = ids ?? []
   for (const id of explicit) link.run(deployId, id)
   if (explicit.length === 0 && prId != null) {
-    const rows = db
-      .prepare(`SELECT update_id FROM pr_updates WHERE pr_id = ?`)
-      .all(prId) as { update_id: number }[]
+    const rows = db.prepare(`SELECT update_id FROM pr_updates WHERE pr_id = ?`).all(prId) as { update_id: number }[]
     for (const r of rows) link.run(deployId, r.update_id)
   }
 }
 
 /** True when there is queued or in-flight work, which keeps the poll loop on its fast cadence. */
 export function hasPendingDeploys(): boolean {
-  const row = getDb()
-    .prepare(`SELECT COUNT(*) c FROM deploys WHERE status IN ('pending','running')`)
-    .get() as { c: number }
+  const row = getDb().prepare(`SELECT COUNT(*) c FROM deploys WHERE status IN ('pending','running')`).get() as {
+    c: number
+  }
   return row.c > 0
 }
 
@@ -249,9 +243,12 @@ function reclaimStale(): void {
 export function reclaimInterrupted(): number {
   const db = getDb()
   const now = new Date().toISOString()
-  const rows = db
-    .prepare(`SELECT id, stack, attempts, trigger FROM deploys WHERE status = 'running'`)
-    .all() as { id: number; stack: string; attempts: number; trigger: string }[]
+  const rows = db.prepare(`SELECT id, stack, attempts, trigger FROM deploys WHERE status = 'running'`).all() as {
+    id: number
+    stack: string
+    attempts: number
+    trigger: string
+  }[]
   for (const row of rows) db.transaction(() => reclaimRow(row, 'restart', now))()
   return rows.length
 }
@@ -311,10 +308,7 @@ export async function drainDeployQueue(): Promise<{ ran: number }> {
  * deploy must never abandon the rest of the queue, which is the failure this module
  * exists to prevent.
  */
-export async function runDeployJob(
-  job: DeployJob,
-  opts: { pull?: boolean; io?: DeployIo } = {},
-): Promise<boolean> {
+export async function runDeployJob(job: DeployJob, opts: { pull?: boolean; io?: DeployIo } = {}): Promise<boolean> {
   const db = getDb()
   const { policy } = loadPolicy()
   let ran = false
@@ -390,10 +384,7 @@ export async function runDeployJob(
         // the update is still live and re-deploying it is a legitimate retry. A revert
         // takes the whole merge out, the left half with it.
         markUpdates(job.id, rolledBack ? 'failed' : notLanded, rolledBack ? {} : { services: outcome.up })
-        db.prepare(`UPDATE deploys SET status = ? WHERE id = ?`).run(
-          rolledBack ? 'rolled-back' : 'failed',
-          job.id,
-        )
+        db.prepare(`UPDATE deploys SET status = ? WHERE id = ?`).run(rolledBack ? 'rolled-back' : 'failed', job.id)
       } else {
         markUpdates(job.id, notLanded, outcome.ok ? { services: outcome.up } : {})
       }
@@ -458,10 +449,7 @@ export async function runDeployJob(
  * and page the operator that a healthy deploy had degraded.
  */
 export async function runRechecks(
-  opts: {
-    observe?: (project: string, service: string) => Promise<ServiceObservation>
-    now?: () => number
-  } = {},
+  opts: { observe?: (project: string, service: string) => Promise<ServiceObservation>; now?: () => number } = {},
 ): Promise<{ checked: number }> {
   const observe = opts.observe ?? inspectService
   const now = opts.now ?? Date.now
@@ -564,9 +552,7 @@ export async function runRechecks(
 /** True when a soak is due, which keeps the loop awake long enough to run it. */
 export function hasDueRechecks(): boolean {
   const row = getDb()
-    .prepare(
-      `SELECT COUNT(*) c FROM deploys WHERE recheck_at IS NOT NULL AND status = 'deployed'`,
-    )
+    .prepare(`SELECT COUNT(*) c FROM deploys WHERE recheck_at IS NOT NULL AND status = 'deployed'`)
     .get() as { c: number }
   return row.c > 0
 }
@@ -577,9 +563,7 @@ export function hasDueRechecks(): boolean {
  * Through `deploy_updates` rather than the pull request, for the same reasons
  * `markUpdates` is: a retry carries one member, and a redeploy has no pull request.
  */
-export function carriedUpdates(
-  deployId: number,
-): { service: string; from_tag: string; to_tag: string }[] {
+export function carriedUpdates(deployId: number): { service: string; from_tag: string; to_tag: string }[] {
   return getDb()
     .prepare(
       `SELECT u.service, u.from_tag, u.to_tag
@@ -673,11 +657,7 @@ function prIdFor(deployId: number): number {
  * find out what every alert should already have told them. The container has been
  * saying why the whole time; nothing was reading it.
  */
-async function collectLogs(
-  stack: string,
-  services: string[],
-  verdict: Verdict,
-): Promise<string> {
+async function collectLogs(stack: string, services: string[], verdict: Verdict): Promise<string> {
   const failing =
     verdict.kind === 'failed' || verdict.kind === 'degraded'
       ? [...new Set(verdict.findings.map((f) => f.service))]
@@ -719,11 +699,7 @@ async function collectLogs(
  * `services` narrows it to the updates for those services. An empty list moves nothing:
  * a caller that brought no service up must never be read as meaning all of them.
  */
-export function markUpdates(
-  deployId: number,
-  state: string,
-  opts: { services?: readonly string[] } = {},
-): void {
+export function markUpdates(deployId: number, state: string, opts: { services?: readonly string[] } = {}): void {
   if (opts.services && opts.services.length === 0) return
   const list = opts.services ? JSON.stringify([...opts.services]) : null
   getDb()

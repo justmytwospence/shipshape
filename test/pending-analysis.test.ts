@@ -64,10 +64,7 @@ function mergedPrFor(updateId: number, number: number): void {
        VALUES (?, 'b', 'sha', 'merged', 'tag-only', ?, ?)`,
     )
     .run(number, ago(2), ago(1))
-  db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(
-    Number(pr.lastInsertRowid),
-    updateId,
-  )
+  db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(Number(pr.lastInsertRowid), updateId)
 }
 
 function openPrFor(updateId: number, number: number): void {
@@ -78,10 +75,7 @@ function openPrFor(updateId: number, number: number): void {
        VALUES (?, 'b', 'sha', 'open', 'tag-only', ?)`,
     )
     .run(number, ago(1))
-  db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(
-    Number(pr.lastInsertRowid),
-    updateId,
-  )
+  db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(Number(pr.lastInsertRowid), updateId)
 }
 
 test('a patch that applied without a pull request is not worth a model call', () => {
@@ -141,10 +135,7 @@ test('the same bump in several stacks is read once, against all of them', () => 
   openPrFor(b, 202)
   const shared = pendingAnalysis(50).filter((p) => p.image === 'img/shared')
   assert.equal(shared.length, 1)
-  assert.deepEqual(
-    shared[0]!.carriers.map((c) => c.stack).sort(),
-    ['one', 'two'],
-  )
+  assert.deepEqual(shared[0]!.carriers.map((c) => c.stack).sort(), ['one', 'two'])
 })
 
 // ---------------------------------------------------------------------------------------
@@ -183,7 +174,11 @@ test('a major replaced before it ran is skipped too, magnitude notwithstanding',
     state: 'superseded',
     detail: 'newer target 4.0.0',
   })
-  assert.ok(!pendingAnalysis(50).map((p) => p.service).includes('replaced-major'))
+  assert.ok(
+    !pendingAnalysis(50)
+      .map((p) => p.service)
+      .includes('replaced-major'),
+  )
 })
 
 test('an update that applied out of band is still read', () => {

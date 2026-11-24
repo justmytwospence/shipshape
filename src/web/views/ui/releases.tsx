@@ -35,7 +35,16 @@ import type { ReleaseView } from '../../../updates/queries.ts'
 const NO_REVIEW_SHIPPED = 'No review — this shipped without being read.'
 const NO_REVIEW = 'No review.'
 /** States in which the release reached the compose file. */
-const SHIPPED: ReadonlySet<string> = new Set(['merged', 'deploying', 'deployed', 'verified', 'left-stopped', 'degraded', 'failed', 'rolled-back'])
+const SHIPPED: ReadonlySet<string> = new Set([
+  'merged',
+  'deploying',
+  'deployed',
+  'verified',
+  'left-stopped',
+  'degraded',
+  'failed',
+  'rolled-back',
+])
 
 /*
  * inline-flex, not inline: `.tap` works by min-height, and an inline box ignores it. As
@@ -92,9 +101,7 @@ const ReleaseRow: FC<{
       */}
       <p
         class={
-          summary
-            ? 'mt-1 line-clamp-3 text-xs leading-relaxed opacity-80'
-            : 'mt-1 text-xs leading-relaxed opacity-70'
+          summary ? 'mt-1 line-clamp-3 text-xs leading-relaxed opacity-80' : 'mt-1 text-xs leading-relaxed opacity-70'
         }
       >
         {summary ?? (SHIPPED.has(release.state) ? NO_REVIEW_SHIPPED : NO_REVIEW)}

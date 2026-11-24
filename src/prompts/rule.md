@@ -10,6 +10,7 @@ It never makes an update ship that has a real problem: a lifeline service, an un
 and a list of work to do can never be waived, and you are only offered holds that can.
 
 `match` keys, all of which must match:
+
 - `image`: an image repository including its registry, no tag (for example
   `ghcr.io/example/auth-proxy`). Covers every service running that image, in any stack.
 - `stack` and `service`: exactly one service.

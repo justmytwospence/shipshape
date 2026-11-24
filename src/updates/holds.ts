@@ -284,7 +284,14 @@ export function currentDecisions(policy: Policy = loadPolicy().policy, now = Dat
   for (const [sig, stacks] of fan) {
     if (stacks.length < 2) continue
     const repo = sig.split('|')[0]!
-    out.push(build(repo, null, repo, stacks.flatMap((s) => byStack.get(s)!)))
+    out.push(
+      build(
+        repo,
+        null,
+        repo,
+        stacks.flatMap((s) => byStack.get(s)!),
+      ),
+    )
     for (const s of stacks) fanned.add(s)
   }
   for (const [stack, list] of byStack) {

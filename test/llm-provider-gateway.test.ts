@@ -17,7 +17,15 @@ test('an OpenRouter key with LLM_BASE_URL keeps reaching that gateway', async (t
     {
       url: 'http://gw.invalid/v1/messages',
       reply: () =>
-        json({ id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }),
+        json({
+          id: 'm',
+          type: 'message',
+          role: 'assistant',
+          model: 'x',
+          content: [],
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }),
     },
   ])
   await llmClient(0).messages.create({ model: 'x', max_tokens: 10, messages: [{ role: 'user', content: 'x' }] })

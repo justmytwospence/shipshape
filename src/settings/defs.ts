@@ -1,16 +1,7 @@
 import { DEFAULT_CODE_MODEL, DEFAULT_READER_MODEL, type Policy } from '../policy-schema.ts'
 import { gitBranch } from '../env.ts'
 
-export type SettingKind =
-  | 'enum'
-  | 'int'
-  | 'number'
-  | 'bool'
-  | 'string'
-  | 'windows'
-  | 'cron'
-  | 'model'
-
+export type SettingKind = 'enum' | 'int' | 'number' | 'bool' | 'string' | 'windows' | 'cron' | 'model'
 
 export interface SettingDef {
   /** Dotted path, e.g. `claude.model` or `claude.web.searches`. Any depth. */
@@ -54,7 +45,6 @@ export interface SettingDef {
   advanced?: boolean
 }
 
-
 /**
  * The sections, in the order the pipeline actually runs.
  *
@@ -90,19 +80,17 @@ export const SECTIONS = [
     'Drafted changes',
     'When an update needs more than its tag, a model can write the rest onto a local branch. A change carrying drafted edits never ships on its own.',
   ],
-  ['Restore points', 'A dump taken before a stateful service is updated, so a one-way migration can be undone by hand.'],
-  ['Deploys', 'A change is done when it is running, not when it is shipped.'],
   [
-    'Notifications',
-    'Where decisions and failures go. Silence means healthy: nothing is announced on success.',
+    'Restore points',
+    'A dump taken before a stateful service is updated, so a one-way migration can be undone by hand.',
   ],
+  ['Deploys', 'A change is done when it is running, not when it is shipped.'],
+  ['Notifications', 'Where decisions and failures go. Silence means healthy: nothing is announced on success.'],
   ['Rules', 'Standing always-ship decisions, written by the Always ship button and kept in the policy file.'],
   ['Git sync', `Publishing ${gitBranch()}, and staying out of the way while you work.`],
 ] as const satisfies readonly (readonly [string, string])[]
 
-
 export type SectionName = (typeof SECTIONS)[number][0]
-
 
 export const SETTINGS: SettingDef[] = [
   // ------------------------------------------------------------ Finding updates
@@ -113,8 +101,7 @@ export const SETTINGS: SettingDef[] = [
     defaultValue: '0 0 3 * * *',
     label: 'Schedule',
     help: 'Cron, seconds first',
-    about:
-      'Applies immediately — no restart needed.',
+    about: 'Applies immediately — no restart needed.',
   },
 
   // ------------------------------------------------- What may happen without you
@@ -169,8 +156,7 @@ export const SETTINGS: SettingDef[] = [
     help: DEFAULT_READER_MODEL
       ? 'reads the changelog where a person will read the result; off for none'
       : 'required with a custom endpoint (LLM_BASE_URL), which has no default; off for none',
-    about:
-      'Pick from the list, or type an id that is not on it.',
+    about: 'Pick from the list, or type an id that is not on it.',
   },
   {
     section: 'Changelog review',
@@ -214,8 +200,7 @@ export const SETTINGS: SettingDef[] = [
     defaultValue: 'auto',
     label: 'Draft config changes',
     help: '',
-    about:
-      'A drafted change always waits for you to read it and press Ship, whatever else is set.',
+    about: 'A drafted change always waits for you to read it and press Ship, whatever else is set.',
   },
   {
     section: 'Drafted changes',
@@ -226,8 +211,7 @@ export const SETTINGS: SettingDef[] = [
     defaultLabel: DEFAULT_CODE_MODEL ? undefined : 'none -- a custom endpoint needs one set',
     label: 'Model',
     help: 'drafts config changes and picks the scope of an Always ship rule',
-    about:
-      'Rare, high-stakes work: a draft is a change nothing else has checked.',
+    about: 'Rare, high-stakes work: a draft is a change nothing else has checked.',
   },
 
   {
@@ -252,7 +236,7 @@ export const SETTINGS: SettingDef[] = [
     label: 'Keep per service',
     help: 'dumps',
     about:
-      'The newest few are kept under the data directory. The dump command is the service\'s own `shipshape.snapshot` label; an offsite copy is `restore_points.offsite` in the policy file.',
+      "The newest few are kept under the data directory. The dump command is the service's own `shipshape.snapshot` label; an offsite copy is `restore_points.offsite` in the policy file.",
   },
 
   // ---------------------------------------------------------------- Deploying
@@ -286,8 +270,7 @@ export const SETTINGS: SettingDef[] = [
     defaultValue: 'auto',
     label: 'When verification fails',
     help: '',
-    about:
-      `Exactly one attempt: a revert commit on ${gitBranch()}, deployed and announced. There is no second try and no setting that adds one. A change carrying more than an image line is never reverted unattended, and a verifier that could not see the containers never triggers anything -- both fall back to asking you.`,
+    about: `Exactly one attempt: a revert commit on ${gitBranch()}, deployed and announced. There is no second try and no setting that adds one. A change carrying more than an image line is never reverted unattended, and a verifier that could not see the containers never triggers anything -- both fall back to asking you.`,
   },
   {
     section: 'Deploys',
@@ -347,8 +330,7 @@ export const SETTINGS: SettingDef[] = [
     defaultValue: '60',
     label: 'Poll, work in flight',
     help: 'seconds',
-    about:
-      'How often the loop runs while something is detected, shipping or deploying.',
+    about: 'How often the loop runs while something is detected, shipping or deploying.',
     advanced: true,
   },
   {
@@ -359,12 +341,10 @@ export const SETTINGS: SettingDef[] = [
     defaultValue: '600',
     label: 'Poll, idle',
     help: 'seconds',
-    about:
-      'How often the loop runs when nothing is in flight.',
+    about: 'How often the loop runs when nothing is in flight.',
     advanced: true,
   },
 ]
-
 
 export function currentValue(policy: Policy, path: string): string {
   const raw = path.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown>)?.[k], policy)

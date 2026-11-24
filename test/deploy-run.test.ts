@@ -49,7 +49,10 @@ test('no container, or a paused one, is left the same way', async () => {
   assert.ok(absent.ok)
   assert.equal(absent.detail, 'bitwarden left stopped (no container) — compose brings it up on 1.37.3')
 
-  const io = fakeIo({ bitwarden: { state: 'paused', imageRef: 'vaultwarden/server:1.37.2' } }, { pinned: pinnedBitwarden })
+  const io = fakeIo(
+    { bitwarden: { state: 'paused', imageRef: 'vaultwarden/server:1.37.2' } },
+    { pinned: pinnedBitwarden },
+  )
   const paused = await deploy(bitwarden, { io })
   assert.ok(paused.ok)
   assert.equal(paused.detail, 'bitwarden left paused — compose brings it up on 1.37.3; unpausing resumes 1.37.2')
@@ -87,7 +90,10 @@ test('only the running half is removed, brought up and verified', async () => {
   assert.ok(out.ok)
   assert.equal(out.healthy, true)
   assert.deepEqual(out.up, ['immich-server'])
-  assert.deepEqual(out.left.map((l) => l.service), ['immich-machine-learning'])
+  assert.deepEqual(
+    out.left.map((l) => l.service),
+    ['immich-machine-learning'],
+  )
   assert.match(out.detail, /^immich-server up in \d+s; immich-machine-learning left stopped \(exited\)/)
 })
 
@@ -121,7 +127,10 @@ test('a plan that brings nothing up is still written down', async () => {
   let plan: RecordedPlan | undefined
   await deploy(bitwarden, { io: fakeIo({ bitwarden: 'exited' }), record: (p) => (plan = p) })
   assert.deepEqual(plan?.up, [])
-  assert.deepEqual(plan?.left.map((l) => l.service), ['bitwarden'])
+  assert.deepEqual(
+    plan?.left.map((l) => l.service),
+    ['bitwarden'],
+  )
 })
 
 test('the verifier is shown only what came up', async () => {

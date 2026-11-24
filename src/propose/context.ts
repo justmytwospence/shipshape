@@ -21,10 +21,7 @@ export interface DeployContext {
   siblings: { name: string; image: string | null }[]
 }
 
-export async function gatherContext(
-  composeText: string,
-  service: string,
-): Promise<DeployContext> {
+export async function gatherContext(composeText: string, service: string): Promise<DeployContext> {
   let doc: Record<string, any>
   try {
     doc = (parseYaml(composeText) ?? {}) as Record<string, any>
@@ -35,9 +32,7 @@ export async function gatherContext(
   const self = services[service] ?? {}
 
   const names = normaliseNetworks(self.networks)
-  const networks = await Promise.all(
-    names.map(async (name) => ({ name, subnet: await subnetOf(name) })),
-  )
+  const networks = await Promise.all(names.map(async (name) => ({ name, subnet: await subnetOf(name) })))
 
   const siblings = Object.entries(services)
     .filter(([n]) => n !== service)

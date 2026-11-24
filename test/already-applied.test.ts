@@ -19,19 +19,12 @@ import { bumpImage } from '../src/gitops/editor.ts'
 function repoWith(imageLine: string): string {
   const dir = mkdtempSync(join(tmpdir(), 'shipshape-edit-'))
   mkdirSync(join(dir, 'demo'))
-  writeFileSync(
-    join(dir, 'demo', 'docker-compose.yaml'),
-    `services:\n  app:\n    image: ${imageLine}\n`,
-  )
+  writeFileSync(join(dir, 'demo', 'docker-compose.yaml'), `services:\n  app:\n    image: ${imageLine}\n`)
   // The editor proves its own edit with `git diff`, so the fixture has to be a repo.
   const q = { cwd: dir, stdio: 'ignore' as const }
   execFileSync('git', ['init', '-q'], q)
   execFileSync('git', ['add', '-A'], q)
-  execFileSync(
-    'git',
-    ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'fixture'],
-    q,
-  )
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-qm', 'fixture'], q)
   return dir
 }
 

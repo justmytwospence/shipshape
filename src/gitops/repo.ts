@@ -62,7 +62,11 @@ export async function git(
   // each call site because this is the one place every remote command passes through,
   // and the `allowFail` callers swallow the error entirely.
   if (out.exitCode !== 0 && opts.remote && looksLikeGitAuthFailure(out.stderr)) {
-    background(noteAuthFailure(`a remote operation was refused: ${out.stderr.split('\n')[0]}`), 'noting a refused credential', 'sync')
+    background(
+      noteAuthFailure(`a remote operation was refused: ${out.stderr.split('\n')[0]}`),
+      'noting a refused credential',
+      'sync',
+    )
   }
   if (out.exitCode !== 0 && !opts.allowFail) {
     // Never echo the args back wholesale -- the credential helper string is in there.

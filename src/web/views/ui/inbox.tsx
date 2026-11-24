@@ -139,12 +139,7 @@ export const InboxList: FC<{ data: InboxData; selectedId?: number }> = ({ data, 
   }
   const ctx = 'list=inbox'
   return (
-    <div
-      id="inbox"
-      hx-get="/fragments/inbox"
-      hx-trigger="every 60s, scan-progress from:body"
-      hx-swap="innerHTML"
-    >
+    <div id="inbox" hx-get="/fragments/inbox" hx-trigger="every 60s, scan-progress from:body" hx-swap="innerHTML">
       {data.setup.complete ? null : <SetupChecklist setup={data.setup} />}
       {groups.size > 0 ? null : !data.setup.complete || data.pausedOnly.length > 0 ? null : (
         <EmptyState
@@ -166,20 +161,20 @@ export const InboxList: FC<{ data: InboxData; selectedId?: number }> = ({ data, 
         />
       )}
       {[...groups].map(([kind, items]) => (
-          <section>
-            <GroupHeader
-              title={GROUPS[kind].title}
-              count={items.length}
-              hint={GROUPS[kind].hint}
-              icon={GROUPS[kind].icon}
-            />
-            <div class="divide-base-300 divide-y">
-              {items.map((i) => (
-                <UpdateRow update={i.update} ctx={ctx} selected={i.update.id === selectedId} />
-              ))}
-            </div>
-          </section>
-        ))}
+        <section>
+          <GroupHeader
+            title={GROUPS[kind].title}
+            count={items.length}
+            hint={GROUPS[kind].hint}
+            icon={GROUPS[kind].icon}
+          />
+          <div class="divide-base-300 divide-y">
+            {items.map((i) => (
+              <UpdateRow update={i.update} ctx={ctx} selected={i.update.id === selectedId} />
+            ))}
+          </div>
+        </section>
+      ))}
 
       {data.pausedOnly.length > 0 ? (
         <section>
@@ -244,8 +239,7 @@ const RecentList: FC<{ recent: RecentItem[]; hint?: string }> = ({ recent, hint 
               <span class={`size-1.5 shrink-0 rounded-full ${RECENT[r.kind].cls}`} />
               <span class="min-w-0 flex-1 truncate">
                 <ServiceName stack={r.stack} service={r.service} />{' '}
-                <span class="opacity-70">{RECENT[r.kind].verb}</span>{' '}
-                <Change from={r.fromTag} to={r.toTag} />
+                <span class="opacity-70">{RECENT[r.kind].verb}</span> <Change from={r.fromTag} to={r.toTag} />
               </span>
               <Relative at={r.at} />
             </a>

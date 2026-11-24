@@ -44,8 +44,7 @@ test('a docker that cannot be reached is not a stopped service', () => {
       readPs({
         exitCode: 1,
         stdout: '',
-        stderr:
-          'Cannot connect to the Docker daemon at unix:///nonexistent.sock. Is the docker daemon running?',
+        stderr: 'Cannot connect to the Docker daemon at unix:///nonexistent.sock. Is the docker daemon running?',
       }),
     (e: unknown) => e instanceof DockerUnreadable && /Cannot connect/.test(e.message),
   )
@@ -75,10 +74,7 @@ test('inspect printing [] while failing is not an empty answer', () => {
 })
 
 test('a container that vanished is gone', () => {
-  assert.equal(
-    readInspect('svc', { exitCode: 1, stdout: '[]', stderr: 'Error: No such object: 0123456789ab' }),
-    'gone',
-  )
+  assert.equal(readInspect('svc', { exitCode: 1, stdout: '[]', stderr: 'Error: No such object: 0123456789ab' }), 'gone')
 })
 
 test('unreadable output is not a container', () => {
@@ -91,10 +87,8 @@ test('unreadable output is not a container', () => {
 
 test('any running container makes the service running', async () => {
   assert.equal(
-    primary([
-      parseInspect('s', { State: { Status: 'exited' } }),
-      parseInspect('s', { State: { Status: 'running' } }),
-    ]).state,
+    primary([parseInspect('s', { State: { Status: 'exited' } }), parseInspect('s', { State: { Status: 'running' } })])
+      .state,
     'running',
   )
 
@@ -139,7 +133,12 @@ test('the orphan check is as strict about docker as every other read', async () 
     await findForeign('bitwarden', 'bitwarden', 'bitwarden', seen.exec),
     'compose project "bw-old" (bitwarden)',
   )
-  assert.deepEqual(seen.calls[0]!.slice(0, 4), ['ps', '--all', '--filter', 'label=com.docker.compose.service=bitwarden'])
+  assert.deepEqual(seen.calls[0]!.slice(0, 4), [
+    'ps',
+    '--all',
+    '--filter',
+    'label=com.docker.compose.service=bitwarden',
+  ])
 })
 
 test('a root or included stack lives in the repository directory', () => {

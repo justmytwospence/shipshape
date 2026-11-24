@@ -80,11 +80,7 @@ const MAGNITUDES = [
 ]
 
 /** The filter asks the page itself for its list, so the URL it pushes reloads whole. */
-const UpdatesToolbar: FC<{ stage: StageFilter; q: string; magnitude: string }> = ({
-  stage,
-  q,
-  magnitude,
-}) => (
+const UpdatesToolbar: FC<{ stage: StageFilter; q: string; magnitude: string }> = ({ stage, q, magnitude }) => (
   <form
     class="flex shrink-0 items-center gap-2"
     hx-get="/updates"
@@ -161,7 +157,11 @@ export const UpdatesPage: FC<{
         (updates.length === 0 ? (
           <div />
         ) : (
-          <EmptyState icon="updates" title="Select an update" hint="What the review said, and what you can do about it, shows here." />
+          <EmptyState
+            icon="updates"
+            title="Select an update"
+            hint="What the review said, and what you can do about it, shows here."
+          />
         ))
       }
       mode={detail ? 'detail' : 'list'}
@@ -246,7 +246,15 @@ export const ServicesPage: FC<{
     <Split
       list={
         <div id="services-list">
-          <ServicesList services={services} grouped={grouped} ctx={ctx} selected={selected} total={total} filter={filter} q={q} />
+          <ServicesList
+            services={services}
+            grouped={grouped}
+            ctx={ctx}
+            selected={selected}
+            total={total}
+            filter={filter}
+            q={q}
+          />
         </div>
       }
       pane={
@@ -254,7 +262,11 @@ export const ServicesPage: FC<{
         (services.length === 0 ? (
           <div />
         ) : (
-          <EmptyState icon="services" title="Select a service" hint="Where each of its settings came from, and its history, show here." />
+          <EmptyState
+            icon="services"
+            title="Select a service"
+            hint="Where each of its settings came from, and its history, show here."
+          />
         ))
       }
       mode={detail ? 'detail' : 'list'}
@@ -328,4 +340,3 @@ export const StatusPage: FC<{ data: StatusData; chrome: PageChrome }> = ({ data,
     <Split variant="wide" list={<StatusBody data={data} />} />
   </Layout>
 )
-

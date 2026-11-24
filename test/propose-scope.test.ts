@@ -41,26 +41,16 @@ test('allowedServices matches the ladder', () => {
 })
 
 test('at service scope a sibling edit is refused by name', () => {
-  const r = applyOps(
-    FILE,
-    'app',
-    [{ op: 'set_env', service: 'sidecar', key: 'B', value: '9' }],
-    ['app'],
-  )
+  const r = applyOps(FILE, 'app', [{ op: 'set_env', service: 'sidecar', key: 'B', value: '9' }], ['app'])
   assert.equal(r.ok, false)
   assert.match(r.ok === false ? r.reason : '', /may not change "sidecar"/)
 })
 
 test('at compose-file scope the same edit applies, and only where aimed', () => {
-  const r = applyOps(
-    FILE,
-    'app',
-    [{ op: 'set_env', service: 'sidecar', key: 'B', value: '9' }],
-    ['app', 'sidecar'],
-  )
+  const r = applyOps(FILE, 'app', [{ op: 'set_env', service: 'sidecar', key: 'B', value: '9' }], ['app', 'sidecar'])
   assert.ok(r.ok, r.ok ? '' : r.reason)
   assert.ok(r.text.includes('B: 9'))
-  assert.ok(r.text.includes('A: 1'), "the primary service must not be touched")
+  assert.ok(r.text.includes('A: 1'), 'the primary service must not be touched')
 })
 
 test('an op with no service still means the service being updated', () => {
@@ -130,12 +120,17 @@ networks:
 
 test('a path operation may not reach a service outside the boundary', async () => {
   const { applyOps } = await import('../src/propose/apply.ts')
-  const r = applyOps(TWO, 'app', [{ op: 'set_path', path: ['services', 'db', 'environment', 'X'], value: '1' }], ['app'])
+  const r = applyOps(
+    TWO,
+    'app',
+    [{ op: 'set_path', path: ['services', 'db', 'environment', 'X'], value: '1' }],
+    ['app'],
+  )
   assert.equal(r.ok, false)
   assert.match(r.ok ? '' : r.reason, /may not change "db"/)
 })
 
-test('a path operation may not touch the compose file\'s top level', async () => {
+test("a path operation may not touch the compose file's top level", async () => {
   const { applyOps } = await import('../src/propose/apply.ts')
   const r = applyOps(TWO, 'app', [{ op: 'set_path', path: ['networks', 'x', 'external'], value: 'false' }], ['app'])
   assert.match(r.ok ? '' : r.reason, /only change keys under services/)
@@ -149,7 +144,12 @@ test('a draft may not widen what a container can reach', async () => {
   }
   const removed = applyOps(TWO, 'app', [{ op: 'remove_path', path: ['services', 'app', 'volumes', 0] }], ['app'])
   assert.match(removed.ok ? '' : removed.reason, /widens/)
-  const renamed = applyOps(TWO, 'app', [{ op: 'rename_path', path: ['services', 'app', 'environment'], to: 'privileged' }], ['app'])
+  const renamed = applyOps(
+    TWO,
+    'app',
+    [{ op: 'rename_path', path: ['services', 'app', 'environment'], to: 'privileged' }],
+    ['app'],
+  )
   assert.match(renamed.ok ? '' : renamed.reason, /widens/)
 })
 
@@ -171,7 +171,12 @@ test('replace_text is refused in a compose file and still works elsewhere', asyn
 
 test('set_path inside an allowed service still works', async () => {
   const { applyOps } = await import('../src/propose/apply.ts')
-  const r = applyOps(TWO, 'app', [{ op: 'set_path', path: ['services', 'app', 'environment', 'LOG'], value: 'debug' }], ['app'])
+  const r = applyOps(
+    TWO,
+    'app',
+    [{ op: 'set_path', path: ['services', 'app', 'environment', 'LOG'], value: 'debug' }],
+    ['app'],
+  )
   assert.equal(r.ok, true)
   assert.match(r.ok ? r.text : '', /LOG: debug/)
 })

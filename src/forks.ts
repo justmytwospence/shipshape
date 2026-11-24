@@ -59,9 +59,9 @@ export interface ForkConflict {
 
 /** The recorded conflict for a service, if a replay left one. */
 export function forkConflictFor(stack: string, service: string): ForkConflict | null {
-  const row = getDb()
-    .prepare(`SELECT fork_conflict FROM images WHERE stack = ? AND service = ?`)
-    .get(stack, service) as { fork_conflict: string | null } | undefined
+  const row = getDb().prepare(`SELECT fork_conflict FROM images WHERE stack = ? AND service = ?`).get(stack, service) as
+    | { fork_conflict: string | null }
+    | undefined
   if (!row?.fork_conflict) return null
   try {
     return JSON.parse(row.fork_conflict) as ForkConflict
@@ -75,11 +75,7 @@ export function forkConflictFor(stack: string, service: string): ForkConflict | 
  * same commit against the same target -- edits nothing and sends nothing; a different one
  * (a newer target, a different commit) edits the message in place.
  */
-export async function recordForkConflict(
-  stack: string,
-  service: string,
-  c: Omit<ForkConflict, 'at'>,
-): Promise<void> {
+export async function recordForkConflict(stack: string, service: string, c: Omit<ForkConflict, 'at'>): Promise<void> {
   const db = getDb()
   const prev = forkConflictFor(stack, service)
   const same = prev && prev.toTag === c.toTag && prev.sha === c.sha && prev.commit === c.commit
@@ -116,9 +112,9 @@ export async function recordForkConflict(
 /** Forget a conflict and resolve its incident, silently. No-op when there is none. */
 export async function clearForkConflict(stack: string, service: string): Promise<void> {
   const db = getDb()
-  const row = db
-    .prepare(`SELECT fork_conflict FROM images WHERE stack = ? AND service = ?`)
-    .get(stack, service) as { fork_conflict: string | null } | undefined
+  const row = db.prepare(`SELECT fork_conflict FROM images WHERE stack = ? AND service = ?`).get(stack, service) as
+    | { fork_conflict: string | null }
+    | undefined
   if (!row?.fork_conflict) return
   db.prepare(`UPDATE images SET fork_conflict = NULL WHERE stack = ? AND service = ?`).run(stack, service)
   logEvent({ level: 'info', kind: 'ship', stack, service, message: 'fork conflict cleared' })
@@ -145,9 +141,9 @@ export interface ForkPrepared {
 }
 
 export function forkPreparedFor(stack: string, service: string): ForkPrepared | null {
-  const row = getDb()
-    .prepare(`SELECT fork_prepared FROM images WHERE stack = ? AND service = ?`)
-    .get(stack, service) as { fork_prepared: string | null } | undefined
+  const row = getDb().prepare(`SELECT fork_prepared FROM images WHERE stack = ? AND service = ?`).get(stack, service) as
+    | { fork_prepared: string | null }
+    | undefined
   if (!row?.fork_prepared) return null
   try {
     return JSON.parse(row.fork_prepared) as ForkPrepared
@@ -312,7 +308,11 @@ export async function checkFork(svc: ScannedService): Promise<void> {
  */
 function keep(r: ForkRefResolution, prev: ForkRefRow | null, now: string): ForkRefRow {
   if (r.state === 'unknown' && prev && prev.state !== 'unknown') {
-    return { ...prev, detail: `could not check (${r.detail ?? 'lookup failed'}); last known ${prev.checkedAt.slice(0, 10)}`, checkedAt: now }
+    return {
+      ...prev,
+      detail: `could not check (${r.detail ?? 'lookup failed'}); last known ${prev.checkedAt.slice(0, 10)}`,
+      checkedAt: now,
+    }
   }
   return { ...r, checkedAt: now }
 }
@@ -360,7 +360,10 @@ export function forkVerdict(baseTag: string | null, refs: ForkRefRow[]): ForkVer
 /** The evidence as one string: the same conclusion twice sends nothing. */
 function fingerprint(v: ForkVerdict): string | null {
   if (v.kind === 'waiting') return null
-  return `${v.kind}:${v.refs.map((r) => `${r.ref}=${r.state}${r.releasedIn ? `@${r.releasedIn}` : ''}`).sort().join(',')}`
+  return `${v.kind}:${v.refs
+    .map((r) => `${r.ref}=${r.state}${r.releasedIn ? `@${r.releasedIn}` : ''}`)
+    .sort()
+    .join(',')}`
 }
 
 async function settleIncident(svc: ScannedService, refs: ForkRefRow[]): Promise<void> {
@@ -400,8 +403,7 @@ async function settleIncident(svc: ScannedService, refs: ForkRefRow[]): Promise<
         ]
   // Where to go: the release that carries the last fix, or the reference that has none.
   const newest = verdict.kind === 'retire' ? newestOf(verdict.refs) : null
-  const click =
-    (newest ? releaseUrl(newest.ref, newest.tag) : null) ?? forkRefUrl(verdict.refs[0]!.ref) ?? undefined
+  const click = (newest ? releaseUrl(newest.ref, newest.tag) : null) ?? forkRefUrl(verdict.refs[0]!.ref) ?? undefined
   setNotified(print)
   logEvent({
     level: 'info',
@@ -457,7 +459,14 @@ export async function reconcileForks(services: Pick<ScannedService, 'stack' | 's
     if (current.has(name)) continue
     const [stack, service] = name.split('/') as [string, string]
     db.prepare(`UPDATE images SET fork_notified = NULL WHERE stack = ? AND service = ?`).run(stack, service)
-    logEvent({ level: 'info', kind: 'scan', stack, service, message: 'fork retired', detail: 'the fork labels are gone' })
+    logEvent({
+      level: 'info',
+      kind: 'scan',
+      stack,
+      service,
+      message: 'fork retired',
+      detail: 'the fork labels are gone',
+    })
     await resolveIncident(key)
   }
   db.prepare(`UPDATE images SET fork_notified = NULL WHERE fork_upstream IS NULL AND fork_notified IS NOT NULL`).run()

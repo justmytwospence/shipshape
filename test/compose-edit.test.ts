@@ -46,10 +46,7 @@ test('replacing an existing value touches only the value; the line comment survi
   const text = ok(setLabel(FIXTURE, 'jellyfin', 'shipshape.policy', 'auto'))
   assert.equal(
     text,
-    FIXTURE.replace(
-      'shipshape.policy: manual   # hold majors',
-      'shipshape.policy: auto   # hold majors',
-    ),
+    FIXTURE.replace('shipshape.policy: manual   # hold majors', 'shipshape.policy: auto   # hold majors'),
   )
 })
 
@@ -125,10 +122,7 @@ test('replacing a quoted watch value keeps the quoting and hits the right servic
   const text = ok(setLabel(FIXTURE, 'db', 'shipshape.watch', 'false'))
   assert.equal(
     text,
-    FIXTURE.replace(
-      'shipshape.watch: "true"\n      shipshape.pr',
-      'shipshape.watch: "false"\n      shipshape.pr',
-    ),
+    FIXTURE.replace('shipshape.watch: "true"\n      shipshape.pr', 'shipshape.watch: "false"\n      shipshape.pr'),
   )
 })
 

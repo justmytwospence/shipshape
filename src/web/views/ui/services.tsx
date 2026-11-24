@@ -16,7 +16,6 @@ import type { ServiceRowData, ForkRefLine, Provenance, ServiceDetailData } from 
  * "open the compose file".
  */
 
-
 const FILTERS = [
   { key: 'all', label: 'All' },
   { key: 'watched', label: 'Watched' },
@@ -27,11 +26,7 @@ const FILTERS = [
 ] as const
 
 /** The filter, which asks the page for its list and pushes the page's own URL. */
-export const ServicesToolbar: FC<{ filter: string; q: string; grouped: boolean }> = ({
-  filter,
-  q,
-  grouped,
-}) => (
+export const ServicesToolbar: FC<{ filter: string; q: string; grouped: boolean }> = ({ filter, q, grouped }) => (
   <form
     class="flex shrink-0 items-center gap-2"
     hx-get="/services"
@@ -44,13 +39,7 @@ export const ServicesToolbar: FC<{ filter: string; q: string; grouped: boolean }
     <Tabs name="filter" value={filter} options={FILTERS} label="Show" />
     <Search value={q} placeholder="stack, service or image" />
     <label class="label tap cursor-pointer gap-1.5 text-xs whitespace-nowrap">
-      <input
-        type="checkbox"
-        name="group"
-        value="stack"
-        class="toggle toggle-xs"
-        checked={grouped}
-      />
+      <input type="checkbox" name="group" value="stack" class="toggle toggle-xs" checked={grouped} />
       Group
     </label>
   </form>
@@ -77,8 +66,7 @@ function statusOf(s: ServiceRowData): { label: string; cls: string; detail?: str
 }
 
 /** Where a row's own URL and pane request point. `ctx` names the list for the URL. */
-const serviceHref = (svc: { stack: string; service: string }) =>
-  `/services/${svc.stack}/${svc.service}`
+const serviceHref = (svc: { stack: string; service: string }) => `/services/${svc.stack}/${svc.service}`
 
 const SERVICE_COLS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)_5rem_4.5rem_2.75rem_1.75rem]'
 
@@ -232,8 +220,7 @@ export const ServicesList: FC<{
       <EmptyState icon="services" title="No services match." hint="Try another filter, or clear the search." />
     )
   }
-  const isSel = (s: ServiceRowData) =>
-    !!selected && s.stack === selected.stack && s.service === selected.service
+  const isSel = (s: ServiceRowData) => !!selected && s.stack === selected.stack && s.service === selected.service
   if (!grouped) {
     return (
       <>
@@ -258,10 +245,7 @@ export const ServicesList: FC<{
       {watchAll}
       {[...stacks].map(([stack, rows]) => (
         <section>
-          <GroupHeader
-            title={stack}
-            hint={`${rows.filter((r) => r.watched).length}/${rows.length} watched`}
-          />
+          <GroupHeader title={stack} hint={`${rows.filter((r) => r.watched).length}/${rows.length} watched`} />
           <div class="divide-base-300 divide-y">
             {rows.map((s) => (
               <ServiceRow svc={s} ctx={ctx} grouped selected={isSel(s)} />
@@ -274,7 +258,6 @@ export const ServicesList: FC<{
 }
 
 // ------------------------------------------------------------------- detail
-
 
 const FORK_STATE_CLS: Record<ForkRefLine['state'], string> = {
   open: 'badge-ghost',
@@ -294,8 +277,16 @@ const SOURCE_CLS: Record<Provenance, string> = {
 
 /** The six classes, in the order a service usually moves between them. */
 const RUNGS = [
-  { value: 'normal', label: 'normal', what: 'ships on its own once the review finds nothing to do and the release has aged' },
-  { value: 'stateful', label: 'stateful', what: 'ships on its own after a restore point; a one-way migration or a jump with no evidence asks' },
+  {
+    value: 'normal',
+    label: 'normal',
+    what: 'ships on its own once the review finds nothing to do and the release has aged',
+  },
+  {
+    value: 'stateful',
+    label: 'stateful',
+    what: 'ships on its own after a restore point; a one-way migration or a jump with no evidence asks',
+  },
   { value: 'ask', label: 'ask', what: 'always asks before shipping' },
   { value: 'lifeline', label: 'lifeline', what: 'always asks, and no rule can waive it — the way back in' },
   { value: 'frozen', label: 'frozen', what: 'tracked; nothing happens until you ask' },
@@ -383,29 +374,19 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
           <span class="text-xs opacity-70">{NOT_WATCHABLE[svc.unwatchable ?? ''] ?? 'Not watched.'}</span>
         )}
         {data.canEdit ? (
-          <button
-            type="button"
-            class="btn btn-sm btn-ghost tap"
-            data-open={`#rung-${svc.stack}-${svc.service}`}
-          >
+          <button type="button" class="btn btn-sm btn-ghost tap" data-open={`#rung-${svc.stack}-${svc.service}`}>
             Change class
           </button>
         ) : null}
       </div>
 
       <section class="border-base-300 border-t px-4 py-3">
-        <h3 class="mb-1.5 text-xs font-medium tracking-wide uppercase opacity-70">
-          Effective configuration
-        </h3>
+        <h3 class="mb-1.5 text-xs font-medium tracking-wide uppercase opacity-70">Effective configuration</h3>
         <div class="divide-base-300 border-base-300 divide-y border-y text-xs">
           {data.config.map((line) => {
             const actions = [
               line.key === 'class' && data.canEdit ? (
-                <button
-                  type="button"
-                  class="btn btn-ghost btn-xs tap"
-                  data-open={`#rung-${svc.stack}-${svc.service}`}
-                >
+                <button type="button" class="btn btn-ghost btn-xs tap" data-open={`#rung-${svc.stack}-${svc.service}`}>
                   Change
                 </button>
               ) : null,
@@ -415,16 +396,16 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
                 </button>
               ) : null,
               line.key === 'watch' && data.canEdit && line.value === 'on' ? (
-                <button type="button" class="btn btn-ghost btn-xs tap" data-open={`#unwatch-${svc.stack}-${svc.service}`}>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-xs tap"
+                  data-open={`#unwatch-${svc.stack}-${svc.service}`}
+                >
                   Stop
                 </button>
               ) : null,
               (line.key === 'upstream' || line.key === 'notes') && data.canEdit ? (
-                <button
-                  type="button"
-                  class="btn btn-ghost btn-xs tap"
-                  data-open={`#link-${svc.stack}-${svc.service}`}
-                >
+                <button type="button" class="btn btn-ghost btn-xs tap" data-open={`#link-${svc.stack}-${svc.service}`}>
                   Change
                 </button>
               ) : null,
@@ -451,17 +432,13 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
                   <span class="block font-mono break-words lg:truncate">{line.value}</span>
                   {line.note ? <span class="block opacity-70">{line.note}</span> : null}
                 </span>
-                <span class={`badge badge-xs badge-soft ${SOURCE_CLS[line.source]}`}>
-                  {line.source}
-                </span>
+                <span class={`badge badge-xs badge-soft ${SOURCE_CLS[line.source]}`}>{line.source}</span>
                 {/* Two buttons beside a badge left the upstream value four characters wide on
                     a phone, so there they take a line of their own; one still fits beside. */}
                 {actions.length > 0 ? (
                   <span
                     class={
-                      actions.length > 1
-                        ? 'flex basis-full justify-end gap-1 pb-1 lg:basis-auto lg:pb-0'
-                        : 'flex gap-1'
+                      actions.length > 1 ? 'flex basis-full justify-end gap-1 pb-1 lg:basis-auto lg:pb-0' : 'flex gap-1'
                     }
                   >
                     {actions}
@@ -471,9 +448,7 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
             )
           })}
         </div>
-        {data.composeFile ? (
-          <p class="mt-1.5 font-mono text-xs opacity-70">{data.composeFile}</p>
-        ) : null}
+        {data.composeFile ? <p class="mt-1.5 font-mono text-xs opacity-70">{data.composeFile}</p> : null}
       </section>
 
       {data.fork ? <ForkSection fork={data.fork} /> : null}
@@ -523,7 +498,9 @@ const ForkSection: FC<{ fork: NonNullable<ServiceDetailData['fork']> }> = ({ for
       {fork.refs.length === 0 ? (
         <div class="flex min-h-11 items-center lg:min-h-7">
           <span class="w-24 shrink-0 opacity-70">waits on</span>
-          <span class="opacity-70">nothing listed — add shipshape.fork.waits-on so shipshape can say when it can go</span>
+          <span class="opacity-70">
+            nothing listed — add shipshape.fork.waits-on so shipshape can say when it can go
+          </span>
         </div>
       ) : (
         fork.refs.map((r, i) => (
@@ -576,13 +553,13 @@ const NOT_WATCHABLE: Record<string, string> = {
 }
 
 /** The form both watch dialogs share: one label, written into the compose file and committed. */
-const WatchForm: FC<{ svc: ServiceRowData; ctx?: string; value: 'true' | 'false'; submit: string; primary: boolean }> = ({
-  svc,
-  ctx,
-  value,
-  submit,
-  primary,
-}) => (
+const WatchForm: FC<{
+  svc: ServiceRowData
+  ctx?: string
+  value: 'true' | 'false'
+  submit: string
+  primary: boolean
+}> = ({ svc, ctx, value, submit, primary }) => (
   <form
     hx-post={`/services/${svc.stack}/${svc.service}/labels${ctx ? `?${ctx}` : ''}`}
     hx-target={`#svc-card-${svc.stack}-${svc.service}`}
@@ -721,11 +698,7 @@ const RungDialog: FC<{ svc: ServiceRowData; ctx?: string }> = ({ svc, ctx }) => 
           </label>
         ))}
         <div class="modal-action">
-          <button
-            type="button"
-            class="btn btn-ghost btn-sm tap"
-            data-close-dialog
-          >
+          <button type="button" class="btn btn-ghost btn-sm tap" data-close-dialog>
             Cancel
           </button>
           <button type="submit" class="btn btn-primary btn-sm tap">
@@ -749,15 +722,19 @@ const RungDialog: FC<{ svc: ServiceRowData; ctx?: string }> = ({ svc, ctx }) => 
  * shows what the link leads to before it offers to commit it. The write form lives inside
  * the preview it was checked against, so what is written is what was shown.
  */
-const LinkDialog: FC<{ svc: ServiceRowData; link?: ServiceDetailData['link']; ctx?: string }> = ({ svc, link, ctx }) => {
+const LinkDialog: FC<{ svc: ServiceRowData; link?: ServiceDetailData['link']; ctx?: string }> = ({
+  svc,
+  link,
+  ctx,
+}) => {
   const id = `${svc.stack}-${svc.service}`
   return (
     <dialog id={`link-${id}`} class="modal modal-bottom sm:modal-middle">
       <div class="modal-box pb-safe">
         <h3 class="text-base font-semibold">Where the release notes are</h3>
         <p class="mt-1 text-xs opacity-70">
-          {svc.stack}/{svc.service}. Written into its compose file as labels, so the link travels
-          with the service. Leave a box empty to remove that label.
+          {svc.stack}/{svc.service}. Written into its compose file as labels, so the link travels with the service.
+          Leave a box empty to remove that label.
         </p>
         <form
           class="mt-2 flex flex-col"
@@ -778,7 +755,9 @@ const LinkDialog: FC<{ svc: ServiceRowData; link?: ServiceDetailData['link']; ct
               autocomplete="off"
             />
             <p class="label whitespace-normal">
-              {link?.inferred ? `Found without a label: ${link.inferred}` : 'shipshape has found no repository on its own.'}
+              {link?.inferred
+                ? `Found without a label: ${link.inferred}`
+                : 'shipshape has found no repository on its own.'}
             </p>
           </fieldset>
           <fieldset class="fieldset">
@@ -811,7 +790,11 @@ const LinkDialog: FC<{ svc: ServiceRowData; link?: ServiceDetailData['link']; ct
 }
 
 /** The preview, and from it the write. Returned alone, into the dialog it was asked from. */
-export const LinkPreviewPane: FC<{ preview?: LinkPreview; failure?: string; ctx?: string }> = ({ preview, failure, ctx }) => {
+export const LinkPreviewPane: FC<{ preview?: LinkPreview; failure?: string; ctx?: string }> = ({
+  preview,
+  failure,
+  ctx,
+}) => {
   if (failure) return <p class="text-warning text-xs">{failure}</p>
   if (!preview) return null
   const p = preview
@@ -906,7 +889,9 @@ const NotesLines: FC<{ n: NonNullable<LinkPreview['changelog']>; runningTag: str
         </p>
       ) : null}
       {n.excerpt ? (
-        <blockquote class="border-base-300 line-clamp-4 border-l-2 pl-2 whitespace-pre-line opacity-70">{n.excerpt}</blockquote>
+        <blockquote class="border-base-300 line-clamp-4 border-l-2 pl-2 whitespace-pre-line opacity-70">
+          {n.excerpt}
+        </blockquote>
       ) : null}
     </div>
   )

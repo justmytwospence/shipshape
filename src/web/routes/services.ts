@@ -9,7 +9,13 @@ import type { SourceInfo } from '../../resolver/types.ts'
 import { ctxString, listHref } from '../ctx.ts'
 import { LinkPreviewPane, ServicesList } from '../views/ui/services.tsx'
 import { filterServices as filterServiceRows, serviceRows } from '../../updates/services.ts'
-import { publishLabelEdits, setLabelsForServices, setServiceLabels, type LabelChange, type LabelKey } from '../../gitops/labels.ts'
+import {
+  publishLabelEdits,
+  setLabelsForServices,
+  setServiceLabels,
+  type LabelChange,
+  type LabelKey,
+} from '../../gitops/labels.ts'
 import { previewLink } from '../../resolver/preview.ts'
 import { ListCount } from '../views/ui/parts.tsx'
 import { ctxOf, servicePane, servicesRender, toastHeader } from '../render.ts'
@@ -24,7 +30,10 @@ async function within<T>(p: Promise<T>, ms: number): Promise<T | Error | 'timeou
     timer = setTimeout(() => resolve('timeout'), ms)
   })
   try {
-    return await Promise.race([p.catch((err: unknown) => (err instanceof Error ? err : new Error(String(err)))), timeout])
+    return await Promise.race([
+      p.catch((err: unknown) => (err instanceof Error ? err : new Error(String(err)))),
+      timeout,
+    ])
   } finally {
     clearTimeout(timer)
   }
@@ -118,9 +127,7 @@ export function registerServiceRoutes(app: Hono): void {
     const { policy } = loadPolicy()
     const stack = c.req.param('stack')
     const service = c.req.param('service')
-    const svc = scanRepo(env.repoDir, policy.exclude_stacks).find(
-      (s) => s.stack === stack && s.service === service,
-    )
+    const svc = scanRepo(env.repoDir, policy.exclude_stacks).find((s) => s.stack === stack && s.service === service)
     if (!svc?.ref) {
       toastHeader(c, 'warn', `${stack}/${service} has no image to look up`)
     } else {
@@ -147,9 +154,7 @@ export function registerServiceRoutes(app: Hono): void {
     const { policy } = loadPolicy()
     const stack = c.req.param('stack')
     const service = c.req.param('service')
-    const svc = scanRepo(env.repoDir, policy.exclude_stacks).find(
-      (s) => s.stack === stack && s.service === service,
-    )
+    const svc = scanRepo(env.repoDir, policy.exclude_stacks).find((s) => s.stack === stack && s.service === service)
     if (!svc) return c.html(LinkPreviewPane({ failure: `${stack}/${service} is no longer here.` }) as string)
     const outcome = await within(
       previewLink({

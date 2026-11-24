@@ -48,13 +48,7 @@ services:
     restart: always
 `
 
-function seed(opts: {
-  service: string
-  fromTag: string
-  toTag: string
-  imageRef: string
-  detail?: string
-}): number {
+function seed(opts: { service: string; fromTag: string; toTag: string; imageRef: string; detail?: string }): number {
   const db = getDb()
   const now = new Date().toISOString()
   db.prepare(
@@ -128,8 +122,7 @@ test('targets the right service when two carry identical image lines', () => {
 })
 
 test('digest bumps swap only the digest and keep the tag and registry spelling', () => {
-  const oldRef =
-    'docker.io/valkey/valkey:9@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  const oldRef = 'docker.io/valkey/valkey:9@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
   const id = seed({
     service: 'cache',
     fromTag: '9@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
@@ -246,7 +239,10 @@ test('a fork says what will happen until the replay exists, then shows the whole
   assert.ok(!('error' in r), (r as { error?: string }).error)
   assert.equal(r.fork?.kind, 'bump')
   assert.equal(r.fork?.sha, newSha)
-  assert.deepEqual(r.fork?.carried.map((c) => c.short), ['ccccccc'])
+  assert.deepEqual(
+    r.fork?.carried.map((c) => c.short),
+    ['ccccccc'],
+  )
   const del = r.hunks.flatMap((h) => h.lines.filter((l) => l.kind === 'del').map((l) => l.text.trim()))
   const add = r.hunks.flatMap((h) => h.lines.filter((l) => l.kind === 'add').map((l) => l.text.trim()))
   assert.deepEqual(del, [

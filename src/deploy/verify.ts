@@ -119,7 +119,6 @@ export class Verifier {
 
   /** Feed one round of observations. Returns null while it needs more. */
   push(samples: Sample[], elapsedMs: number): Verdict | null {
-
     if (samples.length === 0) {
       this.cliErrors++
       // Three failures to observe anything is an instrument problem. Rolling back on it

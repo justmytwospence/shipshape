@@ -87,15 +87,22 @@ const result = (decision: 'routine' | 'finding' | 'escalate') => ({
   confidence: decision === 'routine' ? ('high' as const) : null,
 })
 const verdict = () =>
-  getDb().prepare(`SELECT recommendation, confidence, source, provisional, error, next_attempt_at FROM verdicts`).get() as
-    | Record<string, unknown>
-    | undefined
+  getDb()
+    .prepare(`SELECT recommendation, confidence, source, provisional, error, next_attempt_at FROM verdicts`)
+    .get() as Record<string, unknown> | undefined
 
 test('routine writes an approval; a finding writes a provisional caution; escalate writes nothing', () => {
   assert.equal(applyScreen(bump, result('routine'), [], 'typesafe/jev-1.13', []), true)
   assert.deepEqual(
     { ...verdict() },
-    { recommendation: 'approve', confidence: 'high', source: 'screen', provisional: 0, error: null, next_attempt_at: null },
+    {
+      recommendation: 'approve',
+      confidence: 'high',
+      source: 'screen',
+      provisional: 0,
+      error: null,
+      next_attempt_at: null,
+    },
   )
   getDb().exec(`DELETE FROM verdicts`)
   applyScreen(bump, result('finding'), [], 'typesafe/jev-1.13', [])
@@ -139,19 +146,32 @@ const decisions = (model = 'typesafe/jev-1.13-20260917') => ({
 })
 
 test('an answer is recorded in the ledger with what the gateway charged', async () => {
-  const r = await askJev({ s: 1 }, { q: { type: 'noul', instructions: 'x' } }, {
-    purpose: 'screen',
-    fetchImpl: (async () => ok(decisions())) as typeof fetch,
-  })
+  const r = await askJev(
+    { s: 1 },
+    { q: { type: 'noul', instructions: 'x' } },
+    {
+      purpose: 'screen',
+      fetchImpl: (async () => ok(decisions())) as typeof fetch,
+    },
+  )
   assert.equal(r.ok, true)
-  const row = getDb().prepare(`SELECT purpose, provider, cost_usd, request_id FROM llm_calls`).get() as Record<string, unknown>
-  assert.deepEqual({ ...row }, { purpose: 'screen', provider: 'openrouter', cost_usd: 0.00002, request_id: 'gen-dec-1' })
+  const row = getDb().prepare(`SELECT purpose, provider, cost_usd, request_id FROM llm_calls`).get() as Record<
+    string,
+    unknown
+  >
+  assert.deepEqual(
+    { ...row },
+    { purpose: 'screen', provider: 'openrouter', cost_usd: 0.00002, request_id: 'gen-dec-1' },
+  )
 })
 
 test('a rate limit is retried once; a refusal is not retried at all', async () => {
   let calls = 0
   const flaky = (async () => (++calls === 1 ? ok({}, 429, { 'retry-after': '0' }) : ok(decisions()))) as typeof fetch
-  assert.equal((await askJev({}, { q: { type: 'noul', instructions: 'x' } }, { purpose: 'screen', fetchImpl: flaky })).ok, true)
+  assert.equal(
+    (await askJev({}, { q: { type: 'noul', instructions: 'x' } }, { purpose: 'screen', fetchImpl: flaky })).ok,
+    true,
+  )
   assert.equal(calls, 2)
 
   calls = 0
@@ -168,18 +188,26 @@ test('a rate limit is retried once; a refusal is not retried at all', async () =
 test('an answer from a model the thresholds were not tuned on is not believed', async () => {
   assert.equal(jevFamilyOk('typesafe/jev-1.13-20260917'), true)
   assert.equal(jevFamilyOk('typesafe/jev-2.0'), false)
-  const r = await askJev({}, { q: { type: 'noul', instructions: 'x' } }, {
-    purpose: 'screen',
-    fetchImpl: (async () => ok(decisions('typesafe/jev-2.0'))) as typeof fetch,
-  })
+  const r = await askJev(
+    {},
+    { q: { type: 'noul', instructions: 'x' } },
+    {
+      purpose: 'screen',
+      fetchImpl: (async () => ok(decisions('typesafe/jev-2.0'))) as typeof fetch,
+    },
+  )
   assert.equal(r.ok, false)
 })
 
 test('an answer missing a question is not a whole answer', async () => {
-  const r = await askJev({}, { q: { type: 'noul', instructions: 'x' }, other: { type: 'noul', instructions: 'y' } }, {
-    purpose: 'screen',
-    fetchImpl: (async () => ok(decisions())) as typeof fetch,
-  })
+  const r = await askJev(
+    {},
+    { q: { type: 'noul', instructions: 'x' }, other: { type: 'noul', instructions: 'y' } },
+    {
+      purpose: 'screen',
+      fetchImpl: (async () => ok(decisions())) as typeof fetch,
+    },
+  )
   assert.equal(r.ok, false)
 })
 
@@ -190,7 +218,10 @@ test('a gateway refusal reads as a sentence that says where to fix it', () => {
       code: 404,
       metadata: {
         ineligibility_reasons: [
-          { reason: 'provider-not-allowed-by-guardrail', configure_url: 'https://openrouter.ai/workspaces/default/guardrails' },
+          {
+            reason: 'provider-not-allowed-by-guardrail',
+            configure_url: 'https://openrouter.ai/workspaces/default/guardrails',
+          },
         ],
       },
     },

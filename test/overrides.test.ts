@@ -51,7 +51,10 @@ test('every curated key is a form an image reference actually produces', () => {
 test('an answer from a curated entry since removed is looked up again, and says where it came from now', async (t) => {
   curatedRow('n8nio/n8n', 'n8n-io/n8n')
   const h = mockFetch(t, [
-    { url: 'https://hub.docker.com/v2/repositories/n8nio/n8n/', reply: () => json({ full_description: 'Source: https://github.com/n8n-io/n8n' }) },
+    {
+      url: 'https://hub.docker.com/v2/repositories/n8nio/n8n/',
+      reply: () => json({ full_description: 'Source: https://github.com/n8n-io/n8n' }),
+    },
     { url: 'https://api.github.com/repos/n8n-io/n8n', reply: () => json({ full_name: 'n8n-io/n8n' }) },
   ])
   const s = await sourceFor({ registry: 'docker.io', repository: 'n8nio/n8n' }, { allowBilled: false })

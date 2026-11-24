@@ -53,7 +53,9 @@ after(() => {
 const SLUG = 'nodejs-october-2026-security-releases'
 
 test('a waiting verified fix is offered as a ship tap on the exposure card', async () => {
-  const fixture = JSON.parse(readFileSync(new URL('./fixtures/pwnwatch/incidents.json', import.meta.url), 'utf8')) as unknown
+  const fixture = JSON.parse(
+    readFileSync(new URL('./fixtures/pwnwatch/incidents.json', import.meta.url), 'utf8'),
+  ) as unknown
   storeIncidents(parseIndex(fixture).incidents, ['patch', 'supply-chain'])
 
   const db = getDb()
@@ -70,7 +72,11 @@ test('a waiting verified fix is offered as a ship tap on the exposure card', asy
       )
       .run(now, now).lastInsertRowid,
   )
-  db.prepare(`INSERT INTO security_fixes (update_id, slug, evidence, verified_at) VALUES (?, ?, '[]', ?)`).run(id, SLUG, now)
+  db.prepare(`INSERT INTO security_fixes (update_id, slug, evidence, verified_at) VALUES (?, ?, '[]', ?)`).run(
+    id,
+    SLUG,
+    now,
+  )
 
   await syncSecurityCards(loadPolicy().policy)
   assert.equal(wire.length, 1)
@@ -79,5 +85,8 @@ test('a waiting verified fix is offered as a ship tap on the exposure card', asy
   assert.match(String(card.message), /fix: v3\.3\.5/)
   assert.doesNotMatch(String(card.message), /#\d/)
   const actions = card.actions as { do: { verb: string; update: number } }[]
-  assert.deepEqual(actions.map((a) => a.do), [{ target: 'shipshape', verb: 'ship', update: id }])
+  assert.deepEqual(
+    actions.map((a) => a.do),
+    [{ target: 'shipshape', verb: 'ship', update: id }],
+  )
 })

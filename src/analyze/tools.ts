@@ -57,11 +57,7 @@ export interface WebToolBudget {
   content_tokens: number
 }
 
-export function webTools(
-  model: string,
-  budget: WebToolBudget,
-  allowedDomains: string[],
-): Anthropic.ToolUnion[] {
+export function webTools(model: string, budget: WebToolBudget, allowedDomains: string[]): Anthropic.ToolUnion[] {
   // The SDK also exposes later revisions than these. They are deliberately not used:
   // this pair is the newest whose behaviour is documented, and an undocumented
   // revision is a guess about what the model will do with untrusted web content.
@@ -125,7 +121,10 @@ const NO_FORCED_TOOL = ['claude-opus-5.5', 'claude-opus-5-5', 'claude-sonnet-5.5
  * instruction does the work, and the caller's existing "the model did not return ..."
  * branch handles a reply that ignored it -- recorded in the ledger as `no-answer`.
  */
-export function toolChoiceFor(model: string, provider: LlmProvider = llmProvider()): { type: 'any' } | { type: 'auto' } {
+export function toolChoiceFor(
+  model: string,
+  provider: LlmProvider = llmProvider(),
+): { type: 'any' } | { type: 'auto' } {
   // A custom endpoint may not honour a forced choice (Ollama documents tool_choice as
   // unsupported), and one that rejects it fails every call. `auto` plus the prompt's
   // closing instruction works everywhere; a reply without the tool is already handled.

@@ -4,7 +4,6 @@ import { normaliseSourceUrl } from './labels.ts'
 /** The annotation keys worth reading, in preference order. */
 const SOURCE_KEYS = ['org.opencontainers.image.source', 'org.label-schema.vcs-url']
 
-
 const ACCEPT = [
   'application/vnd.oci.image.index.v1+json',
   'application/vnd.docker.distribution.manifest.list.v2+json',
@@ -12,14 +11,12 @@ const ACCEPT = [
   'application/vnd.docker.distribution.manifest.v2+json',
 ].join(',')
 
-
 export interface ManifestSources {
   /** From a manifest annotation, which an image cannot inherit. */
   annotation: string | null
   /** From the config's labels, which it can. */
   label: { repo: string; labels: Record<string, string> } | null
 }
-
 
 /** Walk the manifest for a source without pulling the image. It hides in four distinct
  *  places and real images use every one of them. */
@@ -52,7 +49,11 @@ export async function walkManifest(registry: string, repository: string, tag: st
   if (!res) return nothing
   const doc = (await res.json()) as {
     annotations?: Record<string, string>
-    manifests?: { digest: string; annotations?: Record<string, string>; platform?: { architecture?: string; os?: string } }[]
+    manifests?: {
+      digest: string
+      annotations?: Record<string, string>
+      platform?: { architecture?: string; os?: string }
+    }[]
     config?: { digest?: string }
   }
 
@@ -69,8 +70,7 @@ export async function walkManifest(registry: string, repository: string, tag: st
     }
     // Recurse into the amd64 child (this host is amd64).
     const child =
-      doc.manifests.find((m) => m.platform?.architecture === 'amd64' && m.platform.os === 'linux') ??
-      doc.manifests[0]!
+      doc.manifests.find((m) => m.platform?.architecture === 'amd64' && m.platform.os === 'linux') ?? doc.manifests[0]!
     const cres = await get(`${base}/manifests/${child.digest}`, ACCEPT)
     if (!cres) return nothing
     manifest = (await cres.json()) as typeof doc

@@ -1,6 +1,17 @@
 import { getRepo, rawFile } from '../upstream/github.ts'
 import { registryDescription } from '../upstream/registries.ts'
-import { buildFileUpstream, githubMentions, imageParts, isPackagingRepo, looksInherited, nameRelation, ownerRelation, rankMentions, relation, type RankedMention } from './guards.ts'
+import {
+  buildFileUpstream,
+  githubMentions,
+  imageParts,
+  isPackagingRepo,
+  looksInherited,
+  nameRelation,
+  ownerRelation,
+  rankMentions,
+  relation,
+  type RankedMention,
+} from './guards.ts'
 import { parseSourceLabel, sameRepo } from './labels.ts'
 import type { ImageKey, ResolutionEvidence, SourceConfidence, ResolutionTier, Lookup } from './types.ts'
 import { OVERRIDES } from './overrides.ts'
@@ -15,7 +26,6 @@ interface Candidate {
   /** An annotation or LinuxServer names the repository the image is built from, fork or not. */
   allowFork?: boolean
 }
-
 
 /** One lookup's working state: what each tier proposed, and what became of it. */
 class Run {
@@ -104,7 +114,6 @@ class Run {
   }
 }
 
-
 /**
  * Look an image up, without writing anything. `resolve-report --dry-run` calls this directly.
  */
@@ -124,10 +133,8 @@ export async function lookUpImage(
   return run.result()
 }
 
-
 /** Code-hosting registries: their images' projects live there, not on GitHub. */
 const FORGES = new Set(['codeberg.org', 'registry.gitlab.com', 'ghcr.io'])
-
 
 async function tiers(
   run: Run,
@@ -187,7 +194,6 @@ async function tiers(
   }
 }
 
-
 /**
  * LinuxServer images: their API, then their build file. Nothing else is asked -- every other
  * tier would find `linuxserver/docker-<app>`, which is the packaging, not the application.
@@ -240,12 +246,10 @@ async function linuxServer(run: Run, image: ImageKey): Promise<void> {
     : "LinuxServer's API and build file name no GitHub repository"
 }
 
-
 interface Walked {
   settled: boolean
   label: { repo: string; labels: Record<string, string> } | null
 }
-
 
 async function walkTier(run: Run, image: ImageKey, tag: string | null, allowBilled: boolean): Promise<Walked> {
   const nothing: Walked = { settled: false, label: null }
@@ -278,7 +282,6 @@ async function walkTier(run: Run, image: ImageKey, tag: string | null, allowBill
   }
   return { settled: false, label: sources.label }
 }
-
 
 async function descriptionTier(run: Run, image: ImageKey): Promise<boolean> {
   const d = await registryDescription(image)
@@ -315,7 +318,6 @@ async function descriptionTier(run: Run, image: ImageKey): Promise<boolean> {
   return false
 }
 
-
 function byScore(ranked: RankedMention[]): RankedMention[][] {
   const groups: RankedMention[][] = []
   for (const m of ranked) {
@@ -325,7 +327,6 @@ function byScore(ranked: RankedMention[]): RankedMention[][] {
   }
   return groups
 }
-
 
 async function configLabelTier(
   run: Run,

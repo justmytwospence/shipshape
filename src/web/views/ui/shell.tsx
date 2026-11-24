@@ -98,110 +98,107 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
 }) => {
   const missing = chrome?.missing ?? []
   return (
-  <html lang="en" data-tz={ZONE}>
-    <head>
-      <meta charset="utf-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-      <title>{title} · shipshape</title>
-      <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
-      <link rel="stylesheet" href={asset('app.css')} />
-      <meta name="htmx-config" content={HTMX_CONFIG} />
-      {/* Fetched with credentials or Authelia's redirect makes the app silently
+    <html lang="en" data-tz={ZONE}>
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <title>{title} · shipshape</title>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <link rel="stylesheet" href={asset('app.css')} />
+        <meta name="htmx-config" content={HTMX_CONFIG} />
+        {/* Fetched with credentials or Authelia's redirect makes the app silently
           non-installable while still answering 200. */}
-      <link rel="manifest" href="/static/manifest.webmanifest" crossorigin="use-credentials" />
-      <meta name="theme-color" content="#fbfcfd" media="(prefers-color-scheme: light)" />
-      <meta name="theme-color" content="#13161c" media="(prefers-color-scheme: dark)" />
-      <meta name="apple-mobile-web-app-capable" content="yes" />
-      <meta name="apple-mobile-web-app-title" content="shipshape" />
-      <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
-      <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
-      <script src={asset('htmx.min.js')} defer />
-    </head>
-    <body class="bg-base-100 text-base-content min-h-dvh lg:h-dvh lg:overflow-hidden">
-      <a href="#main" class="btn btn-sm sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[60]">
-        Skip to content
-      </a>
-      <progress
-        id="busy"
-        class="progress progress-primary htmx-indicator fixed inset-x-0 top-0 z-50 h-0.5 w-full"
-      />
+        <link rel="manifest" href="/static/manifest.webmanifest" crossorigin="use-credentials" />
+        <meta name="theme-color" content="#fbfcfd" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#13161c" media="(prefers-color-scheme: dark)" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="shipshape" />
+        <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
+        <script src={asset('htmx.min.js')} defer />
+      </head>
+      <body class="bg-base-100 text-base-content min-h-dvh lg:h-dvh lg:overflow-hidden">
+        <a href="#main" class="btn btn-sm sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[60]">
+          Skip to content
+        </a>
+        <progress id="busy" class="progress progress-primary htmx-indicator fixed inset-x-0 top-0 z-50 h-0.5 w-full" />
 
-      <div class="drawer lg:drawer-open lg:h-dvh">
-        <input id="nav-drawer" type="checkbox" class="drawer-toggle" />
+        <div class="drawer lg:drawer-open lg:h-dvh">
+          <input id="nav-drawer" type="checkbox" class="drawer-toggle" />
 
-        <div class="drawer-content flex min-h-dvh flex-col lg:h-dvh lg:min-h-0 lg:overflow-hidden">
-          {/* One header, two rows. Row 1 is the phone bar; row 2 is the toolbar, which on
+          <div class="drawer-content flex min-h-dvh flex-col lg:h-dvh lg:min-h-0 lg:overflow-hidden">
+            {/* One header, two rows. Row 1 is the phone bar; row 2 is the toolbar, which on
               a phone scrolls sideways under it and on a desktop is the only header there is. */}
-          {/* One header. On a phone it wraps into two rows -- back|brand · title · actions,
+            {/* One header. On a phone it wraps into two rows -- back|brand · title · actions,
               then the toolbar full-width -- and at lg the phone parts hide and what is
               left is a single row: section · toolbar · count · actions. The actions are
               one node in both, moved by `order`, because they carry ids that must exist
               once (the scan chip is the poll's on-switch). */}
-          <header class="border-base-300 bg-base-100 px-safe pt-safe sticky top-0 z-20 flex shrink-0 flex-wrap items-center gap-x-2 border-b px-2 lg:static lg:h-10 lg:flex-nowrap lg:px-3">
-            {back ? (
-              <a href={back.href} class="btn btn-ghost btn-sm tap order-1 -ml-1 gap-1 px-2 lg:hidden">
-                <Icon name="chevron-left" />
-                <span class="max-w-[7rem] truncate">{back.label}</span>
-              </a>
-            ) : chrome ? (
-              <PhoneStatus chrome={chrome} />
-            ) : (
-              <span class="order-1 flex h-11 items-center px-2 lg:hidden">
-                <Wordmark />
-              </span>
-            )}
-            <h1 class="order-2 h-11 min-w-0 flex-1 truncate text-center text-sm leading-11 font-medium lg:hidden">
-              {title}
-            </h1>
-            <div
-              class={`${detail ? 'hidden lg:flex' : 'flex'} order-3 h-11 shrink-0 items-center gap-1 lg:order-5 lg:h-10`}
-            >
-              {actions}
-            </div>
-            <div
-              class={`${toolbar && !detail ? 'flex' : 'hidden lg:flex'} scroll-x order-4 -mx-2 h-11 basis-full items-center gap-2 px-2 lg:order-2 lg:mx-0 lg:h-10 lg:min-w-0 lg:flex-1 lg:basis-auto lg:overflow-visible lg:px-0`}
-            >
-              <h1 class="hidden shrink-0 text-sm font-semibold lg:block">{section ?? title}</h1>
-              {toolbar}
-              <div class="ml-auto hidden shrink-0 items-center gap-2 pl-2 lg:flex">{count}</div>
-            </div>
-          </header>
+            <header class="border-base-300 bg-base-100 px-safe pt-safe sticky top-0 z-20 flex shrink-0 flex-wrap items-center gap-x-2 border-b px-2 lg:static lg:h-10 lg:flex-nowrap lg:px-3">
+              {back ? (
+                <a href={back.href} class="btn btn-ghost btn-sm tap order-1 -ml-1 gap-1 px-2 lg:hidden">
+                  <Icon name="chevron-left" />
+                  <span class="max-w-[7rem] truncate">{back.label}</span>
+                </a>
+              ) : chrome ? (
+                <PhoneStatus chrome={chrome} />
+              ) : (
+                <span class="order-1 flex h-11 items-center px-2 lg:hidden">
+                  <Wordmark />
+                </span>
+              )}
+              <h1 class="order-2 h-11 min-w-0 flex-1 truncate text-center text-sm leading-11 font-medium lg:hidden">
+                {title}
+              </h1>
+              <div
+                class={`${detail ? 'hidden lg:flex' : 'flex'} order-3 h-11 shrink-0 items-center gap-1 lg:order-5 lg:h-10`}
+              >
+                {actions}
+              </div>
+              <div
+                class={`${toolbar && !detail ? 'flex' : 'hidden lg:flex'} scroll-x order-4 -mx-2 h-11 basis-full items-center gap-2 px-2 lg:order-2 lg:mx-0 lg:h-10 lg:min-w-0 lg:flex-1 lg:basis-auto lg:overflow-visible lg:px-0`}
+              >
+                <h1 class="hidden shrink-0 text-sm font-semibold lg:block">{section ?? title}</h1>
+                {toolbar}
+                <div class="ml-auto hidden shrink-0 items-center gap-2 pl-2 lg:flex">{count}</div>
+              </div>
+            </header>
 
-          {/* Shown by app.js when requests stop arriving; outside every swapped region. */}
-          <div
-            id="conn"
-            role="status"
-            class="alert alert-warning alert-soft hidden shrink-0 rounded-none border-x-0 border-t-0 py-1.5 text-xs"
-          >
-            <span id="conn-text">Lost contact with shipshape. Retrying…</span>
-            <button type="button" class="btn btn-ghost btn-xs tap ml-auto" data-reload>
-              Reload
-            </button>
+            {/* Shown by app.js when requests stop arriving; outside every swapped region. */}
+            <div
+              id="conn"
+              role="status"
+              class="alert alert-warning alert-soft hidden shrink-0 rounded-none border-x-0 border-t-0 py-1.5 text-xs"
+            >
+              <span id="conn-text">Lost contact with shipshape. Retrying…</span>
+              <button type="button" class="btn btn-ghost btn-xs tap ml-auto" data-reload>
+                Reload
+              </button>
+            </div>
+
+            {missing.length > 0 ? <SetupBanner missing={missing} /> : null}
+
+            <main id="main" tabindex={-1} class="pb-dock flex min-h-0 flex-1 flex-col lg:pb-0">
+              {children}
+            </main>
+
+            <Dock active={nav} />
           </div>
 
-          {missing.length > 0 ? <SetupBanner missing={missing} /> : null}
-
-          <main id="main" tabindex={-1} class="pb-dock flex min-h-0 flex-1 flex-col lg:pb-0">
-            {children}
-          </main>
-
-          <Dock active={nav} />
+          <aside class="drawer-side z-30">
+            <label for="nav-drawer" aria-label="close" class="drawer-overlay" />
+            <Sidebar nav={nav} chrome={chrome} />
+          </aside>
         </div>
 
-        <aside class="drawer-side z-30">
-          <label for="nav-drawer" aria-label="close" class="drawer-overlay" />
-          <Sidebar nav={nav} chrome={chrome} />
-        </aside>
-      </div>
+        <Shortcuts />
 
-      <Shortcuts />
+        {/* Each toast carries its own role; a live region around them would announce twice. */}
+        <div id="toasts" class="toast toast-top toast-center md:toast-bottom md:toast-end z-50 w-[min(28rem,92vw)]" />
 
-      {/* Each toast carries its own role; a live region around them would announce twice. */}
-      <div id="toasts" class="toast toast-top toast-center md:toast-bottom md:toast-end z-50 w-[min(28rem,92vw)]" />
-
-      <script src={asset('app.js')} defer />
-    </body>
-  </html>
+        <script src={asset('app.js')} defer />
+      </body>
+    </html>
   )
 }
 
@@ -309,9 +306,7 @@ const SidebarStatus: FC<{ chrome?: Chrome }> = ({ chrome }) => {
           Change
         </a>
       </div>
-      <p class="opacity-70">
-        {chrome.paused ? 'Nothing ships on its own.' : 'Ships what nothing holds.'}
-      </p>
+      <p class="opacity-70">{chrome.paused ? 'Nothing ships on its own.' : 'Ships what nothing holds.'}</p>
       {scan ? (
         <p class="flex flex-wrap items-center gap-x-1.5 opacity-70">
           {/* The chip is the poll's on-switch (`#scan-running` while a scan is in flight)
@@ -430,7 +425,10 @@ export const PhoneScan: FC<{ running: boolean; lastAt: string | null; oob?: bool
  * Straight to the switch while paused, to Status otherwise.
  */
 const PhoneStatus: FC<{ chrome: Chrome }> = ({ chrome }) => (
-  <a href={chrome.paused ? '/settings#pause' : '/status'} class="tap order-1 flex h-11 items-center gap-1.5 px-1 lg:hidden">
+  <a
+    href={chrome.paused ? '/settings#pause' : '/status'}
+    class="tap order-1 flex h-11 items-center gap-1.5 px-1 lg:hidden"
+  >
     <Mark class="text-primary size-5" />
     <span class={chrome.paused ? 'badge badge-sm badge-soft badge-warning' : 'badge badge-sm badge-soft badge-success'}>
       {chrome.paused ? 'Paused' : 'Running'}
@@ -480,7 +478,9 @@ const Shortcuts: FC = () => (
         ))}
       </dl>
       <form method="dialog" class="modal-action">
-        <button type="submit" class="btn btn-sm">Close</button>
+        <button type="submit" class="btn btn-sm">
+          Close
+        </button>
       </form>
     </div>
     <form method="dialog" class="modal-backdrop">

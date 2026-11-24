@@ -73,7 +73,11 @@ test('settings is one page, and every section explains itself on it', async () =
     assert.ok(html.includes(`id="${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}"`), title)
     assert.ok(html.includes(tagline.slice(0, 25)), `${title}: tagline`)
   }
-  assert.match(html, /A deploy never changes whether a service is running\./, 'the long prose is folded in, not dropped')
+  assert.match(
+    html,
+    /A deploy never changes whether a service is running\./,
+    'the long prose is folded in, not dropped',
+  )
   assert.match(html, /<summary[^>]*>[\s\S]{0,400}More/, 'behind a More disclosure')
   // The sinks, the mail test, and the read-only rules list sit under their own headings.
   assert.match(html, /hx-post="\/settings\/email\/test"/)
@@ -194,7 +198,9 @@ test('scanning answers in the sidebar and in the phone bar', async () => {
 })
 
 test('the test-email answer is styled with classes that exist', async () => {
-  const html = await (await app.request('/settings/email/test', { method: 'POST', headers: { 'HX-Request': 'true' } })).text()
+  const html = await (
+    await app.request('/settings/email/test', { method: 'POST', headers: { 'HX-Request': 'true' } })
+  ).text()
   assert.match(html, /class="text-xs opacity-70"/)
   assert.doesNotMatch(html, /class="sub"|warn-text/)
 })
@@ -256,7 +262,18 @@ test('an operator verb always answers, whether or not it was allowed', async () 
   // htmx swaps nothing on a 4xx: a refusal that returned one would look like a button
   // that did nothing. Every verb replies 200 with a sentence, and says which it was in
   // the toast rather than in the status code.
-  for (const verb of ['dismiss', 'ship', 'snooze', 'always-ship', 'deploy', 'redeploy', 'retry', 'rollback', 'ack', 'rerun-review']) {
+  for (const verb of [
+    'dismiss',
+    'ship',
+    'snooze',
+    'always-ship',
+    'deploy',
+    'redeploy',
+    'retry',
+    'rollback',
+    'ack',
+    'rerun-review',
+  ]) {
     const res = await app.request(`/updates/9999/${verb}`, {
       method: 'POST',
       headers: { 'HX-Request': 'true' },

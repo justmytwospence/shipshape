@@ -132,9 +132,7 @@ export function observeSet(services: string[], ownerOf: (s: string) => string | 
 }
 
 /** Which service's network namespace each service joins, from the scanned peers. */
-export function ownerFrom(
-  peers: { service: string; network_mode: string | null }[],
-): (s: string) => string | null {
+export function ownerFrom(peers: { service: string; network_mode: string | null }[]): (s: string) => string | null {
   const owners = new Map<string, string>()
   for (const p of peers) {
     const m = /^service:(.+)$/.exec(p.network_mode ?? '')
@@ -269,8 +267,7 @@ export function leftClause(l: LeftService, pinnedRef: string | null, opts: { pul
 }
 
 /** A carried service that came back up. */
-export const restoredClause = (s: string): string =>
-  `${s} brought back up — shipshape's last attempt left it down`
+export const restoredClause = (s: string): string => `${s} brought back up — shipshape's last attempt left it down`
 
 /**
  * A recorded plan, or null for anything that is not one.

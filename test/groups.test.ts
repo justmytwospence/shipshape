@@ -17,18 +17,13 @@ function m(stack: string, service: string, to: string, over: Partial<GroupMember
   }
 }
 
-const src = (map: Record<string, string>) => (stack: string, service: string) =>
-  map[`${stack}/${service}`] ?? null
-const lbl = (map: Record<string, string>) => (stack: string, service: string) =>
-  map[`${stack}/${service}`] ?? null
+const src = (map: Record<string, string>) => (stack: string, service: string) => map[`${stack}/${service}`] ?? null
+const lbl = (map: Record<string, string>) => (stack: string, service: string) => map[`${stack}/${service}`] ?? null
 
 test('services sharing an upstream repo and a target version travel together', () => {
   // Immich does not support running the server and machine-learning containers at
   // different versions, so merging one without the other breaks the stack.
-  const rows = [
-    m('immich', 'immich-server', 'v3.1.0'),
-    m('immich', 'immich-machine-learning', 'v3.1.0'),
-  ]
+  const rows = [m('immich', 'immich-server', 'v3.1.0'), m('immich', 'immich-machine-learning', 'v3.1.0')]
   const groups = groupUpdates(
     rows,
     src({
@@ -111,19 +106,14 @@ test('two targets for one service group the same way', () => {
 
 test('branch names stay readable and legal', () => {
   // A full sha256 in a branch name is unusable; digests collapse to 12 hex.
-  assert.equal(
-    sanitise('9@sha256:546304417feac0874c3dd576e0952c6bb8f06bb4093ea0c9ca303c73cf458f63'),
-    '9@546304417fea',
-  )
+  assert.equal(sanitise('9@sha256:546304417feac0874c3dd576e0952c6bb8f06bb4093ea0c9ca303c73cf458f63'), '9@546304417fea')
   assert.equal(sanitise('ghcr.io/immich-app/immich-server'), 'ghcr.io-immich-app-immich-server')
   assert.equal(sanitise('v1.2.3'), 'v1.2.3')
   // No leading/trailing/doubled separators to trip git's ref rules.
   assert.equal(sanitise('--weird//name--'), 'weird-name')
 
   const g = groupUpdates(
-    [
-      m('immich', 'immich-redis', '9@sha256:546304417feac0874c3dd576e0952c6bb8f06bb4093ea0c9ca303c73cf458f63'),
-    ],
+    [m('immich', 'immich-redis', '9@sha256:546304417feac0874c3dd576e0952c6bb8f06bb4093ea0c9ca303c73cf458f63')],
     src({}),
     lbl({}),
   )

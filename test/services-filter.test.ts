@@ -27,7 +27,14 @@ function image(service: string, repository: string, o: { watched?: boolean; labe
                            current_tag, watched, source_label, last_seen_at)
        VALUES ('lab', ?, 'lab/docker-compose.yaml', ?, 'docker.io', ?, '1.0', ?, ?, ?)`,
     )
-    .run(service, `${repository}:1.0`, repository, o.watched === false ? 0 : 1, o.label ?? null, new Date().toISOString())
+    .run(
+      service,
+      `${repository}:1.0`,
+      repository,
+      o.watched === false ? 0 : 1,
+      o.label ?? null,
+      new Date().toISOString(),
+    )
 }
 
 function resolved(repository: string, source: string | null, tier: string, confidence: string | null): void {
@@ -65,7 +72,9 @@ test('only watched services without a certain upstream are unlinked', () => {
     ignored: 'none',
   })
   assert.deepEqual(
-    filterServices(rows, { filter: 'unlinked' }).map((r) => r.service).sort(),
+    filterServices(rows, { filter: 'unlinked' })
+      .map((r) => r.service)
+      .sort(),
     ['likely', 'missing', 'packaged', 'unseen'],
   )
 })
@@ -85,7 +94,10 @@ test('the Not watched filter keeps builds, which can be watched, and drops what 
   unwatchable('plain', null)
   unwatchable('built', 'build')
   unwatchable('variable', 'interpolated')
-  const names = (filter: string) => filterServices(serviceRows(), { filter }).map((r) => r.service).sort()
+  const names = (filter: string) =>
+    filterServices(serviceRows(), { filter })
+      .map((r) => r.service)
+      .sort()
   assert.deepEqual(names('unwatched'), ['built', 'plain'])
   assert.deepEqual(names('unlabelled'), ['built', 'plain'])
   assert.deepEqual(names('unwatchable'), ['variable'])
@@ -93,5 +105,8 @@ test('the Not watched filter keeps builds, which can be watched, and drops what 
 
 test('a watched build whose base could not be read is listed as not watchable', () => {
   unwatchable('built-watched', 'build', true)
-  assert.deepEqual(filterServices(serviceRows(), { filter: 'unwatchable' }).map((r) => r.service), ['built-watched'])
+  assert.deepEqual(
+    filterServices(serviceRows(), { filter: 'unwatchable' }).map((r) => r.service),
+    ['built-watched'],
+  )
 })

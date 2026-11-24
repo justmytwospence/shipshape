@@ -139,7 +139,11 @@ export async function askJev(
     try {
       parsed = Response.parse(await res.json())
     } catch (err) {
-      return { ok: false, error: `the screen's answer did not parse: ${(err as Error).message.slice(0, 160)}`, retryable: false }
+      return {
+        ok: false,
+        error: `the screen's answer did not parse: ${(err as Error).message.slice(0, 160)}`,
+        retryable: false,
+      }
     }
 
     const u = parsed.usage ?? {}
@@ -154,13 +158,20 @@ export async function askJev(
           : u.cost
         : undefined
     const cost = reported ?? input * JEV_USD_PER_TOKEN
-    recordSpend(loadPolicy().policy, parsed.model, o.purpose, cost, { input, output: u.output_tokens ?? 0 }, {
-      ...o.meta,
-      provider: 'openrouter',
-      latencyMs: Date.now() - started,
-      requestId: parsed.id ?? null,
-      estimated: reported === undefined,
-    })
+    recordSpend(
+      loadPolicy().policy,
+      parsed.model,
+      o.purpose,
+      cost,
+      { input, output: u.output_tokens ?? 0 },
+      {
+        ...o.meta,
+        provider: 'openrouter',
+        latencyMs: Date.now() - started,
+        requestId: parsed.id ?? null,
+        estimated: reported === undefined,
+      },
+    )
 
     // An answer from a model the thresholds were not tuned on is not believed: the
     // alias could move, or the gateway could route elsewhere, and calibrated
@@ -183,9 +194,14 @@ export async function askJev(
  */
 export function refusalOf(body: string): string {
   try {
-    const e = (JSON.parse(body) as {
-      error?: { message?: string; metadata?: { ineligibility_reasons?: { reason?: string; configure_url?: string }[] } }
-    }).error
+    const e = (
+      JSON.parse(body) as {
+        error?: {
+          message?: string
+          metadata?: { ineligibility_reasons?: { reason?: string; configure_url?: string }[] }
+        }
+      }
+    ).error
     const reason = e?.metadata?.ineligibility_reasons?.[0]
     if (reason?.reason) {
       return `${reason.reason.replace(/-/g, ' ')}${reason.configure_url ? ` -- change it at ${reason.configure_url}` : ''}`

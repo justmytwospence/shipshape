@@ -91,7 +91,9 @@ test('Roll back on the left-stopped member of a group puts the running sibling b
     at: now(),
     seen: [],
     up: ['n8n'],
-    left: [{ service: 'n8n-import', state: 'exited', why: 'not-running', restartPolicy: 'no', oldRef: 'n8nio/n8n:2.38.5' }],
+    left: [
+      { service: 'n8n-import', state: 'exited', why: 'not-running', restartPolicy: 'no', oldRef: 'n8nio/n8n:2.38.5' },
+    ],
     restored: [],
   })
   const deployed = Number(
@@ -136,7 +138,8 @@ test('Roll back on the left-stopped member of a group puts the running sibling b
   )
   assert.deepEqual(row!.services.split(' ').sort(), ['n8n', 'n8n-import'])
 
-  const stateOf = (id: number) => (db.prepare(`SELECT state FROM updates WHERE id = ?`).get(id) as { state: string }).state
+  const stateOf = (id: number) =>
+    (db.prepare(`SELECT state FROM updates WHERE id = ?`).get(id) as { state: string }).state
   assert.equal(stateOf(importId), 'failed')
   assert.equal(stateOf(n8nId), 'failed', 'the sibling the revert took back no longer reads verified')
 

@@ -49,7 +49,11 @@ test('a block that lists no breaking change is read as caution', () => {
 })
 
 test('a block that names a breaking change stays a block', () => {
-  const v = normalise({ recommendation: 'block', breaking_changes: ['POSTGRES_HOST renamed to DB_HOST'], confidence: 'high' })
+  const v = normalise({
+    recommendation: 'block',
+    breaking_changes: ['POSTGRES_HOST renamed to DB_HOST'],
+    confidence: 'high',
+  })
   assert.equal(v.recommendation, 'block')
 })
 
@@ -80,7 +84,12 @@ test('an approval that lists work it requires is read as caution', () => {
 type NotesBundle = import('../src/notes/assemble.ts').NotesBundle
 
 const bundle = (o: Partial<NotesBundle> = {}): NotesBundle => ({
-  source: { repo: 'Jackett/Jackett', tier: 'lsio', confidence: 'high', detail: "LinuxServer's API names it as the project" },
+  source: {
+    repo: 'Jackett/Jackett',
+    tier: 'lsio',
+    confidence: 'high',
+    detail: "LinuxServer's API names it as the project",
+  },
   range: { from: 'v0.24.2551-ls23', to: 'v0.24.2554-ls24', approximate: false, basis: 'the tags name the versions' },
   releases: [],
   omitted: [],
@@ -95,12 +104,20 @@ const bundle = (o: Partial<NotesBundle> = {}): NotesBundle => ({
   ...o,
 })
 
-const jackett = { image: 'linuxserver/jackett:v0.24.2551-ls23', fromTag: 'v0.24.2551-ls23', toTag: 'v0.24.2554-ls24', observedAt: '2026-09-11T09:02:45.128Z' }
+const jackett = {
+  image: 'linuxserver/jackett:v0.24.2551-ls23',
+  fromTag: 'v0.24.2551-ls23',
+  toTag: 'v0.24.2554-ls24',
+  observedAt: '2026-09-11T09:02:45.128Z',
+}
 
 test('the prompt states both tags were read from the registry', () => {
   const text = renderPrompt(jackett, bundle())
   assert.match(text, /Current version: v0\.24\.2551-ls23 \(running now\)/)
-  assert.match(text, /Proposed version: v0\.24\.2554-ls24 \(published in the registry, first seen 2026-09-11T09:02:45\.128Z\)/)
+  assert.match(
+    text,
+    /Proposed version: v0\.24\.2554-ls24 \(published in the registry, first seen 2026-09-11T09:02:45\.128Z\)/,
+  )
   assert.match(text, /Both tags were read from the registry and exist/)
 })
 
@@ -108,7 +125,12 @@ test('the prompt says where the repository came from, how sure that is, and what
   const text = renderPrompt(
     { image: 'ttlequals0/minuspod:2.96.15-cpu', fromTag: '2.96.15-cpu', toTag: '2.96.17-cpu' },
     bundle({
-      source: { repo: 'AsamK/signal-cli', tier: 'description', confidence: 'medium', detail: 'linked from its description on GitLab' },
+      source: {
+        repo: 'AsamK/signal-cli',
+        tier: 'description',
+        confidence: 'medium',
+        detail: 'linked from its description on GitLab',
+      },
       range: { from: '2.96.15-cpu', to: '2.96.17-cpu', approximate: false, basis: 'the tags name the versions' },
       fetches: [
         { what: 'releases', outcome: 'rate-limited', detail: "GitHub's rate limit was reached" },
@@ -116,22 +138,32 @@ test('the prompt says where the repository came from, how sure that is, and what
       ],
       changelog: {
         file: 'CHANGELOG.md',
-        sections: [{ heading: '[2.96.17] - 2026-09-10', key: null, unreleased: false, body: '### Added\n- Transcript cache' }],
+        sections: [
+          { heading: '[2.96.17] - 2026-09-10', key: null, unreleased: false, body: '### Added\n- Transcript cache' },
+        ],
         omitted: [],
       },
     }),
   )
-  assert.match(text, /Upstream repository: https:\/\/github\.com\/AsamK\/signal-cli \(identified from linked from its description on GitLab; a likely match, not confirmed\)/)
+  assert.match(
+    text,
+    /Upstream repository: https:\/\/github\.com\/AsamK\/signal-cli \(identified from linked from its description on GitLab; a likely match, not confirmed\)/,
+  )
   assert.match(text, /Version range: after 2\.96\.15-cpu, up to and including 2\.96\.17-cpu\n/)
   assert.match(text, /- releases: rate-limited \(GitHub's rate limit was reached\)/)
-  assert.match(text, /From CHANGELOG\.md, the sections for this range[^\n]*\n\n## \[2\.96\.17\] - 2026-09-10\n### Added/)
+  assert.match(
+    text,
+    /From CHANGELOG\.md, the sections for this range[^\n]*\n\n## \[2\.96\.17\] - 2026-09-10\n### Added/,
+  )
   assert.doesNotMatch(text, /No release notes for this range were retrieved/)
 })
 
 test('an approximate range says it is one, and nothing in range asks for a search', () => {
   const text = renderPrompt(
     { image: 'example/agent:latest', fromTag: 'latest@sha256:aaa', toTag: 'latest@sha256:bbb' },
-    bundle({ range: { from: 'latest@sha256:aaa', to: 'latest@sha256:bbb', approximate: true, basis: 'the tags float' } }),
+    bundle({
+      range: { from: 'latest@sha256:aaa', to: 'latest@sha256:bbb', approximate: true, basis: 'the tags float' },
+    }),
   )
   assert.match(text, /-- approximate: the tags float/)
   assert.match(text, /No release notes for this range were retrieved automatically/)
@@ -149,8 +181,15 @@ test('a confident approval with no notes in the range is read as medium, and not
   assert.equal(normalise({ recommendation: 'approve', confidence: 'high' }, { notesInRange: 0 }).confidence, 'medium')
   assert.equal(normalise({ recommendation: 'approve', confidence: 'high' }, { notesInRange: 2 }).confidence, 'high')
   assert.equal(normalise({ recommendation: 'caution', confidence: 'high' }, { notesInRange: 0 }).confidence, 'high')
-  assert.equal(normalise({ recommendation: 'approve', confidence: 'high' }).confidence, 'high', 'no count, no judgement')
-  assert.equal(normalise({ recommendation: 'approve', confidence: 'high' }, { notesInRange: 0 }).recommendation, 'approve')
+  assert.equal(
+    normalise({ recommendation: 'approve', confidence: 'high' }).confidence,
+    'high',
+    'no count, no judgement',
+  )
+  assert.equal(
+    normalise({ recommendation: 'approve', confidence: 'high' }, { notesInRange: 0 }).recommendation,
+    'approve',
+  )
 })
 
 test('the system prompt forbids blocking on notes that could not be matched', () => {
@@ -175,20 +214,36 @@ beforeEach(() => {
 function seedWaiting(): number {
   const db = getDb()
   const u = Number(
-    db.prepare(
-      `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detail, detected_at, updated_at)
+    db
+      .prepare(
+        `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detail, detected_at, updated_at)
        VALUES ('servarr', 'jackett', ?, ?, ?, 'patch', 'normal', 'detected', NULL, ?, ?)`,
-    ).run(pair.image, pair.from_tag, pair.to_tag, now(), now()).lastInsertRowid,
+      )
+      .run(pair.image, pair.from_tag, pair.to_tag, now(), now()).lastInsertRowid,
   )
   return u
 }
 
-const blockVerdict = { summary: 'tags do not exist', severity: 'high', breaking_changes: ['Version does not exist'], migration_steps: [], recommendation: 'block', confidence: 'low', sources: [] } as const
+const blockVerdict = {
+  summary: 'tags do not exist',
+  severity: 'high',
+  breaking_changes: ['Version does not exist'],
+  migration_steps: [],
+  recommendation: 'block',
+  confidence: 'low',
+  sources: [],
+} as const
 
 function stored() {
   return getDb()
-    .prepare(`SELECT recommendation, error, rerun_requested_at FROM verdicts WHERE image = ? AND from_tag = ? AND to_tag = ?`)
-    .get(pair.image, pair.from_tag, pair.to_tag) as { recommendation: string | null; error: string | null; rerun_requested_at: string | null }
+    .prepare(
+      `SELECT recommendation, error, rerun_requested_at FROM verdicts WHERE image = ? AND from_tag = ? AND to_tag = ?`,
+    )
+    .get(pair.image, pair.from_tag, pair.to_tag) as {
+    recommendation: string | null
+    error: string | null
+    rerun_requested_at: string | null
+  }
 }
 
 test('an update held as unsafe offers a second reading, and asking for one flags rather than deletes', async () => {
@@ -196,7 +251,10 @@ test('an update held as unsafe offers a second reading, and asking for one flags
   recordVerdict(pair, blockVerdict as never)
 
   const ctx = contextFor(id)!.ctx
-  assert.deepEqual(ctx.holds!.map((h) => h.kind), ['unsafe'])
+  assert.deepEqual(
+    ctx.holds!.map((h) => h.kind),
+    ['unsafe'],
+  )
   assert.ok(actionsFor(ctx).includes('rerun-review'), 'a verdict that is in the way is the one worth disputing')
 
   const r = await runVerb(id, 'rerun-review')

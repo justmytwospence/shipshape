@@ -41,60 +41,58 @@ export interface Proposal {
  */
 const OPS_SCHEMA = {
   type: 'array',
-  description:
-    'Compose changes to apply to this service. Empty when the update needs no config change.',
+  description: 'Compose changes to apply to this service. Empty when the update needs no config change.',
   items: {
-          type: 'object',
-          properties: {
-            op: {
-              type: 'string',
-              enum: [
-                'set_image',
-                'set_env',
-                'remove_env',
-                'rename_env',
-                'set_label',
-                'remove_label',
-                'set_path',
-                'remove_path',
-                'rename_path',
-                'replace_text',
-              ],
-            },
-            image: { type: 'string', description: 'set_image: the full new image reference.' },
-            key: { type: 'string', description: 'The environment variable or label name.' },
-            value: {
-              type: 'string',
-              description:
-                'Raw YAML scalar text. Quote it yourself if it needs quoting. Never invent a secret.',
-            },
-            from: { type: 'string', description: 'rename_env: the current name.' },
-            to: { type: 'string', description: 'rename_env: the new name.' },
-            service: {
-              type: 'string',
-              description:
-                'Which service to change. Omit for the service being updated. Only services you were told you may change are accepted.',
-            },
-            file: {
-              type: 'string',
-              description:
-                'Repo-relative YAML file to change. Omit for this service\'s compose file. Only files inside the boundary you were given are accepted.',
-            },
-            find: {
-              type: 'string',
-              description:
-                'replace_text: the exact text to replace. It must appear exactly once in the file — an anchor matching zero or several places is refused, so include enough surrounding context to be unambiguous.',
-            },
-            replace: {
-              type: 'string',
-              description: 'replace_text: what to put there. Empty removes the anchor.',
-            },
-            path: {
-              type: 'array',
-              items: { type: 'string' },
-              description:
-                'set_path / remove_path / rename_path: the key path in the document, outermost first. The parent must already exist; structure is never invented.',
-            },
+    type: 'object',
+    properties: {
+      op: {
+        type: 'string',
+        enum: [
+          'set_image',
+          'set_env',
+          'remove_env',
+          'rename_env',
+          'set_label',
+          'remove_label',
+          'set_path',
+          'remove_path',
+          'rename_path',
+          'replace_text',
+        ],
+      },
+      image: { type: 'string', description: 'set_image: the full new image reference.' },
+      key: { type: 'string', description: 'The environment variable or label name.' },
+      value: {
+        type: 'string',
+        description: 'Raw YAML scalar text. Quote it yourself if it needs quoting. Never invent a secret.',
+      },
+      from: { type: 'string', description: 'rename_env: the current name.' },
+      to: { type: 'string', description: 'rename_env: the new name.' },
+      service: {
+        type: 'string',
+        description:
+          'Which service to change. Omit for the service being updated. Only services you were told you may change are accepted.',
+      },
+      file: {
+        type: 'string',
+        description:
+          "Repo-relative YAML file to change. Omit for this service's compose file. Only files inside the boundary you were given are accepted.",
+      },
+      find: {
+        type: 'string',
+        description:
+          'replace_text: the exact text to replace. It must appear exactly once in the file — an anchor matching zero or several places is refused, so include enough surrounding context to be unambiguous.',
+      },
+      replace: {
+        type: 'string',
+        description: 'replace_text: what to put there. Empty removes the anchor.',
+      },
+      path: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'set_path / remove_path / rename_path: the key path in the document, outermost first. The parent must already exist; structure is never invented.',
+      },
     },
     required: ['op'],
   },
@@ -110,8 +108,7 @@ const NOTES_SCHEMA = {
 
 const PROPOSE_CHANGES = {
   name: 'propose_changes',
-  description:
-    'Record the compose changes this update requires, plus anything the operator must do by hand.',
+  description: 'Record the compose changes this update requires, plus anything the operator must do by hand.',
   input_schema: {
     type: 'object' as const,
     properties: {
@@ -123,7 +120,6 @@ const PROPOSE_CHANGES = {
     required: ['ops', 'notes', 'summary', 'sources'],
   },
 }
-
 
 export interface ProposeInput {
   image: string
@@ -144,7 +140,10 @@ export async function propose(input: ProposeInput): Promise<Proposal | { error: 
   const { policy } = loadPolicy()
   if (!llmConfigured()) return { error: missingKeyMessage() }
   if (!policy.review.code_model.trim()) {
-    return { error: 'no code model is set: a custom endpoint (LLM_BASE_URL) has no default, so set review.code_model in the policy file' }
+    return {
+      error:
+        'no code model is set: a custom endpoint (LLM_BASE_URL) has no default, so set review.code_model in the policy file',
+    }
   }
 
   const client = llmClient(2)
@@ -171,8 +170,7 @@ export async function propose(input: ProposeInput): Promise<Proposal | { error: 
     )
 
     const call = res.content.find(
-      (b): b is Extract<typeof b, { type: 'tool_use' }> =>
-        b.type === 'tool_use' && b.name === 'propose_changes',
+      (b): b is Extract<typeof b, { type: 'tool_use' }> => b.type === 'tool_use' && b.name === 'propose_changes',
     )
     recordCost(res.usage, policy, policy.review.code_model, 'proposal', {
       ...meta,

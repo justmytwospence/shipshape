@@ -25,8 +25,17 @@ delete process.env.SMTP_URL
 
 const { getDb } = await import('../src/db/index.ts')
 const { setMinSpacingForTests } = await import('../src/registry/http.ts')
-const { checkFork, reconcileForks, forkRefs, forkVerdict, forkIncidentKey, newestUpstreamTag, recordForkConflict, forkConflictFor, forkConflictKey } =
-  await import('../src/forks.ts')
+const {
+  checkFork,
+  reconcileForks,
+  forkRefs,
+  forkVerdict,
+  forkIncidentKey,
+  newestUpstreamTag,
+  recordForkConflict,
+  forkConflictFor,
+  forkConflictKey,
+} = await import('../src/forks.ts')
 const { eligibleGroups } = await import('../src/gitops/eligible.ts')
 const { isFork } = await import('../src/images/rows.ts')
 const { PolicySchema } = await import('../src/policy-schema.ts')
@@ -77,7 +86,9 @@ function seedImage(svc: ScannedService): void {
 }
 
 beforeEach(() => {
-  getDb().exec(`DELETE FROM images; DELETE FROM updates; DELETE FROM fork_refs; DELETE FROM incidents; DELETE FROM events; DELETE FROM http_cache;`)
+  getDb().exec(
+    `DELETE FROM images; DELETE FROM updates; DELETE FROM fork_refs; DELETE FROM incidents; DELETE FROM events; DELETE FROM http_cache;`,
+  )
 })
 
 /** The fake GitHub plus the fake router, which records what it was handed. */
@@ -97,12 +108,16 @@ function world(t: Parameters<typeof mockFetch>[0], gh: Parameters<typeof mockFet
 }
 
 const mergedPr = (n: number, sha: string) => [
-  { url: `${API}/issues/${n}`, reply: () => json({ state: 'closed', state_reason: null, pull_request: { merged_at: 'x' } }) },
+  {
+    url: `${API}/issues/${n}`,
+    reply: () => json({ state: 'closed', state_reason: null, pull_request: { merged_at: 'x' } }),
+  },
   { url: `${API}/pulls/${n}`, reply: () => json({ state: 'closed', merged: true, merge_commit_sha: sha }) },
 ]
 const releases = (tags: string[]) => ({
   url: `${API}/releases?per_page=100&page=1`,
-  reply: () => json(tags.map((t) => ({ tag_name: t, name: t, published_at: null, body: '', draft: false, prerelease: false }))),
+  reply: () =>
+    json(tags.map((t) => ({ tag_name: t, name: t, published_at: null, body: '', draft: false, prerelease: false }))),
 })
 const compare = (sha: string, tag: string, st: string) => ({
   url: `${API}/compare/${sha}...${encodeURIComponent(tag)}`,
@@ -138,7 +153,11 @@ test('waiting is silent: a merged, unreleased fix is recorded and sends nothing'
 test('a release that carries every fix sends one incident, and the same scan tomorrow sends nothing', async (t) => {
   const svc = fork(['o/r#1'])
   seedImage(svc)
-  const { h, wire } = world(t, [...mergedPr(1, 'f00d'), releases(['v1.3.0', 'v1.2.0']), compare('f00d', 'v1.3.0', 'ahead')])
+  const { h, wire } = world(t, [
+    ...mergedPr(1, 'f00d'),
+    releases(['v1.3.0', 'v1.2.0']),
+    compare('f00d', 'v1.3.0', 'ahead'),
+  ])
   await checkFork(svc)
   assert.equal(wire.length, 1)
   const sent = wire[0]!
@@ -201,7 +220,11 @@ test('a failed lookup keeps what the last one found, and does not resolve an ope
   seedImage(svc)
   let down = false
   const { h, wire } = world(t, [
-    { url: `${API}/issues/1`, reply: () => (down ? status(500) : json({ state: 'closed', state_reason: null, pull_request: { merged_at: 'x' } })) },
+    {
+      url: `${API}/issues/1`,
+      reply: () =>
+        down ? status(500) : json({ state: 'closed', state_reason: null, pull_request: { merged_at: 'x' } }),
+    },
     { url: `${API}/pulls/1`, reply: () => json({ state: 'closed', merged: true, merge_commit_sha: 'f00d' }) },
     releases(['v1.3.0']),
     compare('f00d', 'v1.3.0', 'ahead'),
@@ -231,7 +254,11 @@ test('dropping the fork labels resolves the incident and forgets the references'
   assert.deepEqual(wire[1], { key: KEY, source: 'shipshape', status: 'resolved' })
   assert.deepEqual(forkRefs('books', 'app'), [])
   assert.equal(
-    (getDb().prepare(`SELECT fork_notified FROM images WHERE service = 'app'`).get() as { fork_notified: string | null }).fork_notified,
+    (
+      getDb().prepare(`SELECT fork_notified FROM images WHERE service = 'app'`).get() as {
+        fork_notified: string | null
+      }
+    ).fork_notified,
     null,
   )
   // And once more changes nothing.

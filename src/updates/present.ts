@@ -49,7 +49,10 @@ function othersOf(f: PresentFacts): string | null {
   const others = f.members.filter((m) => !(m.stack === f.stack && m.service === f.service))
   if (others.length === 0) return null
   return others.length > 4
-    ? `${others.slice(0, 4).map((m) => m.service).join(', ')} and ${others.length - 4} more`
+    ? `${others
+        .slice(0, 4)
+        .map((m) => m.service)
+        .join(', ')} and ${others.length - 4} more`
     : others.map((m) => m.service).join(', ')
 }
 
@@ -92,7 +95,10 @@ export function present(verbs: Verb[], f: PresentFacts, policy: Policy): Partial
     } else if (verb === 'always-ship') {
       out[verb] = {
         label: 'Always ship',
-        steps: [`write a standing rule to ${policyFileState().rel}, as a commit, for this kind of update`, ...shipSteps(f, policy)],
+        steps: [
+          `write a standing rule to ${policyFileState().rel}, as a commit, for this kind of update`,
+          ...shipSteps(f, policy),
+        ],
       }
     } else if (verb === 'snooze') {
       out[verb] = { label: 'Snooze 1 week' }

@@ -48,20 +48,14 @@ export function assertAllMocked(h: FetchHarness): void {
   assert.deepEqual(h.unmatched, [], 'every request should have matched a mocked route')
 }
 
-export function json(
-  body: unknown,
-  init: { status?: number; headers?: Record<string, string> } = {},
-): Response {
+export function json(body: unknown, init: { status?: number; headers?: Record<string, string> } = {}): Response {
   return new Response(JSON.stringify(body), {
     status: init.status ?? 200,
     headers: { 'content-type': 'application/json', ...init.headers },
   })
 }
 
-export function text(
-  body: string,
-  init: { status?: number; headers?: Record<string, string> } = {},
-): Response {
+export function text(body: string, init: { status?: number; headers?: Record<string, string> } = {}): Response {
   return new Response(body, { status: init.status ?? 200, headers: init.headers })
 }
 

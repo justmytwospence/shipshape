@@ -27,9 +27,28 @@ export type Relation = 'same' | 'close' | null
 
 /** Words too generic to tie an image to a repository on their own: `server` is in half of them. */
 const GENERIC = new Set([
-  'agent', 'api', 'app', 'backend', 'base', 'build', 'client', 'community', 'container', 'core',
-  'daemon', 'docker', 'frontend', 'image', 'latest', 'main', 'official', 'release', 'server',
-  'service', 'stable', 'web',
+  'agent',
+  'api',
+  'app',
+  'backend',
+  'base',
+  'build',
+  'client',
+  'community',
+  'container',
+  'core',
+  'daemon',
+  'docker',
+  'frontend',
+  'image',
+  'latest',
+  'main',
+  'official',
+  'release',
+  'server',
+  'service',
+  'stable',
+  'web',
 ])
 
 /** Lower case, packaging words and punctuation gone: `crazy-max` and `crazymax` are one owner,
@@ -64,7 +83,7 @@ export function imageParts(repository: string): { namespace: string | null; name
   return { namespace: segs[0] === 'library' ? null : segs[0]!, names: segs.slice(1) }
 }
 
-const better = (a: Relation, b: Relation): Relation => (a === 'same' || b === 'same' ? 'same' : a ?? b)
+const better = (a: Relation, b: Relation): Relation => (a === 'same' || b === 'same' ? 'same' : (a ?? b))
 
 /**
  * How the repository's name relates to the image's name: any segment after the namespace,
@@ -91,11 +110,42 @@ export function ownerRelation(repository: string, repo: string): Relation {
 
 /** Accounts a description links for reasons that have nothing to do with the image's source. */
 const NOT_PROJECTS = new Set([
-  'about', 'actions', 'apps', 'badges', 'codespaces', 'collections', 'contact', 'dependabot',
-  'docker', 'docker-library', 'enterprise', 'explore', 'features', 'github', 'issues', 'join',
-  'login', 'marketplace', 'moby', 'new', 'notifications', 'orgs', 'organizations', 'pricing',
-  'pulls', 'readme', 'renovatebot', 'search', 'security', 'settings', 'site', 'sponsors',
-  'topics', 'trending', 'user-attachments', 'users',
+  'about',
+  'actions',
+  'apps',
+  'badges',
+  'codespaces',
+  'collections',
+  'contact',
+  'dependabot',
+  'docker',
+  'docker-library',
+  'enterprise',
+  'explore',
+  'features',
+  'github',
+  'issues',
+  'join',
+  'login',
+  'marketplace',
+  'moby',
+  'new',
+  'notifications',
+  'orgs',
+  'organizations',
+  'pricing',
+  'pulls',
+  'readme',
+  'renovatebot',
+  'search',
+  'security',
+  'settings',
+  'site',
+  'sponsors',
+  'topics',
+  'trending',
+  'user-attachments',
+  'users',
 ])
 
 // Not preceded by a dot, so api.github.com and gist.github.com never match.
@@ -130,10 +180,7 @@ export interface RankedMention {
  * image: name and owner both is `high`, one of them `medium`, neither is dropped. The caller
  * takes the unique best; two at the same score is ambiguity, not an answer.
  */
-export function rankMentions(
-  repository: string,
-  mentions: string[],
-): { ranked: RankedMention[]; packaging: string[] } {
+export function rankMentions(repository: string, mentions: string[]): { ranked: RankedMention[]; packaging: string[] } {
   const ranked: RankedMention[] = []
   const packaging: string[] = []
   const points = (r: Relation) => (r === 'same' ? 2 : r ? 1 : 0)
@@ -157,7 +204,11 @@ export function rankMentions(
       // Name and owner together outrank either; a name outranks an owner, which only says
       // "the same organisation".
       score: both ? 10 + points(name) + points(owner) : name ? 5 + points(name) : points(owner),
-      why: both ? 'its name and owner match the image' : name ? 'its name matches the image' : 'its owner matches the image',
+      why: both
+        ? 'its name and owner match the image'
+        : name
+          ? 'its name matches the image'
+          : 'its owner matches the image',
     })
   }
   ranked.sort((a, b) => b.score - a.score)
@@ -189,12 +240,37 @@ export function buildFileUpstream(text: string): string | null {
 // ------------------------------------------------------------------ inherited labels
 
 /** Repositories whose images other images are built FROM. */
-const BASE_OWNERS = /^(docker-library|debuerreotype|tianon|alpinelinux|canonical|GoogleContainerTools|chainguard-images|wolfi-dev|nodejs|phusion|just-containers|NVIDIA)\//i
+const BASE_OWNERS =
+  /^(docker-library|debuerreotype|tianon|alpinelinux|canonical|GoogleContainerTools|chainguard-images|wolfi-dev|nodejs|phusion|just-containers|NVIDIA)\//i
 const BASE_NAMES = /baseimage|base-image|distroless|^docker-(alpine|debian|ubuntu|node|python)$/i
 const BASE_TITLES = new Set([
-  'almalinux', 'alpine', 'amazonlinux', 'bookworm', 'bullseye', 'busybox', 'centos', 'cuda',
-  'debian', 'distroless', 'eclipse-temurin', 'fedora', 'focal', 'go', 'golang', 'jammy', 'nginx',
-  'node', 'noble', 'openjdk', 'php', 'python', 'rockylinux', 'ruby', 'rust', 'ubuntu', 'wolfi',
+  'almalinux',
+  'alpine',
+  'amazonlinux',
+  'bookworm',
+  'bullseye',
+  'busybox',
+  'centos',
+  'cuda',
+  'debian',
+  'distroless',
+  'eclipse-temurin',
+  'fedora',
+  'focal',
+  'go',
+  'golang',
+  'jammy',
+  'nginx',
+  'node',
+  'noble',
+  'openjdk',
+  'php',
+  'python',
+  'rockylinux',
+  'ruby',
+  'rust',
+  'ubuntu',
+  'wolfi',
 ])
 
 /**

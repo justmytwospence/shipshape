@@ -52,13 +52,9 @@ export function registryName(registry: string): string {
   }
 }
 
-export function refLinks(
-  ref: ImageRef,
-  tag: string | null,
-  sourceRepo: string | null,
-): RefLinks {
+export function refLinks(ref: ImageRef, tag: string | null, sourceRepo: string | null): RefLinks {
   // Tag pages are keyed by name; a digest suffix belongs to no tag page anywhere.
-  const clean = tag ? (tag.split('@')[0] || null) : null
+  const clean = tag ? tag.split('@')[0] || null : null
 
   const out: RefLinks = {
     image: null,
@@ -102,9 +98,7 @@ export function refLinks(
       // lscr is a redirector; its own host serves no browsable page. Fleet is the
       // canonical index, and the Docker Hub mirror is the only place with a tag list.
       out.image = `https://fleet.linuxserver.io/image?name=${repo}`
-      out.tag = clean
-        ? `https://hub.docker.com/r/${repo}/tags?name=${encodeURIComponent(clean)}`
-        : null
+      out.tag = clean ? `https://hub.docker.com/r/${repo}/tags?name=${encodeURIComponent(clean)}` : null
       break
     }
 
@@ -122,9 +116,7 @@ export function refLinks(
 
     case 'quay.io': {
       out.image = `https://quay.io/repository/${repo}?tab=tags`
-      out.tag = clean
-        ? `${out.image}&filter_tag_name=like:${encodeURIComponent(clean)}`
-        : null
+      out.tag = clean ? `${out.image}&filter_tag_name=like:${encodeURIComponent(clean)}` : null
       break
     }
 

@@ -13,7 +13,6 @@ export interface GitRemote {
   webUrl: string | null
 }
 
-
 export function parseRemote(rawUrl: string, githubRepo: string): GitRemote {
   const url = rawUrl.trim() || (githubRepo ? `https://github.com/${githubRepo}.git` : '')
   if (!url) return { url: '', kind: 'none', host: '', webUrl: null }
@@ -36,7 +35,6 @@ export function parseRemote(rawUrl: string, githubRepo: string): GitRemote {
   return { url, kind: 'unsupported', host: '', webUrl: null }
 }
 
-
 /** The compose repository's credentials. GITHUB_TOKEN is the default only on github.com. */
 export function resolveGitCredentials(
   remote: GitRemote,
@@ -50,7 +48,6 @@ export function resolveGitCredentials(
   }
 }
 
-
 /** Why shipping cannot push yet, in the words the ship pass and Status use; null when it can. */
 export function credentialProblem(remote: GitRemote, creds: { token: string; username: string }): string | null {
   if (remote.kind !== 'https') return null
@@ -59,12 +56,12 @@ export function credentialProblem(remote: GitRemote, creds: { token: string; use
   return null
 }
 
-
 /** Branch names shipshape will publish to: no leading '-', no '..', no trailing '/' or '.lock'. */
 export function validBranch(b: string): boolean {
-  return /^[A-Za-z0-9._][A-Za-z0-9._/-]{0,199}$/.test(b) && !b.includes('..') && !b.endsWith('/') && !b.endsWith('.lock')
+  return (
+    /^[A-Za-z0-9._][A-Za-z0-9._/-]{0,199}$/.test(b) && !b.includes('..') && !b.endsWith('/') && !b.endsWith('.lock')
+  )
 }
-
 
 /** GIT_BRANCH, else the branch `refs/remotes/origin/HEAD` names in the live checkout, else `main`. */
 export function resolveBranch(explicit: string | undefined, repoDir: string): string {
@@ -86,28 +83,23 @@ export function resolveBranch(explicit: string | undefined, repoDir: string): st
   return 'main'
 }
 
-
 const rawRepoDir = process.env.REPO_DIR ?? ''
-
 
 const rawGithubRepo = process.env.GITHUB_REPO ?? ''
 
-
 const givenGithubRepo = /^[\w.-]+\/[\w.-]+$/.test(rawGithubRepo) ? rawGithubRepo : ''
-
 
 const remote = parseRemote(process.env.GIT_REMOTE_URL ?? '', givenGithubRepo)
 
-
 const creds = resolveGitCredentials(remote, process.env)
-
 
 const githubRepo =
   remote.kind === 'https' && remote.host !== 'github.com'
     ? ''
     : givenGithubRepo ||
-      (remote.host === 'github.com' ? (/^https?:\/\/github\.com\/([^/]+\/[^/]+)$/i.exec(remote.webUrl ?? '')?.[1] ?? '') : '')
-
+      (remote.host === 'github.com'
+        ? (/^https?:\/\/github\.com\/([^/]+\/[^/]+)$/i.exec(remote.webUrl ?? '')?.[1] ?? '')
+        : '')
 
 export const env = {
   /** The checkout of the compose repository. Must be mounted at the identical path
@@ -167,16 +159,13 @@ export const env = {
   uiDev: !!process.env.SHIPSHAPE_UI_DEV,
 } as const
 
-
 export function gitBranch(): string {
   return env.gitBranch
 }
 
-
 export function gitCredentialProblem(): string | null {
   return credentialProblem(env.gitRemote, { token: env.gitToken, username: env.gitUsername })
 }
-
 
 /** The variable an operator fixes: GIT_TOKEN when set or when the host is not GitHub, else GITHUB_TOKEN. */
 export function gitCredentialName(): string {
@@ -185,18 +174,15 @@ export function gitCredentialName(): string {
   return 'GITHUB_TOKEN'
 }
 
-
 /** Whether a commit made in the live checkout can be published right now. */
 export function canPublish(): boolean {
   return env.gitRemote.kind === 'local' || (env.gitRemote.kind === 'https' && gitCredentialProblem() === null)
 }
 
-
 /** The UI's browser origin; read at call time because tests and operators change it without a new import. */
 export function allowedOrigin(): string | undefined {
   return process.env.SHIPSHAPE_ALLOWED_ORIGIN
 }
-
 
 /**
  * POLICY_FILE; else $REPO_DIR/shipshape.yaml if present; else the older
@@ -215,11 +201,9 @@ export function resolvePolicyPath(
   return !exists(root) && exists(legacy) ? legacy : root
 }
 
-
 function policyPath(): string {
   return resolvePolicyPath(env.repoDir, env.selfStack, process.env.POLICY_FILE)
 }
-
 
 export const paths = {
   db: join(env.dataDir, 'shipshape.db'),
@@ -229,18 +213,14 @@ export const paths = {
   policy: policyPath(),
 } as const
 
-
 /** The MCP listener runs only with a port and a token of at least 32 characters. */
 export const MCP_TOKEN_MIN = 32
-
 
 export function mcpEnabled(): boolean {
   return env.mcpPort !== null && env.mcpToken.length >= MCP_TOKEN_MIN
 }
 
-
 export type LlmProvider = 'custom' | 'anthropic' | 'openrouter' | 'none'
-
 
 /** Who serves the Messages API. Pure, so the defaults below and the client agree. */
 export function providerOf(k: { llmBaseUrl: string; anthropicApiKey: string; openrouterApiKey: string }): LlmProvider {
@@ -250,18 +230,15 @@ export function providerOf(k: { llmBaseUrl: string; anthropicApiKey: string; ope
   return 'none'
 }
 
-
 /** Git author arguments for tool-authored commits. */
 export function botIdentity(): string[] {
   return ['-c', 'user.name=shipshape', '-c', `user.email=${env.botEmail}`]
 }
 
-
 export interface MissingSetting {
   name: string
   why: string
 }
-
 
 /**
  * Whether shipshape has enough configuration to do anything at all.
@@ -308,7 +285,6 @@ export function missingSettings(i: {
   if (!validBranch(i.branch)) missing.push({ name: 'GIT_BRANCH', why: `"${i.branch}" is not a usable branch name` })
   return missing
 }
-
 
 export function configured(): { ok: true } | { ok: false; missing: MissingSetting[] } {
   const missing = missingSettings({

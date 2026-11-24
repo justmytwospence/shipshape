@@ -47,8 +47,17 @@ function image(
                            current_tag, watched, source_label, last_seen_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
     )
-    .run(stack, service, `${stack}/docker-compose.yaml`, `${img.repository}:${o.tag ?? '1.0'}`,
-      img.registry, img.repository, o.tag ?? '1.0', o.label ?? null, new Date().toISOString())
+    .run(
+      stack,
+      service,
+      `${stack}/docker-compose.yaml`,
+      `${img.repository}:${o.tag ?? '1.0'}`,
+      img.registry,
+      img.repository,
+      o.tag ?? '1.0',
+      o.label ?? null,
+      new Date().toISOString(),
+    )
 }
 
 function cached(
@@ -62,15 +71,33 @@ function cached(
                                 checked_at, next_check_at, attempts, resolver_version)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
     )
-    .run(img.registry, img.repository, o.source_url ?? null, o.tier ?? 'none',
-      o.source_url ? 'high' : null, now, now, o.next_check_at ?? null, o.resolver_version ?? 1)
+    .run(
+      img.registry,
+      img.repository,
+      o.source_url ?? null,
+      o.tier ?? 'none',
+      o.source_url ? 'high' : null,
+      now,
+      now,
+      o.next_check_at ?? null,
+      o.resolver_version ?? 1,
+    )
 }
 
 function stored(img: { registry: string; repository: string }) {
   return getDb()
-    .prepare(`SELECT source_url, tier, confidence, attempts, error, next_check_at FROM resolutions WHERE registry = ? AND repository = ?`)
+    .prepare(
+      `SELECT source_url, tier, confidence, attempts, error, next_check_at FROM resolutions WHERE registry = ? AND repository = ?`,
+    )
     .get(img.registry, img.repository) as
-    | { source_url: string | null; tier: string; confidence: string | null; attempts: number; error: string | null; next_check_at: string | null }
+    | {
+        source_url: string | null
+        tier: string
+        confidence: string | null
+        attempts: number
+        error: string | null
+        next_check_at: string | null
+      }
     | undefined
 }
 
@@ -80,10 +107,17 @@ const annotated = (repo: string) =>
 
 // On Docker Hub the free tiers go around the billed walk: the image's page before it, and a
 // repository with the image's name after. Every annotation found is checked against GitHub.
-const HUB_PAGE = { url: 'https://hub.docker.com/v2/repositories/ttlequals0/minuspod/', reply: () => json({ description: 'Removes ads.' }) }
+const HUB_PAGE = {
+  url: 'https://hub.docker.com/v2/repositories/ttlequals0/minuspod/',
+  reply: () => json({ description: 'Removes ads.' }),
+}
 const NO_NAMESAKE = { url: 'https://api.github.com/repos/ttlequals0/minuspod', reply: () => status(404) }
-const MINUSPOD_REPO = { url: 'https://api.github.com/repos/ttlequals0/MinusPod', reply: () => json({ full_name: 'ttlequals0/MinusPod' }) }
-const pulls = (h: { calls: { url: string }[] }) => h.calls.filter((c) => c.url.startsWith('https://registry-1.docker.io/')).length
+const MINUSPOD_REPO = {
+  url: 'https://api.github.com/repos/ttlequals0/MinusPod',
+  reply: () => json({ full_name: 'ttlequals0/MinusPod' }),
+}
+const pulls = (h: { calls: { url: string }[] }) =>
+  h.calls.filter((c) => c.url.startsWith('https://registry-1.docker.io/')).length
 
 // -------------------------------------------------------------------------------------
 // Labels, per image
@@ -145,7 +179,7 @@ test('a labelled image is never looked up, and the label is never cached', async
   assertAllMocked(h)
 })
 
-test("signal-cli: a label beats the none that was cached before it", () => {
+test('signal-cli: a label beats the none that was cached before it', () => {
   const img = { registry: 'registry.gitlab.com', repository: 'packaging/signal-cli/signal-cli-native' }
   image('openclaw', 'signal-cli', img, { label: 'https://github.com/AsamK/signal-cli' })
   cached(img, { tier: 'none' })
@@ -174,16 +208,31 @@ test('a curated image needs no network at all, and is kept for good', async (t) 
   const s = await sourceFor(pg, { tag: '17' })
   assert.equal(s.repo, 'postgres/postgres')
   assert.equal(s.tier, 'override')
-  assert.deepEqual({ ...stored(pg), next_check_at: stored(pg)?.next_check_at }, {
-    source_url: 'postgres/postgres', tier: 'override', confidence: 'high', attempts: 0, error: null, next_check_at: null,
-  })
+  assert.deepEqual(
+    { ...stored(pg), next_check_at: stored(pg)?.next_check_at },
+    {
+      source_url: 'postgres/postgres',
+      tier: 'override',
+      confidence: 'high',
+      attempts: 0,
+      error: null,
+      next_check_at: null,
+    },
+  )
   assertAllMocked(h)
 })
 
 test('a Docker Hub budget stop is recorded as a failure and retried, not cached as none', async (t) => {
   image('minuspod', 'minuspod', HUB, { tag: '2.96.17-cpu' })
-  getDb().prepare(`INSERT INTO budgets (key, value, window, updated_at) VALUES ('dockerhub.pulls', 10, NULL, ?)`).run(new Date().toISOString())
-  const h = mockFetch(t, [HUB_PAGE, NO_NAMESAKE, MINUSPOD_REPO, { url: MANIFEST, reply: () => annotated('ttlequals0/MinusPod') }])
+  getDb()
+    .prepare(`INSERT INTO budgets (key, value, window, updated_at) VALUES ('dockerhub.pulls', 10, NULL, ?)`)
+    .run(new Date().toISOString())
+  const h = mockFetch(t, [
+    HUB_PAGE,
+    NO_NAMESAKE,
+    MINUSPOD_REPO,
+    { url: MANIFEST, reply: () => annotated('ttlequals0/MinusPod') },
+  ])
 
   const first = await sourceFor(HUB)
   assert.equal(first.repo, null)
@@ -204,9 +253,14 @@ test('a Docker Hub budget stop is recorded as a failure and retried, not cached 
   getDb().prepare(`UPDATE resolutions SET next_check_at = ?`).run(past())
   const later = await sourceFor(HUB)
   assert.equal(later.repo, 'ttlequals0/MinusPod')
-  assert.deepEqual({ tier: stored(HUB)!.tier, error: stored(HUB)!.error, attempts: stored(HUB)!.attempts }, {
-    tier: 'annotation', error: null, attempts: 0,
-  })
+  assert.deepEqual(
+    { tier: stored(HUB)!.tier, error: stored(HUB)!.error, attempts: stored(HUB)!.attempts },
+    {
+      tier: 'annotation',
+      error: null,
+      attempts: 0,
+    },
+  )
   assertAllMocked(h)
 })
 
@@ -273,11 +327,20 @@ test('a LinuxServer API outage is a failure, never the packaging repo, and is no
       url: LSIO,
       reply: () =>
         up
-          ? json({ data: { repositories: { linuxserver: [{ name: 'heimdall', project_url: 'https://github.com/linuxserver/Heimdall' }] } } })
+          ? json({
+              data: {
+                repositories: {
+                  linuxserver: [{ name: 'heimdall', project_url: 'https://github.com/linuxserver/Heimdall' }],
+                },
+              },
+            })
           : status(503),
     },
     // The manifest walk would find linuxserver/docker-heimdall. It must not be reached.
-    { url: 'https://api.github.com/repos/linuxserver/Heimdall', reply: () => json({ full_name: 'linuxserver/Heimdall' }) },
+    {
+      url: 'https://api.github.com/repos/linuxserver/Heimdall',
+      reply: () => json({ full_name: 'linuxserver/Heimdall' }),
+    },
   ])
 
   const down = await sourceFor(heimdall)

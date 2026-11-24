@@ -17,7 +17,15 @@ test('with no key, a custom endpoint is sent no credential at all', async (t) =>
     {
       url: 'http://ollama.invalid:11434/v1/messages',
       reply: () =>
-        json({ id: 'm', type: 'message', role: 'assistant', model: 'x', content: [], stop_reason: 'end_turn', usage: { input_tokens: 1, output_tokens: 1 } }),
+        json({
+          id: 'm',
+          type: 'message',
+          role: 'assistant',
+          model: 'x',
+          content: [],
+          stop_reason: 'end_turn',
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }),
     },
   ])
   await llmClient(0).messages.create({ model: 'qwen3', max_tokens: 10, messages: [{ role: 'user', content: 'x' }] })

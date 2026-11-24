@@ -13,12 +13,9 @@ import { BASELINE_SQL, BASELINE_THROUGH } from './schema.ts'
 
 export type Db = Database.Database
 
-
 let db: Db | null = null
 
-
 let closed = false
-
 
 export function getDb(): Db {
   if (db) return db
@@ -36,7 +33,6 @@ export function getDb(): Db {
   return db
 }
 
-
 /** Close the database for good: the last step of shutdown. */
 export function closeDb(): void {
   closed = true
@@ -46,9 +42,6 @@ export function closeDb(): void {
   }
 }
 
-
-
-
 /**
  * Bring a database up to date. A new one (no migration recorded, no table yet) is built
  * from the generated baseline and every chain entry it covers is recorded as applied; then
@@ -57,7 +50,12 @@ export function closeDb(): void {
 function migrate(d: Db): void {
   d.exec(`CREATE TABLE IF NOT EXISTS _migrations (id TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`)
   const recorded = () =>
-    new Set(d.prepare(`SELECT id FROM _migrations`).all().map((r) => (r as { id: string }).id))
+    new Set(
+      d
+        .prepare(`SELECT id FROM _migrations`)
+        .all()
+        .map((r) => (r as { id: string }).id),
+    )
   if (recorded().size === 0) {
     const tables = d
       .prepare(

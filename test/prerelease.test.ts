@@ -35,7 +35,11 @@ test('n8n on a stable release is on the stable stream, and its betas are set asi
   const excluded = prereleaseExclusions(tags, N8N, s)
   assert.deepEqual([...excluded].sort(), ['2.39.0', '2.39.1'])
 
-  const cmp = selectUpdate({ currentTag: '2.38.4', availableTags: tags.filter((t) => !excluded.has(t)), kind: 'semver' })
+  const cmp = selectUpdate({
+    currentTag: '2.38.4',
+    availableTags: tags.filter((t) => !excluded.has(t)),
+    kind: 'semver',
+  })
   assert.equal(cmp.status === 'update' && cmp.tag, '2.38.5', 'the real patch still arrives')
 })
 

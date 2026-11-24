@@ -24,7 +24,6 @@ export function downAfter(outcome: Extract<DeployOutcome, { ok: false }>, strate
   return strategy === 'rm-first' && !(after.length > 0 && after.every((a) => countsAsRunning(a.state)))
 }
 
-
 /**
  * What a failed deploy left behind, in the operator's terms.
  *
@@ -33,10 +32,14 @@ export function downAfter(outcome: Extract<DeployOutcome, { ok: false }>, strate
  * failed before recreating anything. `inspect` never got as far as anything, whatever the
  * strategy -- the read comes before the removal -- and `pull` stopped before the removal too.
  */
-export function failureState(outcome: Extract<DeployOutcome, { ok: false }>, strategy: DeployTarget['strategy']): string {
+export function failureState(
+  outcome: Extract<DeployOutcome, { ok: false }>,
+  strategy: DeployTarget['strategy'],
+): string {
   if (outcome.phase === 'inspect') return 'Nothing was touched: shipshape does not guess whether a service is running.'
   if (outcome.phase === 'pull') return 'Nothing was removed or recreated; the service is running whatever it was.'
-  if (outcome.phase === 'build') return 'The build failed before anything was removed or recreated; the service is running whatever it was.'
+  if (outcome.phase === 'build')
+    return 'The build failed before anything was removed or recreated; the service is running whatever it was.'
   if (outcome.phase === 'up') {
     if (downAfter(outcome, strategy)) {
       return strategy === 'rm-first'
@@ -53,7 +56,6 @@ export function failureState(outcome: Extract<DeployOutcome, { ok: false }>, str
   if (outcome.phase === 'refused') return 'Nothing was attempted.'
   return 'The change is in the checkout; the service is running whatever it was.'
 }
-
 
 /**
  * What the operator does about a failed deploy, as the last paragraph of its alert.

@@ -1,7 +1,14 @@
 import type { Hono } from 'hono'
 import { loadPolicy, policyFileState } from '../../config.ts'
 import { getDb } from '../../db/index.ts'
-import { NotifyTools, RulesList, SettingsForm, TestEmailResult, type SettingGroup, type SettingValue } from '../views/ui/settings.tsx'
+import {
+  NotifyTools,
+  RulesList,
+  SettingsForm,
+  TestEmailResult,
+  type SettingGroup,
+  type SettingValue,
+} from '../views/ui/settings.tsx'
 import { rescheduleScan } from '../../scheduler.ts'
 import { SettingsPage } from '../views/pages.tsx'
 import { applySettings, savedText } from '../../settings/apply.ts'
@@ -13,11 +20,15 @@ import { configured as emailConfigured, send as sendEmail } from '../../notify/e
 import { chrome } from '../render.ts'
 
 /** After a refused save, a refused field shows what was submitted and why; the rest, the file. */
-const settingGroups = (submitted: Record<string, string> = {}, fieldErrors: Record<string, string> = {}): SettingGroup[] => {
+const settingGroups = (
+  submitted: Record<string, string> = {},
+  fieldErrors: Record<string, string> = {},
+): SettingGroup[] => {
   const { policy } = loadPolicy()
   const value = (def: (typeof SETTINGS)[number]): SettingValue => {
     const error = fieldErrors[def.path]
-    const v = error !== undefined && submitted[def.path] !== undefined ? submitted[def.path]! : currentValue(policy, def.path)
+    const v =
+      error !== undefined && submitted[def.path] !== undefined ? submitted[def.path]! : currentValue(policy, def.path)
     return { def, value: v, changed: currentValue(policy, def.path) !== def.defaultValue, error }
   }
   const groups: SettingGroup[] = []
@@ -37,15 +48,12 @@ const settingGroups = (submitted: Record<string, string> = {}, fieldErrors: Reco
 }
 
 /** The sinks notifications go to, and the way to prove the mail path works. */
-const notifyTools = () => NotifyTools({ channels: activeChannels('decision'), sinks: loadPolicy().policy.notify.sinks.map((x) => x.type) })
+const notifyTools = () =>
+  NotifyTools({ channels: activeChannels('decision'), sinks: loadPolicy().policy.notify.sinks.map((x) => x.type) })
 
 /** Merged updates that will not move until someone presses Deploy. */
 const readyToDeploy = (): number =>
-  (
-    getDb()
-      .prepare(`SELECT COUNT(*) AS n FROM deploys WHERE status = 'ready'`)
-      .get() as { n: number }
-  ).n
+  (getDb().prepare(`SELECT COUNT(*) AS n FROM deploys WHERE status = 'ready'`).get() as { n: number }).n
 
 /**
  * The settings, as one page in pipeline order.
@@ -81,7 +89,11 @@ export function registerSettingsRoutes(app: Hono): void {
     const fieldErrors = result.ok ? {} : (result.fields ?? {})
     const k = Object.keys(fieldErrors).length
     // Sentences not tied to one field: a dirty file, a failed commit, a file that would not load.
-    const other = result.ok ? [] : result.errors.filter((e) => !Object.keys(fieldErrors).some((p) => e.startsWith(`${SETTINGS.find((d) => d.path === p)?.label}: `)))
+    const other = result.ok
+      ? []
+      : result.errors.filter(
+          (e) => !Object.keys(fieldErrors).some((p) => e.startsWith(`${SETTINGS.find((d) => d.path === p)?.label}: `)),
+        )
     return c.html(
       SettingsForm({
         groups: settingGroups(changes, fieldErrors),
@@ -114,7 +126,10 @@ export function registerSettingsRoutes(app: Hono): void {
   app.post('/settings/email/test', async (c) => {
     if (!emailConfigured()) {
       return c.html(
-        TestEmailResult({ ok: null, text: 'SMTP_URL and MAIL_TO are not both set, so there is nothing to test.' }) as string,
+        TestEmailResult({
+          ok: null,
+          text: 'SMTP_URL and MAIL_TO are not both set, so there is nothing to test.',
+        }) as string,
       )
     }
     const r = await sendEmail({
@@ -122,7 +137,9 @@ export function registerSettingsRoutes(app: Hono): void {
       text: 'If you are reading this, shipshape can send you email.\n\nSent from the Settings page.',
     })
     return c.html(
-      TestEmailResult(r.ok ? { ok: true, text: 'Sent. Check the inbox.' } : { ok: false, text: r.error ?? 'failed' }) as string,
+      TestEmailResult(
+        r.ok ? { ok: true, text: 'Sent. Check the inbox.' } : { ok: false, text: r.error ?? 'failed' },
+      ) as string,
     )
   })
 }

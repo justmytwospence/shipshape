@@ -29,23 +29,18 @@ export type ScanResult =
   | { status: 'completed'; counts: Record<string, number>; durationS: number }
   | { status: 'already-running' }
 
-
 let running = false
 
-
 let current: Promise<ScanResult> | null = null
-
 
 export function isScanning(): boolean {
   return running
 }
 
-
 /** Resolves when no scan is running (shutdown waits on it). */
 export async function scanIdle(): Promise<void> {
   await current?.catch(() => undefined)
 }
-
 
 export function runScan(trigger: 'cron' | 'manual'): Promise<ScanResult> {
   if (running) return Promise.resolve({ status: 'already-running' })
@@ -57,7 +52,6 @@ export function runScan(trigger: 'cron' | 'manual'): Promise<ScanResult> {
   work.then(done, done)
   return work
 }
-
 
 async function scanBody(trigger: 'cron' | 'manual'): Promise<ScanResult> {
   const setup = configured()
@@ -145,7 +139,6 @@ async function scanBody(trigger: 'cron' | 'manual'): Promise<ScanResult> {
   }
 }
 
-
 /**
  * Detect and persist one service. Shared by the nightly sweep and the per-service
  * "Check now" button, so both paths behave identically -- including the isolation: a
@@ -193,8 +186,6 @@ async function scanOne(svc: ScannedService, policy: Policy): Promise<string> {
   return outcome
 }
 
-
-
 /**
  * Re-check one service now, rather than waiting for a sweep: its labels from git, its
  * upstream when nothing has looked it up yet, and its registry. False when the compose
@@ -202,9 +193,7 @@ async function scanOne(svc: ScannedService, policy: Policy): Promise<string> {
  */
 export async function checkService(stack: string, service: string): Promise<boolean> {
   const { policy } = loadPolicy()
-  const svc = scanRepo(env.repoDir, policy.exclude_stacks).find(
-    (s) => s.stack === stack && s.service === service,
-  )
+  const svc = scanRepo(env.repoDir, policy.exclude_stacks).find((s) => s.stack === stack && s.service === service)
   if (!svc) return false
   // Labels first: a review reads them from the images table, which only a scan refreshed,
   // so a label committed after the last scan was invisible to "check" and to every review
@@ -231,8 +220,6 @@ export async function checkService(stack: string, service: string): Promise<bool
   return true
 }
 
-
-
 export interface ScanInfo {
   lastAt: string | null
   durationS: number | null
@@ -242,12 +229,12 @@ export interface ScanInfo {
   composeFiles: number | null
 }
 
-
-
 export function scanInfo(): ScanInfo {
-  const rows = getDb()
-    .prepare(`SELECT key, value, window FROM budgets WHERE key LIKE 'scan.%'`)
-    .all() as { key: string; value: number; window: string | null }[]
+  const rows = getDb().prepare(`SELECT key, value, window FROM budgets WHERE key LIKE 'scan.%'`).all() as {
+    key: string
+    value: number
+    window: string | null
+  }[]
   const by = new Map(rows.map((r) => [r.key, r]))
   const lastAt = by.get('scan.last_at')?.window ?? null
   const durationS = by.get('scan.last_duration_s')?.value ?? null

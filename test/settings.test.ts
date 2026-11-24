@@ -196,9 +196,7 @@ test('every settable key survives a full-page save against a partial file', () =
 
   const doc = parse(text) as Record<string, unknown>
   for (const def of settable) {
-    const got = def.path
-      .split('.')
-      .reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], doc)
+    const got = def.path.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], doc)
     assert.notEqual(got, undefined, `${def.path} is missing after the save`)
   }
   // The file the operator hand-wrote is still recognisable underneath.
@@ -248,10 +246,7 @@ test('no setting is declared twice', () => {
 test('an enum default is always one of its own options', () => {
   for (const def of SETTINGS) {
     if (def.kind !== 'enum') continue
-    assert.ok(
-      def.options?.includes(def.defaultValue),
-      `${def.path}: default "${def.defaultValue}" is not an option`,
-    )
+    assert.ok(def.options?.includes(def.defaultValue), `${def.path}: default "${def.defaultValue}" is not an option`)
   }
 })
 
@@ -272,14 +267,17 @@ deploy:
 
 test('removeValue drops a key, its nested block and the comment above it', () => {
   const out = removeValue(REMOVE, 'merge')!
-  assert.equal(out, `# header
+  assert.equal(
+    out,
+    `# header
 paused: false
 
 deploy:
   # the old mode
   mode: auto
   soak_s: 1800 # half an hour
-`)
+`,
+  )
   const nested = removeValue(REMOVE, 'deploy.mode')!
   assert.ok(!nested.includes('mode: auto'))
   assert.ok(!nested.includes('# the old mode'))

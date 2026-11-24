@@ -43,12 +43,25 @@ test('the noise is removed before anything is sent', () => {
   ].join('\n')
   const out = clean(body)
   assert.match(out, /APP_DB_URL renamed/)
-  for (const gone of ['lodash', 'build(deps)', 'first contribution', 'lots of commits', 'Full Changelog', 'release-please']) {
+  for (const gone of [
+    'lodash',
+    'build(deps)',
+    'first contribution',
+    'lots of commits',
+    'Full Changelog',
+    'release-please',
+  ]) {
     assert.doesNotMatch(out, new RegExp(gone.replace(/[()]/g, '\\$&')), gone)
   }
 })
 
-const note = (heading: string, text: string): ScreenNote => ({ version: heading, source: 'release', heading, text, url: null })
+const note = (heading: string, text: string): ScreenNote => ({
+  version: heading,
+  source: 'release',
+  heading,
+  text,
+  url: null,
+})
 
 test('the notes that look like they matter go first, and the caps hold', () => {
   const big = 'x'.repeat(NOTE_CAP + 500)
@@ -58,7 +71,10 @@ test('the notes that look like they matter go first, and the caps hold', () => {
   ])
   assert.equal(notes[0]!.heading, 'v1.1.0', 'the upgrade note leads')
   assert.ok(notes[0]!.text.length <= NOTE_CAP + 30, 'one note is capped')
-  assert.ok(omitted.some((o) => o.includes('(cut)')), 'and the cut is named')
+  assert.ok(
+    omitted.some((o) => o.includes('(cut)')),
+    'and the cut is named',
+  )
 
   const many = Array.from({ length: 20 }, (_, i) => note(`v1.${i}.0`, '- y'.repeat(1000)))
   const sel = selectNotes(many)
@@ -66,11 +82,14 @@ test('the notes that look like they matter go first, and the caps hold', () => {
   assert.ok(sel.omitted.length > 0, 'what did not fit is named')
 })
 
-test('the lines asked about are the notes\' own bullets, deduplicated, important ones first', () => {
+test("the lines asked about are the notes' own bullets, deduplicated, important ones first", () => {
   const lines = extractLines([
     note('v2', '- Faster thumbnails\n- Removed support for PostgreSQL 13\n- faster thumbnails\nnot a bullet'),
   ])
-  assert.deepEqual(lines.map((l) => l.text), ['Removed support for PostgreSQL 13', 'Faster thumbnails'])
+  assert.deepEqual(
+    lines.map((l) => l.text),
+    ['Removed support for PostgreSQL 13', 'Faster thumbnails'],
+  )
 })
 
 const bundle = (o: Partial<NotesBundle> = {}): NotesBundle => ({
@@ -89,14 +108,25 @@ const bundle = (o: Partial<NotesBundle> = {}): NotesBundle => ({
   ...o,
 })
 
-const release = (tag: string, body: string) => ({ tag, key: versionKey(tag), prerelease: false, name: null, published: null, body })
+const release = (tag: string, body: string) => ({
+  tag,
+  key: versionKey(tag),
+  prerelease: false,
+  name: null,
+  published: null,
+  body,
+})
 
 test('a release with no words and no changelog section is a hole in the range', () => {
   const b = bundle({ releases: [release('1.2.0', '- fix'), release('1.1.0', '')] })
   assert.deepEqual(missingVersions(b), ['1.1.0'])
   const covered = bundle({
     releases: [release('1.1.0', '')],
-    changelog: { file: 'CHANGELOG.md', sections: [{ heading: '1.1.0', key: versionKey('1.1.0'), unreleased: false, body: '- x' }], omitted: [] },
+    changelog: {
+      file: 'CHANGELOG.md',
+      sections: [{ heading: '1.1.0', key: versionKey('1.1.0'), unreleased: false, body: '- x' }],
+      omitted: [],
+    },
   })
   assert.deepEqual(missingVersions(covered), [])
 })
@@ -182,7 +212,13 @@ test('clean answers on complete evidence are routine', () => {
 })
 
 test('any risk question past the line is a finding, whatever else is true', () => {
-  for (const k of ['config_removed_or_renamed', 'manual_step_required', 'irreversible_migration', 'dropped_support', 'config_change_needed']) {
+  for (const k of [
+    'config_removed_or_renamed',
+    'manual_step_required',
+    'irreversible_migration',
+    'dropped_support',
+    'config_change_needed',
+  ]) {
     assert.equal(decideScreen(ev(), answers({ [k]: THRESHOLDS.findingRisk }), 0).decision, 'finding', k)
   }
   assert.equal(decideScreen(ev(), answers({}, 1.6), 0).decision, 'finding', 'the Score alone')
@@ -233,7 +269,9 @@ test('a changed default is reported, never a reason to hold', () => {
 })
 
 test('notes with CRLF line endings still yield their lines', () => {
-  const lines = extractLines([note('v1', '## Changes:\r\n\r\n* add hdvideo-api resolves #14294\r\n* concen: removed. resolves #5097\r\n')])
+  const lines = extractLines([
+    note('v1', '## Changes:\r\n\r\n* add hdvideo-api resolves #14294\r\n* concen: removed. resolves #5097\r\n'),
+  ])
   assert.equal(lines.length, 2)
 })
 
@@ -242,7 +280,15 @@ test('no notes is its own answer, and costs nothing', () => {
 })
 
 test('lines are split into actionable and notable, never both', () => {
-  const a = { ...answers(), L0_actionable: n(0.9), L0_notable: n(0.9), L1_actionable: n(0.1), L1_notable: n(0.8), L2_actionable: n(0.1), L2_notable: n(0.1) }
+  const a = {
+    ...answers(),
+    L0_actionable: n(0.9),
+    L0_notable: n(0.9),
+    L1_actionable: n(0.1),
+    L1_notable: n(0.8),
+    L2_actionable: n(0.1),
+    L2_notable: n(0.1),
+  }
   const r = decideScreen(ev(), a, 3)
   assert.deepEqual(r.actionable, [0])
   assert.deepEqual(r.notable, [1])

@@ -42,9 +42,12 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 
 test('it keeps rescheduling itself', async () => {
   let runs = 0
-  const t = createTicker(async () => {
-    runs++
-  }, () => 1)
+  const t = createTicker(
+    async () => {
+      runs++
+    },
+    () => 1,
+  )
   t.start(0)
   await waitFor('several ticks', () => runs >= 3)
   t.stop()
@@ -54,10 +57,13 @@ test('a tick that throws still arms the next one', async () => {
   // The failure this exists to prevent: one bad tick and shipshape never runs again,
   // with nothing in the log because logging is one of the things that stopped.
   let runs = 0
-  const t = createTicker(async () => {
-    runs++
-    throw new Error('boom')
-  }, () => 1)
+  const t = createTicker(
+    async () => {
+      runs++
+      throw new Error('boom')
+    },
+    () => 1,
+  )
   t.start(0)
   await waitFor('the loop to survive its own failures', () => runs >= 3)
   t.stop()
@@ -83,9 +89,12 @@ test('an interval that answers nonsense does not spin', async () => {
   // NaN, negative or Infinity would otherwise arm at zero and run flat out.
   for (const bad of [NaN, -1, Infinity]) {
     let runs = 0
-    const t = createTicker(async () => {
-      runs++
-    }, () => bad)
+    const t = createTicker(
+      async () => {
+        runs++
+      },
+      () => bad,
+    )
     t.start(0)
     await waitFor(`a fallback arming for ${bad}`, () => runs >= 1 && t.nextAt() !== null)
     const armed = armedIn(t)
@@ -98,9 +107,12 @@ test('waking an idle ticker runs it now, not at the interval', async () => {
   // The reason this exists: 08:00's digest must not wait out a ten-minute idle cadence
   // just because the timer for it was armed at 07:52.
   let runs = 0
-  const t = createTicker(async () => {
-    runs++
-  }, () => 60_000)
+  const t = createTicker(
+    async () => {
+      runs++
+    },
+    () => 60_000,
+  )
   t.start(60_000)
   assert.equal(runs, 0)
 
@@ -115,13 +127,16 @@ test('waking a running ticker does not start a second tick', async () => {
   let overlapped = false
   let inside = false
 
-  const t = createTicker(async () => {
-    if (inside) overlapped = true
-    inside = true
-    started++
-    if (started === 1) await gate.promise
-    inside = false
-  }, () => 60_000)
+  const t = createTicker(
+    async () => {
+      if (inside) overlapped = true
+      inside = true
+      started++
+      if (started === 1) await gate.promise
+      inside = false
+    },
+    () => 60_000,
+  )
 
   t.start(0)
   await waitFor('the first tick to be in flight', () => started === 1)
@@ -143,9 +158,12 @@ test('waking a running ticker does not start a second tick', async () => {
 
 test('a wake is one-shot: the tick after it goes back to the interval', async () => {
   let runs = 0
-  const t = createTicker(async () => {
-    runs++
-  }, () => 60_000)
+  const t = createTicker(
+    async () => {
+      runs++
+    },
+    () => 60_000,
+  )
   t.start(60_000)
 
   t.wake()
@@ -157,17 +175,23 @@ test('a wake is one-shot: the tick after it goes back to the interval', async ()
 
 test('stop means stop, including from inside a tick', async () => {
   let runs = 0
-  const t = createTicker(async () => {
-    runs++
-    t.stop()
-  }, () => 1)
+  const t = createTicker(
+    async () => {
+      runs++
+      t.stop()
+    },
+    () => 1,
+  )
   t.start(0)
   await waitFor('the first and only tick', () => runs === 1 && t.nextAt() === null)
   assert.equal(runs, 1)
 })
 
 test('nextAt reports the arming, and nothing before the first start', () => {
-  const t = createTicker(async () => {}, () => 60_000)
+  const t = createTicker(
+    async () => {},
+    () => 60_000,
+  )
   assert.equal(t.nextAt(), null)
   t.start(5_000)
   const at = armedIn(t)
@@ -176,7 +200,10 @@ test('nextAt reports the arming, and nothing before the first start', () => {
 })
 
 test('idle resolves at once when nothing is running', async () => {
-  const t = createTicker(async () => {}, () => 60_000)
+  const t = createTicker(
+    async () => {},
+    () => 60_000,
+  )
   await t.idle()
   t.start(60_000)
   await t.idle()
@@ -186,10 +213,13 @@ test('idle resolves at once when nothing is running', async () => {
 test('idle waits for the tick in flight, and stop does not cut it short', async () => {
   const gate = deferred()
   let finished = false
-  const t = createTicker(async () => {
-    await gate.promise
-    finished = true
-  }, () => 60_000)
+  const t = createTicker(
+    async () => {
+      await gate.promise
+      finished = true
+    },
+    () => 60_000,
+  )
   t.start(0)
   await waitFor('the tick to start', () => t.runningSince() !== null)
   t.stop()
@@ -206,7 +236,10 @@ test('idle waits for the tick in flight, and stop does not cut it short', async 
 
 test('runningSince is set only while a tick runs', async () => {
   const gate = deferred()
-  const t = createTicker(() => gate.promise, () => 60_000)
+  const t = createTicker(
+    () => gate.promise,
+    () => 60_000,
+  )
   assert.equal(t.runningSince(), null)
   t.start(0)
   await waitFor('the tick to start', () => t.runningSince() !== null)

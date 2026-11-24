@@ -37,9 +37,18 @@ const FILE = join(repo, 'media', 'docker-compose.yaml')
 const g = (args: string[]) => execFileSync('git', args, { cwd: repo, encoding: 'utf8' }).trim()
 
 function run(...args: string[]) {
-  const env: NodeJS.ProcessEnv = { ...process.env, DATA_DIR: data, REPO_DIR: repo, GITHUB_REPO: 'you/repo', GIT_BRANCH: 'main' }
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    DATA_DIR: data,
+    REPO_DIR: repo,
+    GITHUB_REPO: 'you/repo',
+    GIT_BRANCH: 'main',
+  }
   for (const k of ['POLICY_FILE', 'NOTIFY_URL', 'GIT_REMOTE_URL', 'GITHUB_TOKEN', 'GIT_TOKEN']) delete env[k]
-  const r = spawnSync(process.execPath, ['--import', 'tsx', 'src/bin/convert-v1.ts', ...args], { env, encoding: 'utf8' })
+  const r = spawnSync(process.execPath, ['--import', 'tsx', 'src/bin/convert-v1.ts', ...args], {
+    env,
+    encoding: 'utf8',
+  })
   return { code: r.status, out: r.stdout + r.stderr }
 }
 

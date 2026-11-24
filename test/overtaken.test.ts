@@ -78,7 +78,10 @@ test('an earlier merge is retired by a later one for the same service', () => {
   pr(93, u93, { mergedAt: at(30) })
 
   const retired = retireOvertaken()
-  assert.deepEqual(retired.map((r) => [r.updateId, r.byUpdateId]), [[u79, u93]])
+  assert.deepEqual(
+    retired.map((r) => [r.updateId, r.byUpdateId]),
+    [[u79, u93]],
+  )
   assert.deepEqual(stateOf(u79), { state: 'superseded', detail: 'overtaken by 2.96.17-cpu' })
   assert.equal(stateOf(u93).state, 'merged', 'the one that overtook is untouched')
   assert.deepEqual(retireOvertaken(), [], 'and running it again changes nothing')
@@ -94,7 +97,9 @@ test('once retired it offers nothing to press', () => {
 
 test('an update whose own deploy is queued or running keeps its own outcome', () => {
   for (const status of ['pending', 'running']) {
-    getDb().exec(`DELETE FROM deploy_updates; DELETE FROM deploys; DELETE FROM pr_updates; DELETE FROM prs; DELETE FROM updates;`)
+    getDb().exec(
+      `DELETE FROM deploy_updates; DELETE FROM deploys; DELETE FROM pr_updates; DELETE FROM prs; DELETE FROM updates;`,
+    )
     const older = update({ from: 'a', to: 'b' })
     deploy(pr(79, older, { mergedAt: at(6) }), 79, older, status)
     pr(93, update({ from: 'b', to: 'c' }), { mergedAt: at(30) })
@@ -121,7 +126,10 @@ test('a later left-stopped merge retires an older merged update', () => {
   const u93 = update({ from: '2.96.15-cpu', to: '2.96.17-cpu', state: 'left-stopped' })
   pr(93, u93, { mergedAt: at(30) })
 
-  assert.deepEqual(retireOvertaken().map((r) => [r.updateId, r.byUpdateId]), [[u79, u93]])
+  assert.deepEqual(
+    retireOvertaken().map((r) => [r.updateId, r.byUpdateId]),
+    [[u79, u93]],
+  )
   assert.deepEqual(stateOf(u79), { state: 'superseded', detail: 'overtaken by 2.96.17-cpu' })
   assert.equal(stateOf(u93).state, 'left-stopped', 'the one that overtook is untouched')
 })
@@ -134,7 +142,10 @@ test('a left-stopped update is itself retired by a later merge', () => {
   const u93 = update({ from: 'b', to: 'c', state: 'left-stopped' })
   pr(93, u93, { mergedAt: at(30) })
 
-  assert.deepEqual(retireOvertaken().map((r) => [r.updateId, r.byUpdateId]), [[u79, u93]])
+  assert.deepEqual(
+    retireOvertaken().map((r) => [r.updateId, r.byUpdateId]),
+    [[u79, u93]],
+  )
   assert.deepEqual(stateOf(u79), { state: 'superseded', detail: 'overtaken by c' })
   assert.equal(stateOf(u93).state, 'left-stopped', 'only the newest reads Left stopped')
   assert.deepEqual(retireOvertaken(), [], 'and running it again changes nothing')
@@ -167,7 +178,10 @@ test('an update is dated by the change that merged, not one that closed', () => 
   const u2 = update({ from: '13.0', to: '13.1' })
   pr(40, u2, { mergedAt: at(30) })
 
-  assert.deepEqual(retireOvertaken().map((r) => [r.updateId, r.byUpdateId]), [[u, u2]])
+  assert.deepEqual(
+    retireOvertaken().map((r) => [r.updateId, r.byUpdateId]),
+    [[u, u2]],
+  )
 })
 
 test('no merge time means no evidence of order, so nothing is retired', () => {

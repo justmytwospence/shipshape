@@ -103,13 +103,15 @@ async function main(): Promise<void> {
   // Guards: nothing has been written yet, so a refusal leaves nothing to restore.
   const repo = env.repoDir
   const head = (await git(repo, ['symbolic-ref', '--short', 'HEAD'], { allowFail: true })).stdout
-  if (head !== gitBranch()) refuse(`The checkout is on "${head || 'a detached HEAD'}", not ${gitBranch()}. Nothing was changed.`)
+  if (head !== gitBranch())
+    refuse(`The checkout is on "${head || 'a detached HEAD'}", not ${gitBranch()}. Nothing was changed.`)
   for (const rel of targets) {
     const tracked = await git(repo, ['ls-files', '--error-unmatch', '--', rel], { allowFail: true })
     if (tracked.exitCode !== 0) refuse(`${rel} is not tracked by git. Commit it first.`)
     const dirty = await git(repo, ['diff', '--quiet', '--', rel], { allowFail: true })
     const staged = await git(repo, ['diff', '--cached', '--quiet', '--', rel], { allowFail: true })
-    if (dirty.exitCode !== 0 || staged.exitCode !== 0) refuse(`${rel} has uncommitted changes. Commit or discard them first.`)
+    if (dirty.exitCode !== 0 || staged.exitCode !== 0)
+      refuse(`${rel} has uncommitted changes. Commit or discard them first.`)
   }
   const headBefore = (await git(repo, ['rev-parse', 'HEAD'])).stdout
 
@@ -171,7 +173,8 @@ async function main(): Promise<void> {
         .split('\n')
         .filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l))
         .filter((l) => !/^[+-]\s*(shipshape\.(policy|pr|claude|class|review):|labels:\s*$)/.test(l))
-      if (offending.length > 0) await fail(`The edit of ${rel} touched a non-label line: ${offending[0]!.slice(0, 120)}`)
+      if (offending.length > 0)
+        await fail(`The edit of ${rel} touched a non-label line: ${offending[0]!.slice(0, 120)}`)
     }
 
     const headNow = (await git(repo, ['rev-parse', 'HEAD'], { allowFail: true })).stdout
@@ -179,7 +182,15 @@ async function main(): Promise<void> {
 
     try {
       await git(repo, ['add', '--', ...files])
-      await git(repo, [...botIdentity(), 'commit', '-q', '-m', 'chore(shipshape): convert v1 labels and policy keys', '--', ...files])
+      await git(repo, [
+        ...botIdentity(),
+        'commit',
+        '-q',
+        '-m',
+        'chore(shipshape): convert v1 labels and policy keys',
+        '--',
+        ...files,
+      ])
     } catch (err) {
       await fail(`Could not commit: ${(err as Error).message}`)
     }

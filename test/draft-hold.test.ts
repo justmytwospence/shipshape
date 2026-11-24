@@ -24,7 +24,8 @@ const T2 = '2026-01-03T00:00:00.000Z'
 
 beforeEach(() => {
   const db = getDb()
-  for (const t of ['proposals', 'pr_updates', 'prs', 'updates', 'verdicts', 'images']) db.prepare(`DELETE FROM ${t}`).run()
+  for (const t of ['proposals', 'pr_updates', 'prs', 'updates', 'verdicts', 'images'])
+    db.prepare(`DELETE FROM ${t}`).run()
 })
 
 function seed(o: { approvedAt?: string | null; scope?: 'proposed' | 'tag-only'; error?: string | null } = {}): number {
@@ -63,7 +64,10 @@ function seed(o: { approvedAt?: string | null; scope?: 'proposed' | 'tag-only'; 
 
 test('an open draft holds its update', () => {
   const h = holdsForUpdate(seed())!
-  assert.deepEqual(h.holds.map((x) => x.kind), ['draft'])
+  assert.deepEqual(
+    h.holds.map((x) => x.kind),
+    ['draft'],
+  )
   assert.equal(h.status.status, 'decision')
 })
 

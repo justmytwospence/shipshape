@@ -53,7 +53,10 @@ test('parseRemote: ssh is unsupported, paths are local, nothing is none', () => 
 test('resolveGitCredentials: GITHUB_TOKEN is the default on github.com only', () => {
   const gh = parseRemote('', 'me/c')
   assert.deepEqual(resolveGitCredentials(gh, { GITHUB_TOKEN: 'g' }), { token: 'g', username: 'x-access-token' })
-  assert.deepEqual(resolveGitCredentials(gh, { GITHUB_TOKEN: 'g', GIT_TOKEN: 'x' }), { token: 'x', username: 'x-access-token' })
+  assert.deepEqual(resolveGitCredentials(gh, { GITHUB_TOKEN: 'g', GIT_TOKEN: 'x' }), {
+    token: 'x',
+    username: 'x-access-token',
+  })
   const other = parseRemote('https://git.example.test/me/c.git', '')
   assert.deepEqual(resolveGitCredentials(other, { GITHUB_TOKEN: 'g' }), { token: '', username: '' })
   assert.deepEqual(resolveGitCredentials(other, { GIT_TOKEN: 'x', GIT_USERNAME: 'me' }), { token: 'x', username: 'me' })
@@ -100,7 +103,9 @@ test('a change links to its merge commit on the remote', () => {
   const sha = 'a'.repeat(40)
   const id = Number(
     getDb()
-      .prepare(`INSERT INTO prs (number, branch, head_sha_pushed, state, scope, merge_commit_sha, created_at) VALUES (0, 'b', 'x', 'merged', 'tag-only', ?, 'now')`)
+      .prepare(
+        `INSERT INTO prs (number, branch, head_sha_pushed, state, scope, merge_commit_sha, created_at) VALUES (0, 'b', 'x', 'merged', 'tag-only', ?, 'now')`,
+      )
       .run(sha).lastInsertRowid,
   )
   assert.equal(changeUrl(id), `https://git.example.test:3000/me/compose/commit/${sha}`)

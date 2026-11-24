@@ -1,11 +1,4 @@
-import {
-  classify,
-  compareTags,
-  parseTag,
-  type Magnitude,
-  type PatternKind,
-  type ParsedTag,
-} from './patterns.ts'
+import { classify, compareTags, parseTag, type Magnitude, type PatternKind, type ParsedTag } from './patterns.ts'
 
 export interface SelectOptions {
   currentTag: string
@@ -61,9 +54,7 @@ export function selectUpdate(opts: SelectOptions): Comparison {
     } catch (err) {
       return {
         status: 'bad-refinement',
-        detail: `tag.include "${tagInclude}" is not a valid regex: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+        detail: `tag.include "${tagInclude}" is not a valid regex: ${err instanceof Error ? err.message : String(err)}`,
       }
     }
   }

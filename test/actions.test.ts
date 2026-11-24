@@ -1,16 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import {
-  actionsFor,
-  isTransient,
-  primaryVerb,
-  refusalFor,
-  type ActionContext,
-} from '../src/updates/actions.ts'
+import { actionsFor, isTransient, primaryVerb, refusalFor, type ActionContext } from '../src/updates/actions.ts'
 
 const ctx = (o: Partial<ActionContext>): ActionContext => ({ state: 'detected', ...o })
 
-const hold = (kind: 'ask' | 'needs-action' | 'lifeline' | 'unsafe', waivable: boolean) => ({ kind, waivable, text: kind })
+const hold = (kind: 'ask' | 'needs-action' | 'lifeline' | 'unsafe', waivable: boolean) => ({
+  kind,
+  waivable,
+  text: kind,
+})
 
 test('an update nothing holds offers ship, and the things you might do first', () => {
   // Ship always leads: it is the operator saying yes, which outranks a hold.
@@ -18,25 +16,39 @@ test('an update nothing holds offers ship, and the things you might do first', (
 })
 
 test('a decision offers snooze, and always-ship only when every hold can be waived', () => {
-  assert.deepEqual(actionsFor(ctx({ hasVerdict: true, holds: [hold('ask', true)] })), ['ship', 'snooze', 'always-ship', 'skip'])
+  assert.deepEqual(actionsFor(ctx({ hasVerdict: true, holds: [hold('ask', true)] })), [
+    'ship',
+    'snooze',
+    'always-ship',
+    'skip',
+  ])
   assert.deepEqual(
     actionsFor(ctx({ hasVerdict: true, holds: [hold('ask', true), hold('lifeline', false)] })),
     ['ship', 'snooze', 'skip'],
     'a hold no rule may waive leaves nothing for always to mean',
   )
-  assert.deepEqual(actionsFor(ctx({ hasVerdict: true, holds: [hold('ask', true)], snoozed: true })), ['ship', 'always-ship', 'skip'])
+  assert.deepEqual(actionsFor(ctx({ hasVerdict: true, holds: [hold('ask', true)], snoozed: true })), [
+    'ship',
+    'always-ship',
+    'skip',
+  ])
 })
 
 test('work to do offers a draft, until one exists', () => {
   const a = actionsFor(ctx({ hasVerdict: true, holds: [hold('needs-action', false)] }))
   assert.deepEqual(a, ['ship', 'snooze', 'rerun-review', 'propose', 'skip'])
-  assert.ok(!actionsFor(ctx({ hasVerdict: true, holds: [hold('needs-action', false)], hasProposal: true })).includes('propose'))
+  assert.ok(
+    !actionsFor(ctx({ hasVerdict: true, holds: [hold('needs-action', false)], hasProposal: true })).includes('propose'),
+  )
 })
 
 test('no review, or a failed one, offers to read the changelog', () => {
   assert.ok(actionsFor(ctx({ hasVerdict: false })).includes('rerun-review'))
   assert.ok(actionsFor(ctx({ hasVerdict: true, verdictError: true })).includes('rerun-review'))
-  assert.ok(!actionsFor(ctx({ hasVerdict: true })).includes('rerun-review'), 'a verdict that arrived is not re-read on a whim')
+  assert.ok(
+    !actionsFor(ctx({ hasVerdict: true })).includes('rerun-review'),
+    'a verdict that arrived is not re-read on a whim',
+  )
 })
 
 test('a frozen service asks: ship or skip', () => {
@@ -79,24 +91,24 @@ test('a running version nothing has read offers a reading', () => {
 test('a left-stopped update offers Roll back and nothing else', () => {
   // The merge stands and nothing was started: there is no deploy to try again and nothing
   // outstanding to acknowledge, only the version itself to take back.
-  assert.deepEqual(
-    actionsFor(ctx({ state: 'left-stopped', deployStatus: 'left-stopped', mergeCommitSha: 'abc123' })),
-    ['rollback'],
-  )
+  assert.deepEqual(actionsFor(ctx({ state: 'left-stopped', deployStatus: 'left-stopped', mergeCommitSha: 'abc123' })), [
+    'rollback',
+  ])
   assert.deepEqual(actionsFor(ctx({ state: 'left-stopped', deployStatus: 'left-stopped' })), [])
 })
 
 test('a rolling tag left stopped still offers Redeploy', () => {
   // Its move is in no file and the scan's baseline has already advanced: without the button,
   // nothing would ever offer this digest again.
-  assert.deepEqual(
-    actionsFor(ctx({ state: 'left-stopped', detail: 'rolling', deployStatus: 'left-stopped' })),
-    ['redeploy'],
-  )
+  assert.deepEqual(actionsFor(ctx({ state: 'left-stopped', detail: 'rolling', deployStatus: 'left-stopped' })), [
+    'redeploy',
+  ])
 })
 
 test('a service that went degraded after the soak can be acknowledged', () => {
-  const a = actionsFor(ctx({ state: 'deployed', deployStatus: 'degraded', mergeCommitSha: 'x', hasReaderVerdict: true }))
+  const a = actionsFor(
+    ctx({ state: 'deployed', deployStatus: 'degraded', mergeCommitSha: 'x', hasReaderVerdict: true }),
+  )
   assert.deepEqual(a, ['rollback', 'ack'])
   const seen = actionsFor(
     ctx({ state: 'deployed', deployStatus: 'degraded', mergeCommitSha: 'x', ackedAt: 'now', hasReaderVerdict: true }),

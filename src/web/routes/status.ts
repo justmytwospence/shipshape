@@ -32,9 +32,9 @@ const statusData = (): StatusData => {
     )
     .all(`${month}%`) as { model: string; purpose: string; calls: number; cost: number }[]
   const spent = (
-    db
-      .prepare(`SELECT value FROM budgets WHERE key = 'claude.spend_usd' AND window = ?`)
-      .get(month) as { value: number } | undefined
+    db.prepare(`SELECT value FROM budgets WHERE key = 'claude.spend_usd' AND window = ?`).get(month) as
+      | { value: number }
+      | undefined
   )?.value
 
   return {
@@ -43,7 +43,12 @@ const statusData = (): StatusData => {
     repo: env.githubRepo || env.gitRemote.webUrl || '',
     pushMain: policy.sync.push_main,
     branch: gitBranch(),
-    remote: env.gitRemote.kind === 'https' ? env.gitRemote.host : env.gitRemote.kind === 'local' ? 'local repository' : 'not set',
+    remote:
+      env.gitRemote.kind === 'https'
+        ? env.gitRemote.host
+        : env.gitRemote.kind === 'local'
+          ? 'local repository'
+          : 'not set',
     composeFiles: scanInfo().composeFiles,
     policyFile: (({ rel, exists }) => ({ rel, exists }))(policyFileState()),
     scan: {
@@ -88,9 +93,7 @@ const statusData = (): StatusData => {
            FROM deploys ORDER BY id DESC LIMIT 12`,
       )
       .all() as StatusData['deploys'],
-    budgets: db
-      .prepare(`SELECT key, value, window FROM budgets ORDER BY key`)
-      .all() as StatusData['budgets'],
+    budgets: db.prepare(`SELECT key, value, window FROM budgets ORDER BY key`).all() as StatusData['budgets'],
     upstream: sourceCounts(),
     security: securityPanel(),
     sandbox: env.uiDev,
@@ -129,9 +132,9 @@ const providerCredential = (policy: Policy): StatusData['credentials'][number] =
 const screenCredential = (mode: 'off' | 'shadow' | 'on'): StatusData['credentials'][number] => {
   if (mode === 'off') return { name: 'Screen', state: 'off' }
   if (!jevConfigured()) return { name: 'Screen', state: 'missing', note: 'needs OPENROUTER_API_KEY' }
-  const last = getDb()
-    .prepare(`SELECT error FROM screens ORDER BY created_at DESC LIMIT 1`)
-    .get() as { error: string | null } | undefined
+  const last = getDb().prepare(`SELECT error FROM screens ORDER BY created_at DESC LIMIT 1`).get() as
+    | { error: string | null }
+    | undefined
   return last?.error
     ? { name: 'Screen', state: 'refused', note: last.error.slice(0, 200) }
     : { name: 'Screen', state: mode }

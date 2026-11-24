@@ -2,7 +2,6 @@ import { getDb } from './db/index.ts'
 
 export const EVENT_KINDS = ['scan', 'policy', 'ship', 'analysis', 'deploy', 'sync', 'system'] as const
 
-
 export interface ActivityRow {
   id: number
   at: string
@@ -18,13 +17,10 @@ export interface ActivityRow {
 
 export type EventLevel = 'info' | 'warn' | 'error'
 
-
 export type EventKind = (typeof EVENT_KINDS)[number]
-
 
 /** Repeats of the same message inside this window bump a counter instead of adding a row. */
 const COALESCE_MS = 24 * 60 * 60 * 1000
-
 
 export function logEvent(e: {
   level: EventLevel
@@ -52,23 +48,12 @@ export function logEvent(e: {
     | undefined
 
   if (recent && now.getTime() - Date.parse(recent.seen_at) < COALESCE_MS) {
-    db.prepare(`UPDATE events SET count = count + 1, last_at = ? WHERE id = ?`).run(
-      now.toISOString(),
-      recent.id,
-    )
+    db.prepare(`UPDATE events SET count = count + 1, last_at = ? WHERE id = ?`).run(now.toISOString(), recent.id)
   } else {
     db.prepare(
       `INSERT INTO events (at, level, kind, stack, service, message, detail)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      now.toISOString(),
-      e.level,
-      e.kind,
-      e.stack ?? null,
-      e.service ?? null,
-      e.message,
-      e.detail ?? null,
-    )
+    ).run(now.toISOString(), e.level, e.kind, e.stack ?? null, e.service ?? null, e.message, e.detail ?? null)
   }
   const tag = `[${e.kind}]${e.stack ? ` ${e.stack}/${e.service ?? ''}` : ''}`
   const line = `${tag} ${e.message}${e.detail ? ` -- ${e.detail}` : ''}`

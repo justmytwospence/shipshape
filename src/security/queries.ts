@@ -123,7 +123,9 @@ export function incidentViews(opts: { matchedOnly?: boolean } = {}): IncidentVie
 }
 
 /** What one service carries of a package, for "which version of X runs where". */
-export function findPackage(name: string): { stack: string; service: string; type: string; version: string; path: string | null }[] {
+export function findPackage(
+  name: string,
+): { stack: string; service: string; type: string; version: string; path: string | null }[] {
   return getDb()
     .prepare(
       `SELECT DISTINCT r.stack, r.service, p.type, p.version, p.path FROM security_running r

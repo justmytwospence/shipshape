@@ -49,7 +49,10 @@ test('an empty token sends no authorization at all', async (t) => {
 
 test('only the trimmed body is cached', async (t) => {
   const h = mockFetch(t, [
-    { url: REPO, reply: () => json({ full_name: 'O/R', description: 'x'.repeat(5000) }, { headers: { etag: '"e1"' } }) },
+    {
+      url: REPO,
+      reply: () => json({ full_name: 'O/R', description: 'x'.repeat(5000) }, { headers: { etag: '"e1"' } }),
+    },
   ])
   const r = await ghRequest<{ name: string }>('/repos/o/r', {
     cacheKey: 'github:/repos/o/r',

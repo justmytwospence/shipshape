@@ -45,7 +45,10 @@ test('anything else is refused with a reason, never silently ignored', () => {
 
 test('an image annotation must be a github.com URL', () => {
   // Docker Official Images use a git fragment naming a commit and a directory.
-  assert.equal(normaliseSourceUrl('https://github.com/docker-library/postgres.git#9a8c:17/bookworm'), 'docker-library/postgres')
+  assert.equal(
+    normaliseSourceUrl('https://github.com/docker-library/postgres.git#9a8c:17/bookworm'),
+    'docker-library/postgres',
+  )
   assert.equal(normaliseSourceUrl('https://github.com/o/r?x=1'), 'o/r')
   // The old pattern turned this into `repos/coder`.
   assert.equal(normaliseSourceUrl('https://api.github.com/repos/coder/code-server'), null)

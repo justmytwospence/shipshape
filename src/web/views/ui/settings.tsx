@@ -229,9 +229,7 @@ const Section: FC<{
           <summary class="tap inline-flex cursor-pointer items-center gap-1 text-xs opacity-70 hover:opacity-100">
             <Icon name="chevron-right" class="size-3.5 transition-transform group-open:rotate-90" />
             More
-            {more.some((m) => m.changed) ? (
-              <span class="badge badge-xs badge-primary badge-soft">changed</span>
-            ) : null}
+            {more.some((m) => m.changed) ? <span class="badge badge-xs badge-primary badge-soft">changed</span> : null}
           </summary>
           <div class="mt-1">
             {prose.map((para) => (
@@ -249,9 +247,9 @@ const Section: FC<{
 
 /** Backticks in the prose are label and key names, and should look like ones. */
 function withCode(text: string): unknown[] {
-  return text.split(/`([^`]+)`/g).map((part, i) =>
-    i % 2 === 1 ? <code class="bg-base-200 rounded px-1 font-mono">{part}</code> : part,
-  )
+  return text
+    .split(/`([^`]+)`/g)
+    .map((part, i) => (i % 2 === 1 ? <code class="bg-base-200 rounded px-1 font-mono">{part}</code> : part))
 }
 
 function slug(title: string): string {
@@ -287,8 +285,8 @@ export const SettingsForm: FC<{
     ) : null}
     {readyCount ? (
       <p class="border-base-300 border-b px-4 py-2 text-xs opacity-70">
-        {readyCount} shipped {readyCount === 1 ? 'update is' : 'updates are'} waiting for a
-        deploy. Unpausing does not start them — press Deploy on each.
+        {readyCount} shipped {readyCount === 1 ? 'update is' : 'updates are'} waiting for a deploy. Unpausing does not
+        start them — press Deploy on each.
       </p>
     ) : null}
     {groups.map((g) => (
@@ -320,7 +318,9 @@ export const NotifyTools: FC<{ channels: string[]; sinks: string[] }> = ({ chann
       <p class="text-xs">
         {sinks.join(', ')}
         <span class="opacity-70">
-          {channels.length > 0 ? ` — decisions reach ${channels.join(', ')}` : ' — none of them is reachable for decisions'}
+          {channels.length > 0
+            ? ` — decisions reach ${channels.join(', ')}`
+            : ' — none of them is reachable for decisions'}
         </span>
       </p>
     )}

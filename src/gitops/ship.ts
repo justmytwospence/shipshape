@@ -32,8 +32,6 @@ import { eligibleGroups, statusesFor, groupStatus } from './eligible.ts'
  * still travels as a branch, because it is a diff a person should read before shipping.
  */
 
-
-
 /**
  * The update turned out to be done already.
  *
@@ -90,7 +88,6 @@ function failGroup(group: UpdateGroup, reason: string): boolean {
   })
   return false
 }
-
 
 // ------------------------------------------------------------------ the ship pass
 
@@ -216,19 +213,29 @@ async function shipGroup(group: UpdateGroup, policy: Policy): Promise<boolean> {
   const shipped = await withGitLock('ship', async () => {
     const sync = await syncMain()
     if (sync.status === 'paused' || sync.status === 'refused') {
-      logEvent({ level: 'warn', kind: 'sync', stack, message: 'not shipping: the checkout could not be synced', detail: sync.reason })
+      logEvent({
+        level: 'warn',
+        kind: 'sync',
+        stack,
+        message: 'not shipping: the checkout could not be synced',
+        detail: sync.reason,
+      })
       return null
     }
     // Asked again with the lock held: a verb or a scan may have moved things since.
     const statuses = statusesFor(group, policy)
     if (groupStatus(statuses) !== 'ready') return null
     // Not already shipped, skipped or superseded since the pass looked.
-    if (!statuses.every((s) => s.row.state === 'detected' || (s.row.state === 'frozen' && s.row.approved_at))) return null
+    if (!statuses.every((s) => s.row.state === 'detected' || (s.row.state === 'frozen' && s.row.approved_at)))
+      return null
 
     const repoDir = await ensureWorkRepo()
     const draft = draftFor(group)
     let branch = draft?.branch ?? shipBranchFor(group)
-    let built: { forks: Map<number, ForkPrInfo>; bases: Map<number, BasePrInfo> } = { forks: new Map(), bases: new Map() }
+    let built: { forks: Map<number, ForkPrInfo>; bases: Map<number, BasePrInfo> } = {
+      forks: new Map(),
+      bases: new Map(),
+    }
     let title = changeTitle(group)
 
     const hasDraft =
@@ -314,7 +321,9 @@ async function mergeAndPush(
   for (let attempt = 0; attempt < 2; attempt++) {
     const branchSha = (await git(repoDir, ['rev-parse', branch])).stdout
     await git(repoDir, ['checkout', '-B', gitBranch(), `origin/${gitBranch()}`])
-    const merge = await git(repoDir, [...authorArgs(), 'merge', '--no-ff', '-m', title, '-m', body, branch], { allowFail: true })
+    const merge = await git(repoDir, [...authorArgs(), 'merge', '--no-ff', '-m', title, '-m', body, branch], {
+      allowFail: true,
+    })
     if (merge.exitCode !== 0) {
       await git(repoDir, ['merge', '--abort'], { allowFail: true })
       await git(repoDir, ['checkout', '-f', gitBranch()], { allowFail: true })
@@ -322,7 +331,10 @@ async function mergeAndPush(
     }
     const mergeSha = (await git(repoDir, ['rev-parse', 'HEAD'])).stdout
     beforePush?.(mergeSha, branchSha)
-    const push = await git(repoDir, ['push', httpsUrl(), `${gitBranch()}:${gitBranch()}`], { remote: true, allowFail: true })
+    const push = await git(repoDir, ['push', httpsUrl(), `${gitBranch()}:${gitBranch()}`], {
+      remote: true,
+      allowFail: true,
+    })
     if (push.exitCode === 0) {
       await git(repoDir, ['branch', '-D', branch], { allowFail: true })
       return { ok: true, mergeSha, branchSha }
@@ -332,7 +344,8 @@ async function mergeAndPush(
     }
     // Origin moved under us: refresh and go round once more.
     await git(repoDir, ['fetch', '--prune', httpsUrl(), '+refs/heads/*:refs/remotes/origin/*'], { remote: true })
-    if (rebuild && !(await rebuild())) return { ok: false, reason: `the branch could not be rebuilt on the new ${gitBranch()}` }
+    if (rebuild && !(await rebuild()))
+      return { ok: false, reason: `the branch could not be rebuilt on the new ${gitBranch()}` }
   }
   return { ok: false, reason: 'push kept losing a race with origin' }
 }
@@ -365,7 +378,11 @@ function recordIntent(o: {
     let id: number
     if (o.existingId !== null) {
       // A second attempt in the same push: the merge was rebuilt on a newer origin.
-      db.prepare(`UPDATE prs SET head_sha_pushed = ?, merge_commit_sha = ? WHERE id = ?`).run(o.branchSha, o.mergeSha, o.existingId)
+      db.prepare(`UPDATE prs SET head_sha_pushed = ?, merge_commit_sha = ? WHERE id = ?`).run(
+        o.branchSha,
+        o.mergeSha,
+        o.existingId,
+      )
       id = o.existingId
     } else if (o.draftId !== null) {
       db.prepare(
@@ -434,7 +451,9 @@ export async function reconcilePushing(): Promise<{ landed: number; dropped: num
           verdicts.set(r.id, 'dropped')
           continue
         }
-        const anc = await git(repo, ['merge-base', '--is-ancestor', r.sha, `origin/${gitBranch()}`], { allowFail: true })
+        const anc = await git(repo, ['merge-base', '--is-ancestor', r.sha, `origin/${gitBranch()}`], {
+          allowFail: true,
+        })
         if (anc.exitCode === 0) {
           verdicts.set(r.id, 'landed')
           await git(repo, ['branch', '-D', r.branch], { allowFail: true })
@@ -512,7 +531,11 @@ async function recordShipped(prId: number, mergeSha: string, group: UpdateGroup,
 
   let retired: Retired[] = []
   db.transaction(() => {
-    db.prepare(`UPDATE prs SET state = 'merged', merged_at = ?, merge_commit_sha = ? WHERE id = ?`).run(now, mergeSha, prId)
+    db.prepare(`UPDATE prs SET state = 'merged', merged_at = ?, merge_commit_sha = ? WHERE id = ?`).run(
+      now,
+      mergeSha,
+      prId,
+    )
     const mark = db.prepare(`UPDATE updates SET state = 'merged', updated_at = ? WHERE id = ?`)
     for (const m of members) mark.run(now, m.id)
     retired = retireOvertaken(now)

@@ -349,9 +349,9 @@ function deploymentFor(carriers: { stack: string; service: string }[]): Deployme
 
 /** `shipshape.review: required`, as the last scan recorded it. */
 function requiredReview(stack: string, service: string): boolean {
-  const row = getDb()
-    .prepare(`SELECT review_label FROM images WHERE stack = ? AND service = ?`)
-    .get(stack, service) as { review_label: string | null } | undefined
+  const row = getDb().prepare(`SELECT review_label FROM images WHERE stack = ? AND service = ?`).get(stack, service) as
+    | { review_label: string | null }
+    | undefined
   return row?.review_label?.trim().toLowerCase() === 'required'
 }
 
@@ -391,13 +391,8 @@ async function auditScreen(
   })
 }
 
-
-
 /** Exported for the tests, like the rest of the bookkeeping here. */
-export function recordVerdict(
-  row: { image: string; from_tag: string; to_tag: string },
-  v: ReviewedVerdict,
-): void {
+export function recordVerdict(row: { image: string; from_tag: string; to_tag: string }, v: ReviewedVerdict): void {
   const { policy } = loadPolicy()
   const db = getDb()
   const now = new Date().toISOString()
@@ -470,10 +465,7 @@ export function nextAttemptAt(attempts: number, now = Date.now()): string {
   return backoffUntil(attempts, { baseMs: 15 * 60_000, capMs: 24 * 60 * 60_000 }, now)
 }
 
-export function recordFailure(
-  row: { image: string; from_tag: string; to_tag: string },
-  error: string,
-): void {
+export function recordFailure(row: { image: string; from_tag: string; to_tag: string }, error: string): void {
   const db = getDb()
   clearRequest(row)
   const prior = db
@@ -497,7 +489,7 @@ export function recordFailure(
     logEvent({
       level: 'warn',
       kind: 'analysis',
-      message: 'the reader could not read the changelog; the screen\'s verdict stands',
+      message: "the reader could not read the changelog; the screen's verdict stands",
       detail: `${row.image} ${row.from_tag} -> ${row.to_tag} (attempt ${attempts}): ${error.slice(0, 140)}`,
     })
     return

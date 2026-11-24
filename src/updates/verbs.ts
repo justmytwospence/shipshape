@@ -338,7 +338,11 @@ async function retry(row: UpdateRow, _ctx: ActionContext, io?: DeployIo): Promis
       )
       .run(prId?.pr_id ?? null, target.stack, target.services.join(' '), target.strategy, now)
     const deployId = Number(info.lastInsertRowid)
-    linkDeployUpdates(deployId, prId?.pr_id ?? null, members.map((m) => m.id))
+    linkDeployUpdates(
+      deployId,
+      prId?.pr_id ?? null,
+      members.map((m) => m.id),
+    )
     const l = launchDeploy(deployId, target.stack, { label: `retry of ${row.stack}`, io })
     if (l.started) return { ok: true, transient: true, message: `Deploying ${row.stack} again.` }
     return l.queued ? { ok: true, transient: true, message: l.message } : { ok: false, message: l.message }
@@ -402,45 +406,47 @@ async function rollback(row: UpdateRow, ctx: ActionContext, _prId: number | null
   const carried = carriedFor(target.stack, target.services, deployId)
 
   const launched = launchOnStack(target.stack, `rollback of ${row.stack}`, async () => {
-      const result = await performRollback(target, sha, {
-        carried,
-        io,
-        record: (p) => {
-          db.prepare(`UPDATE deploys SET snapshot = ? WHERE id = ?`).run(JSON.stringify(p), deployId)
-        },
+    const result = await performRollback(target, sha, {
+      carried,
+      io,
+      record: (p) => {
+        db.prepare(`UPDATE deploys SET snapshot = ? WHERE id = ?`).run(JSON.stringify(p), deployId)
+      },
+    })
+    const finished = new Date().toISOString()
+    if (result.ok) {
+      // `healthy` only when something came up: a rollback that left everything stopped
+      // verified nothing, and a healthy row is the one thing that never carries.
+      db.prepare(
+        `UPDATE deploys SET status = 'rolled-back', ok = 1, healthy = ?, detail = ?, finished_at = ? WHERE id = ?`,
+      ).run(result.up && result.up.length === 0 ? 0 : 1, result.detail, finished, deployId)
+      for (const m of members) setState(m.id, 'failed', 'rolled back by the operator')
+      logEvent({
+        level: 'warn',
+        kind: 'deploy',
+        stack: row.stack,
+        service: row.service,
+        message: `${row.stack} rolled back to ${row.from_tag} by the operator`,
+        detail: result.detail,
       })
-      const finished = new Date().toISOString()
-      if (result.ok) {
-        // `healthy` only when something came up: a rollback that left everything stopped
-        // verified nothing, and a healthy row is the one thing that never carries.
-        db.prepare(
-          `UPDATE deploys SET status = 'rolled-back', ok = 1, healthy = ?, detail = ?, finished_at = ? WHERE id = ?`,
-        ).run(result.up && result.up.length === 0 ? 0 : 1, result.detail, finished, deployId)
-        for (const m of members) setState(m.id, 'failed', 'rolled back by the operator')
-        logEvent({
-          level: 'warn',
-          kind: 'deploy',
-          stack: row.stack,
-          service: row.service,
-          message: `${row.stack} rolled back to ${row.from_tag} by the operator`,
-          detail: result.detail,
-        })
-        // Publish the revert, or the next scan sees the old tag and offers the update
-        // it just undid.
-        await withGitLock('post-rollback-sync', () => syncMain())
-      } else {
-        db.prepare(
-          `UPDATE deploys SET status = 'error', detail = ?, finished_at = ? WHERE id = ?`,
-        ).run(result.detail, finished, deployId)
-        logEvent({
-          level: 'error',
-          kind: 'deploy',
-          stack: row.stack,
-          service: row.service,
-          message: `rollback of ${row.stack} failed`,
-          detail: `${result.detail}. Undo it by hand: git ${(await revertArgs(env.repoDir, sha)).join(' ')}`,
-        })
-      }
+      // Publish the revert, or the next scan sees the old tag and offers the update
+      // it just undid.
+      await withGitLock('post-rollback-sync', () => syncMain())
+    } else {
+      db.prepare(`UPDATE deploys SET status = 'error', detail = ?, finished_at = ? WHERE id = ?`).run(
+        result.detail,
+        finished,
+        deployId,
+      )
+      logEvent({
+        level: 'error',
+        kind: 'deploy',
+        stack: row.stack,
+        service: row.service,
+        message: `rollback of ${row.stack} failed`,
+        detail: `${result.detail}. Undo it by hand: git ${(await revertArgs(env.repoDir, sha)).join(' ')}`,
+      })
+    }
   })
   if (!launched.started) {
     db.prepare(`UPDATE deploys SET status = 'error', detail = ?, finished_at = ? WHERE id = ?`).run(
@@ -462,4 +468,3 @@ function acknowledge(row: UpdateRow): VerbResult {
   getDb().prepare(`UPDATE updates SET acked_at = ? WHERE id = ?`).run(new Date().toISOString(), row.id)
   return { ok: true, message: 'Acknowledged.' }
 }
-

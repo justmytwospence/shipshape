@@ -22,7 +22,11 @@ export function makeToken(verb: string, updateId: number, secret: string, now = 
   return `${payload}.${sign(payload, secret)}`
 }
 
-export function verifyToken(token: string, secret: string, now = Date.now()): { verb: string; updateId: number } | null {
+export function verifyToken(
+  token: string,
+  secret: string,
+  now = Date.now(),
+): { verb: string; updateId: number } | null {
   const [payload, mac] = token.split('.')
   if (!payload || !mac) return null
   const want = Buffer.from(sign(payload, secret))

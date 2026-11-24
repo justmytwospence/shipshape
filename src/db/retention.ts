@@ -41,14 +41,13 @@ export function prune(now = Date.now()): PruneResult {
             WHERE i.registry = tags_seen.registry AND i.repository = tags_seen.repository)`,
       )
       .run().changes
-    const events = db
-      .prepare(`DELETE FROM events WHERE level = 'info' AND COALESCE(last_at, at) < ?`)
-      .run(d90).changes
+    const events = db.prepare(`DELETE FROM events WHERE level = 'info' AND COALESCE(last_at, at) < ?`).run(d90).changes
     let restorePoints = 0
     const gone = db.prepare(`DELETE FROM restore_points WHERE id = ?`)
-    const rows = db
-      .prepare(`SELECT id, path FROM restore_points WHERE path NOT LIKE 'offsite:%'`)
-      .all() as { id: number; path: string }[]
+    const rows = db.prepare(`SELECT id, path FROM restore_points WHERE path NOT LIKE 'offsite:%'`).all() as {
+      id: number
+      path: string
+    }[]
     for (const r of rows) {
       if (!existsSync(r.path)) restorePoints += gone.run(r.id).changes
     }

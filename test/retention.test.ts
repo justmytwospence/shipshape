@@ -19,12 +19,15 @@ const NOW = Date.parse('2026-11-21T00:00:00Z')
 const ago = (days: number) => new Date(NOW - days * 864e5).toISOString()
 
 beforeEach(() => {
-  getDb().exec(`DELETE FROM http_cache; DELETE FROM tags_seen; DELETE FROM images; DELETE FROM events; DELETE FROM restore_points;`)
+  getDb().exec(
+    `DELETE FROM http_cache; DELETE FROM tags_seen; DELETE FROM images; DELETE FROM events; DELETE FROM restore_points;`,
+  )
 })
 
 const cache = (url: string, etag: string | null, at: string) =>
   getDb().prepare(`INSERT INTO http_cache (url, etag, body, fetched_at) VALUES (?, ?, '{}', ?)`).run(url, etag, at)
-const urls = () => (getDb().prepare(`SELECT url FROM http_cache ORDER BY url`).all() as { url: string }[]).map((r) => r.url)
+const urls = () =>
+  (getDb().prepare(`SELECT url FROM http_cache ORDER BY url`).all() as { url: string }[]).map((r) => r.url)
 
 test('cache rows not fetched in 30 days go, external links stay', () => {
   cache('github:/repos/o/old', '"e"', ago(40))
@@ -48,9 +51,7 @@ test('tags of repositories nothing runs are forgotten; watched ones stay', () =>
     `INSERT INTO images (stack, service, compose_file, image_ref, registry, repository, last_seen_at)
      VALUES ('a', 'app', 'a/docker-compose.yaml', 'ghcr.io/o/app:1', 'ghcr.io', 'o/app', ?)`,
   ).run(ago(0))
-  const tag = db.prepare(
-    `INSERT INTO tags_seen (registry, repository, tag, first_seen_at) VALUES (?, ?, ?, ?)`,
-  )
+  const tag = db.prepare(`INSERT INTO tags_seen (registry, repository, tag, first_seen_at) VALUES (?, ?, ?, ?)`)
   tag.run('ghcr.io', 'o/app', '1', ago(1))
   tag.run('ghcr.io', 'o/gone', '1', ago(1))
   assert.equal(prune(NOW).tags, 1)
@@ -66,7 +67,11 @@ test('info events older than 90 days go; warnings and errors stay', () => {
   ev.run(ago(100), 'error', 'old error', null)
   ev.run(ago(5), 'info', 'new info', null)
   assert.equal(prune(NOW).events, 1)
-  const left = (getDb().prepare(`SELECT message FROM events WHERE message NOT LIKE 'database%' ORDER BY id`).all() as { message: string }[]).map((r) => r.message)
+  const left = (
+    getDb().prepare(`SELECT message FROM events WHERE message NOT LIKE 'database%' ORDER BY id`).all() as {
+      message: string
+    }[]
+  ).map((r) => r.message)
   assert.deepEqual(left, ['old but seen lately', 'old warn', 'old error', 'new info'])
 })
 
@@ -80,7 +85,9 @@ test('restore points whose file is gone are forgotten; offsite ones stay', () =>
   rp.run(join(dir, 'deleted.tar.zst'), ago(1))
   rp.run('offsite:s3://bucket/x', ago(1))
   assert.equal(prune(NOW).restorePoints, 1)
-  const left = (getDb().prepare(`SELECT path FROM restore_points ORDER BY id`).all() as { path: string }[]).map((r) => r.path)
+  const left = (getDb().prepare(`SELECT path FROM restore_points ORDER BY id`).all() as { path: string }[]).map(
+    (r) => r.path,
+  )
   assert.deepEqual(left, [kept, 'offsite:s3://bucket/x'])
 })
 

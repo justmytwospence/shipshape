@@ -295,10 +295,16 @@ test('several services in one compose file are watched in one commit', async () 
     changes: [{ key: 'watch', value: 'true' }],
   })
   assert.equal(r.ok, true, r.message)
-  assert.equal(g(['log', '-1', '--pretty=%s']), 'chore(shipshape): media: shipshape.watch=true for jellyfin, jellyseerr')
+  assert.equal(
+    g(['log', '-1', '--pretty=%s']),
+    'chore(shipshape): media: shipshape.watch=true for jellyfin, jellyseerr',
+  )
   const text = readFileSync(FILE, 'utf8')
   assert.equal(text.match(/shipshape\.watch: "true"/g)?.length, 2)
-  assert.match(text, /jellyseerr:\n {4}image: fallenbagel\/jellyseerr:2\.1\.0\n {4}labels:\n {6}shipshape\.watch: "true"/)
+  assert.match(
+    text,
+    /jellyseerr:\n {4}image: fallenbagel\/jellyseerr:2\.1\.0\n {4}labels:\n {6}shipshape\.watch: "true"/,
+  )
 })
 
 test('services in different files are refused', async () => {

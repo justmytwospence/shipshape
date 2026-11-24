@@ -38,7 +38,8 @@ const rel = (tag: string, o: { prerelease?: boolean; draft?: boolean; body?: str
   prerelease: o.prerelease ?? false,
 })
 /** A full page of newer releases, so the reader has to decide whether to go on. */
-const fullOfBetas = (major: number) => Array.from({ length: 100 }, (_, i) => rel(`v${major}.0.${99 - i}-beta.1`, { prerelease: true }))
+const fullOfBetas = (major: number) =>
+  Array.from({ length: 100 }, (_, i) => rel(`v${major}.0.${99 - i}-beta.1`, { prerelease: true }))
 
 test('drafts are dropped; prereleases are kept, marked and keyed', async (t) => {
   const h = mockFetch(t, [
@@ -64,7 +65,10 @@ test('drafts are dropped; prereleases are kept, marked and keyed', async (t) => 
 test('full pages are followed until a release at or below the running version appears', async (t) => {
   const h = mockFetch(t, [
     { url: page(1), reply: () => json(fullOfBetas(3)) },
-    { url: page(2), reply: () => json([...Array.from({ length: 99 }, (_, i) => rel(`v2.9.${99 - i}`)), rel('v2.0.0')]) },
+    {
+      url: page(2),
+      reply: () => json([...Array.from({ length: 99 }, (_, i) => rel(`v2.9.${99 - i}`)), rel('v2.0.0')]),
+    },
   ])
   const r = await releaseIndex('o/r', { until: versionKey('2.5.0'), maxPages: 5 })
   assert.ok(r.ok && r.complete)

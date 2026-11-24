@@ -110,8 +110,7 @@ export function costOf(usage: Anthropic.Usage, model: string): CallCost {
         : u.cost
       : undefined
   const searches =
-    (usage as { server_tool_use?: { web_search_requests?: number } }).server_tool_use
-      ?.web_search_requests ?? 0
+    (usage as { server_tool_use?: { web_search_requests?: number } }).server_tool_use?.web_search_requests ?? 0
   const cacheWrite = usage.cache_creation_input_tokens ?? 0
   const cacheRead = usage.cache_read_input_tokens ?? 0
   const cost =
@@ -129,7 +128,6 @@ export function costOf(usage: Anthropic.Usage, model: string): CallCost {
     searches,
   }
 }
-
 
 /** A call to a custom endpoint: tokens as reported, cost unknown and recorded as 0. */
 export function unpricedCost(usage: Anthropic.Usage): CallCost {

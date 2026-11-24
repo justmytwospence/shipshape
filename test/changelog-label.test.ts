@@ -47,10 +47,41 @@ test('a link that could reach inside the lab, or out of the repository, is refus
 })
 
 test('private ranges are recognised in both address families, and public ones are not', () => {
-  for (const ip of ['10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.1.1', '100.64.0.1', '0.0.0.0', '224.0.0.1', 'fd00::1', 'fe80::1', '::ffff:10.0.0.1', '::ffff:7f00:1', '64:ff9b::a00:1', '64:ff9b::10.0.0.1', '64:ff9b:1::1', '2002:a00:1::1', '2002:c0a8:101::', '::10.0.0.1', '::7f00:1', 'fec0::1', '100::1', '0:0:0:0:0:0:0:1', '1::2::3']) {
+  for (const ip of [
+    '10.1.2.3',
+    '172.16.0.1',
+    '172.31.255.255',
+    '192.168.1.1',
+    '100.64.0.1',
+    '0.0.0.0',
+    '224.0.0.1',
+    'fd00::1',
+    'fe80::1',
+    '::ffff:10.0.0.1',
+    '::ffff:7f00:1',
+    '64:ff9b::a00:1',
+    '64:ff9b::10.0.0.1',
+    '64:ff9b:1::1',
+    '2002:a00:1::1',
+    '2002:c0a8:101::',
+    '::10.0.0.1',
+    '::7f00:1',
+    'fec0::1',
+    '100::1',
+    '0:0:0:0:0:0:0:1',
+    '1::2::3',
+  ]) {
     assert.equal(isPrivateAddress(ip), true, ip)
   }
-  for (const ip of ['8.8.8.8', '172.32.0.1', '100.128.0.1', '2606:4700:4700::1111', '::ffff:8.8.8.8', '64:ff9b::808:808', '2002:808:808::1']) {
+  for (const ip of [
+    '8.8.8.8',
+    '172.32.0.1',
+    '100.128.0.1',
+    '2606:4700:4700::1111',
+    '::ffff:8.8.8.8',
+    '64:ff9b::808:808',
+    '2002:808:808::1',
+  ]) {
     assert.equal(isPrivateAddress(ip), false, ip)
   }
   assert.equal(refusedHost('releases.example.com'), null)
@@ -68,11 +99,20 @@ test('a web page becomes text whose headings still cut by version', () => {
   const text = htmlToText(html)
   assert.doesNotMatch(text, /alert|color: red|Home/)
   assert.match(text, /## Version 1\.43\.5 — September\n\n- Fixed playback & transcoding\n- Faster scans/)
-  assert.deepEqual(sectionize(text).map((s) => s.key?.core.join('.')), ['1.43.5', '1.43.4'])
+  assert.deepEqual(
+    sectionize(text).map((s) => s.key?.core.join('.')),
+    ['1.43.5', '1.43.4'],
+  )
 })
 
 test('a page built to be slow is read in linear time', () => {
-  for (const s of ['<'.repeat(200_000), '<a '.repeat(70_000), '<script'.repeat(30_000), '<!--'.repeat(50_000), '<h1>'.repeat(50_000)]) {
+  for (const s of [
+    '<'.repeat(200_000),
+    '<a '.repeat(70_000),
+    '<script'.repeat(30_000),
+    '<!--'.repeat(50_000),
+    '<h1>'.repeat(50_000),
+  ]) {
     const t0 = performance.now()
     htmlToText(s)
     assert.ok(performance.now() - t0 < 500, `${s.slice(0, 8)} took ${Math.round(performance.now() - t0)} ms`)

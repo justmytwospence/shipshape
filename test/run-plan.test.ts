@@ -49,8 +49,12 @@ const seen = (...list: ServiceObservation[]) => new Map(list.map((o) => [o.servi
 const noOwners = () => null
 const nothingCarried = new Set<string>()
 
-const plan = (services: string[], observed: ServiceObservation[], carried: ReadonlySet<string> = nothingCarried, ownerOf: (s: string) => string | null = noOwners) =>
-  planRun({ services, seen: seen(...observed), ownerOf, carried })
+const plan = (
+  services: string[],
+  observed: ServiceObservation[],
+  carried: ReadonlySet<string> = nothingCarried,
+  ownerOf: (s: string) => string | null = noOwners,
+) => planRun({ services, seen: seen(...observed), ownerOf, carried })
 
 // ---------------------------------------------------------------- docker's states
 
@@ -77,9 +81,18 @@ test('a service nobody observed reads as having no container', () => {
 })
 
 test('a left service keeps what its old container was', () => {
-  const p = plan(['bitwarden'], [as('bitwarden', 'exited', { imageRef: 'vaultwarden/server:1.37.2', restartPolicy: 'always' })])
+  const p = plan(
+    ['bitwarden'],
+    [as('bitwarden', 'exited', { imageRef: 'vaultwarden/server:1.37.2', restartPolicy: 'always' })],
+  )
   assert.deepEqual(p.left, [
-    { service: 'bitwarden', state: 'exited', why: 'not-running', restartPolicy: 'always', oldRef: 'vaultwarden/server:1.37.2' },
+    {
+      service: 'bitwarden',
+      state: 'exited',
+      why: 'not-running',
+      restartPolicy: 'always',
+      oldRef: 'vaultwarden/server:1.37.2',
+    },
   ])
 })
 
@@ -133,13 +146,23 @@ const deluge = ownerFrom([
 ])
 
 test('owner and follower both running come up together', () => {
-  const p = plan(['deluge-gluetun', 'deluge'], [as('deluge-gluetun', 'running'), as('deluge', 'running')], nothingCarried, deluge)
+  const p = plan(
+    ['deluge-gluetun', 'deluge'],
+    [as('deluge-gluetun', 'running'), as('deluge', 'running')],
+    nothingCarried,
+    deluge,
+  )
   assert.deepEqual(p.up, ['deluge-gluetun', 'deluge'])
   assert.deepEqual(p.left, [])
 })
 
 test('a follower whose owner is recreated is flagged stranded', () => {
-  const p = plan(['deluge-gluetun', 'deluge'], [as('deluge-gluetun', 'running'), as('deluge', 'exited')], nothingCarried, deluge)
+  const p = plan(
+    ['deluge-gluetun', 'deluge'],
+    [as('deluge-gluetun', 'running'), as('deluge', 'exited')],
+    nothingCarried,
+    deluge,
+  )
   assert.deepEqual(p.up, ['deluge-gluetun'])
   assert.equal(p.left.length, 1)
   assert.equal(p.left[0]!.service, 'deluge')
@@ -149,7 +172,12 @@ test('a follower whose owner is recreated is flagged stranded', () => {
 
 test('a follower of a stopped owner is left as it was', () => {
   // `up --no-deps deluge` with its owner stopped destroys deluge and leaves it in created.
-  const p = plan(['deluge-gluetun', 'deluge'], [as('deluge-gluetun', 'exited'), as('deluge', 'running')], nothingCarried, deluge)
+  const p = plan(
+    ['deluge-gluetun', 'deluge'],
+    [as('deluge-gluetun', 'exited'), as('deluge', 'running')],
+    nothingCarried,
+    deluge,
+  )
   assert.deepEqual(p.up, [])
   assert.deepEqual(
     p.left.map((l) => [l.service, l.why]),
@@ -175,7 +203,12 @@ test('a follower-only deploy checks the owner outside the target', () => {
 })
 
 test('a carried follower of a stopped owner is not restored', () => {
-  const p = plan(['deluge-gluetun', 'deluge'], [as('deluge-gluetun', 'exited'), as('deluge', 'absent')], new Set(['deluge']), deluge)
+  const p = plan(
+    ['deluge-gluetun', 'deluge'],
+    [as('deluge-gluetun', 'exited'), as('deluge', 'absent')],
+    new Set(['deluge']),
+    deluge,
+  )
   assert.deepEqual(p.up, [])
   assert.deepEqual(p.restored, [])
   assert.equal(p.left[1]!.why, 'owner-down')
@@ -184,7 +217,12 @@ test('a carried follower of a stopped owner is not restored', () => {
 test('an absent follower is not stranded', () => {
   // No container means no pinned id to lose: compose creates it next time, and there is
   // nothing for docker start to fail on.
-  const p = plan(['deluge-gluetun', 'deluge'], [as('deluge-gluetun', 'running'), as('deluge', 'absent')], nothingCarried, deluge)
+  const p = plan(
+    ['deluge-gluetun', 'deluge'],
+    [as('deluge-gluetun', 'running'), as('deluge', 'absent')],
+    nothingCarried,
+    deluge,
+  )
   assert.deepEqual(p.up, ['deluge-gluetun'])
   assert.equal(p.left[0]!.stranded, undefined)
   assert.equal(p.left[0]!.owner, undefined)

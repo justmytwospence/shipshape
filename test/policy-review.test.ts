@@ -27,7 +27,8 @@ test('a screen that decides keeps the gate advisory with the reader off', () => 
 })
 
 test('retiredKeys names what a file still carries that nothing reads', () => {
-  const doc = 'merge_method: squash\nmerge:\n  cooldown_days: 7\nnotify:\n  routine: off\n  sinks: []\nsync:\n  push_main: true\n'
+  const doc =
+    'merge_method: squash\nmerge:\n  cooldown_days: 7\nnotify:\n  routine: off\n  sinks: []\nsync:\n  push_main: true\n'
   assert.deepEqual(retiredKeys(doc), ['merge_method', 'merge', 'notify.routine'])
   assert.deepEqual(retiredKeys('ship:\n  cooldown_days: 7\n'), [])
 })

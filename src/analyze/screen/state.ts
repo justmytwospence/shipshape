@@ -164,7 +164,8 @@ export function selectNotes(all: ScreenNote[]): { notes: ScreenNote[]; omitted: 
     notes.push({ ...n, text })
   }
   // Truncating a note is leaving part of it out.
-  for (const n of ordered) if (n.text.length > NOTE_CAP && !omitted.includes(n.heading)) omitted.push(`${n.heading} (cut)`)
+  for (const n of ordered)
+    if (n.text.length > NOTE_CAP && !omitted.includes(n.heading)) omitted.push(`${n.heading} (cut)`)
   return { notes, omitted }
 }
 
@@ -178,13 +179,19 @@ export function extractLines(notes: ScreenNote[]): ScreenLine[] {
       if (!m) continue
       const text = m[1]!.replace(/\s+/g, ' ').trim()
       if (text.length < 8) continue
-      const key = text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+      const key = text
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim()
       if (seen.has(key)) continue
       seen.add(key)
       lines.push({ version: n.version, text: text.slice(0, 400), url: n.url })
     }
   }
-  return [...lines.filter((l) => PRIORITY.test(l.text)), ...lines.filter((l) => !PRIORITY.test(l.text))].slice(0, LINE_CAP)
+  return [...lines.filter((l) => PRIORITY.test(l.text)), ...lines.filter((l) => !PRIORITY.test(l.text))].slice(
+    0,
+    LINE_CAP,
+  )
 }
 
 /**

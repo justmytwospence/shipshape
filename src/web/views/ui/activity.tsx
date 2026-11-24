@@ -15,7 +15,6 @@ import { EVENT_KINDS, type ActivityRow, type EventKind } from '../../../events.t
  * the whole width and a day is a sticky header.
  */
 
-
 const LEVEL_DOT: Record<string, string> = {
   info: 'bg-base-content/50',
   warn: 'bg-warning',
@@ -34,11 +33,7 @@ const KIND_LABEL: Record<EventKind, string> = {
 
 const KIND_TABS = [{ key: 'all', label: 'All' }, ...EVENT_KINDS.map((k) => ({ key: k, label: KIND_LABEL[k] }))]
 
-export const ActivityToolbar: FC<{ kind: string; problems: boolean; q: string }> = ({
-  kind,
-  problems,
-  q,
-}) => (
+export const ActivityToolbar: FC<{ kind: string; problems: boolean; q: string }> = ({ kind, problems, q }) => (
   <form
     class="flex shrink-0 items-center gap-2"
     hx-get="/activity"
@@ -51,13 +46,7 @@ export const ActivityToolbar: FC<{ kind: string; problems: boolean; q: string }>
     <Tabs name="kind" value={kind} options={KIND_TABS} label="Kind" />
     <Search value={q} placeholder="message" />
     <label class="label tap cursor-pointer gap-1.5 text-xs whitespace-nowrap">
-      <input
-        type="checkbox"
-        name="level"
-        value="problems"
-        class="toggle toggle-xs"
-        checked={problems}
-      />
+      <input type="checkbox" name="level" value="problems" class="toggle toggle-xs" checked={problems} />
       Problems
     </label>
   </form>
@@ -140,9 +129,7 @@ const ActivityLine: FC<{ row: ActivityRow }> = ({ row: r }) => {
   if (!r.detail) return <div class={LINE}>{cells}</div>
   return (
     <details class="group/line">
-      <summary class={`${LINE} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>
-        {cells}
-      </summary>
+      <summary class={`${LINE} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}>{cells}</summary>
       <p class="px-3 pb-2 pl-7 font-mono text-xs break-words whitespace-pre-wrap opacity-70 lg:pl-[10.75rem]">
         {r.detail}
       </p>

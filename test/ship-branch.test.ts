@@ -27,14 +27,19 @@ const { runShipPass } = await import('../src/gitops/ship.ts')
 const { syncMain } = await import('../src/gitops/sync.ts')
 const { setServiceLabel } = await import('../src/gitops/labels.ts')
 
-const g = (cwd: string, args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd, encoding: 'utf8' }).trim()
+const g = (cwd: string, args: string[]) =>
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd, encoding: 'utf8' }).trim()
 
 function setup() {
-  for (const p of [origin, live, join(dir, 'data', 'repo'), join(dir, 'seed')]) rmSync(p, { recursive: true, force: true })
+  for (const p of [origin, live, join(dir, 'data', 'repo'), join(dir, 'seed')])
+    rmSync(p, { recursive: true, force: true })
   const seed = join(dir, 'seed')
   mkdirSync(join(seed, 'web'), { recursive: true })
   g(seed, ['init', '-q', '-b', 'master'])
-  writeFileSync(join(seed, 'web', 'docker-compose.yaml'), 'services:\n  web:\n    image: example/web:1.0.0\n    labels:\n      shipshape.watch: "true"\n')
+  writeFileSync(
+    join(seed, 'web', 'docker-compose.yaml'),
+    'services:\n  web:\n    image: example/web:1.0.0\n    labels:\n      shipshape.watch: "true"\n',
+  )
   g(seed, ['add', '-A'])
   g(seed, ['commit', '-qm', 'chore: fixture'])
   execFileSync('git', ['clone', '-q', '--bare', seed, origin])
@@ -56,7 +61,18 @@ function seedUpdate() {
 
 beforeEach(() => {
   const db = getDb()
-  for (const t of ['deploy_updates', 'deploys', 'proposals', 'pr_updates', 'prs', 'updates', 'verdicts', 'images', 'events']) db.prepare(`DELETE FROM ${t}`).run()
+  for (const t of [
+    'deploy_updates',
+    'deploys',
+    'proposals',
+    'pr_updates',
+    'prs',
+    'updates',
+    'verdicts',
+    'images',
+    'events',
+  ])
+    db.prepare(`DELETE FROM ${t}`).run()
   writeFileSync(process.env.POLICY_FILE!, 'paused: false\nship:\n  cooldown_days: 0\n')
 })
 

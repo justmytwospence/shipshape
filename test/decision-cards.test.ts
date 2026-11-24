@@ -32,24 +32,43 @@ globalThis.fetch = (async (_u: unknown, init: { body: string }) => {
 }) as unknown as typeof fetch
 
 const { getDb } = await import('../src/db/index.ts')
-const { currentDecisions, cardFor, syncDecisionCards, resetDecisionCards, DECISION_PREFIX } = await import('../src/notify/decisions.ts')
+const { currentDecisions, cardFor, syncDecisionCards, resetDecisionCards, DECISION_PREFIX } = await import(
+  '../src/notify/decisions.ts'
+)
 
 const AG = 'ghcr.io/example/auth-proxy'
 
-function add(stack: string, service: string, tier: string, o: { image?: string; to?: string; from?: string; since?: string | null; state?: string } = {}): number {
+function add(
+  stack: string,
+  service: string,
+  tier: string,
+  o: { image?: string; to?: string; from?: string; since?: string | null; state?: string } = {},
+): number {
   return Number(
     getDb()
       .prepare(
         `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at, decision_since)
          VALUES (?, ?, ?, ?, ?, 'minor', ?, ?, ?, ?, ?)`,
       )
-      .run(stack, service, `${o.image ?? AG}:${o.from ?? 'v1.6.0'}`, o.from ?? 'v1.6.0', o.to ?? 'v1.7.0', tier, o.state ?? 'detected', new Date().toISOString(), new Date().toISOString(), o.since ?? null)
-      .lastInsertRowid,
+      .run(
+        stack,
+        service,
+        `${o.image ?? AG}:${o.from ?? 'v1.6.0'}`,
+        o.from ?? 'v1.6.0',
+        o.to ?? 'v1.7.0',
+        tier,
+        o.state ?? 'detected',
+        new Date().toISOString(),
+        new Date().toISOString(),
+        o.since ?? null,
+      ).lastInsertRowid,
   )
 }
 
 beforeEach(() => {
-  getDb().exec(`DELETE FROM updates; DELETE FROM images; DELETE FROM verdicts; DELETE FROM proposals; DELETE FROM incidents; DELETE FROM prs`)
+  getDb().exec(
+    `DELETE FROM updates; DELETE FROM images; DELETE FROM verdicts; DELETE FROM proposals; DELETE FROM incidents; DELETE FROM prs`,
+  )
   wire.length = 0
   resetDecisionCards()
   writeFileSync(process.env.POLICY_FILE!, 'paused: false\nnotify:\n  sinks:\n    - { type: webhook }\n')
@@ -73,7 +92,9 @@ test('a lone service is named by itself', () => {
 test('the first line is the question, the other holds follow, and the review summary closes', () => {
   const id = add('a', 'a-auth', 'ask')
   getDb()
-    .prepare(`INSERT INTO verdicts (image, from_tag, to_tag, recommendation, confidence, summary, migration_steps, created_at) VALUES (?, 'v1.6.0', 'v1.7.0', 'approve', 'high', 'Session ids are now encrypted;  clients reconnect once.', '["rename X"]', 'now')`)
+    .prepare(
+      `INSERT INTO verdicts (image, from_tag, to_tag, recommendation, confidence, summary, migration_steps, created_at) VALUES (?, 'v1.6.0', 'v1.7.0', 'approve', 'high', 'Session ids are now encrypted;  clients reconnect once.', '["rename X"]', 'now')`,
+    )
     .run(`${AG}:v1.6.0`)
   const lines = cardFor(currentDecisions()[0]!).body.split('\n')
   assert.equal(lines[0], 'Ship? this service always asks')
@@ -90,12 +111,17 @@ test('the taps are ship, snooze, always ship, skip -- and always ship only when 
   getDb().exec(`DELETE FROM updates`)
   add('t', 'traefik', 'lifeline', { image: 'traefik' })
   const stuck = cardFor(currentDecisions()[0]!).actions!.map((a) => a.do.verb)
-  assert.deepEqual(stuck, ['ship', 'snooze', 'skip'], 'a lifeline cannot be waived, so there is nothing for always to mean')
+  assert.deepEqual(
+    stuck,
+    ['ship', 'snooze', 'skip'],
+    'a lifeline cannot be waived, so there is nothing for always to mean',
+  )
 })
 
 test('every tap names the lowest update id of the decision', () => {
   const ids = [add('a', 'a-auth', 'ask'), add('b', 'b-auth', 'ask')]
-  for (const a of cardFor(currentDecisions()[0]!).actions!) assert.equal((a.do as { update: number }).update, Math.min(...ids))
+  for (const a of cardFor(currentDecisions()[0]!).actions!)
+    assert.equal((a.do as { update: number }).update, Math.min(...ids))
 })
 
 test('a decision is P3, and P4 once it has waited past the escalation delay', () => {
@@ -104,14 +130,19 @@ test('a decision is P3, and P4 once it has waited past the escalation delay', ()
   const long = new Date(Date.now() - 8 * 86_400_000).toISOString()
   getDb().exec(`UPDATE updates SET decision_since = '${long}'`)
   assert.equal(cardFor(currentDecisions()[0]!).priority, 4, 'after seven days')
-  writeFileSync(process.env.POLICY_FILE!, 'paused: false\nnotify:\n  sinks:\n    - { type: webhook }\n  escalate_after_days: 30\n')
+  writeFileSync(
+    process.env.POLICY_FILE!,
+    'paused: false\nnotify:\n  sinks:\n    - { type: webhook }\n  escalate_after_days: 30\n',
+  )
   assert.equal(cardFor(currentDecisions()[0]!).priority, 3, 'the delay is policy')
 })
 
 test('what ships on its own, is snoozed, or is frozen is not a decision', () => {
   add('ok', 'ok', 'normal', { image: 'a/ok' })
   const sn = add('sn', 'sn', 'ask', { image: 'a/sn' })
-  getDb().prepare(`UPDATE updates SET snoozed_until = ? WHERE id = ?`).run(new Date(Date.now() + 86_400_000).toISOString(), sn)
+  getDb()
+    .prepare(`UPDATE updates SET snoozed_until = ? WHERE id = ?`)
+    .run(new Date(Date.now() + 86_400_000).toISOString(), sn)
   add('fz', 'fz', 'frozen', { image: 'a/fz', state: 'frozen' })
   assert.deepEqual(currentDecisions(), [])
 })
@@ -143,7 +174,12 @@ test('syncing sends a card once, edits it when it changes, and resolves it when 
 
   getDb().prepare(`UPDATE updates SET state = 'merged'`).run()
   assert.equal(await syncDecisionCards(), 1)
-  assert.deepEqual(wire.at(-1), { key: `${DECISION_PREFIX}stack:a`, source: 'shipshape', status: 'resolved', redact: true })
+  assert.deepEqual(wire.at(-1), {
+    key: `${DECISION_PREFIX}stack:a`,
+    source: 'shipshape',
+    status: 'resolved',
+    redact: true,
+  })
   void id
 })
 
@@ -167,13 +203,21 @@ test('a stack with more waiting does not join a fan-out of one of its images', (
   add('s2', 's2-auth', 'ask')
   add('s2', 's2-db', 'ask', { image: 'docker.io/library/postgres', from: '17', to: '18' })
   add('s3', 's3-auth', 'ask')
-  const keys = currentDecisions().map((d) => d.key).sort()
+  const keys = currentDecisions()
+    .map((d) => d.key)
+    .sort()
   assert.deepEqual(keys, ['ghcr.io/example/auth-proxy', 'stack:s2'])
   assert.equal(currentDecisions().find((d) => d.repository)!.members.length, 2)
 })
 
 test('the cards v1 posted are resolved, so nothing stale is left in the room', async () => {
-  getDb().prepare(`INSERT INTO incidents (key, open, pending, attempts, updated_at) VALUES ('shipshape:update:books/shelfmark', 1, NULL, 0, 'now')`).run()
+  getDb()
+    .prepare(
+      `INSERT INTO incidents (key, open, pending, attempts, updated_at) VALUES ('shipshape:update:books/shelfmark', 1, NULL, 0, 'now')`,
+    )
+    .run()
   await syncDecisionCards()
-  assert.deepEqual(wire, [{ key: 'shipshape:update:books/shelfmark', source: 'shipshape', status: 'resolved', redact: true }])
+  assert.deepEqual(wire, [
+    { key: 'shipshape:update:books/shelfmark', source: 'shipshape', status: 'resolved', redact: true },
+  ])
 })

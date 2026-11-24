@@ -9,14 +9,12 @@ export type ApplyResult =
   /** `fields` holds the refusals tied to one setting, by path; `errors` every sentence. */
   | { ok: false; errors: string[]; fields?: Record<string, string> }
 
-
 /** The success sentence: the settings by their labels, joined in words, and the commit. */
 export function savedText(applied: string[], commit: string | null): string {
   const names = applied.map((p) => SETTINGS.find((d) => d.path === p)?.label ?? p)
   const words = names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
   return `Saved ${words}${commit ? `, committed as ${commit}` : ''}.`
 }
-
 
 export async function applySettings(changes: Record<string, string>): Promise<ApplyResult> {
   const errors: string[] = []
@@ -72,7 +70,6 @@ export async function applySettings(changes: Record<string, string>): Promise<Ap
   return { ok: true, applied: [...applied], commit: result.sha }
 }
 
-
 function validate(def: SettingDef, value: string): string | null {
   switch (def.kind) {
     case 'enum':
@@ -112,7 +109,6 @@ function validate(def: SettingDef, value: string): string | null {
       return null
   }
 }
-
 
 function format(def: SettingDef, value: string): string {
   // An empty optional is the absence of a limit, and YAML says that with `null`. Not

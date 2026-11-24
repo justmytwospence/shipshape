@@ -34,13 +34,19 @@ test('shipshape.review: required is read; shipshape.claude is a v1 label', () =>
 })
 
 test('v1 labels are reported as such, never as unknown', () => {
-  const s = scanComposeFile(repo, stack('e', ['shipshape.watch: "true"', 'shipshape.policy: auto', 'shipshape.pr: on-request']))[0]!
+  const s = scanComposeFile(
+    repo,
+    stack('e', ['shipshape.watch: "true"', 'shipshape.policy: auto', 'shipshape.pr: on-request']),
+  )[0]!
   assert.deepEqual(s.legacyLabels, ['shipshape.policy: auto', 'shipshape.pr: on-request'])
   assert.deepEqual(s.unknownLabels, [])
 })
 
 test('an unknown shipshape key is reported, by name', () => {
-  const s = scanComposeFile(repo, stack('c', ['shipshape.watch: "true"', 'shipshape.polcy: manual', 'shipshape.pattern: semver']))[0]!
+  const s = scanComposeFile(
+    repo,
+    stack('c', ['shipshape.watch: "true"', 'shipshape.polcy: manual', 'shipshape.pattern: semver']),
+  )[0]!
   assert.deepEqual(s.unknownLabels, ['polcy'])
 })
 

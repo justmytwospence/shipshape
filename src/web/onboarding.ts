@@ -58,7 +58,9 @@ export function setupSteps(i: SetupInput): SetupState {
     optional: false,
     title: 'Connect your compose repository',
     ...(repoDone
-      ? { body: `${plural(i.services, 'service', 'services')} in ${plural(i.stacks, 'stack', 'stacks')}, from ${i.repoDir}.` }
+      ? {
+          body: `${plural(i.services, 'service', 'services')} in ${plural(i.stacks, 'stack', 'stacks')}, from ${i.repoDir}.`,
+        }
       : i.missing.length > 0
         ? {
             body: `Set ${i.missing.map((m) => m.name).join('; ')} on the shipshape container and restart it.`,
@@ -122,7 +124,9 @@ export function setupSteps(i: SetupInput): SetupState {
       : {
           body:
             'On: nothing ships on its own.' +
-            (i.wouldShip > 0 ? ` ${i.wouldShip} ${i.wouldShip === 1 ? 'update is' : 'updates are'} waiting only on Pause.` : ''),
+            (i.wouldShip > 0
+              ? ` ${i.wouldShip} ${i.wouldShip === 1 ? 'update is' : 'updates are'} waiting only on Pause.`
+              : ''),
           action: { kind: 'link' as const, href: '/settings#pause', label: 'Review and unpause' },
         }),
   })

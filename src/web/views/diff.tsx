@@ -56,11 +56,11 @@ const FORK_REF_WORDS: Record<string, string> = {
   unknown: 'could not be looked up',
 }
 
-const CommitLine: FC<{ c: { sha: string; short: string; subject: string; author: string }; web: string | null; note?: string }> = ({
-  c,
-  web,
-  note,
-}) => (
+const CommitLine: FC<{
+  c: { sha: string; short: string; subject: string; author: string }
+  web: string | null
+  note?: string
+}> = ({ c, web, note }) => (
   <li class="flex flex-wrap items-baseline gap-x-2">
     {web ? (
       <ExtLink href={`${web}/commit/${c.sha}`} class="link link-hover font-mono">
@@ -89,8 +89,8 @@ const ForkBlock: FC<{ fork: ForkChange }> = ({ fork }) => {
         {fork.kind === 'retire' ? (
           <>
             Nothing is left to carry: the plain upstream image comes back as{' '}
-            <code class="font-mono">{fork.upstreamRef}</code>, and the build block and the fork labels go. The
-            comment block is yours to tidy.
+            <code class="font-mono">{fork.upstreamRef}</code>, and the build block and the fork labels go. The comment
+            block is yours to tidy.
           </>
         ) : (
           <>
@@ -160,11 +160,7 @@ export const DiffView: FC<{
   service?: { stack: string; service: string }
 }> = ({ result, links, proposal, service }) => (
   <div class="text-sm">
-    {'error' in result ? (
-      <p class="text-xs opacity-70">{result.error}</p>
-    ) : (
-      result.hunks.map((h) => <Hunk hunk={h} />)
-    )}
+    {'error' in result ? <p class="text-xs opacity-70">{result.error}</p> : result.hunks.map((h) => <Hunk hunk={h} />)}
     {!('error' in result) && result.fork ? <ForkBlock fork={result.fork} /> : null}
 
     {proposal ? (
@@ -200,8 +196,8 @@ export const DiffView: FC<{
           </>
         )}
         <p class="mt-1 text-xs opacity-70">
-          Drafted by <code class="font-mono">{proposal.model}</code>. Nothing has verified
-          these; read the change before shipping it.
+          Drafted by <code class="font-mono">{proposal.model}</code>. Nothing has verified these; read the change before
+          shipping it.
         </p>
       </div>
     ) : null}

@@ -1,4 +1,3 @@
-
 /**
  * Docker Official Images and a few vendors annotate their *packaging* repo. Mapping
  * those by hand is unavoidable -- there is no metadata anywhere that connects
@@ -41,7 +40,6 @@ export const OVERRIDES: Record<string, string> = {
   'docker.io/netdata/netdata': 'netdata/netdata',
   'docker.io/prom/prometheus': 'prometheus/prometheus',
 }
-
 
 /** Tests only: the curated keys, which must be forms an image reference actually produces. */
 export function overrideKeys(): string[] {

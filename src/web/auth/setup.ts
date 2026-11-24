@@ -19,7 +19,9 @@ export function resolveAuth(): AuthConfig {
   if (hasPassword && hasProxy) {
     return {
       mode: 'error',
-      problems: ['SHIPSHAPE_PASSWORD (or SHIPSHAPE_PASSWORD_FILE) and SHIPSHAPE_TRUSTED_PROXY are both set. Use one sign-in method.'],
+      problems: [
+        'SHIPSHAPE_PASSWORD (or SHIPSHAPE_PASSWORD_FILE) and SHIPSHAPE_TRUSTED_PROXY are both set. Use one sign-in method.',
+      ],
     }
   }
   if (hasPassword) {

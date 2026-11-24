@@ -22,7 +22,14 @@ before(async () => {
   dir = mkdtempSync(join(tmpdir(), 'shipshape-auth-password-'))
   process.env.DATA_DIR = dir
   process.env.SHIPSHAPE_ACTION_SECRET = 'a-long-enough-action-secret-0123456789'
-  for (const k of ['REPO_DIR', 'SHIPSHAPE_TRUSTED_PROXY', 'SHIPSHAPE_ALLOWED_USER', 'SHIPSHAPE_PASSWORD_FILE', 'SHIPSHAPE_ALLOWED_ORIGIN']) delete process.env[k]
+  for (const k of [
+    'REPO_DIR',
+    'SHIPSHAPE_TRUSTED_PROXY',
+    'SHIPSHAPE_ALLOWED_USER',
+    'SHIPSHAPE_PASSWORD_FILE',
+    'SHIPSHAPE_ALLOWED_ORIGIN',
+  ])
+    delete process.env[k]
   ;({ createApp } = await import('../../src/web/server.ts'))
   ;({ getDb } = await import('../../src/db/index.ts'))
 })
@@ -38,7 +45,11 @@ function app(password = PASSWORD, origin?: string) {
 }
 
 async function signIn(req: ReturnType<typeof app>, peer = PEER): Promise<string> {
-  const res = await req('/login', { method: 'POST', headers: { Origin: ORIGIN }, body: new URLSearchParams({ password: PASSWORD, next: '/' }) }, peer)
+  const res = await req(
+    '/login',
+    { method: 'POST', headers: { Origin: ORIGIN }, body: new URLSearchParams({ password: PASSWORD, next: '/' }) },
+    peer,
+  )
   assert.equal(res.status, 303)
   return /shipshape_session=([^;]+)/.exec(res.headers.get('set-cookie') ?? '')![1]!
 }
@@ -52,7 +63,9 @@ test('an unauthenticated navigation is redirected to /login with next', async ()
 })
 
 test('an unauthenticated htmx request gets 401 and HX-Redirect to /login', async () => {
-  const res = await app()('/fragments/inbox', { headers: { 'HX-Request': 'true', 'HX-Current-URL': `${ORIGIN}/updates?stage=all` } })
+  const res = await app()('/fragments/inbox', {
+    headers: { 'HX-Request': 'true', 'HX-Current-URL': `${ORIGIN}/updates?stage=all` },
+  })
   assert.equal(res.status, 401)
   assert.equal(res.headers.get('hx-redirect'), '/login?next=%2Fupdates%3Fstage%3Dall')
 })
@@ -64,14 +77,22 @@ test('any other unauthenticated request gets 401', async () => {
 })
 
 test('the right password sets a session cookie and redirects to next with 303', async () => {
-  const res = await app()('/login', { method: 'POST', headers: { Origin: ORIGIN }, body: new URLSearchParams({ password: PASSWORD, next: '/status' }) })
+  const res = await app()('/login', {
+    method: 'POST',
+    headers: { Origin: ORIGIN },
+    body: new URLSearchParams({ password: PASSWORD, next: '/status' }),
+  })
   assert.equal(res.status, 303)
   assert.equal(res.headers.get('location'), '/status')
   assert.match(res.headers.get('set-cookie') ?? '', /^shipshape_session=/)
 })
 
 test('the cookie is HttpOnly, SameSite=Lax, Path=/, Max-Age 2592000, and Secure only for an https origin', async () => {
-  const plain = await app()('/login', { method: 'POST', headers: { Origin: ORIGIN }, body: new URLSearchParams({ password: PASSWORD }) })
+  const plain = await app()('/login', {
+    method: 'POST',
+    headers: { Origin: ORIGIN },
+    body: new URLSearchParams({ password: PASSWORD }),
+  })
   const c = plain.headers.get('set-cookie')!
   for (const part of ['HttpOnly', 'SameSite=Lax', 'Path=/', 'Max-Age=2592000']) assert.ok(c.includes(part), part)
   assert.ok(!c.includes('Secure'))
@@ -84,7 +105,11 @@ test('the cookie is HttpOnly, SameSite=Lax, Path=/, Max-Age 2592000, and Secure 
 })
 
 test('a wrong password is 401, sets no cookie and says only that the password is not right', async () => {
-  const res = await app()('/login', { method: 'POST', headers: { Origin: ORIGIN }, body: new URLSearchParams({ password: 'nope' }) }, '192.0.2.51')
+  const res = await app()(
+    '/login',
+    { method: 'POST', headers: { Origin: ORIGIN }, body: new URLSearchParams({ password: 'nope' }) },
+    '192.0.2.51',
+  )
   assert.equal(res.status, 401)
   assert.equal(res.headers.get('set-cookie'), null)
   assert.match(await res.text(), /That password is not right\./)
@@ -92,7 +117,17 @@ test('a wrong password is 401, sets no cookie and says only that the password is
 
 test('next is validated: absolute URLs, //host, backslashes, control characters and /login loops fall back to /', async () => {
   const { safeNext } = await import('../../src/web/auth/password.ts')
-  for (const bad of ['https://evil.example/', '//evil.example', '/\\evil', '/a\nb', '/login', '/login?next=/x', '/logout', '', 42]) {
+  for (const bad of [
+    'https://evil.example/',
+    '//evil.example',
+    '/\\evil',
+    '/a\nb',
+    '/login',
+    '/login?next=/x',
+    '/logout',
+    '',
+    42,
+  ]) {
     assert.equal(safeNext(bad), '/', String(bad))
   }
   assert.equal(safeNext('/updates?stage=all'), '/updates?stage=all')
@@ -134,7 +169,16 @@ test('changing the password invalidates every existing session and prunes them a
   const token = await signIn(app())
   const other = app('another long password')
   assert.equal((await other('/status', { headers: cookie(token) })).status, 401)
-  assert.equal((getDb().prepare(`SELECT COUNT(*) c FROM sessions WHERE pw_fingerprint != (SELECT pw_fingerprint FROM sessions ORDER BY created_at DESC LIMIT 1)`).get() as { c: number }).c, 0)
+  assert.equal(
+    (
+      getDb()
+        .prepare(
+          `SELECT COUNT(*) c FROM sessions WHERE pw_fingerprint != (SELECT pw_fingerprint FROM sessions ORDER BY created_at DESC LIMIT 1)`,
+        )
+        .get() as { c: number }
+    ).c,
+    0,
+  )
 })
 
 test('logout destroys the session and clears the cookie', async () => {
@@ -154,9 +198,17 @@ test('failed logins are limited to 5 per address in 15 minutes, then 429 with Re
   const req = app()
   const peer = '192.0.2.60'
   for (let i = 0; i < 5; i++) {
-    await req('/login', { method: 'POST', headers: { Origin: ORIGIN }, body: new URLSearchParams({ password: 'nope' }) }, peer)
+    await req(
+      '/login',
+      { method: 'POST', headers: { Origin: ORIGIN }, body: new URLSearchParams({ password: 'nope' }) },
+      peer,
+    )
   }
-  const res = await req('/login', { method: 'POST', headers: { Origin: ORIGIN }, body: new URLSearchParams({ password: PASSWORD }) }, peer)
+  const res = await req(
+    '/login',
+    { method: 'POST', headers: { Origin: ORIGIN }, body: new URLSearchParams({ password: PASSWORD }) },
+    peer,
+  )
   assert.equal(res.status, 429)
   assert.ok(Number(res.headers.get('retry-after')) > 0)
 })
@@ -164,9 +216,17 @@ test('failed logins are limited to 5 per address in 15 minutes, then 429 with Re
 test('the global limit is 30 failures per 15 minutes across addresses', async () => {
   const req = app()
   for (let i = 0; i < 30; i++) {
-    await req('/login', { method: 'POST', headers: { Origin: ORIGIN }, body: new URLSearchParams({ password: 'nope' }) }, `198.51.100.${i + 1}`)
+    await req(
+      '/login',
+      { method: 'POST', headers: { Origin: ORIGIN }, body: new URLSearchParams({ password: 'nope' }) },
+      `198.51.100.${i + 1}`,
+    )
   }
-  const res = await req('/login', { method: 'POST', headers: { Origin: ORIGIN }, body: new URLSearchParams({ password: PASSWORD }) }, '198.51.100.99')
+  const res = await req(
+    '/login',
+    { method: 'POST', headers: { Origin: ORIGIN }, body: new URLSearchParams({ password: PASSWORD }) },
+    '198.51.100.99',
+  )
   assert.equal(res.status, 429)
 })
 
@@ -202,9 +262,17 @@ test('a DNS-rebinding request has no session and is refused whatever its Host an
 
 test('with SHIPSHAPE_ALLOWED_ORIGIN set the Origin must equal it exactly, whatever Host says', async () => {
   const req = app(PASSWORD, 'https://shipshape.example.test')
-  const login = await req('/login', { method: 'POST', headers: { Origin: 'https://shipshape.example.test' }, body: new URLSearchParams({ password: PASSWORD }) })
+  const login = await req('/login', {
+    method: 'POST',
+    headers: { Origin: 'https://shipshape.example.test' },
+    body: new URLSearchParams({ password: PASSWORD }),
+  })
   const token = /shipshape_session=([^;]+)/.exec(login.headers.get('set-cookie')!)![1]!
-  assert.equal((await req('/scan', { method: 'POST', headers: { ...cookie(token), Origin: 'https://shipshape.example.test' } })).status, 200)
+  assert.equal(
+    (await req('/scan', { method: 'POST', headers: { ...cookie(token), Origin: 'https://shipshape.example.test' } }))
+      .status,
+    200,
+  )
   assert.equal((await req('/scan', { method: 'POST', headers: { ...cookie(token), Origin: ORIGIN } })).status, 403)
 })
 
@@ -248,7 +316,9 @@ test('the session fingerprint is keyed per install', async () => {
   const keyFile = join(dir, 'session-key')
   assert.equal(statSync(keyFile).mode & 0o777, 0o600)
   assert.match(readFileSync(keyFile, 'utf8'), /^[0-9a-f]{64}\n$/)
-  const row = getDb().prepare(`SELECT pw_fingerprint FROM sessions ORDER BY created_at DESC LIMIT 1`).get() as { pw_fingerprint: string }
+  const row = getDb().prepare(`SELECT pw_fingerprint FROM sessions ORDER BY created_at DESC LIMIT 1`).get() as {
+    pw_fingerprint: string
+  }
   assert.notEqual(row.pw_fingerprint, scryptSync(PASSWORD, 'shipshape-pw-fingerprint-v1', 16).toString('hex'))
 })
 

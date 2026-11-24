@@ -98,7 +98,11 @@ function parseArgs(argv) {
       out.routes = []
       while (i + 1 < argv.length && !argv[i + 1].startsWith('--')) out.routes.push(argv[++i])
     } else if (a === '--help' || a === '-h') {
-      console.log(readFileSync(new URL(import.meta.url)).toString().split('*/')[0])
+      console.log(
+        readFileSync(new URL(import.meta.url))
+          .toString()
+          .split('*/')[0],
+      )
       process.exit(0)
     } else throw new Error(`unknown argument: ${a}`)
   }
@@ -376,9 +380,7 @@ for (const route of args.routes) {
       void sessionId
 
       const beforeFile =
-        args.compare && existsSync(join(ROOT, '.shots', args.compare, file))
-          ? `../${args.compare}/${file}`
-          : null
+        args.compare && existsSync(join(ROOT, '.shots', args.compare, file)) ? `../${args.compare}/${file}` : null
       rows.push({ route, vp: vpName, scheme, file, beforeFile, ...result, png: undefined })
       const p = result.probes
       const flags = p
@@ -390,7 +392,7 @@ for (const route of args.routes) {
           ]
             .filter(Boolean)
             .join(' ')
-        : result.error ?? ''
+        : (result.error ?? '')
       console.log(`  ${file.padEnd(44)} ${flags}`)
     }
   }

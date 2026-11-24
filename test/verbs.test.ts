@@ -116,19 +116,14 @@ test('rolling back needs the commit that landed it', async () => {
        VALUES (77,'b','sha','merged','tag-only',?)`,
     )
     .run(now())
-  db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(
-    Number(prInfo.lastInsertRowid),
-    id,
-  )
+  db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(Number(prInfo.lastInsertRowid), id)
   // No merge_commit_sha yet: there is nothing to revert, so the verb is not on offer.
   assert.ok(!actionsFor(contextFor(id)!.ctx).includes('rollback'))
   const refused = await runVerb(id, 'rollback')
   assert.equal(refused.ok, false)
   assert.match(refused.message, /nothing to revert/)
 
-  db.prepare(`UPDATE prs SET merge_commit_sha = 'abc1234' WHERE id = ?`).run(
-    Number(prInfo.lastInsertRowid),
-  )
+  db.prepare(`UPDATE prs SET merge_commit_sha = 'abc1234' WHERE id = ?`).run(Number(prInfo.lastInsertRowid))
   assert.ok(actionsFor(contextFor(id)!.ctx).includes('rollback'), 'and offered once it is known')
 })
 
@@ -148,10 +143,7 @@ test('the context follows the newest change record, not an open one', async () =
          VALUES (?,?,'sha',?,'tag-only',?,?)`,
       )
       .run(n, `b${n}`, state, now(), sha)
-    db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(
-      Number(info.lastInsertRowid),
-      id,
-    )
+    db.prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(Number(info.lastInsertRowid), id)
   }
   const ctx = contextFor(id)!.ctx
   assert.equal(ctx.mergeCommitSha, 'deadbee')
@@ -167,10 +159,7 @@ test('deploying is refused when the queued job has already been claimed', async 
        VALUES (41,'media','jellyfin','up',0,0,'running',1,?,'queue')`,
     )
     .run(now())
-  db.prepare(`INSERT INTO deploy_updates (deploy_id, update_id) VALUES (?, ?)`).run(
-    Number(info.lastInsertRowid),
-    id,
-  )
+  db.prepare(`INSERT INTO deploy_updates (deploy_id, update_id) VALUES (?, ?)`).run(Number(info.lastInsertRowid), id)
   const r = await runVerb(id, 'deploy')
   assert.equal(r.ok, false)
   assert.match(r.message, /already running or finished/)

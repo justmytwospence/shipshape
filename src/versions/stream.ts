@@ -42,8 +42,7 @@ export function prereleaseStream(currentTag: string, releases: StreamRelease[]):
   if (cur.pre) return { stream: 'prerelease', basis: `the running tag ${currentTag} is itself a prerelease` }
 
   const comparable = releases.filter(
-    (r): r is StreamRelease & { key: VersionKey } =>
-      !!r.key && !r.key.partial && compareKeys(r.key, cur) !== null,
+    (r): r is StreamRelease & { key: VersionKey } => !!r.key && !r.key.partial && compareKeys(r.key, cur) !== null,
   )
   if (comparable.length === 0) return { stream: 'unknown', basis: 'no release to compare against' }
 

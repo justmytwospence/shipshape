@@ -40,7 +40,9 @@ type Token = number | string
 /** Split a release into comparable tokens, and say where a pre-release begins. */
 function parse(v: string): { release: Token[]; pre: Token[] | null } {
   // PEP 440 and semver pre-releases: 1.2.3-rc.1, 1.2.3rc1, 1.2.3a1, 1.2.3.dev4, 1.2.3-beta
-  const m = v.match(/^([0-9][0-9._]*)(?:[-._]?((?:a|b|c|rc|alpha|beta|pre|preview|dev|canary|next|nightly|snapshot)[0-9a-z.]*))?(.*)$/i)
+  const m = v.match(
+    /^([0-9][0-9._]*)(?:[-._]?((?:a|b|c|rc|alpha|beta|pre|preview|dev|canary|next|nightly|snapshot)[0-9a-z.]*))?(.*)$/i,
+  )
   const head = m ? m[1]! : v
   const preText = m?.[2] ?? null
   const rest = m?.[3] ?? ''

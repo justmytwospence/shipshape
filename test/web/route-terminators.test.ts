@@ -34,7 +34,11 @@ test('no route answers an encoded line terminator without identity', async () =>
       const key = `${method} ${path}${suffix}`
       if (seen.has(key)) continue
       seen.add(key)
-      const res = await app.request(path + suffix, { method, headers: { Origin: TEST_ORIGIN } }, socketBindings(TEST_PROXY))
+      const res = await app.request(
+        path + suffix,
+        { method, headers: { Origin: TEST_ORIGIN } },
+        socketBindings(TEST_PROXY),
+      )
       assert.ok([403, 404].includes(res.status), `${key} answered ${res.status}`)
     }
   }

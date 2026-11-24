@@ -1,11 +1,5 @@
 import type { ScannedService } from './compose/scan.ts'
-import {
-  listTags,
-  headDigest,
-  TagListTooLarge,
-  RepositoryNotFound,
-  type TagInfo,
-} from './registry/index.ts'
+import { listTags, headDigest, TagListTooLarge, RepositoryNotFound, type TagInfo } from './registry/index.ts'
 import { probeByReleases } from './registry/probe.ts'
 import { logEvent } from './events.ts'
 import { sourceFor, guessFromImagePath } from './resolver/index.ts'
@@ -116,8 +110,7 @@ export async function detect(svc: ScannedService): Promise<Detection> {
           return {
             status: 'unresolvable',
             detail:
-              `${err.message}, and no source repo is known to probe releases from -- ` +
-              `add a shipshape.source label`,
+              `${err.message}, and no source repo is known to probe releases from -- ` + `add a shipshape.source label`,
           }
         }
         // Read once; the prerelease pass below reuses it. A failure to read is reported as

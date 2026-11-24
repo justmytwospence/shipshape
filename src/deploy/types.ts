@@ -24,7 +24,6 @@ export interface DeployTarget {
   build?: string[]
 }
 
-
 /**
  * `phase` exists because the alert text depends on it and nothing else can recover it.
  * An `up` that fails after `rm -sf` leaves the service DOWN, and so does a plain `up` that
@@ -39,7 +38,6 @@ export interface DeployTarget {
  * strategy -- reported as `up` it read as DOWN under rm-first, about a service still running.
  */
 export type DeployPhase = 'refused' | 'inspect' | 'pull' | 'build' | 'rm' | 'up' | 'verify'
-
 
 /**
  * What a deploy did.
@@ -84,7 +82,6 @@ export type DeployOutcome =
       /** The other project's container, by name, for `cause: 'orphan'`. */
       container?: string
     }
-
 
 /**
  * Everything a deploy asks of the outside world, in one seam.

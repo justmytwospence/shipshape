@@ -86,11 +86,7 @@ test('an issue closed by a commit is released once a release contains that commi
     issue(4, { state: 'closed', state_reason: 'completed', pull_request: null }),
     {
       url: `${API}/issues/4/timeline?per_page=100`,
-      reply: () =>
-        json([
-          { event: 'labeled' },
-          { event: 'closed', commit_id: 'dead' },
-        ]),
+      reply: () => json([{ event: 'labeled' }, { event: 'closed', commit_id: 'dead' }]),
     },
     compare('dead', 'v1.3.0', 'identical'),
   ])
@@ -111,11 +107,25 @@ test('an issue closed by a merged pull request in the same repository takes that
           // A fork's pull request elsewhere does not put a fix into this repository's releases.
           {
             event: 'cross-referenced',
-            source: { issue: { number: 9, state: 'closed', pull_request: { merged_at: '2026-01-01T00:00:00Z' }, repository: { full_name: 'someone/r' } } },
+            source: {
+              issue: {
+                number: 9,
+                state: 'closed',
+                pull_request: { merged_at: '2026-01-01T00:00:00Z' },
+                repository: { full_name: 'someone/r' },
+              },
+            },
           },
           {
             event: 'cross-referenced',
-            source: { issue: { number: 6, state: 'closed', pull_request: { merged_at: '2026-01-02T00:00:00Z' }, repository: { full_name: 'o/r' } } },
+            source: {
+              issue: {
+                number: 6,
+                state: 'closed',
+                pull_request: { merged_at: '2026-01-02T00:00:00Z' },
+                repository: { full_name: 'o/r' },
+              },
+            },
           },
           { event: 'closed', commit_id: null },
         ]),

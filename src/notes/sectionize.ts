@@ -36,10 +36,7 @@ interface Heading {
   title: string
 }
 
-export function sectionize(
-  text: string,
-  o: { filename?: string; family?: VersionKey['family'] } = {},
-): Section[] {
+export function sectionize(text: string, o: { filename?: string; family?: VersionKey['family'] } = {}): Section[] {
   const lines = text.replace(/\r\n?/g, '\n').split('\n')
   const atx = atxHeadings(lines)
   const marked = /\.rst$/i.test(o.filename ?? '') || atx.length === 0 ? rstHeadings(lines) : atx
@@ -50,7 +47,6 @@ export function sectionize(
 }
 
 function cut(lines: string[], headings: Heading[], sortRanks: boolean, family?: VersionKey['family']): Section[] {
-
   // Levels in rank order: ATX by depth, RST by first appearance, which is RST's own rule.
   const ranks: string[] = []
   for (const h of headings) if (!ranks.includes(h.level)) ranks.push(h.level)
@@ -69,7 +65,10 @@ function cut(lines: string[], headings: Heading[], sortRanks: boolean, family?: 
     if (h.level !== level) return
     // The body runs to the next heading at this level or above.
     const next = headings.slice(i + 1).find((n) => ranks.indexOf(n.level) <= rank)
-    const body = lines.slice(h.bodyStart, next ? next.start : lines.length).join('\n').trim()
+    const body = lines
+      .slice(h.bodyStart, next ? next.start : lines.length)
+      .join('\n')
+      .trim()
     const { key, unreleased } = headingVersion(h.title, family)
     // A title sharing the versions' style -- glances overlines "Glances ChangeLog" exactly as
     // it overlines each version -- is not a section. `Unreleased` is kept, and says so.
@@ -94,7 +93,10 @@ export function headingVersion(
   family?: VersionKey['family'],
 ): { key: VersionKey | null; unreleased: boolean } {
   if (/\bunreleased\b/i.test(title)) return { key: null, unreleased: true }
-  const plain = title.replace(/\]\([^)]*\)/g, ']').replace(/<[^>]*>/g, ' ').replace(/[[\]()]/g, ' ')
+  const plain = title
+    .replace(/\]\([^)]*\)/g, ']')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/[[\]()]/g, ' ')
   const keys = plain
     .split(/[\s,;]+/)
     .map((t) => t.replace(/^[^\w]+|[^\w]+$/g, ''))
@@ -103,10 +105,7 @@ export function headingVersion(
     .filter((k): k is VersionKey => k !== null)
   const whole = keys.filter((k) => !k.partial)
   const pick =
-    whole.find((k) => k.family === (family ?? 'semver')) ??
-    whole.find((k) => k.family === 'semver') ??
-    whole[0] ??
-    null
+    whole.find((k) => k.family === (family ?? 'semver')) ?? whole.find((k) => k.family === 'semver') ?? whole[0] ?? null
   return { key: pick, unreleased: false }
 }
 

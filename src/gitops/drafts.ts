@@ -35,7 +35,12 @@ export function closeLocalChange(prId: number, why: string): void {
     db.prepare(`UPDATE prs SET state = 'closed' WHERE id = ?`).run(prId)
     db.prepare(`DELETE FROM proposals WHERE pr_id = ?`).run(prId)
   })()
-  logEvent({ level: 'info', kind: 'ship', message: 'a drafted change was closed', detail: `${why} (${now.slice(0, 10)})` })
+  logEvent({
+    level: 'info',
+    kind: 'ship',
+    message: 'a drafted change was closed',
+    detail: `${why} (${now.slice(0, 10)})`,
+  })
 }
 
 const parseList = (raw: string | null): unknown[] => {
@@ -55,9 +60,10 @@ const parseList = (raw: string | null): unknown[] => {
  */
 export async function closeStaleDrafts(): Promise<number> {
   const db = getDb()
-  const drafts = db
-    .prepare(`SELECT id, branch FROM prs WHERE state = 'open' AND scope = 'proposed'`)
-    .all() as { id: number; branch: string }[]
+  const drafts = db.prepare(`SELECT id, branch FROM prs WHERE state = 'open' AND scope = 'proposed'`).all() as {
+    id: number
+    branch: string
+  }[]
   const stale: { id: number; branch: string; why: string }[] = []
   for (const d of drafts) {
     const proposal = db
@@ -69,7 +75,9 @@ export async function closeStaleDrafts(): Promise<number> {
     if (!proposal) continue
     const u = db
       .prepare(`SELECT stack, service, image, from_tag, to_tag FROM updates WHERE id = ?`)
-      .get(proposal.update_id) as { stack: string; service: string; image: string; from_tag: string; to_tag: string } | undefined
+      .get(proposal.update_id) as
+      | { stack: string; service: string; image: string; from_tag: string; to_tag: string }
+      | undefined
     if (!u) continue
     const v = db
       .prepare(
@@ -77,7 +85,13 @@ export async function closeStaleDrafts(): Promise<number> {
           WHERE image = ? AND from_tag = ? AND to_tag = ?`,
       )
       .get(u.image, u.from_tag, u.to_tag) as
-      | { source: string | null; error: string | null; created_at: string; migration_steps: string | null; breaking_changes: string | null }
+      | {
+          source: string | null
+          error: string | null
+          created_at: string
+          migration_steps: string | null
+          breaking_changes: string | null
+        }
       | undefined
     if (!v) continue
     if (

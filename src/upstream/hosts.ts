@@ -73,7 +73,10 @@ const v4 = (a: number, b: number) => `${a >> 8}.${a & 255}.${b >> 8}.${b & 255}`
 
 /** The eight 16-bit groups of an IPv6 address, or null when it is malformed. */
 function ipv6Groups(ip: string): number[] | null {
-  let s = ip.toLowerCase().replace(/^\[|\]$/g, '').split('%')[0]!
+  let s = ip
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+    .split('%')[0]!
   const tail = /(\d+\.\d+\.\d+\.\d+)$/.exec(s)
   if (tail) {
     if (isIP(tail[1]!) !== 4) return null
@@ -93,7 +96,9 @@ function ipv6Groups(ip: string): number[] | null {
 }
 
 /** Every address a name resolves to must be public. */
-export async function publicAddress(host: string): Promise<{ ok: true } | { ok: false; reason: string; transient: boolean }> {
+export async function publicAddress(
+  host: string,
+): Promise<{ ok: true } | { ok: false; reason: string; transient: boolean }> {
   if (isIP(host.replace(/^\[|\]$/g, ''))) return { ok: true }
   let addresses: { address: string }[]
   try {

@@ -20,18 +20,22 @@ const { MIGRATIONS } = await import('../src/db/legacy.ts')
 after(() => rmSync(dir, { recursive: true, force: true }))
 
 type Db = InstanceType<typeof Database>
-const cols = (d: Db, table: string) => (d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name)
-const tables = (d: Db) => (d.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as { name: string }[]).map((r) => r.name)
+const cols = (d: Db, table: string) =>
+  (d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name)
+const tables = (d: Db) =>
+  (d.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as { name: string }[]).map((r) => r.name)
 
 test('a fresh database migrates through 034 with v1 gone', () => {
   const d = getDb()
   for (const gone of ['prompts', 'model_tier_decisions', 'digest_items', 'digest_due', 'instructions']) {
     assert.ok(!tables(d).includes(gone), gone)
   }
-  for (const gone of ['kind', 'user_owned', 'scope_sha', 'hold_reason', 'hold_at']) assert.ok(!cols(d, 'prs').includes(gone), `prs.${gone}`)
+  for (const gone of ['kind', 'user_owned', 'scope_sha', 'hold_reason', 'hold_at'])
+    assert.ok(!cols(d, 'prs').includes(gone), `prs.${gone}`)
   assert.ok(cols(d, 'images').includes('review_label'))
   assert.ok(cols(d, 'images').includes('legacy_labels'))
-  for (const gone of ['claude_label', 'policy_label', 'archive_pre']) assert.ok(!cols(d, 'images').includes(gone), `images.${gone}`)
+  for (const gone of ['claude_label', 'policy_label', 'archive_pre'])
+    assert.ok(!cols(d, 'images').includes(gone), `images.${gone}`)
   assert.ok(!cols(d, 'proposals').includes('instruction_id'))
   assert.ok(!cols(d, 'security_fixes').includes('commented'))
   assert.ok(d.prepare(`SELECT 1 FROM _migrations WHERE id = '034-drop-v1'`).get())
@@ -92,9 +96,15 @@ test('034 rewrites what a v1 row left behind', () => {
   assert.equal((d.prepare(`SELECT tier FROM updates WHERE id = ?`).get(odd) as { tier: string }).tier, 'ask')
   const p = d.prepare(`SELECT state, scope FROM prs WHERE id = ?`).get(pr) as { state: string; scope: string }
   assert.deepEqual(p, { state: 'closed', scope: 'proposed' })
-  assert.equal((d.prepare(`SELECT summary FROM proposals WHERE id = ?`).get(proposal) as { summary: string }).summary, 'kept')
+  assert.equal(
+    (d.prepare(`SELECT summary FROM proposals WHERE id = ?`).get(proposal) as { summary: string }).summary,
+    'kept',
+  )
   assert.equal((d.prepare(`SELECT kind FROM events`).get() as { kind: string }).kind, 'ship')
-  const img = d.prepare(`SELECT legacy_labels, review_label FROM images`).get() as { legacy_labels: string; review_label: string }
+  const img = d.prepare(`SELECT legacy_labels, review_label FROM images`).get() as {
+    legacy_labels: string
+    review_label: string
+  }
   assert.deepEqual(img, { legacy_labels: 'shipshape.policy: manual', review_label: 'required' })
   assert.equal(d.prepare(`PRAGMA foreign_key_check`).all().length, 0)
   d.close()

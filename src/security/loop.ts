@@ -58,7 +58,12 @@ async function runSecurityPass(force = false): Promise<PassResult | null> {
         lastFeedAt = Date.now()
       } catch (err) {
         out.feed = 'failed'
-        logEvent({ level: 'warn', kind: 'system', message: 'security feed could not be read', detail: (err as Error).message })
+        logEvent({
+          level: 'warn',
+          kind: 'system',
+          message: 'security feed could not be read',
+          detail: (err as Error).message,
+        })
       }
     }
     // Every pass, not only when the feed is read: it is bounded per pass, and an incident
@@ -86,10 +91,12 @@ async function runSecurityPass(force = false): Promise<PassResult | null> {
       out.inventoried += Math.min(PARALLEL, batch.length - k)
     }
     // Work still waiting -- images to read, or incidents to extract -- keeps the clock short.
-    const unread = (getDb()
-      .prepare(`SELECT COUNT(*) c FROM security_incidents WHERE status = 'live' AND (targets_hash IS NULL OR targets_hash != versions_hash)
+    const unread = (
+      getDb()
+        .prepare(`SELECT COUNT(*) c FROM security_incidents WHERE status = 'live' AND (targets_hash IS NULL OR targets_hash != versions_hash)
                   AND (next_extract_at IS NULL OR next_extract_at <= ?)`)
-      .get(new Date().toISOString()) as { c: number }).c
+        .get(new Date().toISOString()) as { c: number }
+    ).c
     backlog = pending.length > Math.max(0, budget) || unread > 0
 
     found = computeExposures(targets, live)

@@ -214,7 +214,12 @@ export function holdsFor(i: HoldInput): Hold[] {
     out.push({ kind: 'needs-action', waivable: false, text: `Needs: ${v.steps[0] ?? v.breaking[0]}` })
   }
   if (i.draft) out.push({ kind: 'draft', waivable: false, text: 'a drafted change is waiting to be read' })
-  if (!rebuild && !i.securityFix && weakEvidence(i) && (i.magnitude === 'major' || i.cls === 'stateful' || i.required)) {
+  if (
+    !rebuild &&
+    !i.securityFix &&
+    weakEvidence(i) &&
+    (i.magnitude === 'major' || i.cls === 'stateful' || i.required)
+  ) {
     out.push({ kind: 'no-evidence', waivable: true, text: 'no release notes were read for this jump' })
   }
   if (v?.irreversible) {
@@ -228,7 +233,8 @@ export function holdsFor(i: HoldInput): Hold[] {
     out.push({
       kind: 'no-restore-point',
       waivable: true,
-      text: i.restoreError ?? 'no shipshape.snapshot and no backup job for this stack, so no restore point can be taken',
+      text:
+        i.restoreError ?? 'no shipshape.snapshot and no backup job for this stack, so no restore point can be taken',
     })
   }
   return out

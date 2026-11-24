@@ -76,9 +76,7 @@ export function registerUpdateRoutes(app: Hono): void {
     const update = updateView(id)
     if (!update) return c.html('')
     const ctx = ctxOf(c, 'updates')
-    return c.html(
-      UpdateRow({ update, ctx: ctxString(ctx), showStage: ctx.list !== 'inbox' }) as string,
-    )
+    return c.html(UpdateRow({ update, ctx: ctxString(ctx), showStage: ctx.list !== 'inbox' }) as string)
   })
 
   /**
@@ -123,7 +121,18 @@ export function registerUpdateRoutes(app: Hono): void {
    * snooze and always-ship wake the loop rather than doing the work here: a restore point
    * or a build can take minutes and the browser must not sit on the request.
    */
-  for (const verb of ['ship', 'snooze', 'always-ship', 'propose', 'deploy', 'redeploy', 'retry', 'rollback', 'ack', 'rerun-review'] as const) {
+  for (const verb of [
+    'ship',
+    'snooze',
+    'always-ship',
+    'propose',
+    'deploy',
+    'redeploy',
+    'retry',
+    'rollback',
+    'ack',
+    'rerun-review',
+  ] as const) {
     app.post(`/updates/:id/${verb}`, async (c) => {
       const id = Number(c.req.param('id'))
       return verbReply(c, id, await runOperatorVerb(id, verb))

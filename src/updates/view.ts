@@ -105,7 +105,6 @@ export interface UpdateView {
   securityFix?: SecurityFix | null
 }
 
-
 export interface ScreenView {
   /** `shadow` means shown and not acted on. */
   mode: 'shadow' | 'on'
@@ -121,7 +120,6 @@ export interface ScreenView {
   notable: { text: string; version: string; url: string | null }[]
 }
 
-
 const FLAG_LABEL: Record<string, string> = {
   config_removed_or_renamed: 'Setting removed or renamed',
   manual_step_required: 'Manual step',
@@ -132,7 +130,6 @@ const FLAG_LABEL: Record<string, string> = {
   affects_this_deployment: 'Touches this deployment',
   security_fix: 'Security fix',
 }
-
 
 /** The screen's answers, shaped for the page. Null when there is nothing to show. */
 function screenView(image: string, fromTag: string, toTag: string): ScreenView | null {
@@ -156,17 +153,18 @@ function screenView(image: string, fromTag: string, toTag: string): ScreenView |
     createdAt: s.createdAt,
     flags,
     actionable: s.actionable.map((i) => s.lines[i]).filter((l) => !!l),
-    notable: s.notable.map((i) => s.lines[i]).filter((l) => !!l).slice(0, 5),
+    notable: s.notable
+      .map((i) => s.lines[i])
+      .filter((l) => !!l)
+      .slice(0, 5),
   }
 }
-
 
 export const SELECT_UPDATE = `
   SELECT u.id, u.stack, u.service, u.image, u.from_tag, u.to_tag, u.magnitude, u.tier,
          u.state, u.detail, u.detected_at, u.updated_at, u.acked_at,
          u.approved_at, u.snoozed_until, u.decision_since, u.restore_error
     FROM updates u`
-
 
 export interface RawUpdate {
   id: number
@@ -187,7 +185,6 @@ export interface RawUpdate {
   decision_since: string | null
   restore_error: string | null
 }
-
 
 /**
  * The newest change record for an update, not an open one.
@@ -216,7 +213,6 @@ function changeFor(updateId: number): UpdateView['change'] {
     url: changeUrl(row.id) ?? null,
   }
 }
-
 
 function verdictFor(u: RawUpdate): UpdateView['verdict'] {
   const v = getDb()
@@ -278,7 +274,6 @@ function verdictFor(u: RawUpdate): UpdateView['verdict'] {
   }
 }
 
-
 /** Release bodies, changelog sections and linked sections the review was given for its range. */
 function notesOf(evidence: string | null): number | null {
   if (!evidence) return null
@@ -289,7 +284,6 @@ function notesOf(evidence: string | null): number | null {
     return null
   }
 }
-
 
 function deployFor(updateId: number): UpdateView['deploy'] {
   const d = getDb()
@@ -320,7 +314,6 @@ function deployFor(updateId: number): UpdateView['deploy'] {
     detail: d.detail,
   }
 }
-
 
 export function toView(u: RawUpdate, _repo?: string): UpdateView {
   const change = changeFor(u.id)
@@ -400,7 +393,9 @@ export function toView(u: RawUpdate, _repo?: string): UpdateView {
     reviewOff: reviewOffReason(loadPolicy().policy),
     snoozedUntil: snoozed ? u.snoozed_until : null,
     approvedAt: u.approved_at,
-    restorePoints: change ? restorePointsFor(change.id).map((p) => ({ service: p.service, path: p.path, createdAt: p.created_at })) : [],
+    restorePoints: change
+      ? restorePointsFor(change.id).map((p) => ({ service: p.service, path: p.path, createdAt: p.created_at }))
+      : [],
     verdict,
     deploy,
     actions,
@@ -410,7 +405,6 @@ export function toView(u: RawUpdate, _repo?: string): UpdateView {
     screen: screenView(u.image, u.from_tag, u.to_tag),
   }
 }
-
 
 /** The live updates one decision covers, with their classes: what a confirmation lists. */
 function decisionMembersOf(u: RawUpdate): { stack: string; service: string; cls: ServiceClass }[] {
@@ -426,22 +420,19 @@ function decisionMembersOf(u: RawUpdate): { stack: string; service: string; cls:
   return out.length > 0 ? out : [{ stack: u.stack, service: u.service, cls: normaliseClass(u.tier) }]
 }
 
-
 /** Decisions, computed once per render rather than once per row. */
 let decisionsMemo: { at: number; value: Decision[] } | null = null
 
-
 function recentDecisions(): Decision[] {
-  if (!decisionsMemo || Date.now() - decisionsMemo.at > 1000) decisionsMemo = { at: Date.now(), value: currentDecisions() }
+  if (!decisionsMemo || Date.now() - decisionsMemo.at > 1000)
+    decisionsMemo = { at: Date.now(), value: currentDecisions() }
   return decisionsMemo.value
 }
-
 
 export function updateView(id: number): UpdateView | null {
   const u = getDb().prepare(`${SELECT_UPDATE} WHERE u.id = ?`).get(id) as RawUpdate | undefined
   return u ? toView(u, repoName()) : null
 }
-
 
 export function repoName(): string {
   return env.githubRepo

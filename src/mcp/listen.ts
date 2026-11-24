@@ -58,8 +58,11 @@ export function startMcpServer(): ServerHandle | null {
     })
     return null
   }
-  const server = serve({ fetch: createMcpApp(env.mcpToken).fetch, port: env.mcpPort, hostname: env.mcpHost }, (info) => {
-    console.log(`[system] shipshape mcp listening on ${env.mcpHost}:${info.port}`)
-  })
+  const server = serve(
+    { fetch: createMcpApp(env.mcpToken).fetch, port: env.mcpPort, hostname: env.mcpHost },
+    (info) => {
+      console.log(`[system] shipshape mcp listening on ${env.mcpHost}:${info.port}`)
+    },
+  )
   return serverHandle(server)
 }

@@ -32,7 +32,11 @@ export interface CheckoutWrite {
 
 export type CheckoutWriteResult =
   | { ok: true; changed: boolean; sha: string | null }
-  | { ok: false; code: 'branch' | 'busy' | 'untracked' | 'dirty' | 'read' | 'invalid' | 'gate' | 'commit'; reason: string }
+  | {
+      ok: false
+      code: 'branch' | 'busy' | 'untracked' | 'dirty' | 'read' | 'invalid' | 'gate' | 'commit'
+      reason: string
+    }
 
 const refuse = (code: Extract<CheckoutWriteResult, { ok: false }>['code'], reason: string): CheckoutWriteResult => ({
   ok: false,
@@ -104,7 +108,14 @@ export async function commitCheckoutFile(w: CheckoutWrite): Promise<CheckoutWrit
 
   try {
     await git(repo, ['add', '--', rel])
-    await git(repo, [...botIdentity(), 'commit', '-m', typeof w.message === 'function' ? w.message() : w.message, '--', rel])
+    await git(repo, [
+      ...botIdentity(),
+      'commit',
+      '-m',
+      typeof w.message === 'function' ? w.message() : w.message,
+      '--',
+      rel,
+    ])
   } catch (err) {
     await restore()
     return refuse('commit', `Could not commit the change: ${(err as Error).message.slice(0, 160)}`)

@@ -10,8 +10,18 @@
 
   // Storage can throw (Safari private mode, storage disabled, a full quota); a theme
   // preference is never worth an exception that stops the rest of this file.
-  function load(k) { try { return localStorage.getItem(k) } catch (e) { return null } }
-  function save(k, v) { try { localStorage.setItem(k, v) } catch (e) {} }
+  function load(k) {
+    try {
+      return localStorage.getItem(k)
+    } catch (e) {
+      return null
+    }
+  }
+  function save(k, v) {
+    try {
+      localStorage.setItem(k, v)
+    } catch (e) {}
+  }
 
   if ('serviceWorker' in navigator) {
     addEventListener('load', () => {
@@ -138,12 +148,18 @@
 
   function failed(e) {
     // The server already said what happened in its own toast; a second one would repeat it.
-    if (e.detail && e.detail.xhr && e.detail.xhr.getResponseHeader && e.detail.xhr.getResponseHeader('HX-Trigger')) return
+    if (e.detail && e.detail.xhr && e.detail.xhr.getResponseHeader && e.detail.xhr.getResponseHeader('HX-Trigger'))
+      return
     var status = e.detail && e.detail.xhr ? e.detail.xhr.status : 0
     if (!status) {
-      showConn('Lost contact with shipshape. Retrying… If this does not clear, your sign-in may have expired: reload the page.')
+      showConn(
+        'Lost contact with shipshape. Retrying… If this does not clear, your sign-in may have expired: reload the page.',
+      )
       if (!isPoll(e)) {
-        toast({ level: 'error', text: 'Could not reach shipshape. If you pressed a button, check Activity before pressing it again.' })
+        toast({
+          level: 'error',
+          text: 'Could not reach shipshape. If you pressed a button, check Activity before pressing it again.',
+        })
       }
       return
     }
@@ -167,7 +183,9 @@
         status === 503
           ? 'shipshape is not set up to accept this yet (503). Nothing was changed; Status says what is missing.'
           : status >= 500
-            ? 'The server failed (' + status + '). It may have done part of the work: check Activity before trying again.'
+            ? 'The server failed (' +
+              status +
+              '). It may have done part of the work: check Activity before trying again.'
             : 'The server answered ' + status + '. Nothing was changed.',
     })
   }
@@ -369,7 +387,9 @@
   // Nothing here fires while typing. Only the list's rows: the pane has rows of its own
   // (a service's history), and the cursor must not wander into them.
   function rows() {
-    return Array.prototype.slice.call(document.querySelectorAll('#list [data-row]')).filter((r) => r.offsetParent !== null)
+    return Array.prototype.slice
+      .call(document.querySelectorAll('#list [data-row]'))
+      .filter((r) => r.offsetParent !== null)
   }
   function cursor() {
     var el = document.activeElement

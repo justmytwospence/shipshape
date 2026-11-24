@@ -64,14 +64,23 @@ test('shipshape.claude becomes shipshape.review unless review is already set', (
 
 test('the class is set before the review, and removals come last', () => {
   const edits = plan({ 'shipshape.claude': 'required', 'shipshape.pr': 'x', 'shipshape.policy': 'auto' })
-  assert.deepEqual(edits.map((e) => e.key), ['shipshape.class', 'shipshape.review', 'shipshape.policy', 'shipshape.pr', 'shipshape.claude'])
+  assert.deepEqual(
+    edits.map((e) => e.key),
+    ['shipshape.class', 'shipshape.review', 'shipshape.policy', 'shipshape.pr', 'shipshape.claude'],
+  )
 })
 
 const edit = (raw: string, notifyUrlSet = false) =>
-  Object.fromEntries(planPolicy(raw, { notifyUrlSet }).filter((e) => e.value !== null).map((e) => [e.path, e.value]))
+  Object.fromEntries(
+    planPolicy(raw, { notifyUrlSet })
+      .filter((e) => e.value !== null)
+      .map((e) => [e.path, e.value]),
+  )
 
 test('planPolicy folds claude into review, merge into ship, and derives paused', () => {
-  const out = edit('claude:\n  model: claude-x\n  monthly_budget_usd: 40\nmerge:\n  auto: true\n  cooldown_days: 3\ndeploy:\n  mode: auto\n')
+  const out = edit(
+    'claude:\n  model: claude-x\n  monthly_budget_usd: 40\nmerge:\n  auto: true\n  cooldown_days: 3\ndeploy:\n  mode: auto\n',
+  )
   assert.equal(out['review.model'], '"claude-x"')
   assert.equal(out['review.monthly_budget_usd'], '40')
   assert.equal(out['ship.cooldown_days'], '3')
@@ -90,7 +99,10 @@ test('notify sinks are written only for a file that relied on the old default', 
   assert.equal(edit('notify:\n  incidents: off\n')['notify.sinks'], '[]')
   assert.equal(edit('notify:\n  email: alerts\n')['notify.sinks'], '[{ type: email }]')
   assert.equal(edit('paused: true\n', true)['notify.sinks'], '[{ type: webhook }]')
-  assert.equal(edit('notify:\n  incidents: all\n  email: all\n')['notify.sinks'], '[{ type: webhook }, { type: email }]')
+  assert.equal(
+    edit('notify:\n  incidents: all\n  email: all\n')['notify.sinks'],
+    '[{ type: webhook }, { type: email }]',
+  )
   assert.equal(edit('notify:\n  incidents: off\n  sinks: []\n')['notify.sinks'], undefined, 'sinks already written')
 })
 
@@ -131,7 +143,8 @@ test('applyPolicyEdits leaves a file with no retired keys that validates, commen
 })
 
 test('a v2 file has nothing to convert', () => {
-  const v2 = 'paused: false\nreview:\n  model: claude-x\nship:\n  cooldown_days: 7\nnotify:\n  sinks: [{ type: webhook }]\n'
+  const v2 =
+    'paused: false\nreview:\n  model: claude-x\nship:\n  cooldown_days: 7\nnotify:\n  sinks: [{ type: webhook }]\n'
   assert.deepEqual(planPolicy(v2, { notifyUrlSet: true }), [])
   assert.deepEqual(plan({ 'shipshape.class': 'ask', 'shipshape.review': 'required', 'shipshape.watch': 'true' }), [])
 })

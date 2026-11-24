@@ -118,10 +118,7 @@ export async function registryFetch(url: string, opts: FetchOpts = {}): Promise<
 
   if (res.status === 429) {
     const retry = res.headers.get('retry-after')
-    throw new RegistryError(
-      `rate limited by ${host}${retry ? ` (retry after ${retry}s)` : ''}`,
-      429,
-    )
+    throw new RegistryError(`rate limited by ${host}${retry ? ` (retry after ${retry}s)` : ''}`, 429)
   }
   return res
 }
@@ -216,9 +213,9 @@ function hubBudgetKey(): string {
 
 /** Remaining Hub pull allowance as last reported by the registry, or null if unknown. */
 export function hubRemaining(): number | null {
-  const row = getDb()
-    .prepare(`SELECT value FROM budgets WHERE key = ?`)
-    .get(hubBudgetKey()) as { value: number } | undefined
+  const row = getDb().prepare(`SELECT value FROM budgets WHERE key = ?`).get(hubBudgetKey()) as
+    | { value: number }
+    | undefined
   return row ? row.value : null
 }
 
@@ -226,10 +223,7 @@ function chargeHubBudget(host: string): void {
   if (!host.endsWith('docker.io')) return
   const remaining = hubRemaining()
   if (remaining !== null && remaining <= HUB_RESERVE) {
-    throw new BudgetExhausted(
-      `Docker Hub pull budget at ${remaining}, reserve floor is ${HUB_RESERVE}`,
-      429,
-    )
+    throw new BudgetExhausted(`Docker Hub pull budget at ${remaining}, reserve floor is ${HUB_RESERVE}`, 429)
   }
 }
 
@@ -268,9 +262,7 @@ export interface CacheRow {
 }
 
 export function readCache(key: string): CacheRow | null {
-  const row = getDb()
-    .prepare(`SELECT etag, body FROM http_cache WHERE url = ?`)
-    .get(key) as CacheRow | undefined
+  const row = getDb().prepare(`SELECT etag, body FROM http_cache WHERE url = ?`).get(key) as CacheRow | undefined
   return row ?? null
 }
 

@@ -11,7 +11,6 @@ import { LIVE_STATES, REFUSED_STATES, sqlIn } from '../updates/state.ts'
 
 const LIVE_IN = sqlIn(LIVE_STATES)
 
-
 interface UpdateRow {
   id: number
   from_tag: string
@@ -21,7 +20,6 @@ interface UpdateRow {
   tier: string
 }
 
-
 function liveRows(stack: string, service: string): UpdateRow[] {
   return getDb()
     .prepare(
@@ -30,7 +28,6 @@ function liveRows(stack: string, service: string): UpdateRow[] {
     )
     .all(stack, service) as UpdateRow[]
 }
-
 
 /**
  * Has this exact upgrade already been tried and rolled back?
@@ -63,31 +60,26 @@ export function refusedTarget(
   } | null
 }
 
-
-
-
 function supersede(id: number, detail: string): void {
   getDb()
     .prepare(`UPDATE updates SET state = 'superseded', detail = ?, updated_at = ? WHERE id = ?`)
     .run(detail, new Date().toISOString(), id)
 }
 
-
-function setImageStatus(
-  svc: ScannedService,
-  status: string | null,
-  detail: string | null,
-): { changed: boolean } {
+function setImageStatus(svc: ScannedService, status: string | null, detail: string | null): { changed: boolean } {
   const db = getDb()
   const prev = db
     .prepare(`SELECT last_status, last_detail FROM images WHERE stack = ? AND service = ?`)
     .get(svc.stack, svc.service) as { last_status: string | null; last_detail: string | null } | undefined
   const changed = !prev || prev.last_status !== status || prev.last_detail !== detail
-  db.prepare(`UPDATE images SET last_status = ?, last_detail = ? WHERE stack = ? AND service = ?`)
-    .run(status, detail, svc.stack, svc.service)
+  db.prepare(`UPDATE images SET last_status = ?, last_detail = ? WHERE stack = ? AND service = ?`).run(
+    status,
+    detail,
+    svc.stack,
+    svc.service,
+  )
   return { changed }
 }
-
 
 /** A newer release exists but a deliberate `tag.include` pin suppressed it. */
 function setConstrained(svc: ScannedService, tag: string | null): void {
@@ -95,7 +87,6 @@ function setConstrained(svc: ScannedService, tag: string | null): void {
     .prepare(`UPDATE images SET constrained_from = ? WHERE stack = ? AND service = ?`)
     .run(tag, svc.stack, svc.service)
 }
-
 
 function rememberTags(svc: ScannedService, observed: TagInfo[]): void {
   if (!svc.ref || observed.length === 0) return
@@ -114,7 +105,6 @@ function rememberTags(svc: ScannedService, observed: TagInfo[]): void {
     }
   })()
 }
-
 
 function insertUpdate(opts: {
   svc: ScannedService
@@ -157,13 +147,8 @@ function insertUpdate(opts: {
     )
 }
 
-
 /** Returns a short outcome key used for the scan summary counts. */
-export async function persist(
-  svc: ScannedService,
-  d: Detection,
-  policy: Policy,
-): Promise<string> {
+export async function persist(svc: ScannedService, d: Detection, policy: Policy): Promise<string> {
   const now = new Date().toISOString()
   const db = getDb()
 
@@ -192,8 +177,12 @@ export async function persist(
         // silently do nothing until that update happened to be superseded.
         if (same.tier !== tier) {
           const nextState = tier === 'frozen' ? 'frozen' : same.state === 'frozen' ? 'detected' : same.state
-          db.prepare(`UPDATE updates SET tier = ?, state = ?, updated_at = ? WHERE id = ?`)
-            .run(tier, nextState, now, same.id)
+          db.prepare(`UPDATE updates SET tier = ?, state = ?, updated_at = ? WHERE id = ?`).run(
+            tier,
+            nextState,
+            now,
+            same.id,
+          )
           logEvent({
             level: 'info',
             kind: 'policy',
@@ -301,7 +290,6 @@ export async function persist(
   }
 }
 
-
 function persistDigest(svc: ScannedService, c: DigestCheck, _policy: Policy): string {
   const tag = svc.ref?.tag ?? 'latest'
 
@@ -340,10 +328,7 @@ function persistDigest(svc: ScannedService, c: DigestCheck, _policy: Policy): st
       // back must not come back on the next sweep.
       const refused = refusedTarget(svc.stack, svc.service, fromTag, toTag)
       if (refused) {
-        getDb().prepare(`UPDATE updates SET updated_at = ? WHERE id = ?`).run(
-          new Date().toISOString(),
-          refused.id,
-        )
+        getDb().prepare(`UPDATE updates SET updated_at = ? WHERE id = ?`).run(new Date().toISOString(), refused.id)
         return refused.state === 'skipped' ? 'dismissed' : 'known-failed'
       }
       insertUpdate({

@@ -1,7 +1,14 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { PolicySchema } from '../src/policy-schema.ts'
-import { classFor, foldGroupClass, foldGroupMagnitude, normaliseClass, repositoryOf, shortRepository } from '../src/policy.ts'
+import {
+  classFor,
+  foldGroupClass,
+  foldGroupMagnitude,
+  normaliseClass,
+  repositoryOf,
+  shortRepository,
+} from '../src/policy.ts'
 
 /**
  * Classes replaced the v1 ladder. The label is `shipshape.class`; a leftover v1 label is
@@ -9,7 +16,8 @@ import { classFor, foldGroupClass, foldGroupMagnitude, normaliseClass, repositor
  * to `ask` too: a typo must never grant reach.
  */
 
-const c = (classLabel: string | null = null, legacy = false, dormant = false) => classFor({ classLabel, legacy, dormant })
+const c = (classLabel: string | null = null, legacy = false, dormant = false) =>
+  classFor({ classLabel, legacy, dormant })
 
 test('classFor: no label is a normal service', () => {
   assert.equal(c(), 'normal')

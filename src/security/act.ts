@@ -40,7 +40,10 @@ export interface Exposure {
 }
 
 /** Every exposure of every running service, from stored inventories. Pure over the db. */
-export function computeExposures(targets: Map<string, Target[]>, running: Running[]): Map<string, { r: Running; slug: string; hits: Hit[] }> {
+export function computeExposures(
+  targets: Map<string, Target[]>,
+  running: Running[],
+): Map<string, { r: Running; slug: string; hits: Hit[] }> {
   const out = new Map<string, { r: Running; slug: string; hits: Hit[] }>()
   const cache = new Map<string, ReturnType<typeof inventory>>()
   for (const r of running) {
@@ -60,7 +63,11 @@ export function recordExposures(found: ReturnType<typeof computeExposures>): num
   const db = getDb()
   const now = new Date().toISOString()
   const first = new Map(
-    (db.prepare(`SELECT slug, stack, service, type, package, installed, first_seen_at FROM exposures`).all() as Exposure[]).map((e) => [
+    (
+      db
+        .prepare(`SELECT slug, stack, service, type, package, installed, first_seen_at FROM exposures`)
+        .all() as Exposure[]
+    ).map((e) => [
       `${e.slug}\u0000${e.stack}\u0000${e.service}\u0000${e.type}\u0000${e.package}\u0000${e.installed}`,
       e.first_seen_at,
     ]),
@@ -75,7 +82,17 @@ export function recordExposures(found: ReturnType<typeof computeExposures>): num
     for (const { r, slug, hits } of found.values()) {
       for (const h of hits) {
         const k = `${slug}\u0000${r.stack}\u0000${r.service}\u0000${h.type}\u0000${h.name}\u0000${h.version}`
-        ins.run(slug, r.stack, r.service, h.type, h.name, h.version, h.fixed.join(', ') || null, first.get(k) ?? now, now)
+        ins.run(
+          slug,
+          r.stack,
+          r.service,
+          h.type,
+          h.name,
+          h.version,
+          h.fixed.join(', ') || null,
+          first.get(k) ?? now,
+          now,
+        )
         n++
       }
     }
@@ -113,15 +130,20 @@ function candidatesFor(exposed: Set<string>): CandidateUpdate[] {
  * Pull and inventory the images updates of exposed services would bring in, within the
  * pass's budget. Returns how many inventories were taken.
  */
-export async function inventoryCandidates(exposed: Set<string>, policy: Policy, budget: number, exec?: Exec): Promise<number> {
+export async function inventoryCandidates(
+  exposed: Set<string>,
+  policy: Policy,
+  budget: number,
+  exec?: Exec,
+): Promise<number> {
   const db = getDb()
   let used = 0
   for (const u of candidatesFor(exposed)) {
     if (used >= budget) break
     const ref = candidateRef(u.image, u.to_tag)
-    const row = db.prepare(`SELECT image_id, error, attempts, checked_at FROM security_candidates WHERE update_id = ?`).get(u.id) as
-      | { image_id: string | null; error: string | null; attempts: number; checked_at: string }
-      | undefined
+    const row = db
+      .prepare(`SELECT image_id, error, attempts, checked_at FROM security_candidates WHERE update_id = ?`)
+      .get(u.id) as { image_id: string | null; error: string | null; attempts: number; checked_at: string } | undefined
     let imageId = row?.image_id ?? null
     if (!imageId) {
       if (row && (row.attempts >= 3 || Date.now() - Date.parse(row.checked_at) < 60 * 60_000)) continue
@@ -137,7 +159,14 @@ export async function inventoryCandidates(exposed: Set<string>, policy: Policy, 
            error = excluded.error, attempts = security_candidates.attempts + 1, checked_at = excluded.checked_at`,
       ).run(u.id, ref, 'imageId' in pulled ? pulled.imageId : null, 'error' in pulled ? pulled.error : null, 1, now)
       if ('error' in pulled) {
-        logEvent({ level: 'warn', kind: 'scan', stack: u.stack, service: u.service, message: 'security: could not pull the update to check it', detail: `${ref}: ${pulled.error}` })
+        logEvent({
+          level: 'warn',
+          kind: 'scan',
+          stack: u.stack,
+          service: u.service,
+          message: 'security: could not pull the update to check it',
+          detail: `${ref}: ${pulled.error}`,
+        })
         continue
       }
       imageId = pulled.imageId
@@ -155,10 +184,12 @@ export function verifyFixes(targets: Map<string, Target[]>, found: ReturnType<ty
   const exposedServices = new Set([...found.values()].map((f) => `${f.r.stack}/${f.r.service}`))
   const cands = candidatesFor(exposedServices)
   const candImage = new Map(
-    (db.prepare(`SELECT update_id, image_id FROM security_candidates WHERE image_id IS NOT NULL`).all() as {
-      update_id: number
-      image_id: string
-    }[]).map((r) => [r.update_id, r.image_id]),
+    (
+      db.prepare(`SELECT update_id, image_id FROM security_candidates WHERE image_id IS NOT NULL`).all() as {
+        update_id: number
+        image_id: string
+      }[]
+    ).map((r) => [r.update_id, r.image_id]),
   )
   const now = new Date().toISOString()
   const keep = new Set<string>()
@@ -274,7 +305,15 @@ export async function syncSecurityCards(policy: Policy): Promise<number> {
       `SELECT f.update_id, f.slug, f.verified_at, u.stack, u.service, u.to_tag, u.state
          FROM security_fixes f JOIN updates u ON u.id = f.update_id`,
     )
-    .all() as { update_id: number; slug: string; verified_at: string; stack: string; service: string; to_tag: string; state: string }[]
+    .all() as {
+    update_id: number
+    slug: string
+    verified_at: string
+    stack: string
+    service: string
+    to_tag: string
+    state: string
+  }[]
 
   const bySlug = new Map<string, Map<string, CardLine>>()
   for (const e of exposures) {
@@ -320,7 +359,11 @@ export async function syncSecurityCards(policy: Policy): Promise<number> {
           // A fix still waiting to ship: one tap ships it.
           .filter((l) => l.fix && (l.fix.state === 'detected' || l.fix.state === 'frozen'))
           .slice(0, 3)
-          .map((l) => ({ emoji: '🚀', label: `ship ${l.service}`, do: { target: 'shipshape' as const, verb: 'ship', update: l.fix!.id } }))
+          .map((l) => ({
+            emoji: '🚀',
+            label: `ship ${l.service}`,
+            do: { target: 'shipshape' as const, verb: 'ship', update: l.fix!.id },
+          }))
       : undefined
     const link = safeHref(inc.url)
     await notify({
@@ -342,7 +385,6 @@ export async function syncSecurityCards(policy: Policy): Promise<number> {
   }
   return changed
 }
-
 
 /** Incident targets, re-exported for the loop. */
 export { incidentTargets }

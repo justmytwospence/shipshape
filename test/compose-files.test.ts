@@ -43,7 +43,12 @@ test('a root compose.yml is the root stack', () => {
 })
 
 test("when a directory has several, Compose's first wins and the rest are reported", () => {
-  const r = repo({ 'a/compose.yaml': SVC('a'), 'a/docker-compose.yml': SVC('a'), 'b/docker-compose.yml': SVC('b'), 'b/docker-compose.yaml': SVC('b') })
+  const r = repo({
+    'a/compose.yaml': SVC('a'),
+    'a/docker-compose.yml': SVC('a'),
+    'b/docker-compose.yml': SVC('b'),
+    'b/docker-compose.yaml': SVC('b'),
+  })
   const d = discoverCompose(r)
   assert.deepEqual(d.shadowed, [
     { dir: 'a', kept: 'compose.yaml', ignored: ['docker-compose.yml'] },
@@ -52,7 +57,13 @@ test("when a directory has several, Compose's first wins and the rest are report
 })
 
 test('overrideFor follows Compose: the first of the four override names, whatever the base is called', () => {
-  const r = repo({ 'a/compose.yaml': SVC('a'), 'a/docker-compose.override.yaml': 'x', 'b/compose.yaml': SVC('b'), 'b/compose.override.yml': 'x', 'b/compose.override.yaml': 'x' })
+  const r = repo({
+    'a/compose.yaml': SVC('a'),
+    'a/docker-compose.override.yaml': 'x',
+    'b/compose.yaml': SVC('b'),
+    'b/compose.override.yml': 'x',
+    'b/compose.override.yaml': 'x',
+  })
   assert.equal(overrideFor(r, 'a/compose.yaml'), 'a/docker-compose.override.yaml')
   assert.equal(overrideFor(r, 'b/compose.yaml'), 'b/compose.override.yml')
   assert.equal(overrideFor(r, 'c/compose.yaml'), null)
@@ -77,6 +88,10 @@ test('projectName reads a declared name from a compose.yml', () => {
 })
 
 test('override and skip directories are not stacks', () => {
-  const r = repo({ 'a/compose.override.yaml': 'x', '.git/compose.yaml': SVC('x'), 'node_modules/compose.yaml': SVC('x') })
+  const r = repo({
+    'a/compose.override.yaml': 'x',
+    '.git/compose.yaml': SVC('x'),
+    'node_modules/compose.yaml': SVC('x'),
+  })
   assert.deepEqual(findComposeFiles(r), [])
 })

@@ -26,7 +26,12 @@ export const OUTCOMES = {
   merged: { badge: 'Shipped', verb: 'shipped', badgeCls: 'badge-info', dotCls: 'bg-info' },
   deployed: { badge: 'Soaking', verb: 'deployed', badgeCls: 'badge-info', dotCls: 'bg-info' },
   verified: { badge: 'Verified', verb: 'verified', badgeCls: 'badge-success', dotCls: 'bg-success' },
-  'left-stopped': { badge: 'Left stopped', verb: 'left stopped', badgeCls: 'badge-ghost', dotCls: 'bg-base-content/50' },
+  'left-stopped': {
+    badge: 'Left stopped',
+    verb: 'left stopped',
+    badgeCls: 'badge-ghost',
+    dotCls: 'bg-base-content/50',
+  },
   degraded: { badge: 'Degraded', verb: 'went degraded', badgeCls: 'badge-warning', dotCls: 'bg-warning' },
   failed: { badge: 'Deploy failed', verb: 'failed to deploy', badgeCls: 'badge-error', dotCls: 'bg-error' },
   'rolled-back': { badge: 'Rolled back', verb: 'was rolled back', badgeCls: 'badge-error', dotCls: 'bg-error' },
@@ -48,7 +53,6 @@ export function short(ref: string): string {
   const at = ref.indexOf('@sha256:')
   return at === -1 ? ref : `${ref.slice(0, at)}@${ref.slice(at + 8, at + 20)}`
 }
-
 
 /**
  * The versions a set of updates moves between, as one line: `1.37.2 -> 1.37.3`.

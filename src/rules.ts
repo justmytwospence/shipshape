@@ -106,7 +106,14 @@ function context(updateId: number) {
       repository: string
       base_dockerfile: string | null
     }[]
-  ).map((r): RuleTarget => ({ image: `${r.registry}/${r.repository}`, stack: r.stack, service: r.service, baseBuild: !!r.base_dockerfile }))
+  ).map(
+    (r): RuleTarget => ({
+      image: `${r.registry}/${r.repository}`,
+      stack: r.stack,
+      service: r.service,
+      baseBuild: !!r.base_dockerfile,
+    }),
+  )
   return { members, info, waivable, unwaivable, elsewhere, repo, policy, known }
 }
 
@@ -157,7 +164,9 @@ async function askModel(c: ReturnType<typeof context>, today: string): Promise<R
       },
       { timeout: 60_000 },
     )
-    const call = res.content.find((b): b is Extract<typeof b, { type: 'tool_use' }> => b.type === 'tool_use' && b.name === 'emit_rule')
+    const call = res.content.find(
+      (b): b is Extract<typeof b, { type: 'tool_use' }> => b.type === 'tool_use' && b.name === 'emit_rule',
+    )
     recordCost(res.usage, policy, policy.review.code_model, 'rule', {
       image: first.image,
       fromTag: first.from_tag,
@@ -172,7 +181,12 @@ async function askModel(c: ReturnType<typeof context>, today: string): Promise<R
     if (isTimeout(err)) {
       recordUnanswered(policy, policy.review.code_model, 'rule', user.length, { latencyMs: Date.now() - started })
     }
-    logEvent({ level: 'warn', kind: 'analysis', message: 'could not infer a rule; using the narrow default', detail: (err as Error).message.slice(0, 160) })
+    logEvent({
+      level: 'warn',
+      kind: 'analysis',
+      message: 'could not infer a rule; using the narrow default',
+      detail: (err as Error).message.slice(0, 160),
+    })
     return null
   }
 }
@@ -257,7 +271,12 @@ export async function appendRule(rule: Rule): Promise<{ sha: string }> {
     throw new Error(result.reason)
   }
   const sha = result.sha ?? ''
-  logEvent({ level: 'info', kind: 'policy', message: `rule ${rule.id} added: always ship`, detail: `${describeRule(rule)} (${sha})` })
+  logEvent({
+    level: 'info',
+    kind: 'policy',
+    message: `rule ${rule.id} added: always ship`,
+    detail: `${describeRule(rule)} (${sha})`,
+  })
   return { sha }
 }
 

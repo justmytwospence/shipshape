@@ -103,7 +103,11 @@ function pendingScreens(limit: number, repoDir = env.repoDir, now = Date.now()):
   for (const r of rows) {
     const key = `${r.image}\u0000${r.from_tag}\u0000${r.to_tag}`
     const seen = byKey.get(key)
-    const carrier = { stack: r.stack, service: r.service, composeFile: r.compose_file ?? composeFileOfStack(env.repoDir, r.stack) }
+    const carrier = {
+      stack: r.stack,
+      service: r.service,
+      composeFile: r.compose_file ?? composeFileOfStack(env.repoDir, r.stack),
+    }
     if (seen) {
       if (!seen.carriers.some((c) => c.stack === r.stack && c.service === r.service)) seen.carriers.push(carrier)
       continue
@@ -137,7 +141,11 @@ function wantsScreen(s: ScreenRow | undefined, p: PendingScreen, repoDir: string
   } catch {
     ev = {}
   }
-  if (ev.incomplete && (ev.attempt ?? 1) <= INCOMPLETE_RESCREENS && now - Date.parse(s.created_at) >= INCOMPLETE_WAIT_MS) {
+  if (
+    ev.incomplete &&
+    (ev.attempt ?? 1) <= INCOMPLETE_RESCREENS &&
+    now - Date.parse(s.created_at) >= INCOMPLETE_WAIT_MS
+  ) {
     return true
   }
   // A configuration change is only worth paying for where a decision is waiting on it.
@@ -203,7 +211,10 @@ export interface ScreenOutcome {
 
 /** Assemble, ask, decide, store. Exported for the replay, which calls it without storing. */
 export async function screenBump(
-  p: Pick<PendingScreen, 'image' | 'from_tag' | 'to_tag' | 'magnitude' | 'stack' | 'service' | 'detected_at' | 'carriers'>,
+  p: Pick<
+    PendingScreen,
+    'image' | 'from_tag' | 'to_tag' | 'magnitude' | 'stack' | 'service' | 'detected_at' | 'carriers'
+  >,
   o: { purpose: 'screen' | 'replay'; repoDir?: string },
 ): Promise<
   | {
@@ -234,7 +245,11 @@ export async function screenBump(
   const deployment = p.carriers
     .map((c) => deploymentOf(repoDir, c.composeFile, c.service))
     .filter((d): d is DeploymentEntry => d !== null)
-  const built = buildState(bundle, { image: p.image, from: p.from_tag, to: p.to_tag, magnitude: p.magnitude }, deployment)
+  const built = buildState(
+    bundle,
+    { image: p.image, from: p.from_tag, to: p.to_tag, magnitude: p.magnitude },
+    deployment,
+  )
   const evidence: ScreenStoredEvidence = {
     repo: bundle.source.repo,
     tier: bundle.source.tier,
@@ -424,11 +439,16 @@ export function applyScreen(
   return true
 }
 
-function recordScreenError(p: Pick<PendingScreen, 'image' | 'from_tag' | 'to_tag' | 'stack' | 'service'>, error: string): void {
+function recordScreenError(
+  p: Pick<PendingScreen, 'image' | 'from_tag' | 'to_tag' | 'stack' | 'service'>,
+  error: string,
+): void {
   const db = getDb()
   const prior = db
     .prepare(`SELECT attempts, error, decision FROM screens WHERE image = ? AND from_tag = ? AND to_tag = ?`)
-    .get(p.image, p.from_tag, p.to_tag) as { attempts: number; error: string | null; decision: string | null } | undefined
+    .get(p.image, p.from_tag, p.to_tag) as
+    | { attempts: number; error: string | null; decision: string | null }
+    | undefined
   // A re-screen that failed leaves the last good screen in place.
   if (prior && !prior.error && prior.decision) return
   const attempts = (prior?.attempts ?? 0) + 1
@@ -448,11 +468,20 @@ function recordScreenError(p: Pick<PendingScreen, 'image' | 'from_tag' | 'to_tag
     new Date().toISOString(),
   )
   // One line per distinct failure; the log folds repeats into a count.
-  logEvent({ level: 'warn', kind: 'analysis', message: 'the screen could not look at an update', detail: error.slice(0, 200) })
+  logEvent({
+    level: 'warn',
+    kind: 'analysis',
+    message: 'the screen could not look at an update',
+    detail: error.slice(0, 200),
+  })
 }
 
 /** What the screen concluded about one bump, for the gate, the reader and the page. */
-export function screenFor(image: string, fromTag: string, toTag: string): {
+export function screenFor(
+  image: string,
+  fromTag: string,
+  toTag: string,
+): {
   decision: ScreenDecision | null
   reason: string | null
   error: string | null
@@ -482,7 +511,7 @@ export function screenFor(image: string, fromTag: string, toTag: string): {
       }
     | undefined
   if (!row) return null
-  const parse = <T,>(s: string | null, d: T): T => {
+  const parse = <T>(s: string | null, d: T): T => {
     try {
       return s ? (JSON.parse(s) as T) : d
     } catch {

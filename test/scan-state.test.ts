@@ -66,10 +66,16 @@ test('migration 002 created the new tables and columns', () => {
   for (const t of ['digest_baselines', 'prs', 'pr_updates', 'updates', 'images']) {
     assert.ok(tables.includes(t), `missing table ${t}`)
   }
-  const cols = db.prepare(`PRAGMA table_info(images)`).all().map((r) => (r as { name: string }).name)
+  const cols = db
+    .prepare(`PRAGMA table_info(images)`)
+    .all()
+    .map((r) => (r as { name: string }).name)
   assert.ok(cols.includes('last_status'))
   assert.ok(cols.includes('last_detail'))
-  const prCols = db.prepare(`PRAGMA table_info(prs)`).all().map((r) => (r as { name: string }).name)
+  const prCols = db
+    .prepare(`PRAGMA table_info(prs)`)
+    .all()
+    .map((r) => (r as { name: string }).name)
   assert.ok(prCols.includes('group_key'), 'prs should have been recreated with group support')
 })
 
@@ -90,9 +96,7 @@ test('a newer target supersedes the previous row rather than accumulating', () =
   const rows = live()
   assert.equal(rows.length, 1)
   assert.equal(rows[0]!.to_tag, '2.3.4')
-  const superseded = getDb()
-    .prepare(`SELECT detail FROM updates WHERE state='superseded'`)
-    .get() as { detail: string }
+  const superseded = getDb().prepare(`SELECT detail FROM updates WHERE state='superseded'`).get() as { detail: string }
   assert.equal(superseded.detail, 'newer target 2.3.4')
 })
 
@@ -104,18 +108,14 @@ test('caught-up clears a row once the file moves on its own (WUD applied it)', (
   supersede(Number(row.id), 'caught-up')
 
   assert.equal(live().length, 0)
-  const cleared = getDb()
-    .prepare(`SELECT detail FROM updates WHERE state='superseded'`)
-    .get() as { detail: string }
+  const cleared = getDb().prepare(`SELECT detail FROM updates WHERE state='superseded'`).get() as { detail: string }
   assert.equal(cleared.detail, 'caught-up')
 })
 
 test('a vanished target is distinguishable from being caught up', () => {
   insert('2.2.19', '2.3.3')
   supersede(Number(live()[0]!.id), 'target-vanished')
-  const row = getDb()
-    .prepare(`SELECT detail FROM updates WHERE state='superseded'`)
-    .get() as { detail: string }
+  const row = getDb().prepare(`SELECT detail FROM updates WHERE state='superseded'`).get() as { detail: string }
   // Yanked releases must not look like a successful application.
   assert.equal(row.detail, 'target-vanished')
 })
@@ -159,19 +159,23 @@ test('digest baselines bootstrap once and then only advance on movement', () => 
   put.run('docker.io', 'huginn/huginn-single-process', 'latest', 'sha256:aaa', now, now)
 
   const read = () =>
-    db
-      .prepare(`SELECT digest FROM digest_baselines WHERE repository=?`)
-      .get('huginn/huginn-single-process') as { digest: string }
+    db.prepare(`SELECT digest FROM digest_baselines WHERE repository=?`).get('huginn/huginn-single-process') as {
+      digest: string
+    }
   assert.equal(read().digest, 'sha256:aaa')
 
   // An unchanged check touches checked_at only.
-  db.prepare(`UPDATE digest_baselines SET checked_at=? WHERE repository=?`)
-    .run(new Date().toISOString(), 'huginn/huginn-single-process')
+  db.prepare(`UPDATE digest_baselines SET checked_at=? WHERE repository=?`).run(
+    new Date().toISOString(),
+    'huginn/huginn-single-process',
+  )
   assert.equal(read().digest, 'sha256:aaa')
 
   // Acknowledged movement advances it, so the event fires exactly once.
-  db.prepare(`UPDATE digest_baselines SET digest=? WHERE repository=?`)
-    .run('sha256:bbb', 'huginn/huginn-single-process')
+  db.prepare(`UPDATE digest_baselines SET digest=? WHERE repository=?`).run(
+    'sha256:bbb',
+    'huginn/huginn-single-process',
+  )
   assert.equal(read().digest, 'sha256:bbb')
 
   // One baseline serves both huginn services -- it is keyed by image, not by service.
@@ -194,9 +198,7 @@ test('a label change retiers an outstanding update on the next scan', () => {
   const nowFrozen = classFor({ classLabel: 'frozen' })
   assert.equal(nowFrozen, 'frozen')
 
-  getDb()
-    .prepare(`UPDATE updates SET tier=?, state=? WHERE id=?`)
-    .run(nowFrozen, 'frozen', before.id)
+  getDb().prepare(`UPDATE updates SET tier=?, state=? WHERE id=?`).run(nowFrozen, 'frozen', before.id)
 
   const after = live()[0]!
   assert.equal(after.tier, 'frozen')

@@ -29,6 +29,8 @@ test('an old database is compacted once', () => {
   assert.equal(first.compacted, true)
   assert.equal(getDb().pragma('auto_vacuum', { simple: true }), 2)
   assert.equal(compactOnce().compacted, false)
-  const said = getDb().prepare(`SELECT message FROM events WHERE kind = 'system' ORDER BY id`).all() as { message: string }[]
+  const said = getDb().prepare(`SELECT message FROM events WHERE kind = 'system' ORDER BY id`).all() as {
+    message: string
+  }[]
   assert.ok(said.some((e) => e.message === 'database compacted'))
 })

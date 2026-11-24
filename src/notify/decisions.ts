@@ -71,7 +71,9 @@ export function cardFor(d: Decision, now = Date.now()): Card {
   }
 
   const drafted = db
-    .prepare(`SELECT changed FROM proposals WHERE update_id IN (${d.members.map(() => '?').join(',')}) AND error IS NULL AND retryable = 0 ORDER BY id DESC LIMIT 1`)
+    .prepare(
+      `SELECT changed FROM proposals WHERE update_id IN (${d.members.map(() => '?').join(',')}) AND error IS NULL AND retryable = 0 ORDER BY id DESC LIMIT 1`,
+    )
     .get(...d.members.map((m) => m.id)) as { changed: string } | undefined
   if (drafted) {
     try {

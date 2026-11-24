@@ -34,7 +34,13 @@ const LSIO = 'https://api.linuxserver.io/api/v1/images?include_config=false&incl
 
 const repo = (name: string, o: { fullName?: string; fork?: boolean; parent?: string } = {}): Route => ({
   url: `https://api.github.com/repos/${name}`,
-  reply: () => json({ full_name: o.fullName ?? name, fork: !!o.fork, archived: false, parent: o.parent ? { full_name: o.parent } : undefined }),
+  reply: () =>
+    json({
+      full_name: o.fullName ?? name,
+      fork: !!o.fork,
+      archived: false,
+      parent: o.parent ? { full_name: o.parent } : undefined,
+    }),
 })
 const noRepo = (name: string): Route => ({ url: `https://api.github.com/repos/${name}`, reply: () => status(404) })
 const hub = (repository: string, full: string): Route => ({
@@ -49,24 +55,43 @@ const jenkinsfile = (name: string, body: string | null): Route => ({
   url: `https://raw.githubusercontent.com/linuxserver/docker-${name}/HEAD/Jenkinsfile`,
   reply: () => (body === null ? status(404) : text(body)),
 })
-const pulls = (h: { calls: { url: string }[] }) => h.calls.filter((c) => c.url.startsWith('https://registry-1.docker.io/')).length
+const pulls = (h: { calls: { url: string }[] }) =>
+  h.calls.filter((c) => c.url.startsWith('https://registry-1.docker.io/')).length
 
-function image(stack: string, service: string, img: { registry: string; repository: string }, tag: string, label?: string): void {
+function image(
+  stack: string,
+  service: string,
+  img: { registry: string; repository: string },
+  tag: string,
+  label?: string,
+): void {
   getDb()
     .prepare(
       `INSERT INTO images (stack, service, compose_file, image_ref, registry, repository,
                            current_tag, watched, source_label, last_seen_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
     )
-    .run(stack, service, `${stack}/docker-compose.yaml`, `${img.repository}:${tag}`, img.registry, img.repository, tag,
-      label ?? null, new Date().toISOString())
+    .run(
+      stack,
+      service,
+      `${stack}/docker-compose.yaml`,
+      `${img.repository}:${tag}`,
+      img.registry,
+      img.repository,
+      tag,
+      label ?? null,
+      new Date().toISOString(),
+    )
 }
 
 const MINUSPOD = { registry: 'docker.io', repository: 'ttlequals0/minuspod' }
 
 test('minuspod: its Docker Hub page links the repo, which settles it without a single pull', async (t) => {
   const h = mockFetch(t, [
-    hub('ttlequals0/minuspod', 'Removes ads.\n\nSee https://github.com/ttlequals0/MinusPod and https://github.com/openai/whisper.'),
+    hub(
+      'ttlequals0/minuspod',
+      'Removes ads.\n\nSee https://github.com/ttlequals0/MinusPod and https://github.com/openai/whisper.',
+    ),
     repo('ttlequals0/MinusPod'),
   ])
   const l = await lookUpImage(MINUSPOD, '2.96.17-cpu', { allowBilled: true })
@@ -78,7 +103,10 @@ test('minuspod: its Docker Hub page links the repo, which settles it without a s
 
 test('n8n: the one repository matching name and owner, of the three its page links', async (t) => {
   const h = mockFetch(t, [
-    hub('n8nio/n8n', 'https://github.com/n8n-io/n8n-hosting · https://github.com/n8n-io/n8n · https://github.com/n8n-io/localtunnel'),
+    hub(
+      'n8nio/n8n',
+      'https://github.com/n8n-io/n8n-hosting · https://github.com/n8n-io/n8n · https://github.com/n8n-io/localtunnel',
+    ),
     repo('n8n-io/n8n'),
   ])
   const l = await lookUpImage({ registry: 'docker.io', repository: 'n8nio/n8n' }, '2.38.5', { ignoreOverrides: true })
@@ -129,16 +157,26 @@ test('opencode and whisper.cpp: a ghcr.io path names the repository', async (t) 
 
 test('signal-cli: the GitLab project that packages it names the repo, as a likely match', async (t) => {
   const h = mockFetch(t, [
-    { url: 'https://registry.gitlab.com/v2/packaging/signal-cli/signal-cli-native/manifests/v0-14-7-1', reply: () => status(404) },
+    {
+      url: 'https://registry.gitlab.com/v2/packaging/signal-cli/signal-cli-native/manifests/v0-14-7-1',
+      reply: () => status(404),
+    },
     { url: 'https://gitlab.com/api/v4/projects/packaging%2Fsignal-cli%2Fsignal-cli-native', reply: () => status(404) },
     {
       url: 'https://gitlab.com/api/v4/projects/packaging%2Fsignal-cli',
-      reply: () => json({ description: 'Ubuntu packages for https://github.com/AsamK/signal-cli\r\nDocumentation: https://packaging.gitlab.io/signal-cli' }),
+      reply: () =>
+        json({
+          description:
+            'Ubuntu packages for https://github.com/AsamK/signal-cli\r\nDocumentation: https://packaging.gitlab.io/signal-cli',
+        }),
     },
     repo('AsamK/signal-cli'),
     // No GitHub lookup of packaging/signal-cli: a GitLab image's project lives on GitLab.
   ])
-  const l = await lookUpImage({ registry: 'registry.gitlab.com', repository: 'packaging/signal-cli/signal-cli-native' }, 'v0-14-7-1')
+  const l = await lookUpImage(
+    { registry: 'registry.gitlab.com', repository: 'packaging/signal-cli/signal-cli-native' },
+    'v0-14-7-1',
+  )
   assert.deepEqual([l.repo, l.tier, l.confidence], ['AsamK/signal-cli', 'description', 'medium'])
   assertAllMocked(h)
 })
@@ -152,13 +190,19 @@ test("LinuxServer: the build file names coder's and Tautulli's repos, where the 
     ]),
     jenkinsfile('qbittorrent', `curl -sL https://api.github.com/repos/userdocs/qbittorrent-nox-static/releases/latest`),
     repo('userdocs/qbittorrent-nox-static'),
-    jenkinsfile('code-server', `EXT_RELEASE = sh(script: '''curl -sX GET https://api.github.com/repos/coder/code-server/releases/latest''')`),
+    jenkinsfile(
+      'code-server',
+      `EXT_RELEASE = sh(script: '''curl -sX GET https://api.github.com/repos/coder/code-server/releases/latest''')`,
+    ),
     jenkinsfile('tautulli', `    EXT_USER = 'Tautulli'\n    EXT_REPO = 'Tautulli'\n`),
     repo('coder/code-server'),
     repo('Tautulli/Tautulli'),
   ])
   const cs = await lookUpImage({ registry: 'lscr.io', repository: 'linuxserver/code-server' }, '4.136.2')
-  assert.deepEqual([cs.repo, cs.tier, cs.confidence, cs.packagingRepo], ['coder/code-server', 'lsio-build', 'high', 'linuxserver/docker-code-server'])
+  assert.deepEqual(
+    [cs.repo, cs.tier, cs.confidence, cs.packagingRepo],
+    ['coder/code-server', 'lsio-build', 'high', 'linuxserver/docker-code-server'],
+  )
   const tt = await lookUpImage({ registry: 'docker.io', repository: 'linuxserver/tautulli' }, '2.18.1')
   assert.deepEqual([tt.repo, tt.tier], ['Tautulli/Tautulli', 'lsio-build'])
   // qbittorrent's build file reads a static-binary distributor, not qBittorrent itself: a
@@ -174,7 +218,10 @@ test('plex: nothing on GitHub to name, so none -- with the packaging repo, and w
   image('plex', 'plex', plex, '1.43.4')
   const h = mockFetch(t, [
     lsio([{ name: 'plex', project_url: 'https://plex.tv' }]),
-    jenkinsfile('plex', `EXT_RELEASE = sh(script: '''curl -s 'https://plex.tv/api/downloads/5.json' | jq -r '.computer.Linux.version'''')`),
+    jenkinsfile(
+      'plex',
+      `EXT_RELEASE = sh(script: '''curl -s 'https://plex.tv/api/downloads/5.json' | jq -r '.computer.Linux.version'''')`,
+    ),
   ])
   const s = await sourceFor(plex)
   assert.equal(s.repo, null)
@@ -218,13 +265,19 @@ test('equally good links are ambiguity, and give nothing', async (t) => {
   ])
   const l = await lookUpImage({ registry: 'docker.io', repository: 'acme/widget' }, '1.0.0', { allowBilled: false })
   assert.equal(l.repo, null)
-  assert.ok(l.evidence.candidates.some((c) => /linked alongside/.test(c.why)), JSON.stringify(l.evidence))
+  assert.ok(
+    l.evidence.candidates.some((c) => /linked alongside/.test(c.why)),
+    JSON.stringify(l.evidence),
+  )
   assertAllMocked(h)
 })
 
 test("a deleted repository and someone else's fork are both turned down", async (t) => {
   const h = mockFetch(t, [
-    hub('ttlequals0/minuspod', 'Old home: https://github.com/ttlequals0/minuspod-legacy. Mirror: https://github.com/someone/minuspod.'),
+    hub(
+      'ttlequals0/minuspod',
+      'Old home: https://github.com/ttlequals0/minuspod-legacy. Mirror: https://github.com/someone/minuspod.',
+    ),
     noRepo('ttlequals0/minuspod-legacy'),
     repo('someone/minuspod', { fork: true, parent: 'ttlequals0/MinusPod' }),
     noRepo('ttlequals0/minuspod'),
@@ -248,14 +301,24 @@ test('a config label the image inherited is set aside; the same repository as an
       reply: () =>
         json(
           annotated
-            ? { annotations: { 'org.opencontainers.image.source': 'https://github.com/acme/base' }, config: { digest: 'sha256:cfg' } }
+            ? {
+                annotations: { 'org.opencontainers.image.source': 'https://github.com/acme/base' },
+                config: { digest: 'sha256:cfg' },
+              }
             : { config: { digest: 'sha256:cfg' } },
         ),
     },
     {
       url: `${registry}/blobs/sha256:cfg`,
       reply: () =>
-        json({ config: { Labels: { 'org.opencontainers.image.source': 'https://github.com/acme/base', 'org.opencontainers.image.version': '22.04' } } }),
+        json({
+          config: {
+            Labels: {
+              'org.opencontainers.image.source': 'https://github.com/acme/base',
+              'org.opencontainers.image.version': '22.04',
+            },
+          },
+        }),
     },
     repo('acme/base'),
     noRepo('acme/widget'),
@@ -263,7 +326,10 @@ test('a config label the image inherited is set aside; the same repository as an
 
   const label = await lookUpImage(widget, '1.4.2')
   assert.equal(label.repo, null)
-  assert.ok(label.evidence.candidates.some((c) => /inherited/.test(c.why)), JSON.stringify(label.evidence))
+  assert.ok(
+    label.evidence.candidates.some((c) => /inherited/.test(c.why)),
+    JSON.stringify(label.evidence),
+  )
 
   annotated = true
   const annotation = await lookUpImage(widget, '1.4.2')
@@ -289,7 +355,10 @@ test("GitHub's rate limit is a failure to look, retried within the hour, never a
   const reset = String(Math.floor(Date.now() / 1000) + 600)
   const h = mockFetch(t, [
     hub('ttlequals0/minuspod', 'https://github.com/ttlequals0/MinusPod'),
-    { url: /^https:\/\/api\.github\.com\/repos\//, reply: () => status(403, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': reset }) },
+    {
+      url: /^https:\/\/api\.github\.com\/repos\//,
+      reply: () => status(403, { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': reset }),
+    },
   ])
   const s = await sourceFor(MINUSPOD, { allowBilled: false })
   assert.equal(s.repo, null)
@@ -301,7 +370,13 @@ test("GitHub's rate limit is a failure to look, retried within the hour, never a
 
 test('the sweep skips labelled images and curated ones cost nothing', async (t) => {
   image('db', 'postgres', { registry: 'docker.io', repository: 'library/postgres' }, '17')
-  image('openclaw', 'signal-cli', { registry: 'registry.gitlab.com', repository: 'packaging/signal-cli/signal-cli-native' }, 'v0-14-7-1', 'AsamK/signal-cli')
+  image(
+    'openclaw',
+    'signal-cli',
+    { registry: 'registry.gitlab.com', repository: 'packaging/signal-cli/signal-cli-native' },
+    'v0-14-7-1',
+    'AsamK/signal-cli',
+  )
   const h = mockFetch(t, [])
   const r = await resolveWatched({ allowBilled: false })
   assert.deepEqual(r, { looked: 1, linked: 1, failed: 0, due: 1 })

@@ -11,7 +11,6 @@ import type { SourceInfo } from '../resolver/types.ts'
 import { describeState, forkConflictFor, forkRefs } from '../forks.ts'
 import { forkRefUrl, releaseUrl } from '../upstream/forks.ts'
 
-
 /**
  * What shipshape knows about one service, and where each part of it came from.
  *
@@ -66,16 +65,21 @@ export function serviceRows(): ServiceRowData[] {
   }))
 }
 
-function upstreamState(r: { stack: string; service: string; registry: string; repository: string | null }): ServiceRowData['upstream'] {
+function upstreamState(r: {
+  stack: string
+  service: string
+  registry: string
+  repository: string | null
+}): ServiceRowData['upstream'] {
   if (!r.repository) return 'none'
-  const s = sourceForSync({ registry: r.registry, repository: r.repository }, { service: { stack: r.stack, service: r.service } })
+  const s = sourceForSync(
+    { registry: r.registry, repository: r.repository },
+    { service: { stack: r.stack, service: r.service } },
+  )
   return s.repo ? (s.confidence === 'high' ? 'linked' : 'likely') : 'none'
 }
 
-export function filterServices(
-  rows: ServiceRowData[],
-  opts: { filter?: string; q?: string } = {},
-): ServiceRowData[] {
+export function filterServices(rows: ServiceRowData[], opts: { filter?: string; q?: string } = {}): ServiceRowData[] {
   const q = opts.q?.trim().toLowerCase()
   return rows.filter((r) => {
     switch (opts.filter) {
@@ -146,9 +150,7 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
   // database row is only as fresh as that scan.
   let live: ScannedService | undefined
   try {
-    live = scanRepo(env.repoDir, policy.exclude_stacks).find(
-      (s) => s.stack === stack && s.service === service,
-    )
+    live = scanRepo(env.repoDir, policy.exclude_stacks).find((s) => s.stack === stack && s.service === service)
   } catch {
     live = undefined
   }
@@ -180,7 +182,12 @@ export function serviceDetail(stack: string, service: string): ServiceDetailData
           : CLASS_NOTE[cls],
   })
   if (image && live?.snapshotLabel) {
-    config.push({ key: 'snapshot', value: live.snapshotLabel.slice(0, 80), source: 'label', note: 'dumped before this service is updated' })
+    config.push({
+      key: 'snapshot',
+      value: live.snapshotLabel.slice(0, 80),
+      source: 'label',
+      note: 'dumped before this service is updated',
+    })
   }
   config.push({ key: 'watch', value: svc.watched ? 'on' : 'off', source: 'label' })
   // Our own build, watched through the image its Dockerfile's final stage is built on: the
@@ -279,7 +286,17 @@ function forkSection(
   const known = new Map(forkRefs(stack, service).map((r) => [r.ref, r]))
   const refs: ForkRefLine[] = listed.map((ref) => {
     const r = known.get(ref)
-    if (!r) return { ref, url: forkRefUrl(ref), state: 'unknown', label: 'not checked yet', releasedIn: null, releaseUrl: null, detail: null, checkedAt: null }
+    if (!r)
+      return {
+        ref,
+        url: forkRefUrl(ref),
+        state: 'unknown',
+        label: 'not checked yet',
+        releasedIn: null,
+        releaseUrl: null,
+        detail: null,
+        checkedAt: null,
+      }
     return {
       ref,
       url: forkRefUrl(ref),
@@ -332,9 +349,7 @@ function upstreamNote(s: SourceInfo, me: { stack: string; service: string }): st
     parts.push(`label on ${s.label.from.stack}/${s.label.from.service}, which runs the same image`)
   }
   if (s.label && s.label.conflicts.length > 0) {
-    parts.push(
-      `labels disagree: ${s.label.conflicts.map((c) => `${c.stack}/${c.service} says ${c.value}`).join(', ')}`,
-    )
+    parts.push(`labels disagree: ${s.label.conflicts.map((c) => `${c.stack}/${c.service} says ${c.value}`).join(', ')}`)
   }
   if (!s.label && s.repo) {
     const via = s.detail ?? TIER_WORDS[s.tier]
@@ -375,10 +390,8 @@ export interface ServiceRowData {
   fork?: boolean
 }
 
-
 /** Where a setting came from. The provenance is the point: it is why, not just what. */
 export type Provenance = 'label' | 'default' | 'inferred' | 'locked' | 'none'
-
 
 export interface ConfigLine {
   key: string
@@ -386,7 +399,6 @@ export interface ConfigLine {
   source: Provenance
   note?: string
 }
-
 
 /** One upstream reference a fork waits on, as the last scan left it. */
 export interface ForkRefLine {
@@ -400,7 +412,6 @@ export interface ForkRefLine {
   detail: string | null
   checkedAt: string | null
 }
-
 
 export interface ServiceDetailData {
   svc: ServiceRowData

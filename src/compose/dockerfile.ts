@@ -69,7 +69,10 @@ export function parseFroms(text: string): ParseResult {
     const tok = /^(\S+)/.exec(rest)
     if (!tok) return { ok: false, reason: `line ${i + 1}: FROM names no image` }
     const image = tok[1]!
-    const after = rest.slice(image.length).replace(/\s+#.*$/, '').trim()
+    const after = rest
+      .slice(image.length)
+      .replace(/\s+#.*$/, '')
+      .trim()
     let alias: string | null = null
     if (after) {
       const as = /^AS[ \t]+(\S+)$/i.exec(after)
@@ -100,14 +103,20 @@ export function finalBase(froms: FromLine[]): BaseResult {
       return { ok: false, reason: `line ${f.line}: the base image is set by a build argument (${f.image})` }
     }
     // A stage can only name a stage declared before it.
-    const stage = froms.slice(0, idx).map((s, i) => ({ s, i })).reverse().find(({ s }) => s.alias === name)
+    const stage = froms
+      .slice(0, idx)
+      .map((s, i) => ({ s, i }))
+      .reverse()
+      .find(({ s }) => s.alias === name)
     if (!stage) return { ok: true, from: f }
     idx = stage.i
   }
   return { ok: false, reason: 'the stages name each other in a loop' }
 }
 
-export type RewriteResult = { ok: true; text: string; count: number } | { ok: false; reason: string; alreadyApplied?: boolean }
+export type RewriteResult =
+  | { ok: true; text: string; count: number }
+  | { ok: false; reason: string; alreadyApplied?: boolean }
 
 /**
  * Point every `FROM` that names `oldRef` at `newRef`, and provably nothing else.

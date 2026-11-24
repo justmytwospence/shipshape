@@ -45,14 +45,19 @@ export function eligibleGroups(policy: Policy): UpdateGroup[] {
     services.length > 0 && !present.has(`${r.stack}/${r.service}`) && composeFileFor(r.stack, r.service) === null
   const gone = wanted.filter(isGone)
   if (gone.length > 0) {
-    const mark = db.prepare(`UPDATE updates SET state = 'superseded', detail = 'service removed', updated_at = ? WHERE id = ?`)
+    const mark = db.prepare(
+      `UPDATE updates SET state = 'superseded', detail = 'service removed', updated_at = ? WHERE id = ?`,
+    )
     const now = new Date().toISOString()
     for (const r of gone) mark.run(now, r.id)
     logEvent({
       level: 'info',
       kind: 'ship',
       message: `retired ${gone.length} update(s) for services no longer in any compose file`,
-      detail: gone.map((r) => `${r.stack}/${r.service}`).join(', ').slice(0, 300),
+      detail: gone
+        .map((r) => `${r.stack}/${r.service}`)
+        .join(', ')
+        .slice(0, 300),
     })
   }
   // A fork whose last replay onto this very target conflicted, from this very pin, is
@@ -73,7 +78,6 @@ export function eligibleGroups(policy: Policy): UpdateGroup[] {
   return mergeApproved(groupUpdates(candidates, sourceRepoFor, groupLabelFor))
 }
 
-
 /**
  * One tap on a stack's card approves every update in it at the same instant; those ship
  * together, as one merge commit and one deploy, rather than one per image.
@@ -82,9 +86,11 @@ function mergeApproved(groups: UpdateGroup[]): UpdateGroup[] {
   const ids = groups.flatMap((g) => g.members.map((m) => m.id))
   if (ids.length === 0) return groups
   const approvedAt = new Map(
-    (getDb()
-      .prepare(`SELECT id, approved_at FROM updates WHERE id IN (${ids.map(() => '?').join(',')})`)
-      .all(...ids) as { id: number; approved_at: string | null }[]).map((r) => [r.id, r.approved_at]),
+    (
+      getDb()
+        .prepare(`SELECT id, approved_at FROM updates WHERE id IN (${ids.map(() => '?').join(',')})`)
+        .all(...ids) as { id: number; approved_at: string | null }[]
+    ).map((r) => [r.id, r.approved_at]),
   )
   const out: UpdateGroup[] = []
   const byTap = new Map<string, UpdateGroup[]>()
@@ -110,19 +116,16 @@ function mergeApproved(groups: UpdateGroup[]): UpdateGroup[] {
   return out.sort((a, b) => a.members[0]!.id - b.members[0]!.id)
 }
 
-
 function membersRows(group: UpdateGroup): HoldRow[] {
   const db = getDb()
   const stmt = db.prepare(`SELECT ${HOLD_COLUMNS} FROM updates u WHERE u.id = ?`)
   return group.members.map((m) => stmt.get(m.id) as HoldRow)
 }
 
-
 /** Every member's own status; a group ships only when all are ready. */
 export function statusesFor(group: UpdateGroup, policy: Policy): UpdateHolds[] {
   return membersRows(group).map((r) => holdsForRow(r, policy))
 }
-
 
 /** What the group as a whole is: ready, waiting, or a decision. */
 export function groupStatus(statuses: UpdateHolds[]): 'ready' | 'decision' | 'waiting' {

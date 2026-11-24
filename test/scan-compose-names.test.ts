@@ -20,7 +20,8 @@ const { getDb } = await import('../src/db/index.ts')
 const { runScan } = await import('../src/scan/index.ts')
 
 const composeFiles = () =>
-  (getDb().prepare(`SELECT value FROM budgets WHERE key = 'scan.compose_files'`).get() as { value: number } | undefined)?.value
+  (getDb().prepare(`SELECT value FROM budgets WHERE key = 'scan.compose_files'`).get() as { value: number } | undefined)
+    ?.value
 
 test('a repository with no compose files logs one error, records zero, and keeps the inventory', async () => {
   getDb()
@@ -31,7 +32,9 @@ test('a repository with no compose files logs one error, records zero, and keeps
     .run()
   await runScan('manual')
   assert.equal((getDb().prepare(`SELECT COUNT(*) c FROM images`).get() as { c: number }).c, 1)
-  const ev = getDb().prepare(`SELECT level, kind FROM events WHERE message LIKE 'no compose files found in %'`).get() as { level: string; kind: string }
+  const ev = getDb()
+    .prepare(`SELECT level, kind FROM events WHERE message LIKE 'no compose files found in %'`)
+    .get() as { level: string; kind: string }
   assert.deepEqual([ev.level, ev.kind], ['error', 'system'])
   assert.equal(composeFiles(), 0)
 })
@@ -41,7 +44,9 @@ test('a directory with two compose files logs a warning naming the ignored one',
   writeFileSync(join(repo, 'app', 'compose.yaml'), 'services:\n  app:\n    image: example/app:1.0.0\n')
   writeFileSync(join(repo, 'app', 'docker-compose.yml'), 'services:\n  app:\n    image: example/app:1.0.0\n')
   await runScan('manual')
-  const ev = getDb().prepare(`SELECT detail FROM events WHERE message = 'app has more than one compose file; using compose.yaml'`).get() as { detail: string }
+  const ev = getDb()
+    .prepare(`SELECT detail FROM events WHERE message = 'app has more than one compose file; using compose.yaml'`)
+    .get() as { detail: string }
   assert.match(ev.detail, /docker-compose\.yml/)
   assert.equal(composeFiles(), 1)
 })

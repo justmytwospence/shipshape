@@ -12,9 +12,7 @@ import { pace } from '../registry/http.ts'
  * with ghcr.io -- answers with no text. Only an outage or a rate limit is a failure.
  */
 
-export type Description =
-  | { ok: true; text: string | null; where: string | null }
-  | { ok: false; error: string }
+export type Description = { ok: true; text: string | null; where: string | null } | { ok: false; error: string }
 
 export async function registryDescription(image: { registry: string; repository: string }): Promise<Description> {
   switch (image.registry) {

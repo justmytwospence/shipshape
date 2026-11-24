@@ -117,12 +117,18 @@ export function modelsEndpoint(): { url: string; headers: Record<string, string>
   switch (llmProvider()) {
     case 'custom': {
       const token = customToken()
-      return { url: `${env.llmBaseUrl.replace(/\/+$/, '')}/v1/models`, headers: token ? { authorization: `Bearer ${token}` } : {} }
+      return {
+        url: `${env.llmBaseUrl.replace(/\/+$/, '')}/v1/models`,
+        headers: token ? { authorization: `Bearer ${token}` } : {},
+      }
     }
     case 'openrouter':
       return { url: `${OPENROUTER_BASE}/v1/models`, headers: { authorization: `Bearer ${env.openrouterApiKey}` } }
     case 'anthropic':
-      return { url: `${ANTHROPIC_BASE}/v1/models?limit=50`, headers: { 'x-api-key': env.anthropicApiKey, 'anthropic-version': '2023-06-01' } }
+      return {
+        url: `${ANTHROPIC_BASE}/v1/models?limit=50`,
+        headers: { 'x-api-key': env.anthropicApiKey, 'anthropic-version': '2023-06-01' },
+      }
     default:
       return null
   }

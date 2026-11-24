@@ -32,7 +32,10 @@ export interface DiffHunk {
 }
 
 /** What a fork's change carries beyond its hunks (the forks guide): the replay and its commits. */
-export type ForkChange = Pick<ForkPrepared, 'kind' | 'sha' | 'tag' | 'forkUrl' | 'upstreamRef' | 'carried' | 'dropped' | 'waitsOn'>
+export type ForkChange = Pick<
+  ForkPrepared,
+  'kind' | 'sha' | 'tag' | 'forkUrl' | 'upstreamRef' | 'carried' | 'dropped' | 'waitsOn'
+>
 
 export type DiffResult = { hunks: DiffHunk[]; fork?: ForkChange } | { error: string }
 
@@ -140,9 +143,9 @@ export function buildUpdateDiff(updateId: number): DiffResult {
 }
 
 function isForkService(stack: string, service: string): boolean {
-  const r = getDb()
-    .prepare(`SELECT fork_upstream FROM images WHERE stack = ? AND service = ?`)
-    .get(stack, service) as { fork_upstream: string | null } | undefined
+  const r = getDb().prepare(`SELECT fork_upstream FROM images WHERE stack = ? AND service = ?`).get(stack, service) as
+    | { fork_upstream: string | null }
+    | undefined
   return !!r?.fork_upstream
 }
 
@@ -207,7 +210,13 @@ function forkDiff(
  * one the scan saw, and says so when it has none rather than showing an unpinned line the
  * branch would never carry.
  */
-function baseDiff(row: { stack: string; service: string; image: string; to_tag: string; base_dockerfile: string }): DiffResult {
+function baseDiff(row: {
+  stack: string
+  service: string
+  image: string
+  to_tag: string
+  base_dockerfile: string
+}): DiffResult {
   let src: string
   try {
     src = readFileSync(join(env.repoDir, row.base_dockerfile), 'utf8')
@@ -312,10 +321,7 @@ function lineDiff(file: string, before: string, after: string, label: string): D
  * this repo carry byte-identical image lines (three `postgres:13.2` sidecars), and a
  * whole-file match would happily rewrite the wrong one.
  */
-function locateImageLine(
-  src: string,
-  service: string,
-): { line: number; value: string } | { error: string } {
+function locateImageLine(src: string, service: string): { line: number; value: string } | { error: string } {
   const lineCounter = new LineCounter()
   let doc: Document.Parsed
   try {

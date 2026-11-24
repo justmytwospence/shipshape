@@ -157,7 +157,11 @@ async function screen(i: FeedIncident): Promise<boolean | null> {
   return a?.type === 'noul' ? a.noul >= RELEVANT_FLOOR : null
 }
 
-export type ExtractCall = (system: string, user: string, policy: Policy) => Promise<{ input: unknown } | { error: string }>
+export type ExtractCall = (
+  system: string,
+  user: string,
+  policy: Policy,
+) => Promise<{ input: unknown } | { error: string }>
 
 /** The reader call. Injected in the tests. */
 const callReader: ExtractCall = async (system, user, policy) => {
@@ -208,7 +212,15 @@ interface Due {
  * meaning nothing actionable about the software itself. Dropped in code, not only in the
  * prompt, because an update that only bumps one must never count as a security fix.
  */
-const TRUST_STORE_NAMES = new Set(['certifi', 'ca-certificates', 'pip', 'uv', 'rustls-webpki', 'webpki-roots', 'webpki'])
+const TRUST_STORE_NAMES = new Set([
+  'certifi',
+  'ca-certificates',
+  'pip',
+  'uv',
+  'rustls-webpki',
+  'webpki-roots',
+  'webpki',
+])
 
 /**
  * Whether an empty answer should be doubted rather than stored.
@@ -294,7 +306,12 @@ export async function runExtraction(call: ExtractCall = callReader, limit = PER_
           db.prepare(
             `UPDATE security_incidents SET targets_hash = ?, extract_error = ?, extract_attempts = 0, next_extract_at = NULL WHERE slug = ?`,
           ).run(d.versions_hash, 'a re-read found nothing; kept the earlier targets', d.slug)
-          logEvent({ level: 'warn', kind: 'analysis', message: 'security: a re-read found nothing; kept the earlier targets', detail: d.slug })
+          logEvent({
+            level: 'warn',
+            kind: 'analysis',
+            message: 'security: a re-read found nothing; kept the earlier targets',
+            detail: d.slug,
+          })
           out.extracted++
           continue
         }
@@ -315,7 +332,12 @@ export async function runExtraction(call: ExtractCall = callReader, limit = PER_
     out.extracted++
   }
   if (out.failed > 0) {
-    logEvent({ level: 'warn', kind: 'analysis', message: 'security: some incidents could not be read', detail: `${out.failed} will be retried` })
+    logEvent({
+      level: 'warn',
+      kind: 'analysis',
+      message: 'security: some incidents could not be read',
+      detail: `${out.failed} will be retried`,
+    })
   }
   return out
 }

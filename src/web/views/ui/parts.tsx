@@ -132,7 +132,9 @@ export const VerdictChip: FC<{ update: UpdateView; long?: boolean }> = ({ update
           {long ? ' confidence' : ''}
         </span>
       ) : null}
-      {screened ? <span class="opacity-70">· {update.verdict?.provisional ? 'screened, reading queued' : 'screened'}</span> : null}
+      {screened ? (
+        <span class="opacity-70">· {update.verdict?.provisional ? 'screened, reading queued' : 'screened'}</span>
+      ) : null}
     </span>
   )
 }
@@ -155,15 +157,12 @@ export const ExtLink: FC<{ href: string | null | undefined; class?: string; chil
   )
 }
 
-export const Mono: FC<PropsWithChildren> = ({ children }) => (
-  <span class="font-mono text-xs">{children}</span>
-)
+export const Mono: FC<PropsWithChildren> = ({ children }) => <span class="font-mono text-xs">{children}</span>
 
 /** `1.2.3 → 1.3.0`, with digests shortened to something a person can compare. */
 export const Change: FC<{ from: string; to: string }> = ({ from, to }) => (
   <span class="font-mono text-xs whitespace-nowrap">
-    {shorten(from)} <span class="opacity-70">→</span>{' '}
-    <span class="font-medium">{shorten(to)}</span>
+    {shorten(from)} <span class="opacity-70">→</span> <span class="font-medium">{shorten(to)}</span>
   </span>
 )
 
@@ -210,10 +209,7 @@ export function relative(iso: string): string {
  * their polling off it -- so when the scan ends the id goes with it, and every poll that
  * depended on it stops rather than running all night.
  */
-export const ScanStatus: FC<{ running: boolean; lastAt: string | null }> = ({
-  running,
-  lastAt,
-}) =>
+export const ScanStatus: FC<{ running: boolean; lastAt: string | null }> = ({ running, lastAt }) =>
   running ? (
     <span
       id="scan-running"
@@ -239,11 +235,7 @@ export const ScanStatus: FC<{ running: boolean; lastAt: string | null }> = ({
     </span>
   )
 
-export const EmptyState: FC<{ icon: IconName; title: string; hint?: unknown }> = ({
-  icon,
-  title,
-  hint,
-}) => (
+export const EmptyState: FC<{ icon: IconName; title: string; hint?: unknown }> = ({ icon, title, hint }) => (
   <div class="flex flex-col items-center gap-1.5 px-4 py-8 text-center">
     <Icon name={icon} class="size-6 opacity-30" />
     <p class="text-sm font-medium">{title}</p>
@@ -267,11 +259,7 @@ export const Tabs: FC<{
   options: readonly { key: string; label: string }[]
   label: string
 }> = ({ name, value, options, label }) => (
-  <div
-    role="radiogroup"
-    aria-label={label}
-    class="tabs tabs-box tabs-xs shrink-0 flex-nowrap p-0.5"
-  >
+  <div role="radiogroup" aria-label={label} class="tabs tabs-box tabs-xs shrink-0 flex-nowrap p-0.5">
     {options.map((o) => (
       <input
         type="radio"
@@ -298,11 +286,7 @@ export const Search: FC<{ value: string; placeholder: string }> = ({ value, plac
  * out-of-band, so a filter change updates the number without re-rendering the toolbar.
  */
 export const ListCount: FC<{ n: number; oob?: boolean }> = ({ n, oob }) => (
-  <span
-    id="list-count"
-    class="text-xs whitespace-nowrap opacity-70"
-    {...(oob ? { 'hx-swap-oob': 'true' } : {})}
-  >
+  <span id="list-count" class="text-xs whitespace-nowrap opacity-70" {...(oob ? { 'hx-swap-oob': 'true' } : {})}>
     {n} shown
   </span>
 )

@@ -27,10 +27,7 @@ import { FORKS_GUIDE_URL } from '../../../links.ts'
  * carries the reasoning, the history and the diff.
  */
 
-const VERB: Record<
-  Verb,
-  { label: string; short?: string; icon?: IconName; style: string; confirm?: boolean }
-> = {
+const VERB: Record<Verb, { label: string; short?: string; icon?: IconName; style: string; confirm?: boolean }> = {
   ship: { label: 'Ship', icon: 'rocket', style: 'btn-primary', confirm: true },
   snooze: { label: 'Snooze 1 week', short: 'Snooze', icon: 'clock', style: 'btn-ghost' },
   'always-ship': { label: 'Always ship', short: 'Always', icon: 'merge', style: 'btn-ghost', confirm: true },
@@ -90,13 +87,7 @@ const ActionButton: FC<{
       ? `btn btn-xs btn-soft ${v.style === 'btn-ghost' ? '' : v.style} tap gap-1 whitespace-nowrap`
       : `btn btn-sm ${v.style} tap gap-1.5`
   return (
-    <button
-      type="button"
-      class={cls}
-      data-primary={primary ? 'true' : undefined}
-      data-verb={verb}
-      {...attrs}
-    >
+    <button type="button" class={cls} data-primary={primary ? 'true' : undefined} data-verb={verb} {...attrs}>
       {v.icon ? <Icon name={v.icon} class="size-3.5" /> : null}
       {size === 'xs' ? (v.short ?? label) : label}
     </button>
@@ -146,7 +137,9 @@ const Confirm: FC<{
           ))}
         </ol>
         <form method="dialog" class="modal-action">
-          <button type="submit" class="btn btn-ghost btn-sm tap">Cancel</button>
+          <button type="submit" class="btn btn-ghost btn-sm tap">
+            Cancel
+          </button>
           <button
             type="button"
             class={`btn btn-sm tap ${v.style}`}
@@ -192,8 +185,7 @@ const ROW =
  */
 const COLS = 'lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_2.75rem_minmax(0,1.6fr)_5rem]'
 /** service · change · size · stage · review · age-or-action */
-const COLS_STAGE =
-  'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_2.75rem_6rem_minmax(0,1.5fr)_5rem]'
+const COLS_STAGE = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_2.75rem_6rem_minmax(0,1.5fr)_5rem]'
 
 /** What the columns are, at lg. Visual only: each row reads in order without it. */
 export const UpdateListHeader: FC<{ showStage?: boolean }> = ({ showStage }) => (
@@ -265,9 +257,7 @@ export const UpdateRow: FC<{
         <span class="hidden min-w-0 items-center truncate lg:flex">
           <VerdictChip update={update} />
         </span>
-        <span class="hidden text-right lg:block">
-          {inline ? null : <Relative at={update.updatedAt} />}
-        </span>
+        <span class="hidden text-right lg:block">{inline ? null : <Relative at={update.updatedAt} />}</span>
         {/* line 2 on the phone: change · size · verdict; hidden at lg where each has a cell */}
         <span class="col-span-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs lg:hidden">
           <Change from={update.fromTag} to={update.toTag} />
@@ -331,7 +321,8 @@ export const GroupHeader: FC<{
  */
 const HoldsBlock: FC<{ update: UpdateView }> = ({ update }) => {
   const waiting = update.shipStatus === 'waiting' && update.shipWhy
-  if (update.holds.length === 0 && update.waived.length === 0 && !waiting && update.restorePoints.length === 0) return null
+  if (update.holds.length === 0 && update.waived.length === 0 && !waiting && update.restorePoints.length === 0)
+    return null
   return (
     <section class="border-base-300 border-t px-4 py-3 text-sm">
       {update.holds.length > 0 ? (
@@ -474,16 +465,18 @@ const VerdictBlock: FC<{ update: UpdateView }> = ({ update }) => {
         <p class="text-xs opacity-70">
           {v.sources.length > 0 ? (
             <>
-              {v.sources.map(safeHref).filter((s): s is string => s !== null).map((s) => (
-                <ExtLink href={s} class="link link-hover mr-2">
-                  {hostOf(s)}
-                </ExtLink>
-              ))}
+              {v.sources
+                .map(safeHref)
+                .filter((s): s is string => s !== null)
+                .map((s) => (
+                  <ExtLink href={s} class="link link-hover mr-2">
+                    {hostOf(s)}
+                  </ExtLink>
+                ))}
               ·{' '}
             </>
           ) : null}
-          read by {v.model ?? 'the model'} <Relative at={v.createdAt} />. It can hold an update
-          back, never cause one.
+          read by {v.model ?? 'the model'} <Relative at={v.createdAt} />. It can hold an update back, never cause one.
         </p>
       </div>
     </section>
@@ -537,8 +530,7 @@ const ScreenBlock: FC<{ update: UpdateView }> = ({ update }) => {
     <div class="flex max-w-[80ch] flex-col gap-2 pt-1">
       {s.error ? (
         <p class="text-xs">
-          <span class="font-medium">The screen could not look.</span>{' '}
-          <span class="opacity-70">{s.error}</span>
+          <span class="font-medium">The screen could not look.</span> <span class="opacity-70">{s.error}</span>
         </p>
       ) : (
         <>
@@ -585,11 +577,11 @@ const ScreenBlock: FC<{ update: UpdateView }> = ({ update }) => {
   )
 }
 
-const ScreenLines: FC<{ title: string; lines: { text: string; version: string; url: string | null }[]; cls: string }> = ({
-  title,
-  lines,
-  cls,
-}) =>
+const ScreenLines: FC<{
+  title: string
+  lines: { text: string; version: string; url: string | null }[]
+  cls: string
+}> = ({ title, lines, cls }) =>
   lines.length === 0 ? null : (
     <div>
       <p class={`text-xs font-medium tracking-wide uppercase ${cls}`}>{title}</p>
@@ -758,10 +750,7 @@ export const UpdateDetail: FC<{
     <div id={`upd-${update.id}-detail`} class="flex flex-col lg:max-w-4xl">
       <header class="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pt-3 pb-2">
         {fromService ? (
-          <a
-            href={`/services/${fromService.stack}/${fromService.service}`}
-            class="link link-hover text-xs opacity-70"
-          >
+          <a href={`/services/${fromService.stack}/${fromService.service}`} class="link link-hover text-xs opacity-70">
             ← {fromService.service}
           </a>
         ) : null}
@@ -777,10 +766,7 @@ export const UpdateDetail: FC<{
               commit ↗
             </ExtLink>
           ) : null}
-          <a
-            href={`/services/${update.stack}/${update.service}`}
-            class="link link-hover opacity-70"
-          >
+          <a href={`/services/${update.stack}/${update.service}`} class="link link-hover opacity-70">
             class {update.cls}
           </a>
         </span>
@@ -796,16 +782,19 @@ export const UpdateDetail: FC<{
         ) : null}
       </header>
 
-
       <ActionBar
         update={update}
         target={target}
         reply={reply}
         warnings={[
           ...(update.forkConflict
-            ? [`The fork's fixes could not be replayed onto ${update.toTag}: ${update.forkConflict}. Rebase the fork's carried commits onto the new release by hand and move the pinned sha, or drop the commit; shipshape tries again once the pin or the target changes.`]
+            ? [
+                `The fork's fixes could not be replayed onto ${update.toTag}: ${update.forkConflict}. Rebase the fork's carried commits onto the new release by hand and move the pinned sha, or drop the commit; shipshape tries again once the pin or the target changes.`,
+              ]
             : update.fork
-              ? ['This service is a fork of its upstream image: shipping replays its fixes onto the new release and moves the build pin, and the deploy builds it.']
+              ? [
+                  'This service is a fork of its upstream image: shipping replays its fixes onto the new release and moves the build pin, and the deploy builds it.',
+                ]
               : []),
           ...(warnings ?? []),
         ]}

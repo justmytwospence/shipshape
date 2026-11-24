@@ -25,10 +25,12 @@ before(async () => {
 after(() => rmSync(dir, { recursive: true, force: true }))
 
 const rows = () =>
-  db
-    .getDb()
-    .prepare(`SELECT message, count, at, last_at FROM events ORDER BY id`)
-    .all() as { message: string; count: number; at: string; last_at: string | null }[]
+  db.getDb().prepare(`SELECT message, count, at, last_at FROM events ORDER BY id`).all() as {
+    message: string
+    count: number
+    at: string
+    last_at: string | null
+  }[]
 
 test('a repeated message bumps a count instead of adding a row', () => {
   events.logEvent({ level: 'info', kind: 'ship', message: 'holding 13 update(s)' })
@@ -54,9 +56,7 @@ test('an old repeat starts a new row rather than reviving a stale one', () => {
   events.logEvent({ level: 'info', kind: 'sync', message: 'pushed main to origin' })
   // Age the row past the coalescing window.
   const old = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString()
-  db.getDb()
-    .prepare(`UPDATE events SET at = ?, last_at = NULL WHERE message = ?`)
-    .run(old, 'pushed main to origin')
+  db.getDb().prepare(`UPDATE events SET at = ?, last_at = NULL WHERE message = ?`).run(old, 'pushed main to origin')
 
   events.logEvent({ level: 'info', kind: 'sync', message: 'pushed main to origin' })
 

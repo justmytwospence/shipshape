@@ -11,15 +11,12 @@ export const ATTENTION_KINDS = [
   'rolling-moved', // a rolling tag moved under us
 ] as const
 
-
 export type AttentionKind = (typeof ATTENTION_KINDS)[number]
-
 
 export interface AttentionItem {
   kind: AttentionKind
   update: UpdateView
 }
-
 
 /**
  * What is actually waiting on a person.
@@ -48,10 +45,8 @@ export function inboxNeedsYou(): AttentionItem[] {
   return items.sort((a, b) => rank(a.kind) - rank(b.kind) || b.update.updatedAt.localeCompare(a.update.updatedAt))
 }
 
-
 /** Broken rows leave the inbox on their own after this long. */
 const BROKEN_EXPIRY_MS = 14 * 24 * 60 * 60_000
-
 
 /**
  * A failure stops being news once something newer has replaced it: a later update of the
@@ -69,7 +64,6 @@ function brokenExpired(v: UpdateView): boolean {
     .get(v.stack, v.service, v.id)
   return !!newer
 }
-
 
 function attentionKind(v: UpdateView): AttentionKind | null {
   // Merged and nothing more is owed: the service was not running, so nothing was started,
@@ -93,7 +87,6 @@ function attentionKind(v: UpdateView): AttentionKind | null {
   return null
 }
 
-
 /**
  * Updates that are tracked but parked: frozen services, and decisions that were snoozed.
  * Informational -- they are the answer to "why is this not in the list", which is
@@ -111,7 +104,6 @@ export function inboxParked(): UpdateView[] {
   return rows.map((r) => toView(r))
 }
 
-
 /** Live updates nothing holds but Pause: what would ship the moment Pause is off. */
 export function inboxPausedOnly(): UpdateView[] {
   const rows = getDb()
@@ -124,7 +116,6 @@ export function inboxPausedOnly(): UpdateView[] {
   return rows.map((r) => toView(r)).filter((v) => v.shipStatus === 'waiting' && v.shipWhy === 'paused')
 }
 
-
 export interface RecentItem {
   at: string
   kind: Outcome
@@ -135,7 +126,6 @@ export interface RecentItem {
   updateId: number
   detail: string | null
 }
-
 
 /** What happened lately, so "did last night go fine" is one glance rather than a hunt. */
 export function inboxRecent(hours = 24, limit = 20): RecentItem[] {

@@ -17,7 +17,9 @@ test('a short action secret makes no links, and says so once', () => {
   assert.equal(actionUrl('ship', 1), null)
   assert.equal(actionUrl('ship', 1), null)
   const rows = getDb()
-    .prepare(`SELECT COUNT(*) c FROM events WHERE message = 'SHIPSHAPE_ACTION_SECRET is shorter than 32 characters, so no action links are sent'`)
+    .prepare(
+      `SELECT COUNT(*) c FROM events WHERE message = 'SHIPSHAPE_ACTION_SECRET is shorter than 32 characters, so no action links are sent'`,
+    )
     .get() as { c: number }
   assert.equal(rows.c, 1)
 })

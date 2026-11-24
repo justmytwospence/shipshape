@@ -61,13 +61,19 @@ test('n8n: the repository matching name and owner wins over the others its page 
   const { ranked, packaging } = rankMentions('n8nio/n8n', mentions)
   assert.equal(ranked[0]?.repo, 'n8n-io/n8n')
   assert.equal(ranked[0]?.confidence, 'high')
-  assert.ok(ranked.slice(1).every((r) => r.score < ranked[0]!.score), 'a unique best')
+  assert.ok(
+    ranked.slice(1).every((r) => r.score < ranked[0]!.score),
+    'a unique best',
+  )
   assert.deepEqual(packaging, ['linuxserver/docker-n8n'])
 })
 
 test('a link that relates to the image by nothing at all is not a candidate', () => {
   const { ranked } = rankMentions('ttlequals0/minuspod', ['openai/whisper', 'ttlequals0/MinusPod'])
-  assert.deepEqual(ranked.map((r) => r.repo), ['ttlequals0/MinusPod'])
+  assert.deepEqual(
+    ranked.map((r) => r.repo),
+    ['ttlequals0/MinusPod'],
+  )
   // Only the name matching is a likely match, not a certain one.
   const signal = rankMentions('packaging/signal-cli/signal-cli-native', ['AsamK/signal-cli'])
   assert.equal(signal.ranked[0]?.confidence, 'medium')
@@ -75,9 +81,14 @@ test('a link that relates to the image by nothing at all is not a candidate', ()
 
 test("an Official Image's packaging repository is not its source", () => {
   const nginx = rankMentions('library/nginx', ['nginx/docker-nginx', 'nginx/nginx'])
-  assert.deepEqual(nginx.ranked.map((r) => r.repo), ['nginx/nginx'])
+  assert.deepEqual(
+    nginx.ranked.map((r) => r.repo),
+    ['nginx/nginx'],
+  )
   assert.deepEqual(nginx.packaging, ['nginx/docker-nginx'])
-  assert.deepEqual(rankMentions('library/redis', ['redis/docker-library-redis']).packaging, ['redis/docker-library-redis'])
+  assert.deepEqual(rankMentions('library/redis', ['redis/docker-library-redis']).packaging, [
+    'redis/docker-library-redis',
+  ])
   assert.deepEqual(rankMentions('library/mariadb', ['MariaDB/mariadb-docker']).packaging, ['MariaDB/mariadb-docker'])
   // Another image's packaging, linked from the same page, is not recorded as this one's.
   assert.deepEqual(rankMentions('library/postgres', ['postgis/docker-postgis']), { ranked: [], packaging: [] })
@@ -91,7 +102,9 @@ test("an Official Image's packaging repository is not its source", () => {
 test("LinuxServer's build file names the upstream, when it reads one from GitHub", () => {
   assert.equal(buildFileUpstream(`    EXT_USER = 'Tautulli'\n    EXT_REPO = 'Tautulli'`), 'Tautulli/Tautulli')
   assert.equal(
-    buildFileUpstream(`EXT_RELEASE = sh(script: '''curl -sX GET https://api.github.com/repos/coder/code-server/releases/latest''')`),
+    buildFileUpstream(
+      `EXT_RELEASE = sh(script: '''curl -sX GET https://api.github.com/repos/coder/code-server/releases/latest''')`,
+    ),
     'coder/code-server',
   )
   // Its own repository is not an answer.
@@ -112,13 +125,24 @@ test('a config label is set aside when it plainly came from a base image', () =>
   )
   // Its own labels, agreeing with the tag, are kept: the variant is not the version.
   assert.equal(
-    looksInherited({ 'org.opencontainers.image.version': 'v2.96.17' }, 'ttlequals0/minuspod', '2.96.17-cpu', 'ttlequals0/MinusPod'),
+    looksInherited(
+      { 'org.opencontainers.image.version': 'v2.96.17' },
+      'ttlequals0/minuspod',
+      '2.96.17-cpu',
+      'ttlequals0/MinusPod',
+    ),
     null,
   )
   // A rolling tag says nothing about the version, so it cannot disagree; a pin on a line
   // agrees with any release on that line.
-  assert.equal(looksInherited({ 'org.opencontainers.image.version': '1.0.0' }, 'acme/widget', 'latest', 'acme/widget'), null)
-  assert.equal(looksInherited({ 'org.opencontainers.image.version': '3.7.1' }, 'traefik/traefik', 'v3.7', 'traefik/traefik'), null)
+  assert.equal(
+    looksInherited({ 'org.opencontainers.image.version': '1.0.0' }, 'acme/widget', 'latest', 'acme/widget'),
+    null,
+  )
+  assert.equal(
+    looksInherited({ 'org.opencontainers.image.version': '3.7.1' }, 'traefik/traefik', 'v3.7', 'traefik/traefik'),
+    null,
+  )
   assert.match(
     looksInherited({ 'org.opencontainers.image.version': '3.6.9' }, 'traefik/traefik', 'v3.7', 'traefik/traefik') ?? '',
     /version 3.6.9/,

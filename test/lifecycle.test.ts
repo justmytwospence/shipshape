@@ -29,10 +29,14 @@ test('background logs a rejection instead of throwing', async () => {
   background(Promise.reject(new Error('boom')), 'the thing', 'deploy')
   await drain()
   await new Promise((r) => setImmediate(r))
-  const row = getDb().prepare(`SELECT level, kind, message, detail FROM events WHERE message = 'the thing threw'`).get() as
-    | { level: string; kind: string; message: string; detail: string }
-    | undefined
-  assert.deepEqual(row && { level: row.level, kind: row.kind, detail: row.detail }, { level: 'error', kind: 'deploy', detail: 'boom' })
+  const row = getDb()
+    .prepare(`SELECT level, kind, message, detail FROM events WHERE message = 'the thing threw'`)
+    .get() as { level: string; kind: string; message: string; detail: string } | undefined
+  assert.deepEqual(row && { level: row.level, kind: row.kind, detail: row.detail }, {
+    level: 'error',
+    kind: 'deploy',
+    detail: 'boom',
+  })
 })
 
 test('drain waits for work added while it waits', async () => {

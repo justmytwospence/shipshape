@@ -82,12 +82,8 @@ const navCounts = (): NonNullable<Chrome['counts']> => {
     // Decisions are judged by the hold logic rather than by SQL, so the count is the
     // same one the Inbox page lists.
     inbox: inboxNeedsYou().length,
-    updates: one(
-      `SELECT COUNT(*) AS n FROM updates WHERE state IN ('detected','frozen','merged')`,
-    ),
-    attention: one(
-      `SELECT COUNT(*) AS n FROM images WHERE last_status IS NOT NULL OR constrained_from IS NOT NULL`,
-    ),
+    updates: one(`SELECT COUNT(*) AS n FROM updates WHERE state IN ('detected','frozen','merged')`),
+    attention: one(`SELECT COUNT(*) AS n FROM images WHERE last_status IS NOT NULL OR constrained_from IS NOT NULL`),
   }
 }
 
@@ -97,7 +93,12 @@ const updateDiff = (id: number): unknown => {
     const html = diffFragment(id)
     return html ? raw(html) : null
   } catch (err) {
-    logEvent({ level: 'warn', kind: 'system', message: 'a diff could not be shown', detail: `update ${id}: ${(err as Error).message.slice(0, 300)}` })
+    logEvent({
+      level: 'warn',
+      kind: 'system',
+      message: 'a diff could not be shown',
+      detail: `update ${id}: ${(err as Error).message.slice(0, 300)}`,
+    })
     return null
   }
 }
@@ -222,9 +223,7 @@ export const updatePane = (id: number, ctx: ListCtx): { update: UpdateView; pane
       diff: updateDiff(id),
       listHref: from.href,
       fromService:
-        ctx.list === 'service' && ctx.stack && ctx.service
-          ? { stack: ctx.stack, service: ctx.service }
-          : undefined,
+        ctx.list === 'service' && ctx.stack && ctx.service ? { stack: ctx.stack, service: ctx.service } : undefined,
       ctx: ctxString(ctx),
     }),
   }
@@ -252,66 +251,63 @@ export const servicePane = (stack: string, service: string, ctx: ListCtx) => {
  * carries the proposal block and the reference links -- the parts a reviewer reads.
  */
 function diffFragment(id: number): string {
-
-        const result = buildUpdateDiff(id)
-    const db = getDb()
-    const pr = db
-      .prepare(
-        `SELECT p.id FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id
+  const result = buildUpdateDiff(id)
+  const db = getDb()
+  const pr = db
+    .prepare(
+      `SELECT p.id FROM prs p JOIN pr_updates pu ON pu.pr_id = p.id
          WHERE pu.update_id = ? AND p.state = 'open' ORDER BY p.id DESC LIMIT 1`,
-      )
-      .get(id) as { id: number } | undefined
+    )
+    .get(id) as { id: number } | undefined
 
-    // Links point at the TARGET tag: this panel is where the merge decision happens.
-    const row = db
-      .prepare(
-        `SELECT u.image, u.to_tag, u.stack, u.service FROM updates u
+  // Links point at the TARGET tag: this panel is where the merge decision happens.
+  const row = db
+    .prepare(
+      `SELECT u.image, u.to_tag, u.stack, u.service FROM updates u
          JOIN images i ON i.stack = u.stack AND i.service = u.service
          WHERE u.id = ?`,
-      )
-      .get(id) as { image: string; to_tag: string; stack: string; service: string } | undefined
-    const ref = row ? parseImageRef(row.image) : null
-    const source =
-      row && ref
-        ? sourceForSync(
-            { registry: ref.registry, repository: ref.repository },
-            { service: { stack: row.stack, service: row.service } },
-          )
-        : null
+    )
+    .get(id) as { image: string; to_tag: string; stack: string; service: string } | undefined
+  const ref = row ? parseImageRef(row.image) : null
+  const source =
+    row && ref
+      ? sourceForSync(
+          { registry: ref.registry, repository: ref.repository },
+          { service: { stack: row.stack, service: row.service } },
+        )
+      : null
 
-    const proposal = pr
-      ? (db
-          .prepare(
-            `SELECT summary, notes, changed, error, model, hunks FROM proposals
+  const proposal = pr
+    ? (db
+        .prepare(
+          `SELECT summary, notes, changed, error, model, hunks FROM proposals
              WHERE pr_id = ? ORDER BY id DESC LIMIT 1`,
-          )
-          .get(pr.id) as
-          | {
-              summary: string
-              notes: string
-              changed: string
-              error: string | null
-              model: string
-              hunks: string | null
-            }
-          | undefined)
-      : undefined
+        )
+        .get(pr.id) as
+        | {
+            summary: string
+            notes: string
+            changed: string
+            error: string | null
+            model: string
+            hunks: string | null
+          }
+        | undefined)
+    : undefined
 
-    return (
-      DiffView({
-        result,
-        links: row && ref ? refLinks(ref, row.to_tag, source?.repo ?? null) : undefined,
-        service: row ? { stack: row.stack, service: row.service } : undefined,
-        proposal: proposal
-          ? {
-              summary: proposal.summary,
-              notes: JSON.parse(proposal.notes) as string[],
-              changed: JSON.parse(proposal.changed ?? '[]') as string[],
-              error: proposal.error,
-              model: proposal.model,
-              hunks: JSON.parse(proposal.hunks ?? '[]') as DiffHunk[],
-            }
-          : undefined,
-      }) as string
-  )
+  return DiffView({
+    result,
+    links: row && ref ? refLinks(ref, row.to_tag, source?.repo ?? null) : undefined,
+    service: row ? { stack: row.stack, service: row.service } : undefined,
+    proposal: proposal
+      ? {
+          summary: proposal.summary,
+          notes: JSON.parse(proposal.notes) as string[],
+          changed: JSON.parse(proposal.changed ?? '[]') as string[],
+          error: proposal.error,
+          model: proposal.model,
+          hunks: JSON.parse(proposal.hunks ?? '[]') as DiffHunk[],
+        }
+      : undefined,
+  }) as string
 }

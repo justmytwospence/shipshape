@@ -28,7 +28,15 @@ before(async () => {
   process.env.REPO_DIR = repo
   process.env.GITHUB_REPO = 'you/compose-repo'
   process.env.TZ = 'UTC'
-  for (const k of ['ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'LLM_BASE_URL', 'GITHUB_TOKEN', 'POLICY_FILE', 'SHIPSHAPE_PASSWORD', 'SHIPSHAPE_PASSWORD_FILE']) {
+  for (const k of [
+    'ANTHROPIC_API_KEY',
+    'OPENROUTER_API_KEY',
+    'LLM_BASE_URL',
+    'GITHUB_TOKEN',
+    'POLICY_FILE',
+    'SHIPSHAPE_PASSWORD',
+    'SHIPSHAPE_PASSWORD_FILE',
+  ]) {
     delete process.env[k]
   }
   process.env.SHIPSHAPE_TRUSTED_PROXY = TEST_PROXY
@@ -101,7 +109,16 @@ test('settings shows the rule in words', async () => {
 })
 
 test('every page renders whole', async () => {
-  for (const path of ['/', '/updates', '/updates?stage=all&q=x', '/services', '/services?group=stack', '/activity', '/settings', '/status']) {
+  for (const path of [
+    '/',
+    '/updates',
+    '/updates?stage=all&q=x',
+    '/services',
+    '/services?group=stack',
+    '/activity',
+    '/settings',
+    '/status',
+  ]) {
     assert.match(await page(path), /^<!DOCTYPE html>|^<html lang="en"/, path)
   }
 })

@@ -45,7 +45,10 @@ test('missing settings are named', () => {
 })
 
 test('no compose files says where it looked', () => {
-  assert.match(step(setupSteps({ ...base, composeFiles: 0 }), 'repo').body, /No compose files were found in \/srv\/compose\./)
+  assert.match(
+    step(setupSteps({ ...base, composeFiles: 0 }), 'repo').body,
+    /No compose files were found in \/srv\/compose\./,
+  )
 })
 
 test('nothing watched points at the Not watched filter', () => {

@@ -68,7 +68,10 @@ test('a fork is watched despite build:, and its ref is the upstream image', () =
   assert.equal(s.ref?.repository, 'grimmory-tools/grimmory')
   assert.equal(s.ref?.tag, 'v3.3.3')
   assert.match(s.ref?.digest ?? '', /^sha256:fffd/)
-  assert.equal(s.fork?.upstream, 'ghcr.io/grimmory-tools/grimmory:v3.3.3@sha256:fffd0ae0bfccd64ca00441e8fa58a14e286b9115e5df1cb47eecf294ad09e6ff')
+  assert.equal(
+    s.fork?.upstream,
+    'ghcr.io/grimmory-tools/grimmory:v3.3.3@sha256:fffd0ae0bfccd64ca00441e8fa58a14e286b9115e5df1cb47eecf294ad09e6ff',
+  )
   // The other labels still describe the upstream image.
   assert.equal(s.pattern, 'digest')
   assert.deepEqual(s.legacyLabels, ['shipshape.policy: manual'])
@@ -80,7 +83,10 @@ test('waits-on is split, trimmed, deduplicated, and a malformed entry is reporte
   assert.deepEqual(s.labelProblems, ['shipshape.fork.waits-on entry "not-a-ref" is not owner/repo#N'])
   assert.deepEqual(parseWaitsOn(' o/r#1 ,o/r#2,,'), { refs: ['o/r#1', 'o/r#2'], malformed: [] })
   assert.deepEqual(parseWaitsOn(null), { refs: [], malformed: [] })
-  assert.deepEqual(parseWaitsOn('https://github.com/o/r/pull/3'), { refs: [], malformed: ['https://github.com/o/r/pull/3'] })
+  assert.deepEqual(parseWaitsOn('https://github.com/o/r/pull/3'), {
+    refs: [],
+    malformed: ['https://github.com/o/r/pull/3'],
+  })
 })
 
 test('a plain build: service is still unwatchable, and a fork.upstream that cannot be read leaves it so', () => {
@@ -99,7 +105,6 @@ test('waits-on without an upstream is said out loud and changes nothing', () => 
   assert.equal(o.ref?.repository, 'library/nginx')
   assert.deepEqual(o.labelProblems, ['shipshape.fork.waits-on without shipshape.fork.upstream does nothing'])
 })
-
 
 test('a frozen fork update offers ship like any other frozen update', () => {
   assert.deepEqual(actionsFor({ state: 'frozen', fork: true }), ['ship', 'skip'])

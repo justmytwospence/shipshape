@@ -18,7 +18,6 @@ export function isRootStack(stack: string, repoDir = env.repoDir): boolean {
   return stack === 'root' || includedStacks(repoDir).has(stack)
 }
 
-
 /**
  * The services of a stack that the compose file builds from source now: the forks
  * (the forks guide), whose `image:` is a local name, and our own builds watched through their base
@@ -47,7 +46,6 @@ export function buildableServices(
     return []
   }
 }
-
 
 /**
  * Services that must be recreated alongside these ones.
@@ -82,12 +80,12 @@ export function withNamespacePeers(
   return out
 }
 
-
 /** The scanned peers of a stack, for the expansion above. */
 export function stackPeers(stack: string): { service: string; network_mode: string | null }[] {
-  return getDb()
-    .prepare(`SELECT service, network_mode FROM images WHERE stack = ?`)
-    .all(stack) as { service: string; network_mode: string | null }[]
+  return getDb().prepare(`SELECT service, network_mode FROM images WHERE stack = ?`).all(stack) as {
+    service: string
+    network_mode: string | null
+  }[]
 }
 
 /**
@@ -105,7 +103,6 @@ export function projectName(stack: string, repoDir = env.repoDir): string {
   const raw = root ? basename(repoDir) : (declaredName(join(repoDir, composeFileOfStack(repoDir, stack))) ?? stack)
   return raw.toLowerCase().replace(/[^a-z0-9_-]/g, '')
 }
-
 
 /**
  * A compose file's own top-level `name:`, which overrides the directory as the project

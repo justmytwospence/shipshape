@@ -2,7 +2,20 @@ import { getDb } from '../db/index.ts'
 import { backoffUntil } from '../backoff.ts'
 import { isPackagingRepo } from './guards.ts'
 import { pickLabel, type LabelRow, pickChangelog, sameService } from './labels.ts'
-import { type ImageKey, type SourceOpts, type SourceInfo, type ResolutionEvidence, RESOLVER_VERSION, type SourceConfidence, type ResolutionTier, type Lookup, HOUR, DAY, MEDIUM_TTL_MS, NONE_TTL_MS } from './types.ts'
+import {
+  type ImageKey,
+  type SourceOpts,
+  type SourceInfo,
+  type ResolutionEvidence,
+  RESOLVER_VERSION,
+  type SourceConfidence,
+  type ResolutionTier,
+  type Lookup,
+  HOUR,
+  DAY,
+  MEDIUM_TTL_MS,
+  NONE_TTL_MS,
+} from './types.ts'
 import { OVERRIDES } from './overrides.ts'
 
 export interface ResolutionRow {
@@ -20,7 +33,6 @@ export interface ResolutionRow {
   evidence: string | null
 }
 
-
 export function readRow(image: ImageKey): ResolutionRow | null {
   const row = getDb()
     .prepare(
@@ -32,7 +44,6 @@ export function readRow(image: ImageKey): ResolutionRow | null {
   return row ?? null
 }
 
-
 function evidenceOf(row: ResolutionRow): Partial<ResolutionEvidence> {
   try {
     return row.evidence ? (JSON.parse(row.evidence) as ResolutionEvidence) : {}
@@ -40,7 +51,6 @@ function evidenceOf(row: ResolutionRow): Partial<ResolutionEvidence> {
     return {}
   }
 }
-
 
 export function isStale(row: ResolutionRow, now: number, allowBilled: boolean, image?: ImageKey): boolean {
   if (row.resolver_version < RESOLVER_VERSION) return true
@@ -51,7 +61,6 @@ export function isStale(row: ResolutionRow, now: number, allowBilled: boolean, i
   if (row.next_check_at !== null && Date.parse(row.next_check_at) <= now) return true
   return allowBilled && evidenceOf(row).billedPending === true
 }
-
 
 export function currentTagFor(image: ImageKey): string | null {
   const row = getDb()
@@ -64,17 +73,10 @@ export function currentTagFor(image: ImageKey): string | null {
   return row?.current_tag ?? null
 }
 
-
 const asConfidence = (c: string | null): SourceConfidence | null =>
   c === 'high' || c === 'medium' || c === 'low' ? c : null
 
-
-export function compose(
-  labels: LabelRow[],
-  row: ResolutionRow | null,
-  opts: SourceOpts,
-  now = Date.now(),
-): SourceInfo {
+export function compose(labels: LabelRow[], row: ResolutionRow | null, opts: SourceOpts, now = Date.now()): SourceInfo {
   const { label, invalidLabel } = pickLabel(labels, opts)
   const { changelog, invalidChangelog } = pickChangelog(labels, opts)
   // A packaging repository is never the answer, even in a row written before that was known.
@@ -117,7 +119,6 @@ export function compose(
     detail: row && (found || !packaged) ? row.detail : null,
   }
 }
-
 
 export function writeResolution(image: ImageKey, l: Lookup, prior: ResolutionRow | null, now = new Date()): void {
   const nowIso = now.toISOString()
@@ -168,7 +169,6 @@ export function writeResolution(image: ImageKey, l: Lookup, prior: ResolutionRow
     packaging_repo: l.packagingRepo,
   })
 }
-
 
 function upsert(
   image: ImageKey,

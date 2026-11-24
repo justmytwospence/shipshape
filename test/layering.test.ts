@@ -22,7 +22,11 @@ const ALL = files(SRC)
 function imports(f: string): string[] {
   const text = readFileSync(join(SRC, f), 'utf8')
   const specs = [...text.matchAll(/(?:from\s+|import\s*\(\s*)'(\.{1,2}\/[^']+)'/g)].map((m) => m[1]!)
-  return specs.map((s) => normalize(join(dirname(f), s)).split(sep).join('/'))
+  return specs.map((s) =>
+    normalize(join(dirname(f), s))
+      .split(sep)
+      .join('/'),
+  )
 }
 
 test('nothing outside src/web imports from it, except the entry point', () => {

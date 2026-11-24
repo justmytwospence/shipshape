@@ -76,7 +76,6 @@ const CRED_CLS: Record<string, string> = {
   on: 'badge-success',
 }
 
-
 /**
  * The scan's outcome keys, in the words the rest of the interface already uses.
  *
@@ -231,7 +230,10 @@ const SecurityBlock: FC<{ s: SecurityPanel }> = ({ s }) => (
     <H>Security incidents</H>
     <KV
       rows={[
-        ['mode', `${s.mode}${s.mode === 'on' ? (s.autoMerge ? ' · verified fixes ship on their own' : ' · fixes wait for you') : ' · shown, not acted on'}`],
+        [
+          'mode',
+          `${s.mode}${s.mode === 'on' ? (s.autoMerge ? ' · verified fixes ship on their own' : ' · fixes wait for you') : ' · shown, not acted on'}`,
+        ],
         ['incidents', `${s.incidents} followed · ${s.withTargets} could match an image`],
         [
           'inventories',
@@ -290,9 +292,9 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
           {/* Otherwise every credential reads "missing" and the page looks like a broken
               deployment rather than a sandbox that was built not to be able to act. */}
           <span>
-            <strong class="font-medium">This is a sandbox.</strong> The credentials below were
-            removed on purpose, the scheduler never started, and the docker socket points
-            nowhere — so nothing you press here can reach your git host, the model, or a container.
+            <strong class="font-medium">This is a sandbox.</strong> The credentials below were removed on purpose, the
+            scheduler never started, and the docker socket points nowhere — so nothing you press here can reach your git
+            host, the model, or a container.
           </span>
         </div>
       ) : null}
@@ -388,7 +390,9 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
                     <span class="min-w-0 truncate font-mono">{sp.model}</span>
                     <span class="shrink-0 opacity-70">
                       {sp.purpose} · {sp.calls} calls
-                      {data.priced || sp.cost > 0 ? ` · $${sp.cost < 0.1 ? sp.cost.toFixed(4) : sp.cost.toFixed(2)}` : ''}
+                      {data.priced || sp.cost > 0
+                        ? ` · $${sp.cost < 0.1 ? sp.cost.toFixed(4) : sp.cost.toFixed(2)}`
+                        : ''}
                     </span>
                   </div>
                 ))}
@@ -414,10 +418,26 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
                 ['ships as', `merge commits on ${data.branch ?? 'main'}`],
                 [`publishes ${data.branch ?? 'main'}`, data.pushMain ? 'yes' : 'no'],
                 ...(data.policyFile
-                  ? [['policy file', data.policyFile.exists ? data.policyFile.rel : `none yet — defaults apply; Settings creates ${data.policyFile.rel}`] as [string, string]]
+                  ? [
+                      [
+                        'policy file',
+                        data.policyFile.exists
+                          ? data.policyFile.rel
+                          : `none yet — defaults apply; Settings creates ${data.policyFile.rel}`,
+                      ] as [string, string],
+                    ]
                   : []),
                 ...(data.composeFiles !== undefined
-                  ? [['compose files', data.composeFiles == null ? 'not scanned yet' : data.composeFiles === 0 ? 'none found — check REPO_DIR' : String(data.composeFiles)] as [string, string]]
+                  ? [
+                      [
+                        'compose files',
+                        data.composeFiles == null
+                          ? 'not scanned yet'
+                          : data.composeFiles === 0
+                            ? 'none found — check REPO_DIR'
+                            : String(data.composeFiles),
+                      ] as [string, string],
+                    ]
                   : []),
               ]}
             />
@@ -444,9 +464,7 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
               </div>
             )}
           </Block>
-
         </div>
-
       </div>
     </div>
   )

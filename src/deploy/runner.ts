@@ -128,7 +128,8 @@ export async function runClaimedDeploy(job: DeployJob, opts: { pull?: boolean; i
 
 /** Background: arbitrary stack work, such as the operator rollback. */
 export function launchOnStack(stack: string, label: string, fn: () => Promise<void>): Launch {
-  if (isStopping()) return { started: false, queued: false, message: 'shipshape is restarting. Try again once it is back.' }
+  if (isStopping())
+    return { started: false, queued: false, message: 'shipshape is restarting. Try again once it is back.' }
   if (busy.has(stack)) {
     return { started: false, queued: false, message: `A deploy of ${stack} is running. Try again when it finishes.` }
   }

@@ -107,9 +107,7 @@ async function verify(opts: {
   // Gate B: the textual diff must be image lines only -- the same check the repo's own
   // commit script uses before it will stage anything.
   const diff = await git(repoDir, ['diff', '-U0', '--', composeFile], { allowFail: true })
-  const changed = diff.stdout
-    .split('\n')
-    .filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l))
+  const changed = diff.stdout.split('\n').filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l))
   if (changed.length === 0) return { ok: false, reason: 'the edit produced no diff' }
   const offending = changed.filter((l) => !/^[+-]\s*image:\s/.test(l))
   if (offending.length > 0) {
@@ -122,11 +120,11 @@ async function verify(opts: {
   // override defines is valid only with it.
   const override = overrideFor(repoDir, composeFile)
   const files = ['-f', join(repoDir, composeFile), ...(override ? ['-f', join(repoDir, override)] : [])]
-  const cfg = await execa(
-    'docker',
-    ['compose', ...files, 'config', '--no-interpolate', '-q'],
-    { reject: false, timeout: 60_000, cwd: repoDir },
-  )
+  const cfg = await execa('docker', ['compose', ...files, 'config', '--no-interpolate', '-q'], {
+    reject: false,
+    timeout: 60_000,
+    cwd: repoDir,
+  })
   if ((cfg.exitCode ?? 1) !== 0) {
     return {
       ok: false,
@@ -145,11 +143,7 @@ async function verify(opts: {
  * accepts the file (Gate C above) and that git sees a change at all. Restored on any
  * refusal, so a failed attempt leaves the clone as it found it.
  */
-export async function applyForkEdit(opts: {
-  repoDir: string
-  composeFile: string
-  text: string
-}): Promise<EditResult> {
+export async function applyForkEdit(opts: { repoDir: string; composeFile: string; text: string }): Promise<EditResult> {
   const abs = join(opts.repoDir, opts.composeFile)
   let before: string
   try {
@@ -164,11 +158,11 @@ export async function applyForkEdit(opts: {
     writeFileSync(abs, before)
     return { ok: false, reason: 'the edit produced no diff' }
   }
-  const cfg = await execa(
-    'docker',
-    ['compose', '-f', abs, 'config', '--no-interpolate', '-q'],
-    { reject: false, timeout: 60_000, cwd: opts.repoDir },
-  )
+  const cfg = await execa('docker', ['compose', '-f', abs, 'config', '--no-interpolate', '-q'], {
+    reject: false,
+    timeout: 60_000,
+    cwd: opts.repoDir,
+  })
   if ((cfg.exitCode ?? 1) !== 0) {
     writeFileSync(abs, before)
     return { ok: false, reason: `compose rejected the edited file: ${String(cfg.stderr ?? '').slice(0, 200)}` }

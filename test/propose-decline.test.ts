@@ -45,11 +45,7 @@ function compose(service: string, proposeLabel?: string) {
 const idOf: Record<string, number> = {}
 
 /** One watched service with a detected update and a verdict, as the query expects it. */
-function seed(opts: {
-  stack: string
-  recommendation: string | null
-  migrationSteps: string[]
-}) {
+function seed(opts: { stack: string; recommendation: string | null; migrationSteps: string[] }) {
   const db = getDb()
   const now = new Date('2026-09-20T09:00:00Z').toISOString()
   const image = `example/${opts.stack}`

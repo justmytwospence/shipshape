@@ -40,7 +40,11 @@ export async function safeFetch(link: string): Promise<SafeFetch> {
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     const checked = checkUrl(current)
     if (!checked.ok) {
-      return { ok: false, reason: hop === 0 ? checked.reason : `it redirects to ${current}, and ${checked.reason}`, transient: false }
+      return {
+        ok: false,
+        reason: hop === 0 ? checked.reason : `it redirects to ${current}, and ${checked.reason}`,
+        transient: false,
+      }
     }
     const host = checked.url.hostname
     const safe = await publicAddress(host)
@@ -58,7 +62,11 @@ export async function safeFetch(link: string): Promise<SafeFetch> {
         },
       })
     } catch (err) {
-      return staleOr(stored, { ok: false, reason: `${host} could not be reached (${(err as Error).message})`, transient: true })
+      return staleOr(stored, {
+        ok: false,
+        reason: `${host} could not be reached (${(err as Error).message})`,
+        transient: true,
+      })
     }
 
     if (res.status === 304 && stored && cached) {
@@ -80,7 +88,11 @@ export async function safeFetch(link: string): Promise<SafeFetch> {
     const type = (res.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase()
     const kind = textKind(type, checked.url.pathname)
     if (!kind) {
-      return { ok: false, reason: `${host} sent ${type || 'something with no content type'}, which is not text to read`, transient: false }
+      return {
+        ok: false,
+        reason: `${host} sent ${type || 'something with no content type'}, which is not text to read`,
+        transient: false,
+      }
     }
     const body = await readCapped(res)
     if (!body.ok) return body
@@ -102,7 +114,11 @@ function textKind(type: string, path: string): 'html' | 'text' | null {
 async function readCapped(
   res: Response,
 ): Promise<{ ok: true; text: string; bytes: number } | { ok: false; reason: string; transient: false }> {
-  const tooBig = { ok: false as const, reason: `it is larger than ${MAX_BYTES / 1024 / 1024} MB`, transient: false as const }
+  const tooBig = {
+    ok: false as const,
+    reason: `it is larger than ${MAX_BYTES / 1024 / 1024} MB`,
+    transient: false as const,
+  }
   if (Number(res.headers.get('content-length')) > MAX_BYTES) return tooBig
   if (!res.body) return { ok: true, text: '', bytes: 0 }
   const reader = res.body.getReader()
@@ -131,7 +147,9 @@ function parseStored(row: CacheRow | null): Stored | null {
 }
 
 function fetchedAt(key: string): string | null {
-  const row = getDb().prepare(`SELECT fetched_at FROM http_cache WHERE url = ?`).get(key) as { fetched_at: string } | undefined
+  const row = getDb().prepare(`SELECT fetched_at FROM http_cache WHERE url = ?`).get(key) as
+    | { fetched_at: string }
+    | undefined
   return row?.fetched_at ?? null
 }
 

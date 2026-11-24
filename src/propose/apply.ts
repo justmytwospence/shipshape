@@ -36,9 +36,7 @@ export type Op = { service?: string; file?: string } & (
   | { op: 'replace_text'; find: string; replace: string }
 )
 
-export type ApplyOutcome =
-  | { ok: true; text: string; changed: string[] }
-  | { ok: false; reason: string }
+export type ApplyOutcome = { ok: true; text: string; changed: string[] } | { ok: false; reason: string }
 
 /** Top-level service keys a draft may never write: each widens what the container can reach on the host. */
 const DENIED_SERVICE_KEYS = new Set([
@@ -84,10 +82,16 @@ function composeGuard(op: Op, allowed: string[]): ApplyOutcome | null {
   if (op.op === 'set_path' || op.op === 'remove_path' || op.op === 'rename_path') {
     const path = op.path
     if (path[0] !== 'services' || path.length < 3) {
-      return { ok: false, reason: `a draft may only change keys under services.<service> in a compose file, not ${path.join('.')}` }
+      return {
+        ok: false,
+        reason: `a draft may only change keys under services.<service> in a compose file, not ${path.join('.')}`,
+      }
     }
     if (typeof path[1] !== 'string' || !allowed.includes(path[1])) {
-      return { ok: false, reason: `this proposal may not change "${String(path[1])}" — permitted: ${allowed.join(', ')}` }
+      return {
+        ok: false,
+        reason: `this proposal may not change "${String(path[1])}" — permitted: ${allowed.join(', ')}`,
+      }
     }
     const key = String(path[2])
     const denied = DENIED_SERVICE_KEYS.has(key)
@@ -96,9 +100,13 @@ function composeGuard(op: Op, allowed: string[]): ApplyOutcome | null {
         ? op.to
         : null
     if (denied) {
-      return { ok: false, reason: `a draft may not change ${denied} on ${path[1]}: it widens what the container can reach on the host` }
+      return {
+        ok: false,
+        reason: `a draft may not change ${denied} on ${path[1]}: it widens what the container can reach on the host`,
+      }
     }
-    if (key === 'labels') return { ok: false, reason: 'labels are changed with set_label and remove_label, not path operations' }
+    if (key === 'labels')
+      return { ok: false, reason: 'labels are changed with set_label and remove_label, not path operations' }
   }
   if ((op.op === 'set_label' || op.op === 'remove_label') && /^shipshape\./i.test(op.key)) {
     return { ok: false, reason: 'a draft may not change shipshape.* labels' }
@@ -136,10 +144,7 @@ export function applyOps(
     // file, checked before this function is reached. In a compose document composeGuard
     // has already held them to the permitted services.
     const isPathOp =
-      op.op === 'set_path' ||
-      op.op === 'remove_path' ||
-      op.op === 'rename_path' ||
-      op.op === 'replace_text'
+      op.op === 'set_path' || op.op === 'remove_path' || op.op === 'rename_path' || op.op === 'replace_text'
     // Scope is enforced here rather than trusted from the prompt: an op naming a
     // service outside the permitted set is refused by name, whatever the model was
     // told it could do.
@@ -260,12 +265,7 @@ function applyOne(text: string, service: string, op: Op): ApplyOutcome {
  * A missing parent is refused rather than conjured: inventing intermediate structure is
  * how a plausible-looking edit ends up in the wrong place in someone's config.
  */
-function setPath(
-  doc: Document,
-  text: string,
-  path: (string | number)[],
-  value: string,
-): ApplyOutcome {
+function setPath(doc: Document, text: string, path: (string | number)[], value: string): ApplyOutcome {
   if (path.length === 0) return { ok: false, reason: 'empty path' }
   const existing = doc.getIn(path, true)
   if (existing && isScalar(existing) && existing.range) {
@@ -288,20 +288,13 @@ function removePath(doc: Document, text: string, path: (string | number)[]): App
   if (!parent || !isMap(parent)) {
     return { ok: false, reason: `no mapping at ${parentPath.join('.') || '(root)'}` }
   }
-  const pair = (parent as { items: { key?: unknown }[] }).items.find(
-    (p) => isScalar(p.key) && p.key.value === key,
-  )
+  const pair = (parent as { items: { key?: unknown }[] }).items.find((p) => isScalar(p.key) && p.key.value === key)
   if (!pair) return { ok: false, reason: `no entry at ${path.join('.')}` }
   return deleteLinesFor(text, pair as { key?: unknown; value?: unknown })
 }
 
 /** Rename a key while keeping its value's exact bytes, at any depth. */
-function renamePath(
-  doc: Document,
-  text: string,
-  path: (string | number)[],
-  to: string,
-): ApplyOutcome {
+function renamePath(doc: Document, text: string, path: (string | number)[], to: string): ApplyOutcome {
   if (path.length === 0) return { ok: false, reason: 'empty path' }
   const parentPath = path.slice(0, -1)
   const key = path[path.length - 1]
@@ -309,9 +302,7 @@ function renamePath(
   if (!parent || !isMap(parent)) {
     return { ok: false, reason: `no mapping at ${parentPath.join('.') || '(root)'}` }
   }
-  const pair = (parent as { items: { key?: unknown }[] }).items.find(
-    (p) => isScalar(p.key) && p.key.value === key,
-  )
+  const pair = (parent as { items: { key?: unknown }[] }).items.find((p) => isScalar(p.key) && p.key.value === key)
   if (!pair) return { ok: false, reason: `no entry at ${path.join('.')}` }
   const k = pair.key as { range?: [number, number, number] }
   if (!k.range) return { ok: false, reason: 'key has no source range' }
@@ -319,12 +310,7 @@ function renamePath(
 }
 
 /** Overwrite a scalar's bytes, leaving quoting style and everything around it alone. */
-function replaceScalar(
-  doc: Document,
-  text: string,
-  path: (string | number)[],
-  value: string,
-): ApplyOutcome {
+function replaceScalar(doc: Document, text: string, path: (string | number)[], value: string): ApplyOutcome {
   const node = doc.getIn(path, true)
   if (!node || !isScalar(node) || !node.range) {
     return { ok: false, reason: `no ${path[path.length - 1]} to replace` }
@@ -394,9 +380,7 @@ function removeMapEntry(
   if (style === 'absent') return { ok: false, reason: `${service} has no ${block} block` }
 
   if (style === 'map') {
-    const pair = (node as { items: { key?: unknown }[] }).items.find(
-      (p) => isScalar(p.key) && p.key.value === key,
-    )
+    const pair = (node as { items: { key?: unknown }[] }).items.find((p) => isScalar(p.key) && p.key.value === key)
     if (!pair) return { ok: false, reason: `${service} has no ${block} entry "${key}"` }
     return deleteLinesFor(text, pair as { key?: unknown; value?: unknown })
   }
@@ -414,13 +398,7 @@ function removeMapEntry(
  * Re-emitting the value from the parsed model would drop quoting and any `${VAR}`
  * spelling; the whole point of a rename is that only the key changes.
  */
-function renameEnv(
-  doc: Document,
-  text: string,
-  service: string,
-  from: string,
-  to: string,
-): ApplyOutcome {
+function renameEnv(doc: Document, text: string, service: string, from: string, to: string): ApplyOutcome {
   const node = doc.getIn(['services', service, 'environment'])
   const style = collectionStyle(node)
   if (style === 'absent') return { ok: false, reason: `${service} has no environment block` }

@@ -40,8 +40,7 @@ const PRECACHE = [
  * the worker was installing, every one of those fetches is a redirect to the login page,
  * and caching one would pin the login page under the URL of our stylesheet.
  */
-const usable = (r) =>
-  r && r.ok && r.status === 200 && !r.redirected && r.type !== 'opaqueredirect'
+const usable = (r) => r && r.ok && r.status === 200 && !r.redirected && r.type !== 'opaqueredirect'
 
 self.addEventListener('install', (e) =>
   e.waitUntil(

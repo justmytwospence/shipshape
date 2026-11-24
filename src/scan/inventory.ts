@@ -80,7 +80,6 @@ export function syncInventory(services: ScannedService[]): void {
   }
 }
 
-
 /**
  * Refresh one service's label columns from its compose file, without a full scan.
  *
@@ -91,9 +90,7 @@ export function syncInventory(services: ScannedService[]): void {
  */
 export function refreshServiceLabels(stack: string, service: string): boolean {
   const { policy } = loadPolicy()
-  const svc = scanRepo(env.repoDir, policy.exclude_stacks).find(
-    (s) => s.stack === stack && s.service === service,
-  )
+  const svc = scanRepo(env.repoDir, policy.exclude_stacks).find((s) => s.stack === stack && s.service === service)
   if (!svc) return false
   getDb()
     .prepare(

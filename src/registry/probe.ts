@@ -59,11 +59,7 @@ function variantOf(tag: string): string | null {
  * repository -- which is exactly how the second scan of the day got rate-limited by
  * ghcr.io. Negative answers are NOT cached: a release can gain an image tag later.
  */
-async function tagExists(
-  registry: string,
-  repository: string,
-  tag: string,
-): Promise<boolean> {
+async function tagExists(registry: string, repository: string, tag: string): Promise<boolean> {
   const known = getDb()
     .prepare(`SELECT 1 AS hit FROM tags_seen WHERE registry = ? AND repository = ? AND tag = ?`)
     .get(registry, repository, tag) as { hit: number } | undefined

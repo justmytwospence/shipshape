@@ -67,7 +67,13 @@ test('the pasted command builds the fork first and never pulls its local image',
       'docker compose -f books/docker-compose.yaml up -d --no-deps grimmory mariadb',
   )
   assert.deepEqual(pullArgs({ ...t, pull: true }).args, [
-    'compose', '-f', 'books/docker-compose.yaml', 'pull', '--ignore-buildable', 'grimmory', 'mariadb',
+    'compose',
+    '-f',
+    'books/docker-compose.yaml',
+    'pull',
+    '--ignore-buildable',
+    'grimmory',
+    'mariadb',
   ])
   assert.equal(
     manualCommand({ ...t, pull: true, strategy: 'rm-first' }),
@@ -82,7 +88,10 @@ test('the pasted command builds the fork first and never pulls its local image',
 })
 
 test('a merge deploy reads the build set from the file, builds before up, and only the running fork', async () => {
-  const io = fakeIo({ grimmory: 'running', mariadb: 'running' }, { buildable: (s, svcs) => buildableServices(s, svcs, policy) })
+  const io = fakeIo(
+    { grimmory: 'running', mariadb: 'running' },
+    { buildable: (s, svcs) => buildableServices(s, svcs, policy) },
+  )
   const out = await deployChange(target, undefined, { io })
   assert.ok(out.ok)
   assert.deepEqual(composeCalls(io.calls), [
@@ -99,11 +108,16 @@ test('a merge deploy reads the build set from the file, builds before up, and on
 
 test('a failed build is a deploy failure that touched nothing', async () => {
   let recorded = false
-  const io = fakeIo(
-    { grimmory: 'running' },
-    { exitCode: (c) => (c.includes(' build ') ? 1 : 0) },
+  const io = fakeIo({ grimmory: 'running' }, { exitCode: (c) => (c.includes(' build ') ? 1 : 0) })
+  const out = await deploy(
+    { stack: 'books', services: ['grimmory'], strategy: 'rm-first', build: ['grimmory'] },
+    {
+      io,
+      record: () => {
+        recorded = true
+      },
+    },
   )
-  const out = await deploy({ stack: 'books', services: ['grimmory'], strategy: 'rm-first', build: ['grimmory'] }, { io, record: () => { recorded = true } })
   assert.equal(out.ok, false)
   if (out.ok) return
   assert.equal(out.phase, 'build')
@@ -116,7 +130,11 @@ test('a failed build is a deploy failure that touched nothing', async () => {
 
 test('a rollback recreates the previous build without building', async () => {
   const io = fakeIo({ grimmory: 'running' }, { buildable: () => ['grimmory'] })
-  const r = await performRollback({ stack: 'books', services: ['grimmory'], strategy: 'up', build: ['grimmory'] }, merge, { io })
+  const r = await performRollback(
+    { stack: 'books', services: ['grimmory'], strategy: 'up', build: ['grimmory'] },
+    merge,
+    { io },
+  )
   assert.ok(r.ok, r.detail)
   assert.deepEqual(composeCalls(io.calls), ['compose -f books/docker-compose.yaml up -d --no-deps grimmory'])
 })

@@ -31,7 +31,20 @@ const ENTITIES: Record<string, string> = {
 /** Elements whose content is never text worth reading. */
 const SKIP = new Set(['script', 'style', 'noscript', 'template', 'svg', 'nav'])
 /** Closing tags that end a line. Not `</li>`: the next `<li>` starts its own line. */
-const BLOCK_END = new Set(['p', 'div', 'ul', 'ol', 'pre', 'section', 'article', 'table', 'tr', 'blockquote', 'dd', 'dt'])
+const BLOCK_END = new Set([
+  'p',
+  'div',
+  'ul',
+  'ol',
+  'pre',
+  'section',
+  'article',
+  'table',
+  'tr',
+  'blockquote',
+  'dd',
+  'dt',
+])
 
 /**
  * `indexOf` that remembers its answer per needle. Correct because each needle is searched

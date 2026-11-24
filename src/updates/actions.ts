@@ -29,14 +29,7 @@ export type Verb =
  * changelog is the whole point when the review failed, and a footnote when there is a
  * merge in front of you.
  */
-const PROMINENT: ReadonlySet<Verb> = new Set<Verb>([
-  'ship',
-  'deploy',
-  'redeploy',
-  'retry',
-  'rollback',
-  'rerun-review',
-])
+const PROMINENT: ReadonlySet<Verb> = new Set<Verb>(['ship', 'deploy', 'redeploy', 'retry', 'rollback', 'rerun-review'])
 
 /** The one action the interface puts a button on, if there is one. */
 export function primaryVerb(verbs: readonly Verb[]): Verb | null {

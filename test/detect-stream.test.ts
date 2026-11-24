@@ -41,7 +41,16 @@ const hubTags = (repo: string, tags: string[]) => ({
 const releases = (repo: string, list: [string, boolean][]) => ({
   url: `https://api.github.com/repos/${repo}/releases?per_page=100&page=1`,
   reply: () =>
-    json(list.map(([tag_name, prerelease]) => ({ tag_name, name: tag_name, published_at: null, body: '', draft: false, prerelease }))),
+    json(
+      list.map(([tag_name, prerelease]) => ({
+        tag_name,
+        name: tag_name,
+        published_at: null,
+        body: '',
+        draft: false,
+        prerelease,
+      })),
+    ),
 })
 
 /** An upstream already found, so these tests are about the stream and nothing else. */
@@ -59,7 +68,12 @@ test('n8n on stable 2.38.4 is offered the patch, not the beta', async (t) => {
   resolved('n8nio/n8n', 'n8n-io/n8n')
   const h = mockFetch(t, [
     hubTags('n8nio/n8n', ['2.38.4', '2.38.5', '2.39.0', '2.39.1']),
-    releases('n8n-io/n8n', [['n8n@2.39.1', true], ['n8n@2.39.0', true], ['n8n@2.38.5', false], ['n8n@2.38.4', false]]),
+    releases('n8n-io/n8n', [
+      ['n8n@2.39.1', true],
+      ['n8n@2.39.0', true],
+      ['n8n@2.38.5', false],
+      ['n8n@2.38.4', false],
+    ]),
   ])
   const d = await detect(svc('n8n', 'n8n', 'n8nio/n8n:2.38.4', 'semver'))
   assert.equal(d.status, 'update')
@@ -78,7 +92,12 @@ test('minuspod on 2.96.17 is offered its next prerelease, because that is its st
     .run(now, now)
   const h = mockFetch(t, [
     hubTags('ttlequals0/minuspod', ['2.96.17-cpu', '2.96.22-cpu', '2.96.22', 'latest']),
-    releases('ttlequals0/MinusPod', [['v2.96.25', true], ['v2.96.22', true], ['v2.96.15', true], ['v2.95.3', false]]),
+    releases('ttlequals0/MinusPod', [
+      ['v2.96.25', true],
+      ['v2.96.22', true],
+      ['v2.96.15', true],
+      ['v2.95.3', false],
+    ]),
   ])
   const d = await detect(svc('minuspod', 'minuspod', 'ttlequals0/minuspod:2.96.17-cpu', 'semver-variant'))
   assert.equal(d.status === 'update' && d.tag, '2.96.22-cpu')
@@ -102,14 +121,25 @@ test("code-server's stream is read from coder's releases, never from its packagi
     hubTags('linuxserver/code-server', ['4.136.2-ls363', '4.137.0-ls364', '4.138.0-ls365']),
     {
       url: 'https://api.linuxserver.io/api/v1/images?include_config=false&include_deprecated=false',
-      reply: () => json({ data: { repositories: { linuxserver: [{ name: 'code-server', project_url: 'https://coder.com' }] } } }),
+      reply: () =>
+        json({ data: { repositories: { linuxserver: [{ name: 'code-server', project_url: 'https://coder.com' }] } } }),
     },
     {
       url: 'https://raw.githubusercontent.com/linuxserver/docker-code-server/HEAD/Jenkinsfile',
-      reply: () => text(`EXT_RELEASE = sh(script: '''curl -sX GET https://api.github.com/repos/coder/code-server/releases/latest''')`),
+      reply: () =>
+        text(
+          `EXT_RELEASE = sh(script: '''curl -sX GET https://api.github.com/repos/coder/code-server/releases/latest''')`,
+        ),
     },
-    { url: 'https://api.github.com/repos/coder/code-server', reply: () => json({ full_name: 'coder/code-server', fork: false }) },
-    releases('coder/code-server', [['v4.138.0', true], ['v4.137.0', false], ['v4.136.2', false]]),
+    {
+      url: 'https://api.github.com/repos/coder/code-server',
+      reply: () => json({ full_name: 'coder/code-server', fork: false }),
+    },
+    releases('coder/code-server', [
+      ['v4.138.0', true],
+      ['v4.137.0', false],
+      ['v4.136.2', false],
+    ]),
   ])
   const d = await detect(svc('code-server', 'code-server', 'lscr.io/linuxserver/code-server:4.136.2-ls363', 'lsio-ls'))
   assert.equal(d.status === 'update' && d.tag, '4.137.0-ls364')
@@ -122,7 +152,10 @@ test('when GitHub cannot be read, updates keep flowing rather than freezing', as
   resolved('n8nio/n8n', 'n8n-io/n8n')
   const h = mockFetch(t, [
     hubTags('n8nio/n8n', ['2.38.4', '2.39.1']),
-    { url: 'https://api.github.com/repos/n8n-io/n8n/releases?per_page=100&page=1', reply: () => status(403, { 'x-ratelimit-remaining': '0' }) },
+    {
+      url: 'https://api.github.com/repos/n8n-io/n8n/releases?per_page=100&page=1',
+      reply: () => status(403, { 'x-ratelimit-remaining': '0' }),
+    },
   ])
   const d = await detect(svc('n8n', 'n8n', 'n8nio/n8n:2.38.4', 'semver'))
   assert.equal(d.status === 'update' && d.tag, '2.39.1', 'fail open: without evidence nothing is set aside')

@@ -46,7 +46,11 @@ export function packagesOf(json: SyftJson): Package[] {
   return out
 }
 
-export type Exec = (cmd: string, args: string[], opts?: { timeout?: number }) => Promise<{ exitCode?: number; stdout: string; stderr: string; timedOut?: boolean }>
+export type Exec = (
+  cmd: string,
+  args: string[],
+  opts?: { timeout?: number },
+) => Promise<{ exitCode?: number; stdout: string; stderr: string; timedOut?: boolean }>
 
 const run: Exec = async (cmd, args, opts) => {
   const r = await execa(cmd, args, {
@@ -83,11 +87,20 @@ export async function listRunning(exec: Exec = run): Promise<Running[]> {
     .split('\n')
     .map((l) => l.trim().split('\t'))
     .filter((p) => p.length === 3 && p[0])
-    .map(([id, project, service]) => ({ id: id!, stack: byProject.get(`${project}\u0000${service}`), service: service! }))
+    .map(([id, project, service]) => ({
+      id: id!,
+      stack: byProject.get(`${project}\u0000${service}`),
+      service: service!,
+    }))
     .filter((r): r is { id: string; stack: string; service: string } => Boolean(r.stack))
   if (rows.length === 0) return []
 
-  const insp = await exec('docker', ['inspect', '--format', '{{.Id}}\t{{.Image}}\t{{.Config.Image}}', ...rows.map((r) => r.id)])
+  const insp = await exec('docker', [
+    'inspect',
+    '--format',
+    '{{.Id}}\t{{.Image}}\t{{.Config.Image}}',
+    ...rows.map((r) => r.id),
+  ])
   if (insp.exitCode !== 0) throw new Error(`docker inspect failed: ${insp.stderr.trim().split('\n').at(-1) ?? ''}`)
   const byId = new Map(
     insp.stdout
@@ -131,7 +144,9 @@ export function hasInventory(imageId: string): boolean {
 
 export function inventory(imageId: string): Package[] | null {
   const db = getDb()
-  const img = db.prepare(`SELECT error FROM sbom_images WHERE image_id = ?`).get(imageId) as { error: string | null } | undefined
+  const img = db.prepare(`SELECT error FROM sbom_images WHERE image_id = ?`).get(imageId) as
+    | { error: string | null }
+    | undefined
   if (!img || img.error !== null) return null
   return db.prepare(`SELECT type, name, version, path FROM sbom_packages WHERE image_id = ?`).all(imageId) as Package[]
 }
@@ -152,7 +167,12 @@ async function timeoutFor(imageId: string, exec: Exec = run): Promise<number> {
 }
 
 /** Take one image's inventory with syft and store it. */
-export async function scanImage(imageId: string, ref: string | null, policy: Policy, exec: Exec = run): Promise<boolean> {
+export async function scanImage(
+  imageId: string,
+  ref: string | null,
+  policy: Policy,
+  exec: Exec = run,
+): Promise<boolean> {
   const db = getDb()
   const started = Date.now()
   const timeout = await timeoutFor(imageId, exec)
@@ -192,7 +212,12 @@ export async function scanImage(imageId: string, ref: string | null, policy: Pol
        ON CONFLICT(image_id) DO UPDATE SET scanned_at = excluded.scanned_at, error = excluded.error,
          attempts = sbom_images.attempts + 1`,
     ).run(imageId, ref, now, error)
-    logEvent({ level: 'warn', kind: 'scan', message: 'security: could not inventory an image', detail: `${ref ?? imageId}: ${error}` })
+    logEvent({
+      level: 'warn',
+      kind: 'scan',
+      message: 'security: could not inventory an image',
+      detail: `${ref ?? imageId}: ${error}`,
+    })
     return false
   }
   let pkgs: Package[]
@@ -233,7 +258,8 @@ export async function scanImage(imageId: string, ref: string | null, policy: Pol
  */
 export async function pullCandidate(ref: string, exec: Exec = run): Promise<{ imageId: string } | { error: string }> {
   const pull = await exec('docker', ['pull', '-q', ref], { timeout: 15 * 60_000 })
-  if (pull.exitCode !== 0) return { error: (pull.stderr.trim().split('\n').at(-1) ?? 'docker pull failed').slice(0, 300) }
+  if (pull.exitCode !== 0)
+    return { error: (pull.stderr.trim().split('\n').at(-1) ?? 'docker pull failed').slice(0, 300) }
   const insp = await exec('docker', ['image', 'inspect', '--format', '{{.Id}}', ref])
   if (insp.exitCode !== 0) return { error: 'pulled, but docker could not inspect it' }
   return { imageId: insp.stdout.trim() }

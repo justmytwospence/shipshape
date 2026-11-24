@@ -67,10 +67,7 @@ test('a blind verifier never triggers a rollback', () => {
 
 test('a passing or merely degraded deploy is left alone', () => {
   assert.equal(rollbackPlan({ ...base, verdict: { kind: 'passed', detail: 'ok' } }), null)
-  assert.equal(
-    rollbackPlan({ ...base, verdict: { kind: 'degraded', findings: [], detail: 'slow' } }),
-    null,
-  )
+  assert.equal(rollbackPlan({ ...base, verdict: { kind: 'degraded', findings: [], detail: 'slow' } }), null)
 })
 
 test('a true merge commit needs its mainline named', () => {

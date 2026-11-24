@@ -8,15 +8,8 @@ process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'shipshape-test-'))
 
 const { getDb } = await import('../src/db/index.ts')
 const { reclaimInterrupted, drainDeployQueue } = await import('../src/deploy/queue.ts')
-const {
-  carriedUpdates,
-  enqueueDeploy,
-  claimJob,
-  dueJobs,
-  hasPendingDeploys,
-  linkDeployUpdates,
-  markUpdates,
-} = await import('../src/deploy/queue.ts')
+const { carriedUpdates, enqueueDeploy, claimJob, dueJobs, hasPendingDeploys, linkDeployUpdates, markUpdates } =
+  await import('../src/deploy/queue.ts')
 
 /**
  * The queue exists for one guarantee: a merge that has been recorded cannot be forgotten.
@@ -81,7 +74,10 @@ test('the enqueue commits with the merge, or not at all', () => {
 test('jobs drain oldest first', () => {
   enqueueDeploy({ prId: pr(3), target: target({ stack: 'a' }), now: '2026-01-01T00:00:00Z' })
   enqueueDeploy({ prId: pr(4), target: target({ stack: 'b' }), now: '2026-01-02T00:00:00Z' })
-  assert.deepEqual(dueJobs().map((j) => j.stack), ['a', 'b'])
+  assert.deepEqual(
+    dueJobs().map((j) => j.stack),
+    ['a', 'b'],
+  )
 })
 
 test('a tick takes a bounded slice, leaving the rest queued', () => {
@@ -130,9 +126,7 @@ test('a claim can only be won once', () => {
   // The drain and an operator pressing Deploy must never both run compose on one stack.
   const now = new Date().toISOString()
   enqueueDeploy({ prId: pr(30), target: target({ stack: 'claimed' }), now })
-  const id = (
-    getDb().prepare(`SELECT id FROM deploys WHERE stack = 'claimed'`).get() as { id: number }
-  ).id
+  const id = (getDb().prepare(`SELECT id FROM deploys WHERE stack = 'claimed'`).get() as { id: number }).id
 
   const first = claimJob(id)
   assert.ok(first, 'the first caller takes it')
@@ -150,9 +144,7 @@ test('a ready job waits for the operator but can still be claimed', () => {
     status: 'ready',
   })
   assert.equal(dueJobs().filter((j) => j.stack === 'ready-stack').length, 0, 'not due')
-  const id = (
-    getDb().prepare(`SELECT id FROM deploys WHERE stack = 'ready-stack'`).get() as { id: number }
-  ).id
+  const id = (getDb().prepare(`SELECT id FROM deploys WHERE stack = 'ready-stack'`).get() as { id: number }).id
   assert.ok(claimJob(id), 'but the button can start it')
 })
 
@@ -173,13 +165,14 @@ test('a queued deploy records which updates it carries', () => {
     target: target({ stack: 'linked' }),
     now: new Date().toISOString(),
   })
-  const deployId = (
-    db.prepare(`SELECT id FROM deploys WHERE stack = 'linked'`).get() as { id: number }
-  ).id
-  const linked = db
-    .prepare(`SELECT update_id FROM deploy_updates WHERE deploy_id = ?`)
-    .all(deployId) as { update_id: number }[]
-  assert.deepEqual(linked.map((r) => r.update_id), [updateId])
+  const deployId = (db.prepare(`SELECT id FROM deploys WHERE stack = 'linked'`).get() as { id: number }).id
+  const linked = db.prepare(`SELECT update_id FROM deploy_updates WHERE deploy_id = ?`).all(deployId) as {
+    update_id: number
+  }[]
+  assert.deepEqual(
+    linked.map((r) => r.update_id),
+    [updateId],
+  )
 })
 
 test('services are deduped into the queued row', () => {
@@ -208,15 +201,13 @@ test('lifecycle states reach every update behind the deploy', () => {
        VALUES ('jellyfin','jellyfin','j:1','1','2','minor','auto','merged',?,?)`,
     )
     .run(now, now)
-  getDb()
-    .prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`)
-    .run(prId, Number(u.lastInsertRowid))
+  getDb().prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(prId, Number(u.lastInsertRowid))
   enqueueDeploy({ prId, target: target(), now })
 
   markUpdates(dueJobs()[0]!.id, 'deploying')
-  const row = getDb()
-    .prepare(`SELECT state FROM updates WHERE id = ?`)
-    .get(Number(u.lastInsertRowid)) as { state: string }
+  const row = getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(Number(u.lastInsertRowid)) as {
+    state: string
+  }
   assert.equal(row.state, 'deploying')
 })
 
@@ -360,7 +351,13 @@ test('claimed jobs know who asked for them', () => {
 })
 
 /** A deploy of `stack`, linked to one update in `state`, as the queue would have left it mid-flight. */
-function inFlight(o: { stack: string; trigger?: string; attempts?: number; startedAgoMs?: number; updateState?: string }): {
+function inFlight(o: {
+  stack: string
+  trigger?: string
+  attempts?: number
+  startedAgoMs?: number
+  updateState?: string
+}): {
   deployId: number
   updateId: number
 } {
@@ -377,7 +374,13 @@ function inFlight(o: { stack: string; trigger?: string; attempts?: number; start
       `INSERT INTO deploys (stack, services, strategy, ok, healthy, status, attempts, created_at, started_at, trigger)
        VALUES (?, 'svc', 'up', 0, 0, 'running', ?, ?, ?, ?)`,
     )
-    .run(o.stack, o.attempts ?? 1, stamp, new Date(Date.now() - (o.startedAgoMs ?? 1000)).toISOString(), o.trigger ?? 'queue')
+    .run(
+      o.stack,
+      o.attempts ?? 1,
+      stamp,
+      new Date(Date.now() - (o.startedAgoMs ?? 1000)).toISOString(),
+      o.trigger ?? 'queue',
+    )
   const deployId = Number(d.lastInsertRowid)
   const updateId = Number(u.lastInsertRowid)
   linkDeployUpdates(deployId, null, [updateId])
@@ -389,7 +392,8 @@ const deployRow = (id: number) =>
     attempts: number
     detail: string | null
   }
-const updateStateOf = (id: number) => (getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(id) as { state: string }).state
+const updateStateOf = (id: number) =>
+  (getDb().prepare(`SELECT state FROM updates WHERE id = ?`).get(id) as { state: string }).state
 
 test('a deploy a previous process left running is pending again at startup', () => {
   const { deployId } = inFlight({ stack: 'a', attempts: 1 })
@@ -412,7 +416,11 @@ test('an interrupted rollback is never re-run', () => {
   const { deployId, updateId } = inFlight({ stack: 'a', attempts: 1, trigger: 'rollback' })
   reclaimInterrupted()
   assert.equal(deployRow(deployId).status, 'error')
-  assert.equal(updateStateOf(updateId), 'deploying', 'whether the revert landed is unknown, so the update is left as it was')
+  assert.equal(
+    updateStateOf(updateId),
+    'deploying',
+    'whether the revert landed is unknown, so the update is left as it was',
+  )
   const event = getDb().prepare(`SELECT message FROM events WHERE message LIKE 'rollback of a was interrupted%'`).get()
   assert.ok(event)
 })

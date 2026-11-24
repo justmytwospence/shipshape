@@ -293,9 +293,7 @@ async function draftFor(c: Candidate): Promise<boolean> {
     // Scope is resolved from the compose file at draft time, so a label edited since
     // the update was detected takes effect.
     const services = scanRepo(env.repoDir, policy.exclude_stacks)
-    const scope = scopeFor(
-      services.find((s) => s.stack === c.stack && s.service === c.service)?.proposeLabel,
-    )
+    const scope = scopeFor(services.find((s) => s.stack === c.stack && s.service === c.service)?.proposeLabel)
     const siblings = services
       .filter((s) => s.stack === c.stack && s.composeFile === c.composeFile)
       .map((s) => s.service)
@@ -384,7 +382,11 @@ async function draftFor(c: Candidate): Promise<boolean> {
     db.transaction(() => {
       // Proposed: this change carries edits nothing has verified, so it never ships on
       // its own and is never reverted automatically.
-      db.prepare(`UPDATE prs SET head_sha_pushed = ?, scope = 'proposed', branch = ? WHERE id = ?`).run(newSha, branch, prId)
+      db.prepare(`UPDATE prs SET head_sha_pushed = ?, scope = 'proposed', branch = ? WHERE id = ?`).run(
+        newSha,
+        branch,
+        prId,
+      )
       const link = db.prepare(`INSERT OR IGNORE INTO pr_updates (pr_id, update_id) VALUES (?, ?)`)
       for (const m of group.members) link.run(prId, m.id)
     })()
@@ -408,13 +410,7 @@ async function draftFor(c: Candidate): Promise<boolean> {
   })
 }
 
-function record(
-  c: Candidate,
-  p: Proposal,
-  error: string | null,
-  changed: string[],
-  hunks: unknown[] = [],
-): void {
+function record(c: Candidate, p: Proposal, error: string | null, changed: string[], hunks: unknown[] = []): void {
   const { policy } = loadPolicy()
   // A retry that got this far supersedes the failures that led to it.
   getDb().prepare(`DELETE FROM proposals WHERE update_id = ? AND retryable = 1`).run(c.updateId)

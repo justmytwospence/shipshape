@@ -42,9 +42,9 @@ function describe(d: Db) {
       columns: d.prepare(`PRAGMA index_xinfo("${i.name}")`).all(),
     })),
     rows: d.prepare(`SELECT * FROM "${t}"`).all(),
-    sql: (d.prepare(`SELECT sql FROM sqlite_master WHERE tbl_name = ? ORDER BY name`).all(t) as { sql: string | null }[]).map(
-      (r) => r.sql,
-    ),
+    sql: (
+      d.prepare(`SELECT sql FROM sqlite_master WHERE tbl_name = ? ORDER BY name`).all(t) as { sql: string | null }[]
+    ).map((r) => r.sql),
   }))
 }
 

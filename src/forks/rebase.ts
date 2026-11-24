@@ -110,7 +110,12 @@ export type PrepareForkResult =
 /** `data/forks/<owner>-<repo>` for a GitHub URL, or a sanitised form of anything else. */
 export function forkWorkDir(forkUrl: string, dataDir = env.dataDir): string {
   const m = /github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(forkUrl)
-  const name = m ? `${m[1]}-${m[2]}` : forkUrl.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(-80)
+  const name = m
+    ? `${m[1]}-${m[2]}`
+    : forkUrl
+        .replace(/[^A-Za-z0-9._-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(-80)
   return join(dataDir, 'forks', name)
 }
 
@@ -164,7 +169,9 @@ export async function prepareFork(input: PrepareForkInput): Promise<PrepareForkR
   const carried = await commitsBetween(dir, baseRef.sha, input.pinnedSha)
   const merge = carried.find((c) => c.parents > 1)
   if (merge) {
-    return refuse(`the fork carries a merge commit (${merge.short} ${merge.subject}); replay it by hand (${FORKS_GUIDE_URL})`)
+    return refuse(
+      `the fork carries a merge commit (${merge.short} ${merge.subject}); replay it by hand (${FORKS_GUIDE_URL})`,
+    )
   }
   const equivalent = await alreadyUpstream(dir, targetRef.sha, input.pinnedSha, baseRef.sha)
   const shipped = shippedRefs(input.waitsOn, input.targetTag)
@@ -242,10 +249,17 @@ export async function prepareFork(input: PrepareForkInput): Promise<PrepareForkR
       const pushed = await git(dir, ['push', 'fork', `${sha}:refs/tags/${tag}`], { remote: 'github', allowFail: true })
       if (pushed.exitCode !== 0) return refuse(pushRefusal(input.forkUrl, pushed.stderr))
     }
-    const branch = (await git(dir, ['rev-parse', '--verify', '-q', `refs/remotes/fork/${input.branch}`], { allowFail: true })).stdout
+    const branch = (
+      await git(dir, ['rev-parse', '--verify', '-q', `refs/remotes/fork/${input.branch}`], { allowFail: true })
+    ).stdout
     if (branch !== sha) {
       const args = branch
-        ? ['push', `--force-with-lease=refs/heads/${input.branch}:${branch}`, 'fork', `${sha}:refs/heads/${input.branch}`]
+        ? [
+            'push',
+            `--force-with-lease=refs/heads/${input.branch}:${branch}`,
+            'fork',
+            `${sha}:refs/heads/${input.branch}`,
+          ]
         : ['push', 'fork', `${sha}:refs/heads/${input.branch}`]
       const moved = await git(dir, args, { remote: 'github', allowFail: true })
       if (moved.exitCode !== 0) return refuse(pushRefusal(input.forkUrl, moved.stderr))
@@ -373,7 +387,10 @@ async function alreadyUpstream(dir: string, target: string, head: string, limit:
 }
 
 /** The references whose fix shipped in the target release or an earlier one. */
-export function shippedRefs(waitsOn: readonly WaitsOnState[], targetTag: string): { ref: string; releasedIn: string }[] {
+export function shippedRefs(
+  waitsOn: readonly WaitsOnState[],
+  targetTag: string,
+): { ref: string; releasedIn: string }[] {
   const target = versionKey(targetTag)
   const out: { ref: string; releasedIn: string }[] = []
   for (const w of waitsOn) {

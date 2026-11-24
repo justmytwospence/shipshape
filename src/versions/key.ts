@@ -113,7 +113,17 @@ function linePosition(k: VersionKey, line: VersionKey): number | null {
 
 // ------------------------------------------------------------------ internals
 
-const PRE_RANK: Record<string, number> = { dev: 0, nightly: 0, canary: 0, next: 0, alpha: 1, beta: 2, pre: 3, preview: 3, rc: 4 }
+const PRE_RANK: Record<string, number> = {
+  dev: 0,
+  nightly: 0,
+  canary: 0,
+  next: 0,
+  alpha: 1,
+  beta: 2,
+  pre: 3,
+  preview: 3,
+  rc: 4,
+}
 
 function splitPre(pre: string): [string, number] {
   const [name, num] = pre.split('.')
@@ -183,7 +193,14 @@ function fromText(s: string, raw: string): VersionKey | null {
   // A prerelease word stuck to the number: `1.2.3b2`, `2.0.0rc1`.
   const pre = /^(\d{1,3}(?:\.\d+){0,3})[-.]?((?:alpha|beta|rc|pre|preview|dev|a|b)[.-]?\d*)(?:[-+].*)?$/i.exec(t)
   if (pre) {
-    return { family: 'semver', core: pre[1]!.split('.').map(Number), pre: normalisePre(pre[2]!), build: [], partial: false, raw }
+    return {
+      family: 'semver',
+      core: pre[1]!.split('.').map(Number),
+      pre: normalisePre(pre[2]!),
+      build: [],
+      partial: false,
+      raw,
+    }
   }
 
   // Anything else that starts with a dotted version: keep the number, drop the rest.

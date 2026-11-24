@@ -195,9 +195,9 @@ export async function handleFailure(opts: {
   carry: ReadonlySet<string>
 }): Promise<{ rolledBack: boolean }> {
   const { policy } = loadPolicy()
-  const row = getDb()
-    .prepare(`SELECT merge_commit_sha, scope FROM prs WHERE id = ?`)
-    .get(opts.prId) as { merge_commit_sha: string | null; scope: string } | undefined
+  const row = getDb().prepare(`SELECT merge_commit_sha, scope FROM prs WHERE id = ?`).get(opts.prId) as
+    | { merge_commit_sha: string | null; scope: string }
+    | undefined
 
   const plan = rollbackPlan({
     mode: policy.deploy.rollback,
@@ -318,6 +318,9 @@ function rolledBackFacts(prId: number): string {
         WHERE pu.pr_id = ? AND u.waived_by IS NOT NULL`,
     )
     .all(prId) as { waived_by: string }[]
-  if (rules.length > 0) lines.push(`Shipped under rule ${[...new Set(rules.flatMap((r) => r.waived_by.split(',')))].join(', ')} -- worth a look at whether it still earns its keep.`)
+  if (rules.length > 0)
+    lines.push(
+      `Shipped under rule ${[...new Set(rules.flatMap((r) => r.waived_by.split(',')))].join(', ')} -- worth a look at whether it still earns its keep.`,
+    )
   return lines.join('\n')
 }

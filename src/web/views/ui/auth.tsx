@@ -76,15 +76,15 @@ export const SetupPage: FC<{ problems: string[] }> = ({ problems }) => (
         </p>
         <Snippet text={PASSWORD_SNIPPET} />
         <p class="mt-2 opacity-80">
-          SHIPSHAPE_ALLOWED_ORIGIN is recommended: it makes the cookie Secure and pins the address that may submit forms.
-          Without it, forms are accepted only from the address in the Host header.
+          SHIPSHAPE_ALLOWED_ORIGIN is recommended: it makes the cookie Secure and pins the address that may submit
+          forms. Without it, forms are accepted only from the address in the Host header.
         </p>
       </section>
       <section>
         <h2 class="font-semibold">Option 2: your reverse proxy signs people in</h2>
         <p class="mt-1">
-          For Authelia, Authentik, oauth2-proxy and similar. shipshape trusts a username header, but only when
-          the request comes from your proxy's address.
+          For Authelia, Authentik, oauth2-proxy and similar. shipshape trusts a username header, but only when the
+          request comes from your proxy's address.
         </p>
         <Snippet text={PROXY_SNIPPET} />
         <p class="mt-2 opacity-80">
@@ -110,7 +110,15 @@ export const LoginPage: FC<{ next: string; error?: string }> = ({ next, error })
         <label for="password" class="text-sm">
           Password
         </label>
-        <input id="password" name="password" type="password" required autofocus autocomplete="current-password" class="input w-full" />
+        <input
+          id="password"
+          name="password"
+          type="password"
+          required
+          autofocus
+          autocomplete="current-password"
+          class="input w-full"
+        />
         {error ? (
           <div role="alert" class="alert alert-error alert-soft text-sm">
             {error}

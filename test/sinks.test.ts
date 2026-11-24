@@ -45,7 +45,14 @@ beforeEach(() => {
 })
 
 const action = { emoji: '🚀', label: 'ship', do: { target: 'shipshape' as const, verb: 'ship', update: 7 } }
-const card = { key: 'shipshape:decision:x', title: 'x 1 -> 2', body: 'Ship? this service always asks', priority: 3 as const, eventClass: 'decision' as const, actions: [action] }
+const card = {
+  key: 'shipshape:decision:x',
+  title: 'x 1 -> 2',
+  body: 'Ship? this service always asks',
+  priority: 3 as const,
+  eventClass: 'decision' as const,
+  actions: [action],
+}
 
 test('no sinks are configured by default: nothing is sent', async () => {
   policy('')
@@ -55,21 +62,24 @@ test('no sinks are configured by default: nothing is sent', async () => {
 
 test('a webhook sink gets the payload the router has always been sent', async () => {
   await notify({ key: 'shipshape:deploy:app', title: 'deploy failed', body: 'x', priority: 4, eventClass: 'broken' })
-  assert.deepEqual(wire.map((w) => w.body), [
-    {
-      key: 'shipshape:deploy:app',
-      source: 'shipshape',
-      title: 'deploy failed',
-      message: 'x',
-      priority: 4,
-      status: 'firing',
-      // A deploy incident always offers retry and roll back (MCP_PORT is set here).
-      actions: [
-        { emoji: '🔁', label: 'retry', do: { target: 'shipshape', verb: 'retry', stack: 'app' } },
-        { emoji: '⏪', label: 'roll back', do: { target: 'shipshape', verb: 'rollback', stack: 'app' } },
-      ],
-    },
-  ])
+  assert.deepEqual(
+    wire.map((w) => w.body),
+    [
+      {
+        key: 'shipshape:deploy:app',
+        source: 'shipshape',
+        title: 'deploy failed',
+        message: 'x',
+        priority: 4,
+        status: 'firing',
+        // A deploy incident always offers retry and roll back (MCP_PORT is set here).
+        actions: [
+          { emoji: '🔁', label: 'retry', do: { target: 'shipshape', verb: 'retry', stack: 'app' } },
+          { emoji: '⏪', label: 'roll back', do: { target: 'shipshape', verb: 'rollback', stack: 'app' } },
+        ],
+      },
+    ],
+  )
   assert.equal(wire[0]!.headers.authorization, 'Bearer k')
   assert.equal(wire[0]!.url, process.env.NOTIFY_URL)
 })
@@ -94,7 +104,10 @@ test('a sink hears only the event classes it lists', async () => {
   await notify({ key: 'b', title: 'sync', body: 'x', eventClass: 'system' })
   await notify({ key: 'c', title: 'cve', body: 'x', eventClass: 'security' })
   await notify({ key: 'd', title: 'failed', body: 'x', eventClass: 'broken' })
-  assert.deepEqual(wire.map((w) => w.body.key), ['a', 'd'])
+  assert.deepEqual(
+    wire.map((w) => w.body.key),
+    ['a', 'd'],
+  )
 })
 
 test('several sinks each get the message, and one failing does not stop the other', async () => {
@@ -161,7 +174,9 @@ test('a webhook without a token sends no Authorization header', async () => {
 })
 
 test('the status page lists the variables each sink reads, and never their values', () => {
-  policy('notify:\n  sinks:\n    - type: webhook\n    - type: ntfy\n      url: http://ntfy.invalid\n      topic: t\n      token_env: NTFY_TOKEN\n    - type: ntfy\n      url: http://ntfy.invalid\n      topic: u\n      token_env: UNSET_NTFY\n')
+  policy(
+    'notify:\n  sinks:\n    - type: webhook\n    - type: ntfy\n      url: http://ntfy.invalid\n      topic: t\n      token_env: NTFY_TOKEN\n    - type: ntfy\n      url: http://ntfy.invalid\n      topic: u\n      token_env: UNSET_NTFY\n',
+  )
   delete process.env.UNSET_NTFY
   const rows = sinkCredentials()
   assert.deepEqual(rows, [

@@ -28,7 +28,6 @@ const PASSTHROUGH = [
   'SSL_CERT_DIR',
 ] as const
 
-
 export function dockerEnv(source: NodeJS.ProcessEnv = process.env): Record<string, string> {
   const out: Record<string, string> = {}
   for (const k of PASSTHROUGH) {
@@ -37,7 +36,6 @@ export function dockerEnv(source: NodeJS.ProcessEnv = process.env): Record<strin
   }
   return out
 }
-
 
 /** execa options that replace -- not extend -- the inherited environment. */
 export function dockerEnvOptions(): { env: Record<string, string>; extendEnv: false } {

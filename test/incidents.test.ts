@@ -38,7 +38,16 @@ beforeEach(() => {
 
 test('a keyed alert is a firing incident from shipshape', async () => {
   await notify({ key: 'shipshape:sync', title: 'sync blocked', body: 'why', priority: 4 })
-  assert.deepEqual(wire, [{ key: 'shipshape:sync', source: 'shipshape', title: 'sync blocked', message: 'why', priority: 4, status: 'firing' }])
+  assert.deepEqual(wire, [
+    {
+      key: 'shipshape:sync',
+      source: 'shipshape',
+      title: 'sync blocked',
+      message: 'why',
+      priority: 4,
+      status: 'firing',
+    },
+  ])
 })
 
 test('resolving something that was never opened sends nothing', async () => {

@@ -37,7 +37,11 @@ export function browserOrigin(value?: string): string | undefined {
   if (!value) return undefined
   try {
     const url = new URL(value)
-    if ((url.protocol === 'https:' || url.protocol === 'http:') && url.origin === value && !/[*${}]/.test(url.hostname)) {
+    if (
+      (url.protocol === 'https:' || url.protocol === 'http:') &&
+      url.origin === value &&
+      !/[*${}]/.test(url.hostname)
+    ) {
       return value
     }
   } catch {
@@ -106,7 +110,10 @@ export function checkProxyIdentity(c: Context, cfg: ProxyConfig): Response | nul
   // Hono joins duplicate headers with ', ', so a header carrying two names matches no user.
   const user = c.req.header(cfg.header)
   if (!peer || !cfg.peers.check(peer, family(peer)) || !user || !cfg.users.has(user)) {
-    return new Response('Forbidden', { status: 403, headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=UTF-8' } })
+    return new Response('Forbidden', {
+      status: 403,
+      headers: { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=UTF-8' },
+    })
   }
   return null
 }

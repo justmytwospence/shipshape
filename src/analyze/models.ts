@@ -31,7 +31,8 @@ export async function listModels(): Promise<string[]> {
     const ids = (body.data ?? []).map((m) => m.id)
     // A custom endpoint serves what its operator loaded, under whatever names: offer all of
     // them. Anthropic and OpenRouter lists stay Claude, which the prompts are written against.
-    const offered = llmProvider() === 'custom' ? ids : ids.filter((id) => id.startsWith('anthropic/') || id.startsWith('claude-'))
+    const offered =
+      llmProvider() === 'custom' ? ids : ids.filter((id) => id.startsWith('anthropic/') || id.startsWith('claude-'))
     if (offered.length > 0) writeCache(offered)
     return offered
   } catch {
@@ -41,9 +42,9 @@ export async function listModels(): Promise<string[]> {
 }
 
 function readCache(): string[] | null {
-  const row = getDb()
-    .prepare(`SELECT body, fetched_at FROM http_cache WHERE url = ?`)
-    .get(CACHE_KEY) as { body: string; fetched_at: string } | undefined
+  const row = getDb().prepare(`SELECT body, fetched_at FROM http_cache WHERE url = ?`).get(CACHE_KEY) as
+    | { body: string; fetched_at: string }
+    | undefined
   if (!row) return null
   if (Date.now() - Date.parse(row.fetched_at) > TTL_MS) return null
   try {

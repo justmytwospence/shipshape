@@ -22,21 +22,29 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 const { getDb } = await import('../src/db/index.ts')
 const { runOperatorVerb } = await import('../src/updates/operator-verbs.ts')
 
-const g = (args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: repo, encoding: 'utf8' }).trim()
+const g = (args: string[]) =>
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: repo, encoding: 'utf8' }).trim()
 const AG = 'ghcr.io/example/auth-proxy'
 
 function add(stack: string, tier: string, image = AG): number {
   getDb()
-    .prepare(`INSERT OR REPLACE INTO images (stack, service, compose_file, image_ref, registry, repository, watched, last_seen_at) VALUES (?, ?, 'x', ?, 'ghcr.io', 'example/auth-proxy', 1, 'now')`)
+    .prepare(
+      `INSERT OR REPLACE INTO images (stack, service, compose_file, image_ref, registry, repository, watched, last_seen_at) VALUES (?, ?, 'x', ?, 'ghcr.io', 'example/auth-proxy', 1, 'now')`,
+    )
     .run(stack, stack, `${image}:v1.6.0`)
   return Number(
     getDb()
-      .prepare(`INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at) VALUES (?, ?, ?, 'v1.6.0', 'v1.7.0', 'minor', ?, 'detected', ?, ?)`)
+      .prepare(
+        `INSERT INTO updates (stack, service, image, from_tag, to_tag, magnitude, tier, state, detected_at, updated_at) VALUES (?, ?, ?, 'v1.6.0', 'v1.7.0', 'minor', ?, 'detected', ?, ?)`,
+      )
       .run(stack, stack, `${image}:v1.6.0`, tier, new Date().toISOString(), new Date().toISOString()).lastInsertRowid,
   )
 }
 
-const row = (id: number) => getDb().prepare(`SELECT state, approved_at, snoozed_until, decision_since FROM updates WHERE id = ?`).get(id) as Record<string, string | null>
+const row = (id: number) =>
+  getDb()
+    .prepare(`SELECT state, approved_at, snoozed_until, decision_since FROM updates WHERE id = ?`)
+    .get(id) as Record<string, string | null>
 
 beforeEach(() => {
   rmSync(repo, { recursive: true, force: true })
@@ -45,7 +53,9 @@ beforeEach(() => {
   g(['init', '-q', '-b', 'main'])
   g(['add', '-A'])
   g(['commit', '-qm', 'fixture'])
-  getDb().exec(`DELETE FROM updates; DELETE FROM images; DELETE FROM proposals; DELETE FROM pr_updates; DELETE FROM prs; DELETE FROM events; DELETE FROM verdicts`)
+  getDb().exec(
+    `DELETE FROM updates; DELETE FROM images; DELETE FROM proposals; DELETE FROM pr_updates; DELETE FROM prs; DELETE FROM events; DELETE FROM verdicts`,
+  )
 })
 
 test('ship approves every update the decision covers, and clears a snooze', async () => {
@@ -58,7 +68,9 @@ test('ship approves every update the decision covers, and clears a snooze', asyn
 
   // Shipped from the dashboard while snoozed: it comes back and ships.
   const d = add('d', 'ask', 'ghcr.io/x/d')
-  getDb().prepare(`UPDATE updates SET snoozed_until = ? WHERE id = ?`).run(new Date(Date.now() + 1e9).toISOString(), d)
+  getDb()
+    .prepare(`UPDATE updates SET snoozed_until = ? WHERE id = ?`)
+    .run(new Date(Date.now() + 1e9).toISOString(), d)
   assert.equal((await runOperatorVerb(d, 'ship')).ok, true)
   assert.ok(row(d).approved_at)
   assert.equal(row(d).snoozed_until, null)
@@ -78,9 +90,17 @@ test('snooze puts the whole decision off for a week and restarts its clock', asy
 
 test('skip dismisses everything the decision covers, and the drafted change that carried it', async () => {
   const ids = [add('a', 'ask'), add('b', 'ask')]
-  const p = Number(getDb().prepare(`INSERT INTO prs (number, branch, head_sha_pushed, state, scope, created_at) VALUES (0, 'b', 'x', 'open', 'proposed', 'now')`).run().lastInsertRowid)
+  const p = Number(
+    getDb()
+      .prepare(
+        `INSERT INTO prs (number, branch, head_sha_pushed, state, scope, created_at) VALUES (0, 'b', 'x', 'open', 'proposed', 'now')`,
+      )
+      .run().lastInsertRowid,
+  )
   getDb().prepare(`INSERT INTO pr_updates (pr_id, update_id) VALUES (?, ?)`).run(p, ids[0])
-  getDb().prepare(`INSERT INTO proposals (pr_id, update_id, ops, notes, created_at) VALUES (?, ?, '[]', '[]', 'now')`).run(p, ids[0])
+  getDb()
+    .prepare(`INSERT INTO proposals (pr_id, update_id, ops, notes, created_at) VALUES (?, ?, '[]', '[]', 'now')`)
+    .run(p, ids[0])
   const r = await runOperatorVerb(ids[1]!, 'skip')
   assert.equal(r.ok, true)
   for (const id of ids) assert.equal(row(id)!.state, 'skipped')
@@ -92,7 +112,10 @@ test('always ship writes the rule as a commit, approves the decision, and says w
   const ids = [add('a-mcp', 'ask'), add('b-mcp', 'ask')]
   const r = await runOperatorVerb(ids[0]!, 'always-ship')
   assert.equal(r.ok, true, r.message)
-  assert.match(r.message, /^Always ship: every service running ghcr\.io\/example\/auth-proxy, waiving ask\. Rule r1 committed \([0-9a-f]{7,}\)\./)
+  assert.match(
+    r.message,
+    /^Always ship: every service running ghcr\.io\/example\/auth-proxy, waiving ask\. Rule r1 committed \([0-9a-f]{7,}\)\./,
+  )
   assert.match(readFileSync(join(repo, 'policy.yaml'), 'utf8'), /id: r1/)
   assert.match(g(['log', '-1', '--format=%s']), /^chore\(shipshape\): rule r1: always ship/)
   for (const id of ids) assert.ok(row(id)!.approved_at, 'shipped now as well')

@@ -28,8 +28,14 @@ const resolveTo = (t: import('node:test').TestContext, address: string) =>
 test('a redirect to another public host is followed without the bearer', async (t) => {
   resolveTo(t, '140.82.114.4')
   const h = mockFetch(t, [
-    { url: 'https://ghcr.io/v2/a/one/manifests/1', reply: () => status(307, { location: 'https://pkg-containers.githubusercontent.com/x' }) },
-    { url: 'https://pkg-containers.githubusercontent.com/x', reply: () => status(200, { 'docker-content-digest': DIGEST }) },
+    {
+      url: 'https://ghcr.io/v2/a/one/manifests/1',
+      reply: () => status(307, { location: 'https://pkg-containers.githubusercontent.com/x' }),
+    },
+    {
+      url: 'https://pkg-containers.githubusercontent.com/x',
+      reply: () => status(200, { 'docker-content-digest': DIGEST }),
+    },
   ])
   assert.equal(await headDigest('ghcr.io', 'a/one', '1'), DIGEST)
   assert.equal(h.calls[1]!.headers.get('authorization'), null)
@@ -39,7 +45,10 @@ test('a redirect to another public host is followed without the bearer', async (
 test('a redirect to a private address is refused and named', async (t) => {
   resolveTo(t, '10.0.0.5')
   const h = mockFetch(t, [
-    { url: 'https://ghcr.io/v2/a/two/manifests/1', reply: () => status(307, { location: 'https://cdn.example.com/x' }) },
+    {
+      url: 'https://ghcr.io/v2/a/two/manifests/1',
+      reply: () => status(307, { location: 'https://cdn.example.com/x' }),
+    },
   ])
   await assert.rejects(headDigest('ghcr.io', 'a/two', '1'), /private address/)
   assert.equal(h.calls.length, 1)
@@ -47,7 +56,12 @@ test('a redirect to a private address is refused and named', async (t) => {
 
 test('a redirect to plain http on another host is refused', async (t) => {
   resolveTo(t, '140.82.114.4')
-  mockFetch(t, [{ url: 'https://ghcr.io/v2/a/three/manifests/1', reply: () => status(302, { location: 'http://cdn.example.com/x' }) }])
+  mockFetch(t, [
+    {
+      url: 'https://ghcr.io/v2/a/three/manifests/1',
+      reply: () => status(302, { location: 'http://cdn.example.com/x' }),
+    },
+  ])
   await assert.rejects(headDigest('ghcr.io', 'a/three', '1'), /not https/)
 })
 
@@ -56,7 +70,10 @@ test('a token realm on a private address is refused', async (t) => {
   mockFetch(t, [
     {
       url: 'https://ghcr.io/v2/a/four/manifests/1',
-      reply: () => status(401, { 'www-authenticate': 'Bearer realm="https://evil.example.com/token",scope="repository:a/four:pull"' }),
+      reply: () =>
+        status(401, {
+          'www-authenticate': 'Bearer realm="https://evil.example.com/token",scope="repository:a/four:pull"',
+        }),
     },
   ])
   await assert.rejects(headDigest('ghcr.io', 'a/four', '1'), /private address/)
@@ -78,7 +95,9 @@ test('Docker Hub credentials go only to auth.docker.io', async (t) => {
       reply: (req) =>
         req.headers.get('authorization')
           ? status(200, { 'docker-content-digest': DIGEST })
-          : status(401, { 'www-authenticate': 'Bearer realm="https://auth.docker.io/token",service="registry.docker.io"' }),
+          : status(401, {
+              'www-authenticate': 'Bearer realm="https://auth.docker.io/token",service="registry.docker.io"',
+            }),
     },
     { url: /^https:\/\/auth\.docker\.io\/token/, reply: () => json({ token: 't2' }) },
   ])
@@ -95,7 +114,11 @@ test('a tag list that pages to another host stops with an error', async (t) => {
   mockFetch(t, [
     {
       url: /registry\.example\.com\/v2\/a\/b\/tags\/list/,
-      reply: () => json({ tags: ['1'] }, { headers: { link: '<https://other.example.com/v2/a/b/tags/list?n=100&last=x>; rel="next"' } }),
+      reply: () =>
+        json(
+          { tags: ['1'] },
+          { headers: { link: '<https://other.example.com/v2/a/b/tags/list?n=100&last=x>; rel="next"' } },
+        ),
     },
   ])
   await assert.rejects(listTags('registry.example.com', 'a/b'), /refusing to follow/)

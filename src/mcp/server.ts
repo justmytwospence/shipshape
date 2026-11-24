@@ -37,8 +37,10 @@ import { background } from '../lifecycle.ts'
 const json = (value: unknown) => ({
   content: [{ type: 'text' as const, text: JSON.stringify(value, null, 2) }],
   // Keep the existing text shape; MCP structured content must be an object.
-  structuredContent: value !== null && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown> : { data: value },
+  structuredContent:
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : { data: value },
 })
 
 const verbReply = (r: VerbResult) => ({ ...json(r), isError: !r.ok })
@@ -59,16 +61,31 @@ export function createServer(): McpServer {
         `reviewed, ships what nothing holds back (a merge commit on ${gitBranch()}) after a cooldown, deploys, verifies and ` +
         'rolls back. Start with `inbox` for what is waiting on a decision. `get_update` lists the verbs ' +
         'allowed on an update right now (`allowed_verbs`); `update_action` accepts only those. Deploys run ' +
-        'in the background: an action returns once started, and `get_update` shows how it went. ' + USAGE,
+        'in the background: an action returns once started, and `get_update` shows how it went. ' +
+        USAGE,
     },
   )
 
   registerContext(server)
-  server.registerTool('api_usage', {
-    title: 'API usage and limits', description: 'Zero-call local budget observations, timestamps and safe-use guidance. Unknown quota is not a remaining allowance.',
-    inputSchema: z.object({}), annotations: READ,
-    outputSchema: z.object({ observed_at: z.string(), source: z.string(), docker_hub: z.object({}).passthrough(), github: z.object({}).passthrough(), model_budget: z.object({}).passthrough(), guidance: z.string() }),
-  }, async () => json(apiUsage()))
+  server.registerTool(
+    'api_usage',
+    {
+      title: 'API usage and limits',
+      description:
+        'Zero-call local budget observations, timestamps and safe-use guidance. Unknown quota is not a remaining allowance.',
+      inputSchema: z.object({}),
+      annotations: READ,
+      outputSchema: z.object({
+        observed_at: z.string(),
+        source: z.string(),
+        docker_hub: z.object({}).passthrough(),
+        github: z.object({}).passthrough(),
+        model_budget: z.object({}).passthrough(),
+        guidance: z.string(),
+      }),
+    },
+    async () => json(apiUsage()),
+  )
 
   server.registerTool(
     'inbox',
@@ -76,11 +93,17 @@ export function createServer(): McpServer {
       title: 'Inbox',
       description:
         'What is waiting on you (needs_you: decisions, with the question and the holds), what is broken (broken: failed or rolled-back deploys), what is parked (parked: frozen services and snoozed decisions), and what happened recently (recent).',
-      inputSchema: z.object({ recent_hours: z.number().int().min(1).max(24 * 14).optional() }),
+      inputSchema: z.object({
+        recent_hours: z
+          .number()
+          .int()
+          .min(1)
+          .max(24 * 14)
+          .optional(),
+      }),
       annotations: READ,
     },
-    async ({ recent_hours }) =>
-      {
+    async ({ recent_hours }) => {
       const items = inboxNeedsYou()
       return json({
         needs_you: items.filter((i) => i.kind !== 'broken'),
@@ -98,7 +121,9 @@ export function createServer(): McpServer {
       description:
         'Updates by stage: open (detected, frozen, merged), rolling (deploying, deployed), done, closed, all, or releases (newest first).',
       inputSchema: z.object({
-        stage: z.enum([...(Object.keys(STAGE_FILTERS) as (keyof typeof STAGE_FILTERS)[]), 'all', 'releases']).optional(),
+        stage: z
+          .enum([...(Object.keys(STAGE_FILTERS) as (keyof typeof STAGE_FILTERS)[]), 'all', 'releases'])
+          .optional(),
         q: z.string().optional().describe('Matches stack, service or image.'),
         magnitude: z.enum(['major', 'minor', 'patch', 'digest', 'all']).optional(),
         limit: z.number().int().min(1).max(500).optional(),
@@ -133,7 +158,9 @@ export function createServer(): McpServer {
       description:
         'Every service in the compose files with its watch state: watched, unwatched (no shipshape.watch label; "unlabelled" is accepted as the old name), unwatchable (and why), unlinked (no certain upstream), or attention (errors, tag filters suppressing a release).',
       inputSchema: z.object({
-        filter: z.enum(['all', 'watched', 'unwatched', 'unlabelled', 'unwatchable', 'unlinked', 'attention']).optional(),
+        filter: z
+          .enum(['all', 'watched', 'unwatched', 'unlabelled', 'unwatchable', 'unlinked', 'attention'])
+          .optional(),
         q: z.string().optional().describe('Matches stack, service or image.'),
       }),
       annotations: READ,
@@ -169,7 +196,8 @@ export function createServer(): McpServer {
       }),
       annotations: READ,
     },
-    async (a) => json(activityRows({ kind: a.kind ?? 'all', problems: a.problems ?? false, q: a.q ?? '', limit: a.limit ?? 50 })),
+    async (a) =>
+      json(activityRows({ kind: a.kind ?? 'all', problems: a.problems ?? false, q: a.q ?? '', limit: a.limit ?? 50 })),
   )
 
   server.registerTool(
@@ -195,7 +223,9 @@ export function createServer(): McpServer {
     async () => {
       if (isScanning()) return verbReply({ ok: true, message: 'A scan is already running.' })
       background(runScanNow(), 'scan requested via MCP', 'scan')
-      return verbReply(logged('scan requested via MCP', { ok: true, message: 'Scanning. Poll scan_status for the result.' }))
+      return verbReply(
+        logged('scan requested via MCP', { ok: true, message: 'Scanning. Poll scan_status for the result.' }),
+      )
     },
   )
 
@@ -203,7 +233,8 @@ export function createServer(): McpServer {
     'check_service',
     {
       title: 'Check service',
-      description: 'Re-check one service now: its labels from git, its upstream, and its registry. Returns the service afterwards.',
+      description:
+        'Re-check one service now: its labels from git, its upstream, and its registry. Returns the service afterwards.',
       inputSchema: z.object({ stack: z.string(), service: z.string() }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     },
@@ -233,7 +264,11 @@ export function createServer(): McpServer {
       const found = contextFor(id)
       const r = await runOperatorVerb(id, verb)
       return verbReply(
-        logged(`${verb} on update ${id} requested via MCP`, r, found ? { stack: found.row.stack, service: found.row.service } : {}),
+        logged(
+          `${verb} on update ${id} requested via MCP`,
+          r,
+          found ? { stack: found.row.stack, service: found.row.service } : {},
+        ),
       )
     },
   )
@@ -241,13 +276,17 @@ export function createServer(): McpServer {
   server.registerTool(
     'stack_action',
     {
-      title: 'Act on a stack\'s last deploy',
+      title: "Act on a stack's last deploy",
       description:
         'retry or rollback the newest deploy of a stack, as an alert card would; refused (with the reason) when that deploy does not allow it.',
-      inputSchema: z.object({ stack: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/), verb: z.enum(STACK_VERBS) }),
+      inputSchema: z.object({
+        stack: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/),
+        verb: z.enum(STACK_VERBS),
+      }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
     },
-    async ({ stack, verb }) => verbReply(logged(`${verb} of ${stack} requested via MCP`, await runStackVerb(stack, verb), { stack })),
+    async ({ stack, verb }) =>
+      verbReply(logged(`${verb} of ${stack} requested via MCP`, await runStackVerb(stack, verb), { stack })),
   )
 
   server.registerTool(
@@ -281,7 +320,8 @@ export function createServer(): McpServer {
     'find_package',
     {
       title: 'Find a package',
-      description: 'Which running services carry a package (npm, PyPI, deb, apk, a runtime binary such as node), and at what version.',
+      description:
+        'Which running services carry a package (npm, PyPI, deb, apk, a runtime binary such as node), and at what version.',
       inputSchema: z.object({ name: z.string().min(1).max(200) }),
       annotations: READ,
     },

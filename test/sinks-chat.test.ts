@@ -52,7 +52,12 @@ const card = {
 
 const discord = { type: 'discord' as const, url_env: 'DISCORD_WEBHOOK_URL' }
 const gotify = { type: 'gotify' as const, url: 'https://gotify.invalid/', token_env: 'GOTIFY_TOKEN' }
-const apprise = { type: 'apprise' as const, url: 'http://apprise.invalid:8000/notify/shipshape', tag: 'ops', auth_env: 'APPRISE_AUTH' }
+const apprise = {
+  type: 'apprise' as const,
+  url: 'http://apprise.invalid:8000/notify/shipshape',
+  tag: 'ops',
+  auth_env: 'APPRISE_AUTH',
+}
 
 /** Every request, with its parsed body, answered 204. */
 function capture(t: Parameters<typeof mockFetch>[0], reply: () => Response = () => status(204)) {
@@ -80,7 +85,10 @@ test('discord posts one embed with the title, the body and the signed links, and
   assert.match(b.embeds[0].description, /^Ship\? this service always asks/)
   assert.match(b.embeds[0].description, /\]\(https:\/\/shipshape\.example\/act\//)
   const token = /\/act\/([^)?#\s]+)/.exec(b.embeds[0].description)![1]!
-  assert.deepEqual(verifyToken(decodeURIComponent(token), process.env.SHIPSHAPE_ACTION_SECRET!), { verb: 'ship', updateId: 7 })
+  assert.deepEqual(verifyToken(decodeURIComponent(token), process.env.SHIPSHAPE_ACTION_SECRET!), {
+    verb: 'ship',
+    updateId: 7,
+  })
   assertAllMocked(h)
 })
 
@@ -88,7 +96,10 @@ test('discord colours a card by priority', async (t) => {
   const { bodies } = capture(t)
   await sendDiscord(discord, { ...card, key: 'a', priority: 3 })
   await sendDiscord(discord, { ...card, key: 'b', priority: 5 })
-  assert.deepEqual(bodies.map((b) => b.embeds[0].color), [0x2563eb, 0xdc2626])
+  assert.deepEqual(
+    bodies.map((b) => b.embeds[0].color),
+    [0x2563eb, 0xdc2626],
+  )
 })
 
 test('discord is skipped when its variable is unset or not https', async (t) => {
@@ -124,7 +135,10 @@ test('gotify posts to /message with the app token, a mapped priority and the cli
 test('gotify maps priorities 1-5 onto 1, 3, 5, 8, 10', async (t) => {
   const { bodies } = capture(t, () => status(200))
   for (const p of [1, 2, 3, 4, 5] as const) await sendGotify(gotify, { ...card, key: `k${p}`, priority: p })
-  assert.deepEqual(bodies.map((b) => b.priority), [1, 3, 5, 8, 10])
+  assert.deepEqual(
+    bodies.map((b) => b.priority),
+    [1, 3, 5, 8, 10],
+  )
 })
 
 test('apprise posts title, body, type and tag to the configured endpoint', async (t) => {
@@ -174,9 +188,9 @@ test('the chat sinks speak on a first fire and an escalation, not on repeats or 
 test('a failed send is logged and forgotten, so the next fire tries again', async (t) => {
   const { h } = capture(t, () => status(500))
   await sendDiscord(discord, card)
-  const row = getDb().prepare(`SELECT detail FROM events WHERE message = 'could not post to Discord' ORDER BY id DESC LIMIT 1`).get() as
-    | { detail: string }
-    | undefined
+  const row = getDb()
+    .prepare(`SELECT detail FROM events WHERE message = 'could not post to Discord' ORDER BY id DESC LIMIT 1`)
+    .get() as { detail: string } | undefined
   assert.ok(row)
   assert.ok(!row.detail.includes('discord.invalid'), 'the webhook URL is the secret and is never logged')
   await sendDiscord(discord, card)
@@ -189,7 +203,11 @@ test('notify routes each sink type from the policy file', async (t) => {
   )
   const { h } = capture(t, () => status(200))
   await notify(card)
-  assert.deepEqual(h.calls.map((c) => new URL(c.url).host).sort(), ['apprise.invalid:8000', 'discord.invalid', 'gotify.invalid'])
+  assert.deepEqual(h.calls.map((c) => new URL(c.url).host).sort(), [
+    'apprise.invalid:8000',
+    'discord.invalid',
+    'gotify.invalid',
+  ])
   assertAllMocked(h)
 })
 
@@ -202,7 +220,10 @@ test('activeChannels names each configured sink', () => {
 
 test('the new sink types parse with their defaults', () => {
   assert.equal((SinkSchema.parse({ type: 'discord' }) as { url_env: string }).url_env, 'DISCORD_WEBHOOK_URL')
-  assert.equal((SinkSchema.parse({ type: 'gotify', url: 'https://g.invalid' }) as { token_env: string }).token_env, 'GOTIFY_TOKEN')
+  assert.equal(
+    (SinkSchema.parse({ type: 'gotify', url: 'https://g.invalid' }) as { token_env: string }).token_env,
+    'GOTIFY_TOKEN',
+  )
   assert.throws(() => SinkSchema.parse({ type: 'gotify' }))
   assert.throws(() => SinkSchema.parse({ type: 'apprise', url: 'http://a.invalid/notify', tag: '' }))
 })

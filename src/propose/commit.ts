@@ -139,14 +139,12 @@ export async function composeAccepts(
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
   const override = overrideFor(repoDir, composeFile)
   const files = ['-f', join(repoDir, composeFile), ...(override ? ['-f', join(repoDir, override)] : [])]
-  const r = await execa(
-    'docker',
-    ['compose', ...files, 'config', '--no-interpolate', '-q'],
-    { reject: false, timeout: 60_000, cwd: repoDir },
-  )
-  return (r.exitCode ?? 1) === 0
-    ? { ok: true }
-    : { ok: false, reason: String(r.stderr ?? '').slice(0, 200) }
+  const r = await execa('docker', ['compose', ...files, 'config', '--no-interpolate', '-q'], {
+    reject: false,
+    timeout: 60_000,
+    cwd: repoDir,
+  })
+  return (r.exitCode ?? 1) === 0 ? { ok: true } : { ok: false, reason: String(r.stderr ?? '').slice(0, 200) }
 }
 
 /** The service's own block, so the model sees its configuration and nothing else. */

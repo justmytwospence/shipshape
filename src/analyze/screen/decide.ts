@@ -240,7 +240,14 @@ export function decideScreen(
   t: Thresholds = THRESHOLDS,
 ): ScreenResult {
   if (e.notesInRange === 0 || !answers) {
-    return { decision: 'no-notes', reason: 'no release notes were found for this range', flags: null, actionable: [], notable: [], confidence: null }
+    return {
+      decision: 'no-notes',
+      reason: 'no release notes were found for this range',
+      flags: null,
+      actionable: [],
+      notable: [],
+      confidence: null,
+    }
   }
   const flags = flagsOf(answers)
   const actionable: number[] = []
@@ -253,7 +260,12 @@ export function decideScreen(
 
   const found = RISK_KEYS.filter((k) => flags.risk[k] >= t.findingRisk)
   if (found.length > 0) {
-    return { ...base, decision: 'finding', reason: `the notes mention ${found.map((k) => LABEL[k]).join(', ')}`, confidence: null }
+    return {
+      ...base,
+      decision: 'finding',
+      reason: `the notes mention ${found.map((k) => LABEL[k]).join(', ')}`,
+      confidence: null,
+    }
   }
   if (flags.score >= t.findingScore) {
     return { ...base, decision: 'finding', reason: 'the notes read as worth a look before upgrading', confidence: null }
@@ -271,11 +283,11 @@ export function decideScreen(
             ? `${e.missing} version(s) in the range have no notes`
             : e.notesInRange > t.routineMaxNotes
               ? `${e.notesInRange} releases' notes in range: a wide range always gets a full reading`
-            : e.omitted > 0
-              ? 'some notes were left out for length'
-              : !e.sourceCertain
-                ? 'the upstream project is a likely match, not a certain one'
-                : null
+              : e.omitted > 0
+                ? 'some notes were left out for length'
+                : !e.sourceCertain
+                  ? 'the upstream project is a likely match, not a certain one'
+                  : null
   if (why) return { ...base, decision: 'escalate', reason: why, confidence: null }
 
   const clear =
@@ -283,7 +295,12 @@ export function decideScreen(
     flags.score < t.routineScore &&
     flags.scoreConfidence >= t.routineScoreConfidence
   if (!clear) {
-    return { ...base, decision: 'escalate', reason: 'the screen was not sure enough to call it routine', confidence: null }
+    return {
+      ...base,
+      decision: 'escalate',
+      reason: 'the screen was not sure enough to call it routine',
+      confidence: null,
+    }
   }
   return {
     ...base,

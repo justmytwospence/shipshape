@@ -52,12 +52,7 @@ export async function checkDigest(svc: ScannedService): Promise<DigestCheck> {
 
 /** Git holds the baseline: compare the digest written in the compose file against what
  *  the tag resolves to now. */
-async function checkPinned(
-  registry: string,
-  repository: string,
-  pinned: string,
-  head: string,
-): Promise<DigestCheck> {
+async function checkPinned(registry: string, repository: string, pinned: string, head: string): Promise<DigestCheck> {
   if (pinned === head) return { status: 'unchanged' }
 
   // HEAD of a multi-arch tag returns the INDEX digest. Most pins in this repo are also
@@ -88,18 +83,11 @@ async function checkPinned(
 
 /** No git baseline exists, so the DB holds one. It advances the moment movement is
  *  acknowledged, which is what makes the event fire exactly once per move. */
-function checkRolling(
-  registry: string,
-  repository: string,
-  tag: string,
-  head: string,
-): DigestCheck {
+function checkRolling(registry: string, repository: string, tag: string, head: string): DigestCheck {
   const db = getDb()
   const now = new Date().toISOString()
   const row = db
-    .prepare(
-      `SELECT digest FROM digest_baselines WHERE registry = ? AND repository = ? AND tag = ?`,
-    )
+    .prepare(`SELECT digest FROM digest_baselines WHERE registry = ? AND repository = ? AND tag = ?`)
     .get(registry, repository, tag) as { digest: string } | undefined
 
   if (!row) {

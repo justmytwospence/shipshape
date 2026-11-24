@@ -123,7 +123,12 @@ function prepare(c: LabelChange): { ok: true; change: LabelChange } | { ok: fals
   }
 }
 
-async function run(o: { stack: string; services: string[]; changes: LabelChange[]; publish?: boolean }): Promise<SetServiceLabelResult> {
+async function run(o: {
+  stack: string
+  services: string[]
+  changes: LabelChange[]
+  publish?: boolean
+}): Promise<SetServiceLabelResult> {
   const { stack, services } = o
   if (services.length === 0) return { ok: false, message: 'Nothing was asked to change.' }
 
@@ -200,7 +205,8 @@ async function run(o: { stack: string; services: string[]; changes: LabelChange[
         (l) => !/^[+-]\s*(shipshape\.(policy|class|watch|pr|claude|source|changelog):|labels:\s*$)/.test(l),
       )
       if (changed.length === 0) return 'The edit produced no diff, so nothing was committed.'
-      if (offending.length > 0) return `The edit touched a non-label line, so it was reverted: ${offending[0]!.slice(0, 120)}`
+      if (offending.length > 0)
+        return `The edit touched a non-label line, so it was reverted: ${offending[0]!.slice(0, 120)}`
       return null
     },
   })

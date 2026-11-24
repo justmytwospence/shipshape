@@ -20,7 +20,8 @@ delete process.env.ANTHROPIC_API_KEY
 delete process.env.OPENROUTER_API_KEY
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-const g = (args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: repo, encoding: 'utf8' }).trim()
+const g = (args: string[]) =>
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: repo, encoding: 'utf8' }).trim()
 g(['init', '-q', '-b', 'main'])
 g(['commit', '-q', '--allow-empty', '-m', 'chore: fixture'])
 const ROOT = g(['rev-parse', 'HEAD'])
@@ -38,15 +39,23 @@ const file = join(repo, 'shipshape.yaml')
 beforeEach(() => {
   g(['reset', '-q', '--hard', ROOT])
   rmSync(file, { force: true })
-
 })
 
 test('resolvePolicyPath: POLICY_FILE wins, then shipshape.yaml, then the older layout, else shipshape.yaml', () => {
   assert.equal(resolvePolicyPath('/r', 's', '/etc/p.yaml'), '/etc/p.yaml')
   assert.equal(resolvePolicyPath('/r', 's', 'x.yaml'), '/r/x.yaml')
-  assert.equal(resolvePolicyPath('/r', 's', undefined, () => true), '/r/shipshape.yaml')
-  assert.equal(resolvePolicyPath('/r', 's', undefined, (p) => p === '/r/s/config/policy.yaml'), '/r/s/config/policy.yaml')
-  assert.equal(resolvePolicyPath('/r', 's', undefined, () => false), '/r/shipshape.yaml')
+  assert.equal(
+    resolvePolicyPath('/r', 's', undefined, () => true),
+    '/r/shipshape.yaml',
+  )
+  assert.equal(
+    resolvePolicyPath('/r', 's', undefined, (p) => p === '/r/s/config/policy.yaml'),
+    '/r/s/config/policy.yaml',
+  )
+  assert.equal(
+    resolvePolicyPath('/r', 's', undefined, () => false),
+    '/r/shipshape.yaml',
+  )
 })
 
 test('the starter parses, is paused, and matches the Settings defaults', () => {

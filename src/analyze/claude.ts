@@ -130,7 +130,6 @@ const EMIT_VERDICT = {
   },
 }
 
-
 export interface AnalyzeTarget {
   image: string
   fromTag: string
@@ -206,8 +205,7 @@ export async function analyze(target: AnalyzeTarget): Promise<ReviewedVerdict | 
     )
 
     const call = res.content.find(
-      (b): b is Extract<typeof b, { type: 'tool_use' }> =>
-        b.type === 'tool_use' && b.name === 'emit_verdict',
+      (b): b is Extract<typeof b, { type: 'tool_use' }> => b.type === 'tool_use' && b.name === 'emit_verdict',
     )
     // Recorded before the answer is judged: a call that came back without a verdict was
     // still billed, and used to leave no trace in the ledger or the budget.
@@ -262,7 +260,9 @@ export function renderPrompt(t: AnalyzeTarget, b: NotesBundle, opts: { web?: boo
 
   // What was looked for and what came back, so a gap reads as a gap and not as "nothing changed".
   if (b.fetches.length > 0) {
-    parts.push(`\nWhat shipshape fetched:\n${b.fetches.map((f) => `- ${f.what}: ${f.outcome}${f.detail ? ` (${f.detail})` : ''}`).join('\n')}`)
+    parts.push(
+      `\nWhat shipshape fetched:\n${b.fetches.map((f) => `- ${f.what}: ${f.outcome}${f.detail ? ` (${f.detail})` : ''}`).join('\n')}`,
+    )
   }
   if (b.omitted.length > 0) parts.push(`Releases in the range left out for length: ${b.omitted.join(', ')}`)
   if (b.changelog && b.changelog.omitted.length > 0) {
@@ -371,8 +371,7 @@ export function normalise(v: Partial<Verdict>, ctx: { notesInRange?: number } = 
       : claimed === 'approve' && (breaking.length > 0 || steps.length > 0)
         ? 'caution'
         : claimed
-  const claimedConf: Confidence =
-    v.confidence === 'high' || v.confidence === 'medium' ? v.confidence : 'low'
+  const claimedConf: Confidence = v.confidence === 'high' || v.confidence === 'medium' ? v.confidence : 'low'
   const conf: Confidence =
     rec === 'approve' && claimedConf === 'high' && ctx.notesInRange === 0 ? 'medium' : claimedConf
   const sev: Severity =
@@ -388,7 +387,9 @@ export function normalise(v: Partial<Verdict>, ctx: { notesInRange?: number } = 
     irreversible: v.irreversible === true,
     recommendation: rec,
     confidence: conf,
-    sources: asArray(v.sources).map(safeHref).filter((s): s is string => s !== null),
+    sources: asArray(v.sources)
+      .map(safeHref)
+      .filter((s): s is string => s !== null),
   }
 }
 
@@ -428,15 +429,21 @@ export function recordCost(
   // A custom endpoint is not priced: its tokens are recorded at no cost, never at the
   // table's fallback rate for an unknown model.
   const c = provider === 'custom' ? unpricedCost(usage) : costOf(usage, model)
-  writeLedger(policy, model, purpose, { ...meta, provider }, {
-    cost: c.cost,
-    input: c.input,
-    output: c.output,
-    cacheWrite: c.cacheWrite,
-    cacheRead: c.cacheRead,
-    searches: c.searches,
-    estimated: false,
-  })
+  writeLedger(
+    policy,
+    model,
+    purpose,
+    { ...meta, provider },
+    {
+      cost: c.cost,
+      input: c.input,
+      output: c.output,
+      cacheWrite: c.cacheWrite,
+      cacheRead: c.cacheRead,
+      searches: c.searches,
+      estimated: false,
+    },
+  )
 }
 
 /**
@@ -454,15 +461,21 @@ export function recordUnanswered(
   meta: CallMeta = {},
 ): void {
   const custom = (meta.provider ?? llmProvider()) === 'custom'
-  writeLedger(policy, model, purpose, { outcome: 'timeout', ...meta }, {
-    cost: custom ? 0 : estimateInputCost(model, promptChars),
-    input: Math.round(promptChars / 4),
-    output: 0,
-    cacheWrite: 0,
-    cacheRead: 0,
-    searches: 0,
-    estimated: !custom,
-  })
+  writeLedger(
+    policy,
+    model,
+    purpose,
+    { outcome: 'timeout', ...meta },
+    {
+      cost: custom ? 0 : estimateInputCost(model, promptChars),
+      input: Math.round(promptChars / 4),
+      output: 0,
+      cacheWrite: 0,
+      cacheRead: 0,
+      searches: 0,
+      estimated: !custom,
+    },
+  )
 }
 
 /** Whether a thrown error is the client giving up waiting, rather than the server refusing. */
@@ -559,9 +572,9 @@ function writeLedger(
 
 export function monthlySpend(): number {
   const month = new Date().toISOString().slice(0, 7)
-  const row = getDb()
-    .prepare(`SELECT value, window FROM budgets WHERE key = 'claude.spend_usd'`)
-    .get() as { value: number; window: string } | undefined
+  const row = getDb().prepare(`SELECT value, window FROM budgets WHERE key = 'claude.spend_usd'`).get() as
+    | { value: number; window: string }
+    | undefined
   return row && row.window === month ? row.value : 0
 }
 

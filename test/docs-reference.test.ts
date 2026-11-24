@@ -182,3 +182,10 @@ test('every documentation link in the code, the examples and the README leads to
   }
   assert.deepEqual(broken, [], broken.join('\n'))
 })
+
+test('the README quick start uses the same image as the example compose file', () => {
+  const image = (text: string) => text.match(/^\s*image:\s*(\S+)/m)?.[1]
+  const example = image(readFileSync(join(ROOT, 'examples', 'compose', 'quickstart', 'compose.yaml'), 'utf8'))
+  assert.ok(example, 'examples/compose/quickstart/compose.yaml has no image line')
+  assert.equal(image(readFileSync(join(ROOT, 'README.md'), 'utf8')), example)
+})

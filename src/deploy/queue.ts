@@ -29,9 +29,8 @@ import { inFlightDeployIds, runClaimedDeploy, stackBusy, syncBeforeDeploy } from
  * it up. That is the entire point of this module -- everything else here is bookkeeping
  * around that one guarantee.
  *
- * Draining happens after `pollPrs` rather than inside it, so noticing a merge and acting
- * on it are no longer the same step. A deploy that spends five minutes in its verify
- * window used to block the loop from seeing that three other pull requests had merged.
+ * Draining is its own step in the loop, so a deploy that spends five minutes in its
+ * verify window never stops the next pass from shipping.
  */
 
 /** Bounded per tick so a backlog drains steadily instead of monopolising one pass. */

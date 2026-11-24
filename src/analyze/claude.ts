@@ -25,8 +25,8 @@ import { safeHref } from '../links.ts'
  * what actually changed.
  *
  * SECURITY: release notes are untrusted input. The verdict can only ever *withhold* a
- * merge (see canAutoMerge in policy.ts), so the worst a hostile changelog can achieve is
- * to stop an update -- never to cause one. That asymmetry is the boundary, not the
+ * merge (see the holds in src/updates/holds.ts), so the worst a hostile changelog can
+ * achieve is to stop an update -- never to cause one. That asymmetry is the boundary, not the
  * prompt wording.
  */
 

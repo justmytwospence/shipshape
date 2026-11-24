@@ -11,8 +11,9 @@ import { rewriteFroms } from './compose/dockerfile.ts'
 /**
  * The exact one-line change a PR for this update would contain, rendered as a diff.
  *
- * Read-only and independent of the M2 editor, but deliberately the same operation:
- * locate `services.<service>.image` through the YAML CST and touch nothing else. If
+ * Read-only and independent of the compose editor (src/gitops/editor.ts), but
+ * deliberately the same operation: locate `services.<service>.image` through the YAML
+ * CST and touch nothing else. If
  * this preview ever shows more than a single replaced line, the editor would too, and
  * that is a bug worth seeing before a PR exists rather than after.
  */
@@ -94,7 +95,8 @@ export function buildUpdateDiff(updateId: number): DiffResult {
   // Assert the file still holds what this update was computed against, before deriving
   // anything from it. Without this a stale row renders a plausible-looking diff that
   // proposes a DOWNGRADE: the row's from_tag is replaced into whatever the file happens
-  // to say now. The M2 editor makes the identical assertion before splicing bytes.
+  // to say now. The compose editor (src/gitops/editor.ts) makes the identical assertion
+  // before splicing bytes.
   const expectedOld = rewriteRef(row.image_ref, row.from_tag)
   if (expectedOld !== located.value) {
     return {

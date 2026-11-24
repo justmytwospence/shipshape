@@ -198,8 +198,6 @@ export function allowedOrigin(): string | undefined {
 }
 
 
-/** Where policy.yaml lives. Defaults inside the watched repo so it is tracked and
- *  reviewable like everything else; POLICY_FILE overrides for any other layout. */
 /**
  * POLICY_FILE; else $REPO_DIR/shipshape.yaml if present; else the older
  * $REPO_DIR/<SELF_STACK>/config/policy.yaml if present; else $REPO_DIR/shipshape.yaml, which
@@ -228,7 +226,6 @@ export const paths = {
   /** The tool's own clone. All branch/edit/commit/push work happens here so the
    *  checkout -- which routinely carries uncommitted work -- is never disturbed. */
   workRepo: join(env.dataDir, 'repo'),
-  lock: join(env.dataDir, 'git.lock'),
   policy: policyPath(),
 } as const
 

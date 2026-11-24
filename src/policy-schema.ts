@@ -12,7 +12,6 @@ export const MODEL_DEFAULTS: Record<LlmProvider, { reader: string; code: string 
 }
 
 
-/** The model every stage defaults to, spelled for whoever serves it. */
 /** The reader: a reading is a summary of release notes, so the mid-sized model does it. */
 export const DEFAULT_READER_MODEL = MODEL_DEFAULTS[providerOf(env)].reader
 

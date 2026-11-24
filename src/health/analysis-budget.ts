@@ -33,7 +33,7 @@ import { notify, resolveIncident } from '../notify/index.ts'
  * freeze every update. Budget exhaustion is a weaker case for fail-open than an outage --
  * it is self-inflicted, knowable in advance, and lasts until the 1st -- but the fix for
  * "nobody knew" is to tell somebody, not to quietly invert a documented safety decision
- * underneath them. `shipshape.claude: required` remains the per-service way to say
+ * underneath them. `shipshape.review: required` remains the per-service way to say
  * "rather stall than merge unread".
  */
 

@@ -2,8 +2,7 @@ node_modules/
 dist/
 *.log
 
-# Local scratch: a copy of real compose files used as test fixtures is committed
-# under test/fixtures/, but never a real .env.
+# Never a real .env.
 .env
 
 # Scratch: UI dev sandbox (database snapshot + throwaway checkout) and screenshots.

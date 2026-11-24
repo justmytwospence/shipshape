@@ -2,6 +2,7 @@ import type { Sink } from '../../policy-schema.ts'
 import { logEvent } from '../../events.ts'
 import type { Message } from '../types.ts'
 import { actionUrl } from '../links.ts'
+import { userAgent } from '../../version.ts'
 
 /**
  * The ntfy sink: one JSON publish per first fire or escalation, with the card's actions as
@@ -32,7 +33,11 @@ export async function sendNtfy(sink: NtfySink, opts: Message, doFetch: typeof fe
   try {
     const res = await doFetch(sink.url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      headers: {
+        'content-type': 'application/json',
+        'user-agent': userAgent(),
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({
         topic: sink.topic,
         title: opts.title,

@@ -457,6 +457,7 @@ const LINK_PREVIEW_REFUSED = {
 
 export const STATUS = {
   version: '0.1.0',
+  revision: null,
   repoDir: '/srv/compose',
   repo: 'you/repo',
   pushMain: true,

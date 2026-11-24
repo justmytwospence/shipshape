@@ -1,4 +1,5 @@
 import { pace } from '../registry/http.ts'
+import { userAgent } from '../version.ts'
 
 /**
  * What a registry says about an image in prose.
@@ -68,7 +69,7 @@ async function getJson(
   try {
     await pace(new URL(url).host)
     res = await fetch(url, {
-      headers: { accept: 'application/json', 'user-agent': 'shipshape/0.1' },
+      headers: { accept: 'application/json', 'user-agent': userAgent() },
       signal: AbortSignal.timeout(20_000),
     })
   } catch (err) {

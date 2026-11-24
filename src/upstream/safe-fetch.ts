@@ -2,6 +2,7 @@ import { getDb } from '../db/index.ts'
 import { readCache, writeCache, type CacheRow } from '../registry/http.ts'
 import { htmlToText } from '../notes/html.ts'
 import { checkUrl, publicAddress } from './hosts.ts'
+import { userAgent } from '../version.ts'
 
 /**
  * Fetching a link an operator typed, and nothing it could be turned into.
@@ -56,7 +57,7 @@ export async function safeFetch(link: string): Promise<SafeFetch> {
         redirect: 'manual',
         signal: deadline,
         headers: {
-          'user-agent': 'shipshape/0.1',
+          'user-agent': userAgent(),
           accept: 'text/markdown, text/plain;q=0.9, text/html;q=0.8',
           ...(hop === 0 && cached?.etag ? { 'if-none-match': cached.etag } : {}),
         },

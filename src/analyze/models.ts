@@ -1,4 +1,5 @@
 import { getDb } from '../db/index.ts'
+import { userAgent } from '../version.ts'
 import { llmProvider, modelsEndpoint } from './client.ts'
 
 /**
@@ -20,7 +21,7 @@ export async function listModels(): Promise<string[]> {
 
   try {
     const res = await fetch(endpoint.url, {
-      headers: endpoint.headers,
+      headers: { 'user-agent': userAgent(), ...endpoint.headers },
       signal: AbortSignal.timeout(15_000),
     })
     if (!res.ok) return []

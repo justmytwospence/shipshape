@@ -1,5 +1,6 @@
 import { env } from '../env.ts'
 import { pace, readCache, touchCache, writeCache, type CacheRow } from '../registry/http.ts'
+import { userAgent } from '../version.ts'
 
 /**
  * GitHub, as one client.
@@ -35,14 +36,13 @@ export interface GhRequestOpts<T> {
 
 const API = 'https://api.github.com'
 const TIMEOUT_MS = 20_000
-const USER_AGENT = 'shipshape/0.1'
 
 export async function ghRequest<T>(path: string, opts: GhRequestOpts<T> = {}): Promise<GhResult<T>> {
   const url = path.startsWith('https://') ? path : `${API}${path}`
   const token = opts.token ?? env.githubToken
   const headers: Record<string, string> = {
     accept: 'application/vnd.github+json',
-    'user-agent': USER_AGENT,
+    'user-agent': userAgent(),
   }
   if (token) headers.authorization = `Bearer ${token}`
 
@@ -133,7 +133,7 @@ export async function rawFile(repo: string, path: string, ref = 'HEAD'): Promise
   let res: Response
   try {
     await pace('raw.githubusercontent.com')
-    res = await fetch(url, { headers: { 'user-agent': USER_AGENT }, signal: AbortSignal.timeout(TIMEOUT_MS) })
+    res = await fetch(url, { headers: { 'user-agent': userAgent() }, signal: AbortSignal.timeout(TIMEOUT_MS) })
   } catch (err) {
     return { ok: false, kind: 'network', detail: `GitHub could not be reached (${(err as Error).message})` }
   }

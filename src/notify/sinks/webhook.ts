@@ -3,6 +3,7 @@ import type { Sink } from '../../policy-schema.ts'
 import { getDb } from '../../db/index.ts'
 import { logEvent } from '../../events.ts'
 import type { IncidentAction, IncidentStatus, Message, Priority } from '../types.ts'
+import { userAgent } from '../../version.ts'
 
 /**
  * The webhook sink: an incident posted as JSON to any URL. A receiver that keeps one
@@ -95,7 +96,11 @@ async function deliver(
   try {
     const res = await fetch(ep.url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...(ep.token ? { authorization: `Bearer ${ep.token}` } : {}) },
+      headers: {
+        'content-type': 'application/json',
+        'user-agent': userAgent(),
+        ...(ep.token ? { authorization: `Bearer ${ep.token}` } : {}),
+      },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(10_000),
     })

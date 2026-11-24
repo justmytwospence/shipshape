@@ -1,6 +1,7 @@
 import { getDb } from '../db/index.ts'
 import { logEvent } from '../events.ts'
 import { publicAddress, refusedHost } from '../upstream/hosts.ts'
+import { userAgent } from '../version.ts'
 
 /**
  * Shared HTTP plumbing for registry access: bearer-token caching, ETag revalidation,
@@ -13,8 +14,6 @@ import { publicAddress, refusedHost } from '../upstream/hosts.ts'
  * existence checks use HEAD (not billed), and manifest/config GETs are billed, cached
  * by digest forever, and refused below a reserve floor.
  */
-
-const USER_AGENT = 'shipshape/0.1 (+https://github.com/justmytwospence/shipshape)'
 
 /** Never spend the last slice of the Hub budget: a `docker compose pull` during a
  *  deploy needs headroom, and being locked out mid-deploy is far worse than a delayed
@@ -89,7 +88,7 @@ export async function registryFetch(url: string, opts: FetchOpts = {}): Promise<
 
   if (opts.billed) chargeHubBudget(host)
 
-  const headers: Record<string, string> = { 'user-agent': USER_AGENT }
+  const headers: Record<string, string> = { 'user-agent': userAgent() }
   if (opts.accept) headers.accept = opts.accept
 
   const cached = opts.cacheKey ? readCache(opts.cacheKey) : null
@@ -187,7 +186,7 @@ async function acquireToken(
   if (params.scope) u.searchParams.set('scope', params.scope)
   await checkHop(u, home, 'asked for a token from')
 
-  const headers: Record<string, string> = { 'user-agent': USER_AGENT }
+  const headers: Record<string, string> = { 'user-agent': userAgent() }
   // Docker Hub credentials are Docker Hub's: they go to its auth server and nowhere else.
   if (auth && u.hostname === 'auth.docker.io') {
     headers.authorization = `Basic ${Buffer.from(`${auth.username}:${auth.password}`).toString('base64')}`

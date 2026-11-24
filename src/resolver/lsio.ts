@@ -1,5 +1,6 @@
 import { normaliseSourceUrl } from './labels.ts'
 import { HOUR } from './types.ts'
+import { userAgent } from '../version.ts'
 
 /** LinuxServer's own API exposes `project_url` -- the real upstream, which the OCI label
  *  never gives (it points at the packaging repo). One request covers every lsio image. */
@@ -29,7 +30,7 @@ export async function lsioProjects(): Promise<
   if (lsioMemo && Date.now() - lsioMemo.at < LSIO_TTL_MS) return { ok: true, projects: lsioMemo.projects }
   try {
     const res = await fetch(LSIO_URL, {
-      headers: { 'user-agent': 'shipshape/0.1' },
+      headers: { 'user-agent': userAgent() },
       signal: AbortSignal.timeout(20_000),
     })
     if (!res.ok) return { ok: false, error: `the LinuxServer API answered ${res.status}` }

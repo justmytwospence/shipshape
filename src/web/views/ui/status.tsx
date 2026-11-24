@@ -21,6 +21,8 @@ import type { SecurityPanel } from '../../../security/panel.ts'
 
 export interface StatusData {
   version: string
+  /** The commit the image was built from (12 hex characters), when the image says. */
+  revision: string | null
   repoDir: string
   repo: string
   pushMain: boolean
@@ -411,7 +413,7 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
             <H>This deployment</H>
             <KV
               rows={[
-                ['version', data.version],
+                ['version', data.revision ? `${data.version} (${data.revision})` : data.version],
                 ['checkout', data.repoDir || 'not set'],
                 ['repository', data.repo || 'not set'],
                 ['remote', data.remote ?? 'not set'],

@@ -4,6 +4,7 @@ import type { Policy } from '../policy-schema.ts'
 import { getDb } from '../db/index.ts'
 import { logEvent } from '../events.ts'
 import { safeHref } from '../links.ts'
+import { userAgent } from '../version.ts'
 
 /**
  * Reading the incident index (pwn.watch's incidents.json).
@@ -128,7 +129,7 @@ export async function pollFeed(policy: Policy, fetchImpl: typeof fetch = fetch):
   const url = policy.security.feed
   const db = getDb()
   const cached = db.prepare(`SELECT etag FROM http_cache WHERE url = ?`).get(url) as { etag: string | null } | undefined
-  const headers: Record<string, string> = { accept: 'application/json', 'user-agent': 'shipshape (homelab update bot)' }
+  const headers: Record<string, string> = { accept: 'application/json', 'user-agent': userAgent() }
   if (cached?.etag) headers['if-none-match'] = cached.etag
 
   const res = await fetchImpl(url, { headers, signal: AbortSignal.timeout(30_000) })

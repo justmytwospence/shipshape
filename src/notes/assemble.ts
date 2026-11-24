@@ -6,6 +6,7 @@ import { compareKeys, inRange, sameVersion, versionKey, type VersionKey } from '
 import { SECTION_CAP, TOTAL_CAP, fileVersion, sectionize, sectionsInRange, type Section } from './sectionize.ts'
 import { externalNotes, type ExternalNotes } from './external.ts'
 import type { ChangelogTarget } from '../resolver/labels.ts'
+import { userAgent } from '../version.ts'
 
 export { fileVersion } from './sectionize.ts'
 
@@ -573,7 +574,7 @@ async function containerChanges(b: NotesBundle, ref: ImageRef): Promise<void> {
   const name = ref.repository.slice('linuxserver/'.length)
   try {
     const res = await fetch('https://api.linuxserver.io/api/v1/images?include_config=false&include_deprecated=false', {
-      headers: { 'user-agent': 'shipshape/0.1' },
+      headers: { 'user-agent': userAgent() },
       signal: AbortSignal.timeout(20_000),
     })
     if (!res.ok) {

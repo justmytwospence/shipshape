@@ -3,7 +3,7 @@ import { loadPolicy, policyFileState } from '../../config.ts'
 import type { Policy } from '../../policy-schema.ts'
 import { env, gitBranch, gitCredentialName } from '../../env.ts'
 import { getDb } from '../../db/index.ts'
-import { version } from '../../version.ts'
+import { revision, version } from '../../version.ts'
 import { scanInfo } from '../../scan/index.ts'
 import { sourceCounts } from '../../resolver/index.ts'
 import { scheduleInfo } from '../../scheduler.ts'
@@ -39,6 +39,7 @@ const statusData = (): StatusData => {
 
   return {
     version: version(),
+    revision: revision(),
     repoDir: env.repoDir,
     repo: env.githubRepo || env.gitRemote.webUrl || '',
     pushMain: policy.sync.push_main,

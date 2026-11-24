@@ -3,6 +3,7 @@ import { logEvent } from '../../events.ts'
 import { messageLinks } from '../links.ts'
 import type { Message, Priority } from '../types.ts'
 import { FireOnce } from './once.ts'
+import { userAgent } from '../../version.ts'
 
 /**
  * The Apprise sink: one notification per first fire or escalation, through an Apprise API
@@ -48,7 +49,11 @@ export async function sendApprise(sink: AppriseSink, opts: Message, doFetch: typ
   try {
     const res = await doFetch(sink.url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...(auth ? { authorization: auth } : {}) },
+      headers: {
+        'content-type': 'application/json',
+        'user-agent': userAgent(),
+        ...(auth ? { authorization: auth } : {}),
+      },
       body: JSON.stringify({
         title: opts.title,
         body,

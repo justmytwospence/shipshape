@@ -3,6 +3,7 @@ import { logEvent } from '../../events.ts'
 import { messageLinks } from '../links.ts'
 import type { Message, Priority } from '../types.ts'
 import { FireOnce } from './once.ts'
+import { userAgent } from '../../version.ts'
 
 /**
  * The Gotify sink: one plain-text message per first fire or escalation. Plain text because
@@ -29,7 +30,7 @@ export async function sendGotify(sink: GotifySink, opts: Message, doFetch: typeo
   try {
     const res = await doFetch(`${sink.url.replace(/\/+$/, '')}/message`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-gotify-key': token },
+      headers: { 'content-type': 'application/json', 'user-agent': userAgent(), 'x-gotify-key': token },
       body: JSON.stringify({
         title: opts.title,
         message,

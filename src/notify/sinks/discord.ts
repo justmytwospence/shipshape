@@ -3,6 +3,7 @@ import { logEvent } from '../../events.ts'
 import { messageLinks } from '../links.ts'
 import type { Message, Priority } from '../types.ts'
 import { FireOnce } from './once.ts'
+import { userAgent } from '../../version.ts'
 
 /**
  * The Discord sink: one embed per first fire or escalation, posted to a channel webhook.
@@ -36,7 +37,7 @@ export async function sendDiscord(sink: DiscordSink, opts: Message, doFetch: typ
   try {
     const res = await doFetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'user-agent': userAgent() },
       body: JSON.stringify({
         username: 'shipshape',
         allowed_mentions: { parse: [] },

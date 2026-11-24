@@ -1,6 +1,7 @@
 import type { FC } from 'hono/jsx'
 import { Icon } from './icon.tsx'
 import type { SettingDef } from '../../../settings.ts'
+import { ZONE } from '../../time.ts'
 
 /**
  * Settings: one page, in the order an update travels through shipshape.
@@ -127,8 +128,8 @@ const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) 
             />
           )}
         </div>
-        {def.kind === 'cron' && describeCron(value) ? (
-          <p class="mt-0.5 text-xs">{describeCron(value)}</p>
+        {def.kind === 'cron' && describeCron(value, ZONE) ? (
+          <p class="mt-0.5 text-xs">{describeCron(value, ZONE)}</p>
         ) : null}
         {help ? <p class="mt-0.5 max-w-prose text-xs opacity-60">{help}</p> : null}
       </div>
@@ -142,8 +143,15 @@ const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) 
  * Anything else returns null and the expression speaks for itself: a wrong description
  * of a schedule is worse than none.
  */
-export function describeCron(expr: string): string | null {
-  const f = expr.trim().split(/\s+/)
+export function describeCron(expr: string, zone?: string): string | null {
+  const said = describeCronBare(expr)
+  return said && zone ? `${said} (${zone})` : said
+}
+
+function describeCronBare(expr: string): string | null {
+  let f = expr.trim().split(/\s+/)
+  // Five fields are croner's minute-first form: seconds are zero.
+  if (f.length === 5) f = ['0', ...f]
   if (f.length !== 6) return null
   const [sec, min, hour, dom, mon, dow] = f as [string, string, string, string, string, string]
   if (sec !== '0' || dom !== '*' || mon !== '*') return null

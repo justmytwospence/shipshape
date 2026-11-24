@@ -174,6 +174,38 @@
   document.body.addEventListener('htmx:responseError', failed)
   document.body.addEventListener('htmx:sendError', failed)
 
+  // ------------------------------------------------------------------- times
+  //
+  // Every <time> is re-rendered here, in the server's zone (<html data-tz>), so a page
+  // left open keeps saying "5m ago" truthfully and Activity's clocks match its day headers.
+  var TZ = document.documentElement.getAttribute('data-tz') || undefined
+  function fmt(opts) {
+    try {
+      return new Intl.DateTimeFormat(undefined, Object.assign({ timeZone: TZ }, opts))
+    } catch (e) {
+      return new Intl.DateTimeFormat(undefined, opts)
+    }
+  }
+  var CLOCK = fmt({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+  // The same words as relative() in src/web/views/ui/parts.tsx.
+  function rel(ms) {
+    var abs = Math.abs(ms)
+    var mins = Math.round(abs / 60000)
+    if (mins < 1) return 'just now'
+    var span = mins < 60 ? mins + 'm' : abs < 86400000 ? Math.round(mins / 60) + 'h' : Math.round(mins / 1440) + 'd'
+    return ms >= 0 ? span + ' ago' : 'in ' + span
+  }
+  function formatTimes() {
+    document.querySelectorAll('time[data-format]').forEach(function (t) {
+      var at = Date.parse(t.getAttribute('datetime'))
+      if (isNaN(at)) return
+      t.textContent = t.getAttribute('data-format') === 'clock' ? CLOCK.format(at) : rel(Date.now() - at)
+    })
+  }
+  addEventListener('DOMContentLoaded', formatTimes)
+  document.body.addEventListener('htmx:afterSettle', formatTimes)
+  setInterval(formatTimes, 60000)
+
   // ----------------------------------------------------------------- dialogs
   //
   // Native <dialog>: focus trap, Escape and backdrop dismissal come free, and on iOS it

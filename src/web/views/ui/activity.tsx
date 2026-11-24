@@ -1,6 +1,7 @@
 import type { FC } from 'hono/jsx'
 import { EmptyState, Relative, Search, Tabs } from './parts.tsx'
 import { GroupHeader } from './update.tsx'
+import { clockText, dayKey } from '../../time.ts'
 
 /**
  * The log, readable.
@@ -77,23 +78,19 @@ export const ActivityToolbar: FC<{ kind: string; problems: boolean; q: string }>
 )
 
 function dayOf(iso: string): string {
-  return iso.slice(0, 10)
+  return dayKey(iso)
 }
 
 function dayLabel(day: string): string {
-  const today = new Date().toISOString().slice(0, 10)
-  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
+  const today = dayKey(new Date().toISOString())
+  const yesterday = dayKey(new Date(Date.now() - 86_400_000).toISOString())
   if (day === today) return 'Today'
   if (day === yesterday) return 'Yesterday'
-  return new Date(`${day}T12:00:00Z`).toLocaleDateString(undefined, {
+  return new Date(`${day}T12:00:00Z`).toLocaleDateString('en-US', {
     month: 'long',
     day: 'numeric',
+    timeZone: 'UTC',
   })
-}
-
-function clock(iso: string): string {
-  const d = new Date(iso)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 /**
@@ -122,7 +119,9 @@ const ActivityLine: FC<{ row: ActivityRow }> = ({ row: r }) => {
         <Relative at={r.lastAt ?? r.at} />
       </span>
       {/* lg cells */}
-      <span class="hidden font-mono text-xs opacity-60 lg:block">{clock(r.lastAt ?? r.at)}</span>
+      <time datetime={r.lastAt ?? r.at} data-format="clock" class="hidden font-mono text-xs opacity-70 lg:block">
+        {clockText(r.lastAt ?? r.at)}
+      </time>
       <span class="hidden lg:block">
         <span class="badge badge-xs badge-ghost">{KIND_LABEL[r.kind as EventKind] ?? r.kind}</span>
       </span>

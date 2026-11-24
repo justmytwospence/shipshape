@@ -173,7 +173,7 @@ export const ServiceName: FC<{ stack: string; service: string }> = ({ stack, ser
 
 export const Relative: FC<{ at: string | null | undefined }> = ({ at }) =>
   at ? (
-    <time datetime={at} class="text-xs whitespace-nowrap opacity-60">
+    <time datetime={at} data-format="relative" class="text-xs whitespace-nowrap opacity-70">
       {relative(at)}
     </time>
   ) : null
@@ -217,10 +217,21 @@ export const ScanStatus: FC<{ running: boolean; lastAt: string | null }> = ({
       <span class="loading loading-ring loading-xs" /> scanning…
     </span>
   ) : (
-    <span class="text-xs opacity-60">{lastAt ? `scanned ${relative(lastAt)}` : 'idle'}</span>
+    <span class="text-xs opacity-70">
+      {lastAt ? (
+        <>
+          scanned{' '}
+          <time datetime={lastAt} data-format="relative">
+            {relative(lastAt)}
+          </time>
+        </>
+      ) : (
+        'idle'
+      )}
+    </span>
   )
 
-export const EmptyState: FC<{ icon: IconName; title: string; hint?: string }> = ({
+export const EmptyState: FC<{ icon: IconName; title: string; hint?: unknown }> = ({
   icon,
   title,
   hint,

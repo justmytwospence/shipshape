@@ -1,7 +1,7 @@
 import { OUTCOMES } from '../../../updates/vocabulary.ts'
 import type { FC } from 'hono/jsx'
 import { Icon, type IconName } from './icon.tsx'
-import { Change, EmptyState, ExtLink, Relative, ServiceName } from './parts.tsx'
+import { Change, EmptyState, ExtLink, Relative, ServiceName, relative } from './parts.tsx'
 import { GroupHeader, UpdateRow } from './update.tsx'
 import type { AttentionItem, AttentionKind, RecentItem, UpdateView } from '../../../updates/queries.ts'
 import type { SetupState } from '../../onboarding.ts'
@@ -150,9 +150,17 @@ export const InboxList: FC<{ data: InboxData; selectedId?: number }> = ({ data, 
           icon="check"
           title="Nothing needs you."
           hint={
-            data.scan.nextAt
-              ? `Everything tracked is current or on its way. Next scan ${relativeish(data.scan.nextAt)}.`
-              : 'Everything tracked is current or on its way.'
+            data.scan.nextAt ? (
+              <>
+                Everything tracked is current or on its way. Next scan{' '}
+                <time datetime={data.scan.nextAt} data-format="relative">
+                  {relative(data.scan.nextAt)}
+                </time>
+                .
+              </>
+            ) : (
+              'Everything tracked is current or on its way.'
+            )
           }
         />
       )}
@@ -256,10 +264,3 @@ export const InboxAside: FC<{ data: InboxData }> = ({ data }) => (
     <RecentList recent={data.recent} hint="what happened without you, last 24 hours" />
   </div>
 )
-
-function relativeish(iso: string): string {
-  const mins = Math.round((Date.parse(iso) - Date.now()) / 60_000)
-  if (mins < 60) return `in ${Math.max(1, mins)}m`
-  if (mins < 1440) return `in ${Math.round(mins / 60)}h`
-  return `in ${Math.round(mins / 1440)}d`
-}

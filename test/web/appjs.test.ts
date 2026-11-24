@@ -37,3 +37,8 @@ test('an error toast is an alert with a close button and a pausable timer', () =
   assert.match(src, /mouseenter/)
   assert.match(src, /focusin/)
 })
+
+test("times tick every minute in the server's zone", () => {
+  assert.match(src, /setInterval\(formatTimes, 60000\)/)
+  assert.match(src, /getAttribute\('data-tz'\)/)
+})

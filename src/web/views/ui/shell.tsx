@@ -1,5 +1,6 @@
 import type { FC, PropsWithChildren } from 'hono/jsx'
 import { THEME_SCRIPT } from '../../theme-script.ts'
+import { ZONE } from '../../time.ts'
 import { SignOutForm } from './auth.tsx'
 import { Icon, type IconName } from './icon.tsx'
 import { Relative, ScanStatus } from './parts.tsx'
@@ -96,7 +97,7 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
   const paused = !!chrome?.paused
   const missing = chrome?.missing ?? []
   return (
-  <html lang="en">
+  <html lang="en" data-tz={ZONE}>
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />

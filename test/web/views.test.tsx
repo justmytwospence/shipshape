@@ -611,3 +611,20 @@ test('fork copy links the forks guide', () => {
 test('the toast host is not itself a live region', () => {
   assert.doesNotMatch(VIEWS.layout!, /id="toasts"[^>]*aria-live/)
 })
+
+test('every time a person reads is a <time> the browser can refresh', () => {
+  assert.match(VIEWS.activity!, /<time datetime="[^"]+" data-format="clock"/)
+  assert.match(VIEWS['update-row']!, /data-format="relative"/)
+})
+
+test('the page says which zone its times are in', () => {
+  assert.match(VIEWS.layout!, /<html lang="en" data-tz="[^"]+"/)
+})
+
+test('a schedule names its zone', async () => {
+  const { describeCron } = await import('../../src/web/views/ui/settings.tsx')
+  assert.equal(describeCron('0 0 3 * * *', 'UTC'), 'Every day at 03:00 (UTC)')
+  assert.equal(describeCron('0 0 3 * * *'), 'Every day at 03:00')
+  assert.equal(describeCron('30 4 * * *'), 'Every day at 04:30')
+  assert.equal(describeCron('*/5 * * * * *', 'UTC'), null)
+})

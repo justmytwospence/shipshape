@@ -9,6 +9,7 @@ import { getDb, logEvent } from '../db.ts'
 import { serverHandle, type ServerHandle } from '../lifecycle.ts'
 import { version } from './version.ts'
 import { setupSteps } from './onboarding.ts'
+import { ZONE } from './time.ts'
 import { describeCron } from './views/ui/settings.tsx'
 import { reviewOffReason } from '../analyze/review-state.ts'
 import { health } from '../health/liveness.ts'
@@ -317,7 +318,7 @@ export function createApp(): Hono {
         stacks: counts.stacks,
         watched: counts.watched ?? 0,
         lastScanAt: info.lastAt,
-        schedule: describeCron(cron) ?? cron,
+        schedule: describeCron(cron, ZONE) ?? cron,
         reviewOff: reviewOffReason(policy),
         reader: policy.review.model,
         paused: policy.paused,

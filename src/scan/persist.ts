@@ -304,7 +304,7 @@ export async function persist(
 }
 
 
-function persistDigest(svc: ScannedService, c: DigestCheck, policy: Policy): string {
+function persistDigest(svc: ScannedService, c: DigestCheck, _policy: Policy): string {
   const tag = svc.ref?.tag ?? 'latest'
 
   switch (c.status) {

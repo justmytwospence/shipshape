@@ -88,7 +88,7 @@ test('a failed dump fails the restore point, removes what it made, and says why'
   image('n8n', 'n8n-a', 'dump-a')
   image('n8n', 'n8n-b', 'dump-b')
   const fake = io({
-    dump: async (c, command, path) => {
+    dump: async (_c, command, path) => {
       if (command === 'dump-b') return { ok: false, reason: 'exit 1: no such database' }
       mkdirSync(dirname(path), { recursive: true })
       writeFileSync(path, 'x')

@@ -311,7 +311,7 @@ async function startRedeploy(row: UpdateRow, io?: DeployIo): Promise<VerbResult>
  * has to re-enter the pipeline from the top, which means clearing the tombstone that
  * stops the scan re-offering it and letting the next ship pass pick it up.
  */
-async function retry(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Promise<VerbResult> {
+async function retry(row: UpdateRow, _ctx: ActionContext, io?: DeployIo): Promise<VerbResult> {
   if (row.state === 'merged') {
     const now = new Date().toISOString()
     const db = getDb()
@@ -363,7 +363,7 @@ async function retry(row: UpdateRow, ctx: ActionContext, io?: DeployIo): Promise
 }
 
 /** Put the previous version back, on purpose rather than because verification said so. */
-async function rollback(row: UpdateRow, ctx: ActionContext, prId: number | null, io?: DeployIo): Promise<VerbResult> {
+async function rollback(row: UpdateRow, ctx: ActionContext, _prId: number | null, io?: DeployIo): Promise<VerbResult> {
   const sha = ctx.mergeCommitSha
   if (!sha) return { ok: false, message: 'the merge commit is unknown, so there is nothing to revert' }
 

@@ -1,7 +1,5 @@
-import Anthropic from '@anthropic-ai/sdk'
 import { llmClient, llmConfigured, missingKeyMessage } from '../analyze/client.ts'
 import { loadPolicy } from '../config.ts'
-import { env } from '../env.ts'
 import { isTimeout, recordCost, recordUnanswered } from '../analyze/claude.ts'
 import { WEB_BUDGET, toolChoiceFor, webTools, systemPrompt, webEnabled } from '../analyze/tools.ts'
 import { prompt } from '../prompts/index.ts'

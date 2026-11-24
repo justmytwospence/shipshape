@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { loadPolicy } from '../config.ts'
 import { env } from '../env.ts'
 import { getDb } from '../db/index.ts'
@@ -283,7 +281,6 @@ export async function runAnalysisPass(limit = 3): Promise<AnalysisRun> {
     return out
   }
 
-  const db = getDb()
   const screenCanRun = jevConfigured() && screenSpendThisMonth() < SCREEN_MONTHLY_CEILING_USD
   const pending = pendingAnalysis(Number.MAX_SAFE_INTEGER)
     .filter((row) =>

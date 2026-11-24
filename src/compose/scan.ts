@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { parseImageRef, type ImageRef } from '../images/ref.ts'

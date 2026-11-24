@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { KNOWN_LABELS, parseWaitsOn, scanRepo } from '../src/compose/scan.ts'
-import { actionsFor, refusalFor } from '../src/updates/actions.ts'
+import { actionsFor } from '../src/updates/actions.ts'
 
 /**
  * A fork (the forks guide) is a `build:` service that is watched anyway: its `ref` is the

@@ -27,7 +27,6 @@ const { buildBranch, upstreamRefAt } = await import('../src/gitops/build.ts')
 const { changeTitle } = await import('../src/gitops/body.ts')
 const { carriedFixesSection } = await import('../src/gitops/body.ts')
 const { forkConflictFor, forkPreparedFor } = await import('../src/forks.ts')
-const { PolicySchema } = await import('../src/policy-schema.ts')
 
 const OLD_SHA = 'ecca03b9b1b03f2aa6023ac34f5dc5dadbdbe4dd'
 const NEW_SHA = '9f1c2d3e4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d'

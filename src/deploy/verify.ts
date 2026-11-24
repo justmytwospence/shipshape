@@ -95,7 +95,6 @@ export interface Sample {
 export class Verifier {
   private tracks = new Map<string, Track>()
   private cliErrors = 0
-  private elapsedMs = 0
   private imageChecked = false
 
   constructor(
@@ -120,7 +119,6 @@ export class Verifier {
 
   /** Feed one round of observations. Returns null while it needs more. */
   push(samples: Sample[], elapsedMs: number): Verdict | null {
-    this.elapsedMs = elapsedMs
 
     if (samples.length === 0) {
       this.cliErrors++

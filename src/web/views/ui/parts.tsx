@@ -154,7 +154,7 @@ export const Mono: FC<PropsWithChildren> = ({ children }) => (
 /** `1.2.3 → 1.3.0`, with digests shortened to something a person can compare. */
 export const Change: FC<{ from: string; to: string }> = ({ from, to }) => (
   <span class="inline-block max-w-full truncate align-bottom font-mono text-xs whitespace-nowrap">
-    {shorten(from)} <span class="opacity-50">→</span>{' '}
+    {shorten(from)} <span class="opacity-70">→</span>{' '}
     <span class="font-medium">{shorten(to)}</span>
   </span>
 )
@@ -166,7 +166,7 @@ export function shorten(tag: string): string {
 
 export const ServiceName: FC<{ stack: string; service: string }> = ({ stack, service }) => (
   <span class="truncate">
-    {stack === service ? null : <span class="opacity-55">{stack}/</span>}
+    {stack === service ? null : <span class="opacity-70">{stack}/</span>}
     <span class="font-medium">{service}</span>
   </span>
 )
@@ -239,7 +239,7 @@ export const EmptyState: FC<{ icon: IconName; title: string; hint?: unknown }> =
   <div class="flex flex-col items-center gap-1.5 px-4 py-8 text-center">
     <Icon name={icon} class="size-6 opacity-30" />
     <p class="text-sm font-medium">{title}</p>
-    {hint ? <p class="max-w-sm text-xs opacity-60">{hint}</p> : null}
+    {hint ? <p class="max-w-sm text-xs opacity-70">{hint}</p> : null}
   </div>
 )
 
@@ -260,7 +260,7 @@ export const Tabs: FC<{
   label: string
 }> = ({ name, value, options, label }) => (
   <div
-    role="tablist"
+    role="radiogroup"
     aria-label={label}
     class="tabs tabs-box tabs-xs shrink-0 flex-nowrap p-0.5"
   >
@@ -292,7 +292,7 @@ export const Search: FC<{ value: string; placeholder: string }> = ({ value, plac
 export const ListCount: FC<{ n: number; oob?: boolean }> = ({ n, oob }) => (
   <span
     id="list-count"
-    class="text-xs whitespace-nowrap opacity-60"
+    class="text-xs whitespace-nowrap opacity-70"
     {...(oob ? { 'hx-swap-oob': 'true' } : {})}
   >
     {n} shown

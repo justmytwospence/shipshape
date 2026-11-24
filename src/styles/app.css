@@ -44,7 +44,7 @@
   --color-info-content: oklch(98% 0.01 235);
   --color-success: oklch(50% 0.13 150);
   --color-success-content: oklch(98% 0.02 150);
-  --color-warning: oklch(62% 0.13 65);
+  --color-warning: oklch(54% 0.13 65);
   --color-warning-content: oklch(98% 0.02 65);
   --color-error: oklch(52% 0.19 25);
   --color-error-content: oklch(98% 0.02 25);
@@ -225,7 +225,7 @@
     width: 3.5rem;
     padding-inline: 0.5rem;
     text-align: right;
-    opacity: 0.45;
+    opacity: 0.7;
     user-select: none;
   }
   .dl .sign {
@@ -246,12 +246,20 @@
    * twenty minutes is the answer to "is it done", and an absent row cannot say it.
    */
   .tl-future {
-    opacity: 0.45;
+    opacity: 0.7;
   }
   .tl-future hr {
     border-style: dashed;
     background: transparent !important;
     border-top: 2px dashed var(--color-base-300);
+  }
+
+  /* Unsaved edits are said beside the save button (app.js adds .is-dirty). */
+  .dirty-note {
+    display: none;
+  }
+  form.is-dirty .dirty-note {
+    display: inline;
   }
 }
 
@@ -259,7 +267,11 @@
  * is the first thing to go when someone has asked for less of it. */
 @media (prefers-reduced-motion: reduce) {
   .animate-pulse,
-  .animate-spin {
+  .animate-spin,
+  .loading {
     animation: none;
+  }
+  [data-panel] {
+    scroll-behavior: auto;
   }
 }

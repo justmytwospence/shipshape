@@ -42,3 +42,8 @@ test("times tick every minute in the server's zone", () => {
   assert.match(src, /setInterval\(formatTimes, 60000\)/)
   assert.match(src, /getAttribute\('data-tz'\)/)
 })
+
+test('focus follows a swap', () => {
+  assert.match(src, /htmx:beforeSwap/)
+  assert.match(src, /data-pane-heading/)
+})

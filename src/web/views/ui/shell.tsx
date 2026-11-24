@@ -117,6 +117,9 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
       <script src={asset('htmx.min.js')} defer />
     </head>
     <body class="bg-base-100 text-base-content min-h-dvh lg:h-dvh lg:overflow-hidden">
+      <a href="#main" class="btn btn-sm sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[60]">
+        Skip to content
+      </a>
       <progress
         id="busy"
         class="progress progress-primary htmx-indicator fixed inset-x-0 top-0 z-50 h-0.5 w-full"
@@ -177,7 +180,7 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
 
           {missing.length > 0 ? <SetupBanner missing={missing} /> : null}
 
-          <main id="main" class="pb-dock flex min-h-0 flex-1 flex-col lg:pb-0">
+          <main id="main" tabindex={-1} class="pb-dock flex min-h-0 flex-1 flex-col lg:pb-0">
             {children}
           </main>
 
@@ -277,7 +280,7 @@ const Sidebar: FC<{ nav: NavKey | null; chrome?: Chrome }> = ({ nav, chrome }) =
           <span class="sr-only">Documentation</span>
         </ExtLink>
         {chrome?.signOut ? <SignOutForm size="xs" /> : null}
-        <span class="ml-auto font-mono text-xs opacity-50">v{version()}</span>
+        <span class="ml-auto font-mono text-xs opacity-70">v{version()}</span>
       </div>
     </div>
   )

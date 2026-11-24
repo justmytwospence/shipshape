@@ -28,7 +28,7 @@ const Hunk: FC<{ hunk: DiffHunk }> = ({ hunk: h }) => (
   <div class="border-base-300 my-2 overflow-hidden rounded border">
     <div class="bg-base-200 flex items-baseline gap-3 px-2 py-1 font-mono text-xs">
       <span class="font-medium">{h.file}</span>
-      <span class="opacity-60">{h.header}</span>
+      <span class="opacity-70">{h.header}</span>
     </div>
     <div class="diff-file">
       {h.lines.map((l) => (
@@ -70,8 +70,8 @@ const CommitLine: FC<{ c: { sha: string; short: string; subject: string; author:
       <span class="font-mono">{c.short}</span>
     )}
     <span>{c.subject}</span>
-    <span class="opacity-60">{c.author}</span>
-    {note ? <span class="opacity-60">— {note}</span> : null}
+    <span class="opacity-70">{c.author}</span>
+    {note ? <span class="opacity-70">— {note}</span> : null}
   </li>
 )
 
@@ -108,7 +108,7 @@ const ForkBlock: FC<{ fork: ForkChange }> = ({ fork }) => {
       </p>
       {fork.carried.length > 0 ? (
         <>
-          <p class="mt-1 text-xs font-medium tracking-wide uppercase opacity-60">Kept</p>
+          <p class="mt-1 text-xs font-medium tracking-wide uppercase opacity-70">Kept</p>
           <ul class="text-xs">
             {fork.carried.map((c) => (
               <CommitLine c={c} web={web} />
@@ -118,7 +118,7 @@ const ForkBlock: FC<{ fork: ForkChange }> = ({ fork }) => {
       ) : null}
       {fork.dropped.length > 0 ? (
         <>
-          <p class="mt-1 text-xs font-medium tracking-wide uppercase opacity-60">Dropped, already upstream</p>
+          <p class="mt-1 text-xs font-medium tracking-wide uppercase opacity-70">Dropped, already upstream</p>
           <ul class="text-xs">
             {fork.dropped.map((c) => (
               <CommitLine c={c} web={web} note={c.reason} />
@@ -128,12 +128,12 @@ const ForkBlock: FC<{ fork: ForkChange }> = ({ fork }) => {
       ) : null}
       {fork.waitsOn.length > 0 ? (
         <>
-          <p class="mt-1 text-xs font-medium tracking-wide uppercase opacity-60">Waiting on</p>
+          <p class="mt-1 text-xs font-medium tracking-wide uppercase opacity-70">Waiting on</p>
           <ul class="text-xs">
             {fork.waitsOn.map((w) => (
               <li>
                 <span class="font-mono">{w.ref}</span>{' '}
-                <span class="opacity-60">
+                <span class="opacity-70">
                   {FORK_REF_WORDS[w.state] ?? w.state}
                   {w.state === 'released' && w.releasedIn ? ` in ${w.releasedIn}` : ''}
                 </span>
@@ -161,7 +161,7 @@ export const DiffView: FC<{
 }> = ({ result, links, proposal, service }) => (
   <div class="text-sm">
     {'error' in result ? (
-      <p class="text-xs opacity-60">{result.error}</p>
+      <p class="text-xs opacity-70">{result.error}</p>
     ) : (
       result.hunks.map((h) => <Hunk hunk={h} />)
     )}
@@ -191,7 +191,7 @@ export const DiffView: FC<{
         ))}
         {proposal.notes.length > 0 && (
           <>
-            <p class="mt-1 text-xs font-medium tracking-wide uppercase opacity-60">Steps to do by hand</p>
+            <p class="mt-1 text-xs font-medium tracking-wide uppercase opacity-70">Steps to do by hand</p>
             <ul class="list-disc pl-4 text-xs">
               {proposal.notes.map((n) => (
                 <li>{n}</li>
@@ -199,7 +199,7 @@ export const DiffView: FC<{
             </ul>
           </>
         )}
-        <p class="mt-1 text-xs opacity-50">
+        <p class="mt-1 text-xs opacity-70">
           Drafted by <code class="font-mono">{proposal.model}</code>. Nothing has verified
           these; read the change before shipping it.
         </p>

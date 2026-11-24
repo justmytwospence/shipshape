@@ -158,7 +158,7 @@ const KV: FC<{ rows: [string, unknown][] }> = ({ rows }) => (
 )
 
 const H: FC<{ children?: unknown }> = ({ children }) => (
-  <h2 class="mb-1.5 text-xs font-medium tracking-wide uppercase opacity-60">{children}</h2>
+  <h2 class="mb-1.5 text-xs font-medium tracking-wide uppercase opacity-70">{children}</h2>
 )
 
 /**
@@ -215,7 +215,7 @@ const SecurityBlock: FC<{ s: SecurityPanel }> = ({ s }) => (
       ]}
     />
     {s.exposures.length === 0 ? (
-      <p class="mt-1 text-xs opacity-60">Nothing running carries a version a followed incident names.</p>
+      <p class="mt-1 text-xs opacity-70">Nothing running carries a version a followed incident names.</p>
     ) : (
       <div class="divide-base-300 border-base-300 mt-2 divide-y border-y text-xs">
         {s.exposures.map((e) => (
@@ -244,7 +244,7 @@ const SecurityBlock: FC<{ s: SecurityPanel }> = ({ s }) => (
                     fixed by {sv.fix.toTag}
                   </a>
                 ) : (
-                  <span class="opacity-60">no fix yet</span>
+                  <span class="opacity-70">no fix yet</span>
                 )}
               </div>
             ))}
@@ -302,7 +302,7 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
                   ) : (
                     <>
                       not scheduled
-                      <span class="ml-2 opacity-50">{data.scan.cron}</span>
+                      <span class="ml-2 opacity-70">{data.scan.cron}</span>
                     </>
                   ),
                 ],
@@ -320,11 +320,11 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
                 <div class="flex min-h-7 flex-wrap items-center gap-x-3 py-1">
                   <span class="min-w-0 flex-1 font-mono">{cred.name}</span>
                   <span class={`badge badge-xs badge-soft ${CRED_CLS[cred.state]}`}>{cred.state}</span>
-                  {cred.note ? <span class="w-full text-xs opacity-60">{cred.note}</span> : null}
+                  {cred.note ? <span class="w-full text-xs opacity-70">{cred.note}</span> : null}
                 </div>
               ))}
             </div>
-            <p class="mt-1 text-xs opacity-50">
+            <p class="mt-1 text-xs opacity-70">
               Presence only — values are never read into the UI.
               {data.sandbox ? ' In the sandbox they are all absent by design.' : ''}
             </p>
@@ -338,7 +338,7 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
                   <span>
                     ${data.spentUsd.toFixed(2)} of ${data.budgetUsd.toFixed(2)}
                   </span>
-                  <span class="text-xs opacity-60">
+                  <span class="text-xs opacity-70">
                     {data.budgetUsd > 0 ? Math.round((data.spentUsd / data.budgetUsd) * 100) : 0}%
                   </span>
                 </div>
@@ -354,7 +354,7 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
               </div>
             )}
             {data.spend.length === 0 ? (
-              <p class="text-xs opacity-60">Nothing has been read this month.</p>
+              <p class="text-xs opacity-70">Nothing has been read this month.</p>
             ) : (
               <div class="divide-base-300 border-base-300 divide-y border-y text-xs">
                 {data.spend.map((sp) => (
@@ -368,7 +368,7 @@ export const StatusBody: FC<{ data: StatusData }> = ({ data }) => {
                 ))}
               </div>
             )}
-            <p class="mt-1 text-xs opacity-50">
+            <p class="mt-1 text-xs opacity-70">
               {data.priced
                 ? 'Reaching the budget pauses the reader and drafting; the screen keeps going under its own $1 ceiling. Updates keep shipping on the evidence that is left.'
                 : 'A custom endpoint is not priced, so the budget never pauses it. The screen, if on, is still counted under its own $1 ceiling.'}

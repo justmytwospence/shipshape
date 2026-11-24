@@ -31,7 +31,7 @@ export interface ActivityRow {
 }
 
 const LEVEL_DOT: Record<string, string> = {
-  info: 'bg-base-300',
+  info: 'bg-base-content/50',
   warn: 'bg-warning',
   error: 'bg-error',
 }
@@ -104,7 +104,10 @@ const LINE =
 const ActivityLine: FC<{ row: ActivityRow }> = ({ row: r }) => {
   const cells = (
     <>
-      <span class={`size-2 rounded-full ${LEVEL_DOT[r.level] ?? 'bg-base-300'}`} />
+      <span aria-hidden="true" class={`size-2 rounded-full ${LEVEL_DOT[r.level] ?? 'bg-base-content/50'}`} />
+      {r.level === 'error' || r.level === 'warn' ? (
+        <span class="sr-only">{r.level === 'error' ? 'Error:' : 'Warning:'}</span>
+      ) : null}
       {/* phone: line 1 is target + when */}
       <span class="min-w-0 truncate text-xs opacity-70 lg:hidden">
         <span class="badge badge-xs badge-ghost mr-1">{KIND_LABEL[r.kind as EventKind] ?? r.kind}</span>
@@ -135,7 +138,7 @@ const ActivityLine: FC<{ row: ActivityRow }> = ({ row: r }) => {
       </span>
       <span class="col-span-2 flex min-w-0 items-center gap-1 text-sm lg:col-span-1">
         <span class="truncate">{r.message}</span>
-        {r.detail ? <span class="text-xs opacity-50 group-open/line:hidden">…</span> : null}
+        {r.detail ? <span class="text-xs opacity-70 group-open/line:hidden">…</span> : null}
       </span>
       <span class="hidden text-right lg:block">
         {r.count > 1 ? <span class="badge badge-xs badge-ghost">×{r.count}</span> : null}

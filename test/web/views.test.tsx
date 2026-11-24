@@ -392,7 +392,7 @@ test('a filter is a segmented control that asks the page for its list', () => {
   // fragment.
   for (const key of ['updates-page', 'services-page', 'activity-page']) {
     const html = VIEWS[key]!
-    assert.match(html, /role="tablist"/, key)
+    assert.match(html, /role="radiogroup"/, key)
     assert.doesNotMatch(html, /class="filter"/, key)
     const form = html.match(/<form[^>]*hx-push-url="true"[^>]*>/)?.[0] ?? ''
     assert.match(form, /hx-get="\/(updates|services|activity)"/, `${key}: ${form}`)
@@ -652,4 +652,30 @@ test('the theme can be changed on a phone', () => {
   assert.doesNotMatch(m![1]!, /hidden/)
   const section = html.slice(m!.index)
   assert.match(section, /data-set-theme="dark"/)
+})
+
+test('group headers are headings', () => {
+  assert.match(VIEWS.inbox!, /<h2 class="bg-base-100 border-base-300 sticky top-0/)
+  assert.match(VIEWS['service-detail']!, /<h3 class="bg-base-100/)
+})
+
+test('a skip link leads to the content', () => {
+  assert.match(VIEWS.layout!, /href="#main"[^>]*>\s*Skip to content\s*</)
+  assert.match(VIEWS.layout!, /<main id="main" tabindex="-1"/)
+})
+
+test('the pane heading can take focus', () => {
+  assert.match(VIEWS['update-detail']!, /<h2(?=[^>]*tabindex="-1")(?=[^>]*data-pane-heading)/)
+})
+
+test('no text is fainter than opacity-70', () => {
+  for (const [name, html] of Object.entries(VIEWS)) {
+    for (const m of html.matchAll(/<(\w+)[^>]*class="[^"]*\bopacity-(?:50|55|60)\b/g)) {
+      assert.ok(m[1] === 'svg' || m[1] === 'img', `${name}: <${m[1]}> ${m[0].slice(0, 120)}`)
+    }
+  }
+})
+
+test("a log line's severity is said, not only coloured", () => {
+  assert.match(VIEWS.activity!, /class="sr-only">(Warning|Error):</)
 })

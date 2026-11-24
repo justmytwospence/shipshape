@@ -26,12 +26,12 @@ export const OUTCOMES = {
   merged: { badge: 'Shipped', verb: 'shipped', badgeCls: 'badge-info', dotCls: 'bg-info' },
   deployed: { badge: 'Soaking', verb: 'deployed', badgeCls: 'badge-info', dotCls: 'bg-info' },
   verified: { badge: 'Verified', verb: 'verified', badgeCls: 'badge-success', dotCls: 'bg-success' },
-  'left-stopped': { badge: 'Left stopped', verb: 'left stopped', badgeCls: 'badge-ghost', dotCls: 'bg-base-300' },
+  'left-stopped': { badge: 'Left stopped', verb: 'left stopped', badgeCls: 'badge-ghost', dotCls: 'bg-base-content/50' },
   degraded: { badge: 'Degraded', verb: 'went degraded', badgeCls: 'badge-warning', dotCls: 'bg-warning' },
   failed: { badge: 'Deploy failed', verb: 'failed to deploy', badgeCls: 'badge-error', dotCls: 'bg-error' },
   'rolled-back': { badge: 'Rolled back', verb: 'was rolled back', badgeCls: 'badge-error', dotCls: 'bg-error' },
-  skipped: { badge: 'Skipped', verb: 'skipped', badgeCls: 'badge-ghost', dotCls: 'bg-base-300' },
-  superseded: { badge: 'Superseded', verb: 'superseded', badgeCls: 'badge-ghost', dotCls: 'bg-base-300' },
+  skipped: { badge: 'Skipped', verb: 'skipped', badgeCls: 'badge-ghost', dotCls: 'bg-base-content/50' },
+  superseded: { badge: 'Superseded', verb: 'superseded', badgeCls: 'badge-ghost', dotCls: 'bg-base-content/50' },
 } as const satisfies Record<string, OutcomeWords>
 
 export type Outcome = keyof typeof OUTCOMES

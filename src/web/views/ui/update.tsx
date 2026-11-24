@@ -281,18 +281,31 @@ export const GroupHeader: FC<{
   count?: number
   hint?: string
   icon?: IconName
-}> = ({ title, count, hint, icon }) => (
-  <div class="bg-base-100 border-base-300 sticky top-0 z-10 flex h-7 items-center gap-2 border-b px-3 text-xs font-medium tracking-wide uppercase opacity-70">
-    {icon ? <Icon name={icon} class="size-3.5 shrink-0" /> : null}
-    <span class="shrink-0 whitespace-nowrap">{title}</span>
-    {count !== undefined ? <span class="badge badge-xs badge-ghost">{count}</span> : null}
-    {hint ? (
-      <span class="hidden min-w-0 truncate font-normal normal-case tracking-normal opacity-70 lg:inline">
-        · {hint}
-      </span>
-    ) : null}
-  </div>
-)
+  /** A heading level: 2 for a list's groups, 3 for a group inside a pane. */
+  level?: 2 | 3
+}> = ({ title, count, hint, icon, level = 2 }) => {
+  const inner = (
+    <>
+      {icon ? <Icon name={icon} class="size-3.5 shrink-0" /> : null}
+      <span class="shrink-0 whitespace-nowrap">{title}</span>
+      {count !== undefined ? <span class="badge badge-xs badge-ghost">{count}</span> : null}
+      {hint ? (
+        <span class="hidden min-w-0 truncate font-normal normal-case tracking-normal opacity-70 lg:inline">
+          · {hint}
+        </span>
+      ) : null}
+    </>
+  )
+  return level === 3 ? (
+    <h3 class="bg-base-100 border-base-300 sticky top-0 z-10 flex h-7 items-center gap-2 border-b px-3 text-xs font-medium tracking-wide uppercase opacity-70">
+      {inner}
+    </h3>
+  ) : (
+    <h2 class="bg-base-100 border-base-300 sticky top-0 z-10 flex h-7 items-center gap-2 border-b px-3 text-xs font-medium tracking-wide uppercase opacity-70">
+      {inner}
+    </h2>
+  )
+}
 
 // -------------------------------------------------------------------- pane
 
@@ -318,7 +331,7 @@ export const HoldsBlock: FC<{ update: UpdateView }> = ({ update }) => {
         <p class="text-xs opacity-70">Ships on its own: {update.shipWhy}.</p>
       ) : null}
       {update.waived.length > 0 ? (
-        <ul class="mt-2 list-disc pl-5 text-xs opacity-60">
+        <ul class="mt-2 list-disc pl-5 text-xs opacity-70">
           {update.waived.map((h) => (
             <li>
               <s>{h.text}</s> — waived by rule {h.waivedBy}
@@ -370,7 +383,7 @@ export const VerdictBlock: FC<{ update: UpdateView }> = ({ update }) => {
           <p class="text-error text-sm font-medium">Review failed — attempt {v.attempts}</p>
           <p class="text-xs opacity-80">{v.error}</p>
           {v.nextAttemptAt ? (
-            <p class="text-xs opacity-60">
+            <p class="text-xs opacity-70">
               Trying again <Relative at={v.nextAttemptAt} />.
             </p>
           ) : null}
@@ -424,7 +437,7 @@ export const VerdictBlock: FC<{ update: UpdateView }> = ({ update }) => {
             </a>
           </p>
         ) : null}
-        <p class="text-xs opacity-50">
+        <p class="text-xs opacity-70">
           {v.sources.length > 0 ? (
             <>
               {v.sources.map(safeHref).filter((s): s is string => s !== null).map((s) => (
@@ -468,7 +481,7 @@ export const SecurityFixBlock: FC<{ update: UpdateView }> = ({ update }) => {
   if (!f) return null
   return (
     <section class="border-base-300 border-t px-4 py-3">
-      <h3 class="mb-1 text-xs font-medium tracking-wide uppercase opacity-60">Security fix</h3>
+      <h3 class="mb-1 text-xs font-medium tracking-wide uppercase opacity-70">Security fix</h3>
       <p class="text-sm">Removes an exposure to {f.title}.</p>
       <ul class="mt-1 text-xs">
         {f.evidence.map((e) => (
@@ -477,7 +490,7 @@ export const SecurityFixBlock: FC<{ update: UpdateView }> = ({ update }) => {
           </li>
         ))}
       </ul>
-      <p class="mt-1 text-xs opacity-60">Read from both images' inventories, not from the advisory.</p>
+      <p class="mt-1 text-xs opacity-70">Read from both images' inventories, not from the advisory.</p>
     </section>
   )
 }
@@ -508,7 +521,7 @@ export const ScreenBlock: FC<{ update: UpdateView }> = ({ update }) => {
           <ScreenLines title="Notable" lines={s.notable} cls="opacity-70" />
         </>
       )}
-      <p class="text-xs opacity-50">
+      <p class="text-xs opacity-70">
         {s.model ? <>Screened by {s.model}</> : 'Screened'} <Relative at={s.createdAt} />.{' '}
         {s.mode === 'shadow' ? 'Shadow mode: shown, not acted on.' : 'It can hold an update back, never cause one.'}
       </p>
@@ -518,7 +531,7 @@ export const ScreenBlock: FC<{ update: UpdateView }> = ({ update }) => {
     <section class="border-base-300 border-t px-4 py-3">
       {s.mode === 'shadow' ? (
         <details>
-          <summary class="tap inline-flex cursor-pointer items-center gap-2 text-xs font-medium tracking-wide uppercase opacity-60">
+          <summary class="tap inline-flex cursor-pointer items-center gap-2 text-xs font-medium tracking-wide uppercase opacity-70">
             Screen (shadow)
             {s.error ? (
               <span class="badge badge-xs badge-soft badge-ghost normal-case">Could not look</span>
@@ -530,7 +543,7 @@ export const ScreenBlock: FC<{ update: UpdateView }> = ({ update }) => {
         </details>
       ) : (
         <>
-          <h3 class="text-xs font-medium tracking-wide uppercase opacity-60">Screen</h3>
+          <h3 class="text-xs font-medium tracking-wide uppercase opacity-70">Screen</h3>
           {body}
         </>
       )}
@@ -551,11 +564,11 @@ const ScreenLines: FC<{ title: string; lines: { text: string; version: string; u
           <li>
             {l.text}{' '}
             {l.url ? (
-              <ExtLink href={l.url} class="link link-hover opacity-60">
+              <ExtLink href={l.url} class="link link-hover opacity-70">
                 {l.version}
               </ExtLink>
             ) : (
-              <span class="opacity-60">{l.version}</span>
+              <span class="opacity-70">{l.version}</span>
             )}
           </li>
         ))}
@@ -586,7 +599,7 @@ export const Timeline: FC<{ milestones: Milestone[] }> = ({ milestones }) => (
               : m.level === 'warn'
                 ? 'bg-warning'
                 : m.future
-                  ? 'bg-base-300'
+                  ? 'bg-base-content/50'
                   : 'bg-success'
           }`}
         />
@@ -594,7 +607,7 @@ export const Timeline: FC<{ milestones: Milestone[] }> = ({ milestones }) => (
           <span class="text-sm">{m.label}</span>
           <Relative at={m.at} />
         </div>
-        {m.detail ? <div class="line-clamp-2 text-xs opacity-60">{m.detail}</div> : null}
+        {m.detail ? <div class="line-clamp-2 text-xs opacity-70">{m.detail}</div> : null}
       </li>
     ))}
   </ol>
@@ -718,7 +731,7 @@ export const UpdateDetail: FC<{
             ← {fromService.service}
           </a>
         ) : null}
-        <h2 class="text-sm font-semibold">
+        <h2 class="text-sm font-semibold focus:outline-none" tabindex={-1} data-pane-heading>
           <ServiceName stack={update.stack} service={update.service} />
         </h2>
         <MagnitudeBadge value={update.magnitude} />
@@ -769,7 +782,7 @@ export const UpdateDetail: FC<{
       <ScreenBlock update={update} />
 
       <section class="border-base-300 border-t px-4 py-3">
-        <h3 class="mb-2 text-xs font-medium tracking-wide uppercase opacity-60">History</h3>
+        <h3 class="mb-2 text-xs font-medium tracking-wide uppercase opacity-70">History</h3>
         <Timeline milestones={milestones} />
       </section>
 

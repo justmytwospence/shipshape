@@ -75,7 +75,7 @@ export const ReleaseRow: FC<{
         <Change from={release.fromTag} to={release.toTag} />
         <MagnitudeBadge value={release.magnitude} />
         <VerdictChip update={release} />
-        <span class="ml-auto shrink-0 text-xs opacity-60">
+        <span class="ml-auto shrink-0 text-xs opacity-70">
           <Relative at={release.detectedAt} />
         </span>
       </div>
@@ -91,7 +91,7 @@ export const ReleaseRow: FC<{
         class={
           summary
             ? 'mt-1 line-clamp-3 text-xs leading-relaxed opacity-80'
-            : 'mt-1 text-xs leading-relaxed opacity-50'
+            : 'mt-1 text-xs leading-relaxed opacity-70'
         }
       >
         {summary ?? NO_REVIEW}

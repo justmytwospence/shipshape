@@ -283,6 +283,39 @@
   document.body.addEventListener('htmx:afterSettle', markSelected)
   document.body.addEventListener('htmx:pushedIntoHistory', markSelected)
 
+  // ------------------------------------------------------------------- focus
+  //
+  // A swap that replaced the element holding focus would drop it on <body>, and a screen
+  // reader would start again from the top. A row clicked or tapped moves focus to the
+  // pane's heading; a row reached with j/k keeps it, so the keys keep working.
+  var keyNav = false
+  var swapFocus = null
+  document.body.addEventListener('htmx:beforeSwap', function (e) {
+    var t = e.detail.target
+    swapFocus = t && t.id && t.contains(document.activeElement) ? t.id : null
+  })
+  document.body.addEventListener('htmx:afterSettle', function (e) {
+    var t = e.detail.target
+    if (t && t.id === 'pane') {
+      if (!keyNav) {
+        var h = t.querySelector('[data-pane-heading]')
+        if (h) h.focus({ preventScroll: true })
+      }
+      keyNav = false
+      return
+    }
+    if (swapFocus) {
+      var el = document.getElementById(swapFocus)
+      swapFocus = null
+      if (el && !el.contains(document.activeElement)) {
+        var to = el.querySelector('[data-pane-heading]') || el.querySelector('button, a[href]')
+        if (to) to.focus({ preventScroll: true })
+      }
+    }
+    var bad = document.querySelector('#settings-form [aria-invalid="true"]')
+    if (bad && t && t.id === 'settings-form') bad.focus()
+  })
+
   // ---------------------------------------------------------------- sections
   //
   // A nav of anchors beside a long form (Settings) marks the section you are reading as
@@ -354,7 +387,10 @@
     if (wide.matches && window.htmx) {
       clearTimeout(loadTimer)
       loadTimer = setTimeout(function () {
-        if (document.activeElement === el) el.click()
+        if (document.activeElement === el) {
+          keyNav = true
+          el.click()
+        }
       }, 200)
     }
   }

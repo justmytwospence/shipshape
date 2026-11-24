@@ -156,7 +156,8 @@ const PROBE_JS = `(() => {
   const small = []
   for (const el of document.querySelectorAll('a,button,input,select,summary,[role=button]')) {
     const r = el.getBoundingClientRect()
-    if (r.width === 0 && r.height === 0) continue
+    // Not rendered, or visually hidden (sr-only is 1px): not a target anyone taps.
+    if (r.width <= 1 && r.height <= 1) continue
     const s = getComputedStyle(el)
     if (s.visibility === 'hidden' || s.display === 'none') continue
     // A link inside a sentence is text, and text is not a tap target -- flagging every
@@ -173,7 +174,7 @@ const PROBE_JS = `(() => {
       if (lbl) continue
     }
     // A segmented control's tabs are 40px, on purpose: they fill the toolbar row.
-    var min = el.closest('[role=tablist]') ? 40 : 44
+    var min = el.closest('[role=radiogroup]') ? 40 : 44
     if (r.height < min || r.width < 24) {
       small.push((el.tagName.toLowerCase()) + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\\s+/).slice(0,2).join('.') : '') + ' ' + Math.round(r.width) + 'x' + Math.round(r.height))
     }

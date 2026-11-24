@@ -134,7 +134,7 @@ const Field: FC<{ item: SettingValue; models?: string[] }> = ({ item, models }) 
         {def.kind === 'cron' && describeCron(value, ZONE) ? (
           <p class="mt-0.5 text-xs">{describeCron(value, ZONE)}</p>
         ) : null}
-        {help ? <p class="mt-0.5 max-w-prose text-xs opacity-60">{help}</p> : null}
+        {help ? <p class="mt-0.5 max-w-prose text-xs opacity-70">{help}</p> : null}
       </div>
     </fieldset>
   )
@@ -199,7 +199,7 @@ const Section: FC<{
           </summary>
           <div class="mt-1">
             {prose.map((para) => (
-              <p class="mt-1 max-w-prose text-xs leading-relaxed opacity-60">{withCode(para)}</p>
+              <p class="mt-1 max-w-prose text-xs leading-relaxed opacity-70">{withCode(para)}</p>
             ))}
             {more.map((item) => (
               <Field item={item} models={models} />
@@ -249,7 +249,7 @@ export const SettingsForm: FC<{
       </div>
     ) : null}
     {readyCount ? (
-      <p class="border-base-300 border-b px-4 py-2 text-xs opacity-60">
+      <p class="border-base-300 border-b px-4 py-2 text-xs opacity-70">
         {readyCount} shipped {readyCount === 1 ? 'update is' : 'updates are'} waiting for a
         deploy. Unpausing does not start them — press Deploy on each.
       </p>
@@ -261,7 +261,7 @@ export const SettingsForm: FC<{
       <button type="submit" class="btn btn-primary btn-sm tap">
         Save changes
       </button>
-      <span class="text-xs opacity-60">Writes {policyRel ?? 'the policy file'} and commits it.</span>
+      <span class="text-xs opacity-70">Writes {policyRel ?? 'the policy file'} and commits it.</span>
     </div>
   </form>
 )
@@ -273,15 +273,15 @@ export const SettingsForm: FC<{
  */
 export const NotifyTools: FC<{ channels: string[]; sinks: string[] }> = ({ channels, sinks }) => (
   <div id="notify-tools" class="bg-base-200/50 flex flex-col gap-2 rounded p-3">
-    <p class="text-xs font-medium tracking-wide uppercase opacity-60">Sinks</p>
+    <p class="text-xs font-medium tracking-wide uppercase opacity-70">Sinks</p>
     {sinks.length === 0 ? (
-      <p class="text-xs opacity-60">
+      <p class="text-xs opacity-70">
         No notification sink is configured in policy.yaml (notify.sinks), so nothing is announced.
       </p>
     ) : (
       <p class="text-xs">
         {sinks.join(', ')}
-        <span class="opacity-60">
+        <span class="opacity-70">
           {channels.length > 0 ? ` -- decisions reach ${channels.join(', ')}` : ' -- none of them is reachable for decisions'}
         </span>
       </p>
@@ -307,9 +307,9 @@ export const RulesList: FC<{
   rules: readonly { id: string; match: Record<string, unknown>; waive: readonly string[]; because: string }[]
 }> = ({ rules }) => (
   <div id="rules" class="bg-base-200/50 flex flex-col gap-2 rounded p-3">
-    <p class="text-xs font-medium tracking-wide uppercase opacity-60">Rules</p>
+    <p class="text-xs font-medium tracking-wide uppercase opacity-70">Rules</p>
     {rules.length === 0 ? (
-      <p class="text-xs opacity-60">
+      <p class="text-xs opacity-70">
         None yet. Pressing Always ship on a decision writes one here, as a commit you can read and revert.
       </p>
     ) : (
@@ -319,7 +319,7 @@ export const RulesList: FC<{
             <span class="font-mono font-medium">{r.id}</span>{' '}
             <code class="bg-base-100 rounded px-1">{JSON.stringify(r.match)}</code> waives{' '}
             <span class="font-medium">{r.waive.join(', ')}</span>
-            {r.because ? <span class="opacity-60"> -- {r.because}</span> : null}
+            {r.because ? <span class="opacity-70"> -- {r.because}</span> : null}
           </li>
         ))}
       </ul>

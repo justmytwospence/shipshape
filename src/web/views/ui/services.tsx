@@ -153,7 +153,7 @@ export const ServiceRow: FC<{
           <span class="min-w-0 truncate">
             <Mono>
               {svc.image ?? '—'}
-              {svc.tag ? <span class="opacity-60">:{svc.tag}</span> : null}
+              {svc.tag ? <span class="opacity-70">:{svc.tag}</span> : null}
             </Mono>
           </span>
           {svc.fork ? <ForkBadge /> : null}
@@ -371,7 +371,7 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
   return (
     <div id={cardId} class="flex flex-col lg:max-w-4xl">
       <header class="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pt-3 pb-2">
-        <h2 class="text-sm font-semibold">
+        <h2 class="text-sm font-semibold focus:outline-none" tabindex={-1} data-pane-heading>
           <ServiceName stack={svc.stack} service={svc.service} />
         </h2>
         <span class={`badge badge-xs badge-soft ${st.cls}`}>{st.label}</span>
@@ -381,7 +381,7 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
           {svc.tag ? `:${svc.tag}` : ''}
         </Mono>
         {svc.lastSeenAt ? (
-          <span class="text-xs opacity-50">
+          <span class="text-xs opacity-70">
             seen <Relative at={svc.lastSeenAt} />
           </span>
         ) : null}
@@ -436,7 +436,7 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
       </div>
 
       <section class="border-base-300 border-t px-4 py-3">
-        <h3 class="mb-1.5 text-xs font-medium tracking-wide uppercase opacity-60">
+        <h3 class="mb-1.5 text-xs font-medium tracking-wide uppercase opacity-70">
           Effective configuration
         </h3>
         <div class="divide-base-300 border-base-300 divide-y border-y text-xs">
@@ -491,7 +491,7 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
                   {/* Wrapped on a phone, where a badge and a button leave the value a narrow
                       column and truncation cut the upstream repository's name in half. */}
                   <span class="block font-mono break-words lg:truncate">{line.value}</span>
-                  {line.note ? <span class="block opacity-60">{line.note}</span> : null}
+                  {line.note ? <span class="block opacity-70">{line.note}</span> : null}
                 </span>
                 <span class={`badge badge-xs badge-soft ${SOURCE_CLS[line.source]}`}>
                   {line.source}
@@ -514,7 +514,7 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
           })}
         </div>
         {data.composeFile ? (
-          <p class="mt-1.5 font-mono text-xs opacity-50">{data.composeFile}</p>
+          <p class="mt-1.5 font-mono text-xs opacity-70">{data.composeFile}</p>
         ) : null}
       </section>
 
@@ -528,9 +528,9 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
       {data.canEdit ? <LinkDialog svc={svc} link={data.link} ctx={ctx} /> : null}
 
       <section class="border-base-300 border-t">
-        <GroupHeader title="History" count={data.history.length} />
+        <GroupHeader title="History" count={data.history.length} level={3} />
         {data.history.length === 0 ? (
-          <p class="px-4 py-3 text-xs opacity-60">Nothing has been detected for this service yet.</p>
+          <p class="px-4 py-3 text-xs opacity-70">Nothing has been detected for this service yet.</p>
         ) : (
           <div class="divide-base-300 divide-y">
             {data.history.slice(0, 20).map((u) => (
@@ -550,7 +550,7 @@ export const ServiceDetail: FC<{ data: ServiceDetailData; ctx?: string; listHref
  */
 const ForkSection: FC<{ fork: NonNullable<ServiceDetailData['fork']> }> = ({ fork }) => (
   <section class="border-base-300 border-t px-4 py-3">
-    <h3 class="mb-1.5 text-xs font-medium tracking-wide uppercase opacity-60">Fork</h3>
+    <h3 class="mb-1.5 text-xs font-medium tracking-wide uppercase opacity-70">Fork</h3>
     {fork.conflict ? (
       <p class="text-warning mb-1.5 text-xs">
         Cannot be rebased: {fork.conflict}. Rebase the fork's carried commits by hand and move the pinned sha, or drop
@@ -579,7 +579,7 @@ const ForkSection: FC<{ fork: NonNullable<ServiceDetailData['fork']> }> = ({ for
               ) : (
                 <span class="font-mono">{r.ref}</span>
               )}
-              {r.detail ? <span class="block opacity-60">{r.detail}</span> : null}
+              {r.detail ? <span class="block opacity-70">{r.detail}</span> : null}
             </span>
             <span class="flex items-center gap-1.5">
               <span class={`badge badge-xs badge-soft ${FORK_STATE_CLS[r.state]}`}>{r.label}</span>
@@ -593,7 +593,7 @@ const ForkSection: FC<{ fork: NonNullable<ServiceDetailData['fork']> }> = ({ for
         ))
       )}
     </div>
-    <p class="mt-1.5 text-xs opacity-60">
+    <p class="mt-1.5 text-xs opacity-70">
       Follows its class like any service: a new upstream release replays these fixes onto it, and once every fix has
       shipped upstream, shipping retires the fork. A conflict comes to you.{' '}
       <ExtLink href={FORKS_GUIDE_URL} class="link">

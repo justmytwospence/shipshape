@@ -226,7 +226,7 @@ const RecentList: FC<{ recent: RecentItem[]; hint?: string }> = ({ recent, hint 
   <section>
     <GroupHeader title="Recently" hint={hint} />
     {recent.length === 0 ? (
-      <p class="px-3 py-3 text-xs opacity-60">Nothing has happened in the last day.</p>
+      <p class="px-3 py-3 text-xs opacity-70">Nothing has happened in the last day.</p>
     ) : (
       <ul class="divide-base-300 divide-y">
         {recent.map((r) => (

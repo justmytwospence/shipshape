@@ -2,10 +2,10 @@ import type { FC } from 'hono/jsx'
 import { Icon } from './icon.tsx'
 import { ExtLink, EmptyState, Mono, Relative, Search, ServiceName, Tabs } from './parts.tsx'
 import { GroupHeader, UpdateRow } from './update.tsx'
-import type { UpdateView } from '../../../updates/queries.ts'
 import type { LinkPreview } from '../../../resolver/preview.ts'
 import type { UnwatchableReason } from '../../../compose/scan.ts'
 import { FORKS_GUIDE_URL } from '../../../links.ts'
+import type { ServiceRowData, ForkRefLine, Provenance, ServiceDetailData } from '../../../updates/services.ts'
 
 /**
  * Every service shipshape can see, and what it has been told about each one.
@@ -16,28 +16,6 @@ import { FORKS_GUIDE_URL } from '../../../links.ts'
  * "open the compose file".
  */
 
-export interface ServiceRowData {
-  stack: string
-  service: string
-  image: string | null
-  tag: string | null
-  watched: boolean
-  unwatchable: string | null
-  lastStatus: string | null
-  lastDetail: string | null
-  constrainedFrom: string | null
-  lastSeenAt?: string | null
-  /** The compose file it was read from. */
-  composeFile?: string | null
-  /** v1 labels the compose file still carries, as the scan read them. */
-  legacyLabels?: string | null
-  /** The service's class, when it is not the default `normal`. */
-  policy?: string | null
-  /** Whether the repository its release notes come from is certain, only likely, or unknown. */
-  upstream?: 'linked' | 'likely' | 'none'
-  /** Our own build of the upstream image, waiting on an upstream fix. */
-  fork?: boolean
-}
 
 export const FILTERS = [
   { key: 'all', label: 'All' },
@@ -297,44 +275,6 @@ export const ServicesList: FC<{
 
 // ------------------------------------------------------------------- detail
 
-/** Where a setting came from. The provenance is the point: it is why, not just what. */
-export type Provenance = 'label' | 'default' | 'inferred' | 'locked' | 'none'
-
-export interface ConfigLine {
-  key: string
-  value: string
-  source: Provenance
-  note?: string
-}
-
-/** One upstream reference a fork waits on, as the last scan left it. */
-export interface ForkRefLine {
-  ref: string
-  url: string | null
-  state: 'open' | 'merged-unreleased' | 'released' | 'closed-unfixed' | 'unknown'
-  /** The state in words: "merged, not released", "released in v3.4.0". */
-  label: string
-  releasedIn: string | null
-  releaseUrl: string | null
-  detail: string | null
-  checkedAt: string | null
-}
-
-export interface ServiceDetailData {
-  svc: ServiceRowData
-  /** Present for a fork: the upstream base, the references it waits on, and whether its last replay conflicted. */
-  fork?: { upstream: string; refs: ForkRefLine[]; conflict?: string | null } | null
-  composeFile: string | null
-  config: ConfigLine[]
-  history: UpdateView[]
-  canEdit: boolean
-  /** Whether Watch is offered: a compose file to write, and a service that is not watched but could be. */
-  canWatch?: boolean
-  /** How its tags would be compared once watched, read from the running tag; null when shipshape cannot tell. */
-  watchPattern?: string | null
-  /** What the link dialog starts from: the labels as the compose file has them. */
-  link?: { source: string | null; changelog: string | null; inferred: string | null }
-}
 
 const FORK_STATE_CLS: Record<ForkRefLine['state'], string> = {
   open: 'badge-ghost',

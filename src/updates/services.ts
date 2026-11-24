@@ -1,14 +1,13 @@
 import { getDb } from '../db.ts'
-import { loadPolicy } from '../config.ts'
+import { loadPolicy, env } from '../config.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'
-import { env } from '../config.ts'
 import { patternFor } from '../detect.ts'
 import { classFor, type ServiceClass } from '../policy.ts'
-import { updatesForService } from './queries.ts'
+import { updatesForService, type UpdateView } from './queries.ts'
 import { sourceForSync, type SourceInfo } from '../resolver/index.ts'
 import { describeState, forkConflictFor, forkRefs } from '../forks.ts'
 import { forkRefUrl, releaseUrl } from '../upstream/forks.ts'
-import type { ConfigLine, ForkRefLine, ServiceDetailData, ServiceRowData } from '../web/views/ui/services.tsx'
+
 
 /**
  * What shipshape knows about one service, and where each part of it came from.
@@ -348,4 +347,70 @@ export function upstreamNote(s: SourceInfo, me: { stack: string; service: string
     parts.push('not looked up yet')
   }
   return parts.length > 0 ? parts.join(' · ') : undefined
+}
+
+export interface ServiceRowData {
+  stack: string
+  service: string
+  image: string | null
+  tag: string | null
+  watched: boolean
+  unwatchable: string | null
+  lastStatus: string | null
+  lastDetail: string | null
+  constrainedFrom: string | null
+  lastSeenAt?: string | null
+  /** The compose file it was read from. */
+  composeFile?: string | null
+  /** v1 labels the compose file still carries, as the scan read them. */
+  legacyLabels?: string | null
+  /** The service's class, when it is not the default `normal`. */
+  policy?: string | null
+  /** Whether the repository its release notes come from is certain, only likely, or unknown. */
+  upstream?: 'linked' | 'likely' | 'none'
+  /** Our own build of the upstream image, waiting on an upstream fix. */
+  fork?: boolean
+}
+
+
+/** Where a setting came from. The provenance is the point: it is why, not just what. */
+export type Provenance = 'label' | 'default' | 'inferred' | 'locked' | 'none'
+
+
+export interface ConfigLine {
+  key: string
+  value: string
+  source: Provenance
+  note?: string
+}
+
+
+/** One upstream reference a fork waits on, as the last scan left it. */
+export interface ForkRefLine {
+  ref: string
+  url: string | null
+  state: 'open' | 'merged-unreleased' | 'released' | 'closed-unfixed' | 'unknown'
+  /** The state in words: "merged, not released", "released in v3.4.0". */
+  label: string
+  releasedIn: string | null
+  releaseUrl: string | null
+  detail: string | null
+  checkedAt: string | null
+}
+
+
+export interface ServiceDetailData {
+  svc: ServiceRowData
+  /** Present for a fork: the upstream base, the references it waits on, and whether its last replay conflicted. */
+  fork?: { upstream: string; refs: ForkRefLine[]; conflict?: string | null } | null
+  composeFile: string | null
+  config: ConfigLine[]
+  history: UpdateView[]
+  canEdit: boolean
+  /** Whether Watch is offered: a compose file to write, and a service that is not watched but could be. */
+  canWatch?: boolean
+  /** How its tags would be compared once watched, read from the running tag; null when shipshape cannot tell. */
+  watchPattern?: string | null
+  /** What the link dialog starts from: the labels as the compose file has them. */
+  link?: { source: string | null; changelog: string | null; inferred: string | null }
 }

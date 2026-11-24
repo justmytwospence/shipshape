@@ -1,0 +1,14 @@
+# Only what the build reads is sent to the daemon: package*.json, tsconfig*.json, src/,
+# public/ and docker/. Everything else is excluded by default and re-included below, so a
+# new top-level file never leaks into the build context by accident.
+*
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.build.json
+!src/
+!public/
+!docker/
+!LICENSE.md
+# Built by `npm run css` inside the image; a stale local copy must not shadow it.
+public/app.css

@@ -1,7 +1,7 @@
-import { type Policy } from '../policy-schema.ts'
-import { type ServiceObservation, type ServiceSnapshot } from './probe.ts'
-import { type Verdict } from './verify.ts'
-import { type LeftService, type RecordedPlan } from './runstate.ts'
+import type { Policy } from '../policy-schema.ts'
+import type { ServiceObservation, ServiceSnapshot } from './probe.ts'
+import type { Verdict } from './verify.ts'
+import type { LeftService, RecordedPlan } from './runstate.ts'
 
 export interface DeployTarget {
   stack: string

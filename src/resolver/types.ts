@@ -1,4 +1,4 @@
-import { type ChangelogTarget } from './labels.ts'
+import type { ChangelogTarget } from './labels.ts'
 
 export type ResolutionTier =
   | 'label'

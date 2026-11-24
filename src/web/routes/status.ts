@@ -1,6 +1,6 @@
 import type { Hono } from 'hono'
 import { loadPolicy, policyFileState } from '../../config.ts'
-import { type Policy } from '../../policy-schema.ts'
+import type { Policy } from '../../policy-schema.ts'
 import { env, gitBranch, gitCredentialName } from '../../env.ts'
 import { getDb } from '../../db/index.ts'
 import { version } from '../../version.ts'

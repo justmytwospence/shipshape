@@ -1,5 +1,5 @@
 import { policyFileState } from '../config.ts'
-import { type Policy } from '../policy-schema.ts'
+import type { Policy } from '../policy-schema.ts'
 import { gitBranch } from '../env.ts'
 import type { ServiceClass } from '../policy.ts'
 import type { Verb } from './actions.ts'

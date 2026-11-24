@@ -9,7 +9,7 @@ import { changeText } from '../updates/vocabulary.ts'
 import { restorePointsFor } from '../restore/index.ts'
 import { deploy, realIo } from './run.ts'
 import { manualCommand } from './compose-cmd.ts'
-import { type DeployIo, type DeployTarget } from './types.ts'
+import type { DeployIo, DeployTarget } from './types.ts'
 import type { LeftService, RecordedPlan } from './runstate.ts'
 import type { Verdict } from './verify.ts'
 

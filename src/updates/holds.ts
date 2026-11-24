@@ -1,5 +1,5 @@
 import { loadPolicy } from '../config.ts'
-import { type Policy } from '../policy-schema.ts'
+import type { Policy } from '../policy-schema.ts'
 import { getDb } from '../db/index.ts'
 import {
   applyRules,

@@ -12,7 +12,7 @@ import { screenFor } from '../analyze/screen/run.ts'
 import { reviewOffReason } from '../analyze/review-state.ts'
 import type { Magnitude } from '../versions/patterns.ts'
 import { actionsFor, isTransient, primaryVerb, type ActionContext, type Verb } from './actions.ts'
-import { type UpdateState } from './state.ts'
+import type { UpdateState } from './state.ts'
 
 export interface UpdateView {
   id: number

@@ -5,7 +5,7 @@
  * showing, and let a keyboard work the queue. No framework, no build step -- this file
  * is served as written.
  */
-;(function () {
+;(() => {
   'use strict'
 
   // Storage can throw (Safari private mode, storage disabled, a full quota); a theme
@@ -14,8 +14,8 @@
   function save(k, v) { try { localStorage.setItem(k, v) } catch (e) {} }
 
   if ('serviceWorker' in navigator) {
-    addEventListener('load', function () {
-      navigator.serviceWorker.register('/sw.js').catch(function () {})
+    addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {})
     })
   }
 
@@ -35,16 +35,16 @@
     else root.setAttribute('data-theme', stored === 'dark' ? 'bridge-dark' : 'bridge')
     // Both metas carry a media query; a pinned theme sets both to its own colour, so the
     // address bar follows the theme rather than the OS.
-    document.querySelectorAll('meta[name=theme-color]').forEach(function (m) {
+    document.querySelectorAll('meta[name=theme-color]').forEach((m) => {
       var scheme = (m.getAttribute('media') || '').indexOf('dark') !== -1 ? 'dark' : 'light'
       m.setAttribute('content', stored === 'auto' ? COLORS[scheme] : COLORS[stored])
     })
-    document.querySelectorAll('[data-set-theme]').forEach(function (el) {
+    document.querySelectorAll('[data-set-theme]').forEach((el) => {
       el.setAttribute('aria-pressed', String(el.getAttribute('data-set-theme') === stored))
     })
   }
 
-  document.addEventListener('click', function (e) {
+  document.addEventListener('click', (e) => {
     var btn = e.target.closest('[data-set-theme]')
     if (!btn) return
     save(THEME_KEY, btn.getAttribute('data-set-theme'))
@@ -72,7 +72,7 @@
     close.className = 'btn btn-ghost btn-xs btn-square tap'
     close.setAttribute('aria-label', 'Dismiss')
     close.textContent = '\u00d7'
-    close.addEventListener('click', function () {
+    close.addEventListener('click', () => {
       el.remove()
     })
     el.appendChild(text)
@@ -85,7 +85,7 @@
     var timer = null
     function run() {
       started = Date.now()
-      timer = setTimeout(function () {
+      timer = setTimeout(() => {
         el.remove()
       }, left)
     }
@@ -97,16 +97,16 @@
     }
     el.addEventListener('mouseenter', hold)
     el.addEventListener('focusin', hold)
-    el.addEventListener('mouseleave', function () {
+    el.addEventListener('mouseleave', () => {
       if (timer === null) run()
     })
-    el.addEventListener('focusout', function () {
+    el.addEventListener('focusout', () => {
       if (timer === null) run()
     })
     run()
   }
 
-  document.body.addEventListener('toast', function (e) {
+  document.body.addEventListener('toast', (e) => {
     toast(e.detail)
   })
 
@@ -129,10 +129,10 @@
     var el = document.getElementById('conn')
     if (el) el.classList.add('hidden')
   }
-  document.body.addEventListener('htmx:afterRequest', function (e) {
+  document.body.addEventListener('htmx:afterRequest', (e) => {
     if (e.detail && e.detail.successful) hideConn()
   })
-  document.addEventListener('click', function (e) {
+  document.addEventListener('click', (e) => {
     if (e.target.closest('[data-reload]')) location.reload()
   })
 
@@ -196,7 +196,7 @@
     return ms >= 0 ? span + ' ago' : 'in ' + span
   }
   function formatTimes() {
-    document.querySelectorAll('time[data-format]').forEach(function (t) {
+    document.querySelectorAll('time[data-format]').forEach((t) => {
       var at = Date.parse(t.getAttribute('datetime'))
       if (isNaN(at)) return
       t.textContent = t.getAttribute('data-format') === 'clock' ? CLOCK.format(at) : rel(Date.now() - at)
@@ -210,7 +210,7 @@
   //
   // Native <dialog>: focus trap, Escape and backdrop dismissal come free, and on iOS it
   // behaves like a sheet rather than a div pretending to be one.
-  document.addEventListener('click', function (e) {
+  document.addEventListener('click', (e) => {
     var opener = e.target.closest('[data-open]')
     if (!opener) return
     var dlg = document.querySelector(opener.getAttribute('data-open'))
@@ -222,7 +222,7 @@
 
   // A Cancel button, or a form that submits, closes the dialog it sits in. Delegated here
   // because the content security policy allows no inline handlers.
-  document.addEventListener('click', function (e) {
+  document.addEventListener('click', (e) => {
     var b = e.target.closest('button[data-close-dialog]')
     if (!b) return
     var d = b.closest('dialog')
@@ -230,7 +230,7 @@
   })
   document.addEventListener(
     'submit',
-    function (e) {
+    (e) => {
       var f = e.target.closest('form[data-close-dialog]')
       if (!f) return
       var d = f.closest('dialog')
@@ -241,7 +241,7 @@
 
   // While a scan runs, the Inbox refreshes every 10 seconds rather than every 60: its
   // trigger listens for this event, which replaces a trigger filter htmx would have to eval.
-  setInterval(function () {
+  setInterval(() => {
     if (document.getElementById('scan-running')) document.body.dispatchEvent(new Event('scan-progress'))
   }, 10000)
 
@@ -255,7 +255,7 @@
   var wide = matchMedia('(min-width:1024px)')
   document.addEventListener(
     'click',
-    function (e) {
+    (e) => {
       if (wide.matches) return
       var row = e.target.closest('[data-row]')
       if (row) e.stopPropagation()
@@ -271,7 +271,7 @@
   // polls itself keeps the mark the same way, since a redrawn row starts unmarked.
   function markSelected() {
     var path = location.pathname
-    document.querySelectorAll('[data-row]').forEach(function (r) {
+    document.querySelectorAll('[data-row]').forEach((r) => {
       var href = r.getAttribute('href') || ''
       var at = href.indexOf('?')
       if (at !== -1) href = href.slice(0, at)
@@ -290,11 +290,11 @@
   // pane's heading; a row reached with j/k keeps it, so the keys keep working.
   var keyNav = false
   var swapFocus = null
-  document.body.addEventListener('htmx:beforeSwap', function (e) {
+  document.body.addEventListener('htmx:beforeSwap', (e) => {
     var t = e.detail.target
     swapFocus = t && t.id && t.contains(document.activeElement) ? t.id : null
   })
-  document.body.addEventListener('htmx:afterSettle', function (e) {
+  document.body.addEventListener('htmx:afterSettle', (e) => {
     var t = e.detail.target
     if (t && t.id === 'pane') {
       if (!keyNav) {
@@ -331,7 +331,7 @@
     var pane = document.querySelector('[data-panel]')
     var edge = (pane ? pane.getBoundingClientRect().top : 0) + 24
     var current = null
-    links.forEach(function (a) {
+    links.forEach((a) => {
       var t = document.getElementById(a.getAttribute('href').slice(1))
       if (t && t.getBoundingClientRect().top <= edge) current = a
     })
@@ -339,7 +339,7 @@
       current = links[links.length - 1]
     }
     if (!current) current = links[0]
-    links.forEach(function (a) {
+    links.forEach((a) => {
       if (a === current) a.setAttribute('aria-current', 'true')
       else a.removeAttribute('aria-current')
     })
@@ -348,12 +348,12 @@
   function queueSpy() {
     if (spyQueued) return
     spyQueued = true
-    requestAnimationFrame(function () {
+    requestAnimationFrame(() => {
       spyQueued = false
       spy()
     })
   }
-  addEventListener('DOMContentLoaded', function () {
+  addEventListener('DOMContentLoaded', () => {
     var pane = document.querySelector('[data-panel]')
     if (pane) pane.addEventListener('scroll', queueSpy, { passive: true })
     addEventListener('resize', queueSpy)
@@ -369,9 +369,7 @@
   // Nothing here fires while typing. Only the list's rows: the pane has rows of its own
   // (a service's history), and the cursor must not wander into them.
   function rows() {
-    return Array.prototype.slice.call(document.querySelectorAll('#list [data-row]')).filter(function (r) {
-      return r.offsetParent !== null
-    })
+    return Array.prototype.slice.call(document.querySelectorAll('#list [data-row]')).filter((r) => r.offsetParent !== null)
   }
   function cursor() {
     var el = document.activeElement
@@ -386,7 +384,7 @@
     // Fill the pane once the cursor rests, not on every keypress through the list.
     if (wide.matches && window.htmx) {
       clearTimeout(loadTimer)
-      loadTimer = setTimeout(function () {
+      loadTimer = setTimeout(() => {
         if (document.activeElement === el) {
           keyNav = true
           el.click()
@@ -414,7 +412,7 @@
   }
 
   var pending = ''
-  document.addEventListener('keydown', function (e) {
+  document.addEventListener('keydown', (e) => {
     var t = e.target
     if (e.metaKey || e.ctrlKey || e.altKey) return
     if (t && (t.isContentEditable || /^(input|textarea|select)$/i.test(t.tagName))) return
@@ -463,7 +461,7 @@
         break
       case 'g':
         pending = 'g'
-        setTimeout(function () {
+        setTimeout(() => {
           pending = ''
         }, 1200)
         break
@@ -471,7 +469,7 @@
   })
 
   // Leaving with unsaved edits asks first.
-  addEventListener('beforeunload', function (e) {
+  addEventListener('beforeunload', (e) => {
     if (document.querySelector('form.is-dirty')) {
       e.preventDefault()
       e.returnValue = ''
@@ -479,12 +477,12 @@
   })
 
   // A form with unsaved edits says so, rather than leaving you to remember.
-  document.addEventListener('input', function (e) {
+  document.addEventListener('input', (e) => {
     var form = e.target.closest('form[data-dirty]')
     if (form) form.classList.add('is-dirty')
   })
-  document.body.addEventListener('htmx:afterSwap', function () {
-    document.querySelectorAll('form[data-dirty]').forEach(function (f) {
+  document.body.addEventListener('htmx:afterSwap', () => {
+    document.querySelectorAll('form[data-dirty]').forEach((f) => {
       f.classList.remove('is-dirty')
     })
   })

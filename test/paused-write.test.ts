@@ -58,7 +58,7 @@ test('the switch can be written into a file that has never carried it', async ()
   const text = readFileSync(join(repo, 'shipshape', 'config', 'policy.yaml'), 'utf8')
   assert.match(text, /^paused: false$/m, 'the key is written at the top level')
   assert.match(text, /# Kill-switch\./, 'the comments around it survive')
-  assert.match(text, /^  soak_s: 1800$/m)
+  assert.match(text, /^ {2}soak_s: 1800$/m)
 
   // And it is what the running policy now says, the written value wins.
   assert.equal(config.loadPolicy().policy.paused, false)

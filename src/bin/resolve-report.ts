@@ -16,11 +16,11 @@
 import { getDb } from '../db/index.ts'
 import { sourceFor, sourceForSync } from '../resolver/index.ts'
 import { lookUpImage } from '../resolver/tiers.ts'
-import { type Lookup, type SourceInfo } from '../resolver/types.ts'
+import type { Lookup, SourceInfo } from '../resolver/types.ts'
 
 const args = process.argv.slice(2)
 const has = (flag: string) => args.includes(flag)
-const valueOf = (flag: string) => {
+const flagValue = (flag: string) => {
   const i = args.indexOf(flag)
   return i >= 0 ? args[i + 1] : undefined
 }
@@ -30,7 +30,7 @@ if (!mode) {
   console.error('usage: resolve-report --snapshot | --dry-run [--allow-billed] [--only <text>] [--without-overrides] [--why] | --write [--allow-billed] [--only <text>]')
   process.exit(2)
 }
-const only = valueOf('--only')
+const only = flagValue('--only')
 const allowBilled = has('--allow-billed')
 
 const images = (

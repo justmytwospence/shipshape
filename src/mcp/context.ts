@@ -1,4 +1,4 @@
-import { McpServer, ResourceTemplate } from '@modelcontextprotocol/server'
+import { type McpServer, ResourceTemplate } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 import { getDb } from '../db/index.ts'
 import { llmProvider } from '../analyze/client.ts'

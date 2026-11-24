@@ -27,7 +27,7 @@ export function proposalHunks(before: string, after: string, file: string): Diff
       i++
       continue
     }
-    let start = i
+    const start = i
     let end = i
     // Absorb nearby edits into one hunk rather than emitting a run of tiny ones.
     while (end < changed.length) {

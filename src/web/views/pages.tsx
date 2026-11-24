@@ -8,9 +8,9 @@ import { DeviceSettings, SettingsForm, SettingsNav, type SettingGroup } from './
 import { version } from '../../version.ts'
 import { StatusBody, type StatusData } from './ui/status.tsx'
 import { ActivityList, ActivityToolbar } from './ui/activity.tsx'
-import { type ActivityRow } from '../../events.ts'
+import type { ActivityRow } from '../../events.ts'
 import { ServicesList, ServicesToolbar } from './ui/services.tsx'
-import { type ServiceRowData } from '../../updates/services.ts'
+import type { ServiceRowData } from '../../updates/services.ts'
 import type { ReleaseView, StageFilter } from '../../updates/queries.ts'
 import type { UpdateView } from '../../updates/view.ts'
 

@@ -388,6 +388,7 @@ const Dock: FC<{ active: NavKey | null }> = ({ active }) => (
 )
 
 export const ThemeToggle: FC<{ size?: 'xs' | 'sm' }> = ({ size = 'xs' }) => (
+  // biome-ignore lint/a11y/useSemanticElements: a daisyUI join; a fieldset would add its own border and padding
   <div class="join" role="group" aria-label="Theme">
     {(
       [
@@ -479,11 +480,11 @@ const Shortcuts: FC = () => (
         ))}
       </dl>
       <form method="dialog" class="modal-action">
-        <button class="btn btn-sm">Close</button>
+        <button type="submit" class="btn btn-sm">Close</button>
       </form>
     </div>
     <form method="dialog" class="modal-backdrop">
-      <button>close</button>
+      <button type="submit">close</button>
     </form>
   </dialog>
 )

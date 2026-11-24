@@ -263,7 +263,7 @@ test('a row is a link that fills the pane on a wide screen and navigates on a na
   assert.doesNotMatch(row, /hx-trigger="click\[/)
   const appJs = readFileSync(join(process.cwd(), 'public', 'app.js'), 'utf8')
   assert.match(appJs, /closest\('\[data-row\]'\)[\s\S]{0,80}stopPropagation/, 'app.js gates the row')
-  assert.match(appJs, /'click',\s*function[\s\S]{0,300}?\},\s*true,?\s*\)/, 'in the capture phase')
+  assert.match(appJs, /'click',\s*(?:function\b|\(e\)\s*=>)[\s\S]{0,300}?\},\s*true,?\s*\)/, 'in the capture phase')
   const svc = VIEWS['services']!
   assert.match(svc, /<a href="\/services\/media\/jellyfin\?list=services"[^>]*data-row/)
   assert.match(svc, /hx-push-url="\/services\/media\/jellyfin\?list=services"/)

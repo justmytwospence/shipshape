@@ -182,7 +182,9 @@ function mcp(replies: Record<string, unknown[]>) {
 const OFFSITE = { type: 'mcp', url: 'http://backup-mcp:8000/mcp', tool: 'run_backup' }
 const waitIo = (fetch: import('../src/restore/offsite.ts').Fetch) => {
   let t = 0
-  return { fetch, sleep: async (ms: number) => void (t += ms), now: () => t }
+  return { fetch, sleep: async (ms: number) => {
+      t += ms
+    }, now: () => t }
 }
 
 test('the offsite server lists its jobs, and a stack with one can be restored without a dump', async () => {

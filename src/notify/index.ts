@@ -1,5 +1,5 @@
 import { loadPolicy } from '../config.ts'
-import { type EventClass, type Sink } from '../policy-schema.ts'
+import type { EventClass, Sink } from '../policy-schema.ts'
 import { sendEmailSink, configured as emailConfigured } from './sinks/email.ts'
 import { sendNtfy } from './sinks/ntfy.ts'
 import { discordUrl, sendDiscord } from './sinks/discord.ts'
@@ -46,6 +46,8 @@ export async function notify(opts: Message): Promise<void> {
             return sendGotify(s, opts)
           case 'apprise':
             return sendApprise(s, opts)
+          default:
+            return Promise.resolve()
         }
       }),
   )

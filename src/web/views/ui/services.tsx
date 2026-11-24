@@ -630,7 +630,7 @@ const WatchDialog: FC<{ svc: ServiceRowData; ctx?: string; composeFile: string; 
         <WatchForm svc={svc} ctx={ctx} value="true" submit="Watch it" primary />
       </div>
       <form method="dialog" class="modal-backdrop">
-        <button>close</button>
+        <button type="submit">close</button>
       </form>
     </dialog>
   )
@@ -647,7 +647,7 @@ const UnwatchDialog: FC<{ svc: ServiceRowData; ctx?: string; composeFile: string
       <WatchForm svc={svc} ctx={ctx} value="false" submit="Stop watching" primary={false} />
     </div>
     <form method="dialog" class="modal-backdrop">
-      <button>close</button>
+      <button type="submit">close</button>
     </form>
   </dialog>
 )
@@ -682,7 +682,7 @@ const WatchAllDialog: FC<{ n: number; files: number; q: string }> = ({ n, files,
       </form>
     </div>
     <form method="dialog" class="modal-backdrop">
-      <button>close</button>
+      <button type="submit">close</button>
     </form>
   </dialog>
 )
@@ -735,7 +735,7 @@ const RungDialog: FC<{ svc: ServiceRowData; ctx?: string }> = ({ svc, ctx }) => 
       </form>
     </div>
     <form method="dialog" class="modal-backdrop">
-      <button>close</button>
+      <button type="submit">close</button>
     </form>
   </dialog>
 )
@@ -804,7 +804,7 @@ const LinkDialog: FC<{ svc: ServiceRowData; link?: ServiceDetailData['link']; ct
         <div id={`link-preview-${id}`} class="mt-2" aria-live="polite"></div>
       </div>
       <form method="dialog" class="modal-backdrop">
-        <button>close</button>
+        <button type="submit">close</button>
       </form>
     </dialog>
   )

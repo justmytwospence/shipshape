@@ -2,6 +2,7 @@ import { closeLocalChange } from '../gitops/drafts.ts'
 import { gitBranch } from '../env.ts'
 import { runProposePass } from '../propose/run.ts'
 import { appendRule, describeRule, inferRule, publishRule } from '../rules.ts'
+import type { Rule } from '../policy-schema.ts'
 import { wakeLoop } from '../loop/wake.ts'
 import { getDb } from '../db/index.ts'
 import { logEvent } from '../events.ts'
@@ -100,7 +101,7 @@ function snoozeDecision(id: number): VerbResult {
 }
 
 async function alwaysShip(id: number): Promise<VerbResult> {
-  let rule
+  let rule: Rule
   try {
     rule = await inferRule(id)
   } catch (err) {

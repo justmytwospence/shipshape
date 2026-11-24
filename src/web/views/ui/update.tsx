@@ -146,7 +146,7 @@ const Confirm: FC<{
           ))}
         </ol>
         <form method="dialog" class="modal-action">
-          <button class="btn btn-ghost btn-sm tap">Cancel</button>
+          <button type="submit" class="btn btn-ghost btn-sm tap">Cancel</button>
           <button
             type="button"
             class={`btn btn-sm tap ${v.style}`}
@@ -162,7 +162,7 @@ const Confirm: FC<{
         </form>
       </div>
       <form method="dialog" class="modal-backdrop">
-        <button>close</button>
+        <button type="submit">close</button>
       </form>
     </dialog>
   )

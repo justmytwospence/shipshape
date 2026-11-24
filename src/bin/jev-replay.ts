@@ -28,14 +28,14 @@ import { env } from '../env.ts'
 import { composeFileOfStack } from '../compose/files.ts'
 
 const args = process.argv.slice(2)
-const valueOf = (flag: string) => {
+const flagValue = (flag: string) => {
   const i = args.indexOf(flag)
   return i >= 0 ? args[i + 1] : undefined
 }
-const since = valueOf('--since') ?? new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10)
-const limit = Number(valueOf('--limit') ?? 60)
-const dumpTo = valueOf('--dump')
-const fromDump = valueOf('--from-dump')
+const since = flagValue('--since') ?? new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10)
+const limit = Number(flagValue('--limit') ?? 60)
+const dumpTo = flagValue('--dump')
+const fromDump = flagValue('--from-dump')
 
 interface Row {
   image: string

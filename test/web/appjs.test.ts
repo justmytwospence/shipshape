@@ -12,8 +12,8 @@ test('Enter is left to the browser', () => {
 
 test('storage is only touched inside a try', () => {
   assert.equal((src.match(/localStorage\./g) ?? []).length, 2)
-  assert.match(src, /function load\(k\) \{ try \{ return localStorage\.getItem/)
-  assert.match(src, /function save\(k, v\) \{ try \{ localStorage\.setItem/)
+  assert.match(src, /function load\(k\) \{\s*try \{\s*return localStorage\.getItem/)
+  assert.match(src, /function save\(k, v\) \{\s*try \{\s*localStorage\.setItem/)
 })
 
 test('j and k walk the list, not the pane', () => {

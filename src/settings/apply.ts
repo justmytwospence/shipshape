@@ -107,7 +107,7 @@ function validate(def: SettingDef, value: string): string | null {
     }
     case 'model':
       // A slash is legal: gateways namespace models by vendor (`anthropic/claude-opus-5`).
-      return /^[A-Za-z0-9._\/-]+$/.test(value) ? null : 'not a valid model id'
+      return /^[A-Za-z0-9._/-]+$/.test(value) ? null : 'not a valid model id'
     default:
       return null
   }

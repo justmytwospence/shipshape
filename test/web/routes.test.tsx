@@ -292,7 +292,7 @@ test('a toast survives the punctuation the messages are written with', async () 
   })
   assert.equal(res.status, 200)
   const header = res.headers.get('HX-Trigger') ?? ''
-  // eslint-disable-next-line no-control-regex
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: the test is about control characters
   assert.ok(!/[^\x00-\xff]/.test(header), 'the header is bytes a header can carry')
   assert.doesNotThrow(() => JSON.parse(header), 'and still parses as JSON')
 })
@@ -305,6 +305,7 @@ test('every message a verb can produce fits in a header', async () => {
       headers: { 'HX-Request': 'true' },
     })
     const header = res.headers.get('HX-Trigger') ?? ''
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: the test is about control characters
     assert.ok(!/[^\x00-\xff]/.test(header), verb)
     const parsed = JSON.parse(header) as { toast?: { text?: string } }
     assert.ok(parsed.toast?.text, verb)

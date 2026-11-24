@@ -1,6 +1,6 @@
 import { execa } from 'execa'
 import { loadPolicy } from '../config.ts'
-import { type Policy } from '../policy-schema.ts'
+import type { Policy } from '../policy-schema.ts'
 import { env } from '../env.ts'
 import { DockerUnreadable, findForeign, httpProbe, inspectService, missing, snapshotOf, type ServiceObservation, type ServiceSnapshot } from './probe.ts'
 import { projectName, stackPeers, buildableServices } from '../compose/topology.ts'

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { LineCounter, parseDocument, isScalar } from 'yaml'
+import { type Document, LineCounter, parseDocument, isScalar } from 'yaml'
 import { env } from './env.ts'
 import { getDb } from './db/index.ts'
 import { bumpFork, retireFork } from './compose/fork-edit.ts'
@@ -317,7 +317,7 @@ function locateImageLine(
   service: string,
 ): { line: number; value: string } | { error: string } {
   const lineCounter = new LineCounter()
-  let doc
+  let doc: Document.Parsed
   try {
     doc = parseDocument(src, { lineCounter, keepSourceTokens: true })
   } catch (err) {

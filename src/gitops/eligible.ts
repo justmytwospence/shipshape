@@ -1,4 +1,4 @@
-import { type Policy } from '../policy-schema.ts'
+import type { Policy } from '../policy-schema.ts'
 import { env } from '../env.ts'
 import { getDb } from '../db/index.ts'
 import { logEvent } from '../events.ts'

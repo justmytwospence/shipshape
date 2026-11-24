@@ -172,6 +172,7 @@ export function checkPasswordOrigin(c: Context, cfg: PasswordConfig): Response |
 export function safeNext(value: unknown): string {
   if (typeof value !== 'string' || !value) return '/'
   if (value.length > 2048 || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return '/'
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: refusing control characters is the point
   if (/[\u0000-\u001f\u007f]/.test(value)) return '/'
   let u: URL
   try {

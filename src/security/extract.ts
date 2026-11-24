@@ -1,6 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk'
 import { loadPolicy } from '../config.ts'
-import { type Policy } from '../policy-schema.ts'
+import type { Policy } from '../policy-schema.ts'
 import { getDb } from '../db/index.ts'
 import { logEvent } from '../events.ts'
 import { budgetExhausted, isTimeout, recordCost, recordUnanswered } from '../analyze/claude.ts'

@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { failureState, nextStep } from '../src/deploy/outcome.ts'
 import { manualCommand } from '../src/deploy/compose-cmd.ts'
-import { type DeployTarget } from '../src/deploy/types.ts'
+import type { DeployTarget } from '../src/deploy/types.ts'
 import { PolicySchema } from '../src/policy-schema.ts'
 
 /**

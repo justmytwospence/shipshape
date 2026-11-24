@@ -19,7 +19,7 @@ import {
 import { filterServices, serviceDetail, serviceRows } from '../updates/services.ts'
 import { runStackVerb, STACK_VERBS } from '../updates/stack-verbs.ts'
 import { contextFor, type VerbResult } from '../updates/verbs.ts'
-import { checkService, scanInfo } from '../web/server.ts'
+import { checkService, scanInfo } from '../scan.ts'
 import { activityRows } from '../events.ts'
 import { EVENT_KINDS } from '../events.ts'
 import { version } from '../web/version.ts'

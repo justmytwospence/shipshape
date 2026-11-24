@@ -18,10 +18,10 @@ import { scanRepo } from '../compose/scan.ts'
 import { buildUpdateDiff, type DiffHunk } from '../diff.ts'
 import { parseImageRef } from '../images/ref.ts'
 import { refLinks } from '../links.ts'
-import { isScanning, refreshServiceLabels, scanOne } from '../scan.ts'
+import { isScanning, refreshServiceLabels, scanInfo, checkService } from '../scan.ts'
 import { sourceCounts, sourceFor, sourceForSync, type SourceInfo } from '../resolver/index.ts'
 import { runScanNow, scheduleInfo, rescheduleScan } from '../scheduler.ts'
-import { type VerbResult } from '../updates/verbs.ts'
+import type { VerbResult } from '../updates/verbs.ts'
 import { isOperatorVerb, runOperatorVerb } from '../updates/operator-verbs.ts'
 import { verifyAction } from '../notify/links.ts'
 import { ACT_EXPIRED, ACT_GONE, ActConfirm, ActDone, ActError } from './views/ui/act.tsx'
@@ -109,42 +109,6 @@ function lookedAgain(s: SourceInfo): string {
       ? ` Its shipshape.source label, ${s.label.repo}, still decides.`
       : ''
   return `Found ${found}${likely}.${label}`
-}
-
-/**
- * Re-check one service now, rather than waiting for a sweep: its labels from git, its
- * upstream when nothing has looked it up yet, and its registry. False when the compose
- * files no longer have it.
- */
-export async function checkService(stack: string, service: string): Promise<boolean> {
-  const { policy } = loadPolicy()
-  const svc = scanRepo(env.repoDir, policy.exclude_stacks).find(
-    (s) => s.stack === stack && s.service === service,
-  )
-  if (!svc) return false
-  // Labels first: a review reads them from the images table, which only a scan refreshed,
-  // so a label committed after the last scan was invisible to "check" and to every review
-  // it led to (tika's shipshape.changelog, 2026-10-22).
-  refreshServiceLabels(stack, service)
-  if (svc.ref) {
-    // Its upstream as well, when nothing has looked it up yet or the answer is due. Unbilled,
-    // like the sweep: "Look again" is the button that spends pulls.
-    await sourceFor(
-      { registry: svc.ref.registry, repository: svc.ref.repository },
-      { service: { stack, service }, ownLabel: svc.sourceLabel, allowBilled: false },
-    ).catch((err: unknown) =>
-      logEvent({
-        level: 'warn',
-        kind: 'scan',
-        stack,
-        service,
-        message: 'looking up the upstream failed',
-        detail: `${stack}/${service}: ${(err as Error).message.slice(0, 300)}`,
-      }),
-    )
-  }
-  if (svc.watched) await scanOne(svc, policy)
-  return true
 }
 
 export function createApp(): Hono {
@@ -1197,34 +1161,6 @@ function diffFragment(id: number): string {
           : undefined,
       }) as string
   )
-}
-
-export interface ScanInfo {
-  lastAt: string | null
-  durationS: number | null
-  counts: Record<string, number> | null
-  running: boolean
-  /** How many compose files the last scan found; 0 means REPO_DIR holds none. */
-  composeFiles: number | null
-}
-
-export function scanInfo(): ScanInfo {
-  const rows = getDb()
-    .prepare(`SELECT key, value, window FROM budgets WHERE key LIKE 'scan.%'`)
-    .all() as { key: string; value: number; window: string | null }[]
-  const by = new Map(rows.map((r) => [r.key, r]))
-  const lastAt = by.get('scan.last_at')?.window ?? null
-  const durationS = by.get('scan.last_duration_s')?.value ?? null
-  let counts: Record<string, number> | null = null
-  const raw = by.get('scan.last_counts')?.window
-  if (raw) {
-    try {
-      counts = JSON.parse(raw) as Record<string, number>
-    } catch {
-      counts = null
-    }
-  }
-  return { lastAt, durationS, counts, running: isScanning(), composeFiles: by.get('scan.compose_files')?.value ?? null }
 }
 
 export function startServer(): ServerHandle {

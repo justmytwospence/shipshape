@@ -278,6 +278,62 @@ test('an update for a service that is in no compose file any more is retired, no
   assert.deepEqual([row.state, row.detail], ['superseded', 'service removed'])
 })
 
+test('a change that cannot be built waits for a person instead of being tried every pass', async () => {
+  // The live checkout and the work clone disagree on the service's name (a content filter
+  // that rewrites names on the way to origin did this in production): the scan saw "web",
+  // the file the work clone builds from has no such service.
+  setup([{ name: 'web' }])
+  const renamed = join(dir, 'seed-renamed')
+  rmSync(renamed, { recursive: true, force: true })
+  execFileSync('git', ['clone', '-q', origin, renamed])
+  writeFileSync(join(renamed, 'web', 'docker-compose.yaml'), COMPOSE('front', '1.0.0'))
+  g(renamed, ['commit', '-qam', 'rename'])
+  g(renamed, ['push', '-q', 'origin', 'HEAD:main'])
+  const id = seed('web')
+  const db = getDb()
+  const failures = () =>
+    (
+      db
+        .prepare(`SELECT COALESCE(SUM(count), 0) AS n FROM events WHERE message = 'could not build the change'`)
+        .get() as { n: number }
+    ).n
+  const row = () =>
+    db.prepare(`SELECT state, build_error, approved_at FROM updates WHERE id = ?`).get(id) as {
+      state: string
+      build_error: string | null
+      approved_at: string | null
+    }
+
+  await runShipPass()
+  assert.equal(row().state, 'detected')
+  assert.match(row().build_error ?? '', /no image: found for service "web"/)
+  const { holdsForUpdate } = await import('../src/updates/holds.ts')
+  assert.deepEqual(
+    holdsForUpdate(id)!.holds.map((h) => h.kind),
+    ['cannot-build'],
+  )
+
+  // The next pass leaves it alone: one warning, not one a minute.
+  const r = await runShipPass()
+  assert.equal(r.shipped, 0)
+  assert.equal(failures(), 1)
+
+  // Ship tries once more, and a failure uses the approval up.
+  db.prepare(`UPDATE updates SET approved_at = '2026-02-02T00:00:00Z' WHERE id = ?`).run(id)
+  await runShipPass()
+  assert.equal(failures(), 2)
+  assert.equal(row().approved_at, null)
+
+  // Fixed in the repository, Ship goes through and the error is gone.
+  writeFileSync(join(renamed, 'web', 'docker-compose.yaml'), COMPOSE('web', '1.0.0'))
+  g(renamed, ['commit', '-qam', 'name it back'])
+  g(renamed, ['push', '-q', 'origin', 'HEAD:main'])
+  db.prepare(`UPDATE updates SET approved_at = '2026-02-03T00:00:00Z' WHERE id = ?`).run(id)
+  const shipped = await runShipPass()
+  assert.equal(shipped.shipped, 1)
+  assert.equal(row().build_error, null)
+})
+
 function draft(id: number, opts: { steps: string[] }) {
   const db = getDb()
   const pr = Number(

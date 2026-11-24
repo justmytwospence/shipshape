@@ -38,6 +38,7 @@ A hold is a reason a person is needed. These are all of them.
 | `no-evidence` | No release notes were read, **and** it is a major version, a stateful service, or `shipshape.review: required`. Never for a digest rebuild of the running tag. | Yes |
 | `irreversible` | The review says it migrates stored data one-way. | Yes |
 | `no-restore-point` | A stateful service with neither a `shipshape.snapshot` command nor an offsite backup job, or one whose restore point failed. Never for a digest rebuild of the running tag. | Yes |
+| `cannot-build` | The last attempt to write the change failed, for example because the compose file in the repository has no such service. It says why and waits instead of trying again every pass; fix the file, then Ship tries once more. A newer version starts clean. | No |
 
 **Caution does not hold.** "Read first" is a label on a review, not a state of the update.
 Missing release notes on a patch or a minor are fine, because rollback covers them. What the

@@ -55,6 +55,13 @@ test('lifeline always asks, and is not waivable', () => {
   assert.equal(h!.waivable, false)
 })
 
+test('a change that could not be built asks, says why, and no rule can waive it', () => {
+  const [h] = holdsFor(input({ buildError: 'no image: found for service "web"' }))
+  assert.equal(h!.kind, 'cannot-build')
+  assert.equal(h!.waivable, false)
+  assert.match(h!.text, /could not be built: no image: found for service "web"/)
+})
+
 test('ask always asks, and a rule may waive it', () => {
   const [h] = holdsFor(input({ cls: 'ask' }))
   assert.equal(h!.kind, 'ask')

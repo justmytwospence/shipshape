@@ -43,11 +43,12 @@ export interface HoldRow {
   approved_at: string | null
   snoozed_until: string | null
   restore_error: string | null
+  build_error?: string | null
   decision_since: string | null
 }
 
 export const HOLD_COLUMNS = `u.id, u.stack, u.service, u.image, u.from_tag, u.to_tag, u.magnitude, u.tier, u.state,
-  u.detail, u.detected_at, u.approved_at, u.snoozed_until, u.restore_error, u.decision_since`
+  u.detail, u.detected_at, u.approved_at, u.snoozed_until, u.restore_error, u.build_error, u.decision_since`
 
 export interface UpdateHolds {
   row: HoldRow
@@ -165,6 +166,7 @@ export function holdsForRow(row: HoldRow, policy: Policy = loadPolicy().policy, 
     required: img?.review_label?.trim().toLowerCase() === 'required',
     hasSnapshot: canRestore(row.stack, policy),
     restoreError: row.restore_error,
+    buildError: row.build_error ?? null,
     securityFix: fix !== null,
     draft: draftPending,
   }

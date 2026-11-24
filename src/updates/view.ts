@@ -163,7 +163,7 @@ function screenView(image: string, fromTag: string, toTag: string): ScreenView |
 export const SELECT_UPDATE = `
   SELECT u.id, u.stack, u.service, u.image, u.from_tag, u.to_tag, u.magnitude, u.tier,
          u.state, u.detail, u.detected_at, u.updated_at, u.acked_at,
-         u.approved_at, u.snoozed_until, u.decision_since, u.restore_error
+         u.approved_at, u.snoozed_until, u.decision_since, u.restore_error, u.build_error
     FROM updates u`
 
 export interface RawUpdate {
@@ -184,6 +184,7 @@ export interface RawUpdate {
   snoozed_until: string | null
   decision_since: string | null
   restore_error: string | null
+  build_error: string | null
 }
 
 /**

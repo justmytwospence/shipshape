@@ -49,6 +49,7 @@ export interface UpdateRow {
   snoozed_until: string | null
   decision_since: string | null
   restore_error: string | null
+  build_error: string | null
 }
 
 /** Everything a decision needs about one update. */

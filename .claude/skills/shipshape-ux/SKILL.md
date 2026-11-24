@@ -29,10 +29,11 @@ the service's **class**, and the **holds**.
 A hold is a reason a person is needed, and the words are these: **lifeline**, **ask**,
 **unsafe** (the review says block, naming what breaks), **needs action** (the review lists
 steps), **no evidence** (no release notes were read, on a major, a stateful service or a
-fail-closed one), **irreversible** (a one-way migration), **no restore point** and
-**draft** (a drafted change waits for a Ship pressed after it was drafted). Only
-`ask`, `no evidence`, `irreversible` and `no restore point` can be waived by a rule;
-`lifeline`, `unsafe`, `needs action` and `draft` never can. Never
+fail-closed one), **irreversible** (a one-way migration), **no restore point**,
+**draft** (a drafted change waits for a Ship pressed after it was drafted) and **cannot
+build** (the last attempt to write the change failed; Ship after the fix tries once more).
+Only `ask`, `no evidence`, `irreversible` and `no restore point` can be waived by a rule;
+`lifeline`, `unsafe`, `needs action`, `draft` and `cannot build` never can. Never
 say an update is "risky" or "low risk": nothing here predicts risk. Say what is holding it.
 
 **Caution does not hold.** "Read first" is a label on a review, not a state of the update:

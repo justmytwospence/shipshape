@@ -143,6 +143,7 @@ export type HoldKind =
   | 'no-evidence'
   | 'irreversible'
   | 'no-restore-point'
+  | 'cannot-build'
 
 export interface Hold {
   kind: HoldKind
@@ -176,6 +177,8 @@ export interface HoldInput {
   hasSnapshot: boolean
   /** The last restore point attempt failed, and why. */
   restoreError: string | null
+  /** The last attempt to build the change failed, and why (ship.ts). */
+  buildError?: string | null
   /** A verified security fix (src/security/act.ts): lifts `ask` and `no-evidence`. */
   securityFix: boolean
   /** An open drafted config change exists and nobody has said ship since it was drafted. */
@@ -214,6 +217,13 @@ export function holdsFor(i: HoldInput): Hold[] {
     out.push({ kind: 'needs-action', waivable: false, text: `Needs: ${v.steps[0] ?? v.breaking[0]}` })
   }
   if (i.draft) out.push({ kind: 'draft', waivable: false, text: 'a drafted change is waiting to be read' })
+  if (i.buildError) {
+    out.push({
+      kind: 'cannot-build',
+      waivable: false,
+      text: `the change could not be built: ${i.buildError}. Fix the compose file, then Ship to try again`,
+    })
+  }
   if (
     !rebuild &&
     !i.securityFix &&

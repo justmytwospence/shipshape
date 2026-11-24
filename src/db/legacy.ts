@@ -1122,4 +1122,12 @@ export const MIGRATIONS: Migration[] = [
     CREATE INDEX IF NOT EXISTS idx_deploy_updates_update ON deploy_updates(update_id);
     `,
   },
+  {
+    id: '037-build-error',
+    sql: `
+    -- Why the last attempt to build this update's change failed. While set, the update
+    -- waits for a person (a cannot-build hold) instead of being tried again every pass.
+    ALTER TABLE updates ADD COLUMN build_error TEXT;
+    `,
+  },
 ]

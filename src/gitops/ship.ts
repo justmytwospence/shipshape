@@ -78,7 +78,16 @@ function retireGroup(group: UpdateGroup, reason: string): boolean {
   return false
 }
 
+/**
+ * The change could not be built (or merged). Recorded on the updates, which then wait for a
+ * person with a cannot-build hold rather than being tried again every pass: the cause is in
+ * the repository (a service the work clone does not have, a file that changed shape), and
+ * nothing shipshape does on its own will fix it. An approval is used up, so Ship after the
+ * fix tries exactly once more.
+ */
 function failGroup(group: UpdateGroup, reason: string): boolean {
+  const mark = getDb().prepare(`UPDATE updates SET build_error = ?, approved_at = NULL WHERE id = ?`)
+  for (const m of group.members) mark.run(reason.slice(0, 300), m.id)
   logEvent({
     level: 'warn',
     kind: 'ship',
@@ -256,6 +265,8 @@ async function shipGroup(group: UpdateGroup, policy: Policy): Promise<boolean> {
       }
       built = b
       title = changeTitle(group, b.forks, b.bases)
+      const clear = getDb().prepare(`UPDATE updates SET build_error = NULL WHERE id = ?`)
+      for (const m of group.members) clear.run(m.id)
     }
 
     // Written down before the push, so a crash between the push and the record leaves a

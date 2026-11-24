@@ -9,6 +9,9 @@ An update to one service travels one path. Every page names the same stage the s
 if a word here is missing from the interface, or the interface has a word that is not
 here, one of the two is wrong.
 
+The documentation site (`docs/src/content/docs/`) uses these words too. A change to a
+term here changes the docs in the same commit: `rg -n '<old term>' docs/src/content/docs`.
+
 ## The one axis
 
 **An update ships on its own unless a hold says a person is needed.** Two ideas carry it:

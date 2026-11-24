@@ -1,14 +1,15 @@
 # shipshape — working notes for agents
 
 A Docker image update bot for a single-operator compose homelab: it polls registries,
-has Claude find and read the upstream changelog, ships what no hold stops (a merge commit
-on `main`, built in its own work clone -- there are no pull requests), and deploys with a
-true `docker compose up -d`,
-verifying and rolling back. Server-rendered Hono JSX + htmx, SQLite, no client framework.
+has a model find and read the upstream changelog, ships what no hold stops (a merge commit
+on the published branch, `GIT_BRANCH`, built in its own work clone -- there are no pull
+requests), and deploys with a true `docker compose up -d`, verifying and rolling back. Server-rendered Hono JSX + htmx, SQLite, no client framework.
 
-`README.md` is the product; this file is how to work on it. The domain vocabulary lives
-in the `shipshape-ux` skill — read it before changing anything user-facing rather than
-re-deriving the model from `config.ts`.
+The manual is the documentation site in `docs/`
+(<https://justmytwospence.github.io/shipshape/>); `README.md` is its front page; this
+file is how to work on the code. The domain vocabulary lives in the `shipshape-ux`
+skill — read it before changing anything user-facing rather than re-deriving the model
+from the policy schema.
 
 ## Dev loop
 
@@ -39,6 +40,15 @@ start it with `--origin http://localhost:8081` or every button answers 403.
 `REPO_DIR`, and a configured `REPO_DIR` + `GITHUB_REPO` arms the scheduler: git sync,
 GitHub polling, container recreation. That is not a dev server, it is a second production
 instance.
+
+## Signing in
+
+The app has two sign-in modes (`src/web/auth/`): its own password
+(`SHIPSHAPE_PASSWORD`) and a trusted reverse proxy (`SHIPSHAPE_TRUSTED_PROXY` +
+`SHIPSHAPE_ALLOWED_USER`). With neither, every route but `/health` and the static files
+answers the setup page. There is no development or test bypass and there must never be
+one: `dev:ui` runs proxy mode behind its own small proxy, and tests set the
+environment before `createApp()`.
 
 ## Look at it
 
@@ -151,6 +161,8 @@ daisyUI 5 on Tailwind v4 (`src/styles/app.css` → `public/app.css`, built by `n
 - Fetch current daisyUI 5 / Tailwind 4 docs with context7 rather than recalling v3/v4
   class names; the v4→v5 renames are extensive (`btm-nav`→`dock`, `card-bordered`→
   `card-border`, `form-control`→`fieldset`, `input-bordered` removed…).
+- The docs site uses the same palette (`docs/src/styles/global.css`); change both when
+  the theme's primary changes.
 
 ## htmx contracts
 
@@ -204,6 +216,43 @@ into one place, so keep it there:
 - **The curated map is the last resort.** Add an entry only when no tier can find the
   repository; remove one when `--without-overrides` finds the same repository with
   certainty.
+
+## Documentation
+
+`docs/` is an Astro Starlight site with its own `package.json`; it deploys to GitHub
+Pages from `main` (`.github/workflows/docs.yml`).
+
+```
+npm --prefix docs ci
+npm run docs:dev      # http://localhost:4321/shipshape/
+npm run docs:build    # fails on any broken internal link
+```
+
+- A change a user can see updates the page that states it, in the same commit:
+  behaviour in `concepts/`, a task in `guides/`, every variable, label, policy key,
+  endpoint and command in `reference/`. `test/docs-reference.test.ts` fails when an
+  environment variable, a `shipshape.*` label or a policy key is missing from its
+  reference page, and when a docs link in the code points at a page or heading that
+  does not exist.
+- Links in Markdown are absolute with the base and a trailing slash
+  (`/shipshape/guides/forks/`); in `.astro` components, build them from
+  `import.meta.env.BASE_URL`. Images live in `docs/src/assets/` and are referenced
+  relatively. Example files and the starter policy are imported (`?raw`), never
+  pasted.
+- Every page has a `description` (search, `llms.txt`, the OG image).
+- The landing screenshots are regenerated from `npm run dev:ui -- --demo` with the
+  commands in `docs/src/assets/screenshots/README.md`.
+- The headings `## When a rebase conflicts` and `## Retiring a fork` in
+  `guides/forks.mdx` are link targets from the code; do not rename them.
+
+## Boundaries the tests enforce
+
+- `test/layering.test.ts`: nothing outside `src/web` imports it; views are imported
+  only from `src/web`.
+- `test/resolver-boundary.test.ts`: only `src/resolver/` reads resolutions and labels.
+- `test/llm-client.test.ts`: only `src/analyze/client.ts` builds a model client or reads
+  a model credential.
+- `test/docs-reference.test.ts`: the reference pages match the code.
 
 ## Getting a change running
 

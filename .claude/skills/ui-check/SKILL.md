@@ -83,4 +83,5 @@ neighbouring rows line up.
 - [ ] Dialog: opens, traps focus, closes on Escape and backdrop; body does not scroll behind
 - [ ] Nothing conveyed only by colour, and nothing that exists only in a `title` (no hover on touch)
 - [ ] Keyboard: visible focus ring, and the row/action reachable by Tab
+- [ ] A screen shown in docs/src/assets/screenshots/ changed: regenerate it (README there) and update the docs page that describes it
 - [ ] `npm test` and `npm run typecheck` still green (the CSS gate catches classes Tailwind never emitted)

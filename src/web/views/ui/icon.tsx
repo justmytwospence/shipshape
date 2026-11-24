@@ -114,3 +114,26 @@ export const Icon: FC<{ name: IconName; class?: string }> = ({ name, class: cls 
     ))}
   </svg>
 )
+
+/** The brand mark alone, in currentColor: the wordmark and the phone bar. */
+export const Mark: FC<{ class?: string }> = ({ class: cls }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="96 96 320 336" class={cls ?? 'size-5'} aria-hidden="true">
+    <path
+      d="M170 232l60 60l124 -164"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="44"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path d="M112 338h288c-10 44 -44 76 -92 76h-104c-48 0 -82 -32 -92 -76z" fill="currentColor" />
+  </svg>
+)
+
+/** The mark and the name, as the sidebar, the phone bar and the sign-in pages show them. */
+export const Wordmark: FC = () => (
+  <span class="flex items-center gap-1.5">
+    <Mark class="text-primary size-5" />
+    <span class="text-sm font-semibold tracking-tight">shipshape</span>
+  </span>
+)

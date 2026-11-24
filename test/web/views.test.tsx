@@ -632,3 +632,8 @@ test('a schedule names its zone', async () => {
 test('assets are addressed by their content', () => {
   assert.match(VIEWS.layout!, /href="\/static\/app\.css\?v=[0-9a-f]{10}"/)
 })
+
+test('the brand is the mark, not a stock glyph', () => {
+  assert.match(VIEWS.layout!, /viewBox="96 96 320 336"/)
+  assert.match(readFileSync('public/icon.svg', 'utf8'), /#006eb3/)
+})

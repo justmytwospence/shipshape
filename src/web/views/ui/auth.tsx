@@ -1,6 +1,7 @@
 import type { FC, PropsWithChildren } from 'hono/jsx'
 import { THEME_SCRIPT } from '../../theme-script.ts'
 import { asset } from '../../assets.ts'
+import { Wordmark } from './icon.tsx'
 
 /**
  * The pages that exist before anyone is signed in: the setup page, shown until a sign-in
@@ -22,7 +23,12 @@ export const AuthShell: FC<PropsWithChildren<{ title: string }>> = ({ title, chi
       <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
     </head>
     <body class="bg-base-100 text-base-content flex min-h-dvh items-center justify-center p-4">
-      <main class="w-full max-w-xl">{children}</main>
+      <main class="w-full max-w-xl">
+        <div class="mb-4">
+          <Wordmark />
+        </div>
+        {children}
+      </main>
     </body>
   </html>
 )

@@ -3,7 +3,7 @@ import { THEME_SCRIPT } from '../../theme-script.ts'
 import { ZONE } from '../../time.ts'
 import { asset } from '../../assets.ts'
 import { SignOutForm } from './auth.tsx'
-import { Icon, type IconName } from './icon.tsx'
+import { Icon, Mark, Wordmark, type IconName } from './icon.tsx'
 import { Relative, ScanStatus } from './parts.tsx'
 import { version } from '../../version.ts'
 
@@ -141,8 +141,8 @@ export const Layout: FC<PropsWithChildren<LayoutProps>> = ({
                 <span class="max-w-[7rem] truncate">{back.label}</span>
               </a>
             ) : (
-              <span class="order-1 flex h-11 items-center px-2 text-sm font-semibold tracking-tight lg:hidden">
-                shipshape
+              <span class="order-1 flex h-11 items-center px-2 lg:hidden">
+                <Wordmark />
               </span>
             )}
             <h1 class="order-2 h-11 min-w-0 flex-1 truncate text-center text-sm leading-11 font-medium lg:hidden">
@@ -244,8 +244,7 @@ const Sidebar: FC<{ nav: NavKey | null; chrome?: Chrome }> = ({ nav, chrome }) =
   return (
     <div class="bg-base-200 border-base-300 flex h-full w-60 flex-col border-r">
       <a href="/" class="border-base-300 flex h-10 shrink-0 items-center gap-2 border-b px-3">
-        <img src="/static/icon.svg" alt="" class="size-5 rounded" />
-        <span class="text-sm font-semibold tracking-tight">shipshape</span>
+        <Wordmark />
       </a>
       <nav aria-label="Primary" class="flex flex-col gap-0.5 p-2">
         {NAV.map((n) => (

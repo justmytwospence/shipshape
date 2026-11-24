@@ -1,0 +1,45 @@
+name: Bug report
+description: Something shipshape does that it should not, or does not do that it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems go to a private advisory, not here:
+        https://github.com/justmytwospence/shipshape/security/advisories/new
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: activity
+    attributes:
+      label: Activity and logs
+      description: The relevant lines from the Activity page and `docker logs shipshape`. Remove anything private.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown at the foot of the sidebar, or `curl -s http://<host>:8080/health`.
+      placeholder: 0.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: signin
+    attributes:
+      label: Sign-in mode
+      options: [Password, Reverse proxy]
+  - type: input
+    id: host
+    attributes:
+      label: Git host and Docker version
+      placeholder: GitHub; Docker 29.1, compose 5.7
+  - type: textarea
+    id: compose
+    attributes:
+      label: The service's compose block, if it is about one service
+      render: yaml

@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://justmytwospence.github.io/shipshape/
+    about: Quick start, guides, reference and troubleshooting.
+  - name: Report a security problem
+    url: https://github.com/justmytwospence/shipshape/security/advisories/new
+    about: Privately, through a GitHub security advisory.

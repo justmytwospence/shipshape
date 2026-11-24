@@ -44,12 +44,12 @@ RUN npm run build \
 # `docker compose config -q` over your stacks with the new version first.
 # Alpine's packages are not used for these: Alpine drops superseded versions from its
 # index, so an apk pin works until the day the build breaks.
-FROM docker:29.9.3-cli@sha256:5a7af0dcb0e46c803efe9b45371dd21cb500e5b4453250394ac6f06d49b6e6f1 AS docker-cli
-FROM docker/compose-bin:v5.7.0@sha256:a4de4851b16f18634f74de66f126d5de65f7c5cb5a9502d67ab83e9a96041a70 AS compose
+FROM docker:29.10.0-cli@sha256:34507eb5069d8be82c95dd3b6987d4250fd5fee49b82e2509b7d7a7030740d6d AS docker-cli
+FROM docker/compose-bin:v5.8.0@sha256:c9f99a4efa43ca83e5acc056da938c38504010c10a2dd804569032be5d3b0dd5 AS compose
 # buildx: a service with `build:` (one of your own images, or a fork) is built before it
 # is brought up, and without buildx compose falls back to the classic builder, which
 # cannot read BuildKit-only Dockerfiles.
-FROM docker/buildx-bin:0.38.1@sha256:0b7d9e66e81dd1155639421b8342f9731f8bb67cb11b58663f938d9c6e9b6eef AS buildx
+FROM docker/buildx-bin:0.39.0@sha256:aa2eb88bded47a9ea6f6eb88eb2db525ac55c3fa10b7e0d683035d5e4acc2050 AS buildx
 
 # -------------------------------------------------------------------------- runtime
 FROM node:26.13.1-alpine3.24@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5

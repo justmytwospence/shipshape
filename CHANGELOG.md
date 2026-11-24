@@ -4,6 +4,12 @@ Every notable change to shipshape, newest first. Versions follow
 [Semantic Versioning](https://semver.org/). While the version is 0.x, a minor release may
 change behaviour or configuration; such changes are listed first, under **Breaking**.
 
+## [0.2.1](https://github.com/justmytwospence/shipshape/releases/tag/v0.2.1) - 2026-11-24
+
+### Fixes
+
+- **ship:** Hold a change that cannot be built instead of retrying it ([bd9ab37](https://github.com/justmytwospence/shipshape/commit/bd9ab3721be9e82bc1d980e9b63d5557ca6b29d6))
+
 ## [0.2.0](https://github.com/justmytwospence/shipshape/releases/tag/v0.2.0) - 2026-11-24
 
 ### Breaking

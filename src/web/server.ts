@@ -8,7 +8,7 @@ import { configured, env, gitBranch, gitCredentialName, loadPolicy, policyFileSt
 import { getDb } from '../db.ts'
 import { logEvent, type ActivityRow, activityRows } from '../events.ts'
 import { serverHandle, type ServerHandle } from '../lifecycle.ts'
-import { version } from './version.ts'
+import { version } from '../version.ts'
 import { setupSteps } from './onboarding.ts'
 import { ZONE } from './time.ts'
 import { describeCron, NotifyTools, RulesList, SettingsForm, TestEmailResult, type SettingGroup, type SettingValue } from './views/ui/settings.tsx'

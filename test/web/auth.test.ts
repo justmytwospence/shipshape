@@ -7,7 +7,7 @@ import { once } from 'node:events'
 import { serve } from '@hono/node-server'
 import { request as httpRequest } from 'node:http'
 import { socketBindings, TEST_ORIGIN, TEST_PROXY, TEST_USER } from '../helpers/trusted-proxy.ts'
-import { version } from '../../src/web/version.ts'
+import { version } from '../../src/version.ts'
 
 let createApp: typeof import('../../src/web/server.ts').createApp
 let dir: string

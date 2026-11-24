@@ -6,7 +6,7 @@ import { SignOutForm } from './auth.tsx'
 import { DOCS_URL } from '../../../links.ts'
 import { Icon, Mark, Wordmark, type IconName } from './icon.tsx'
 import { ExtLink, Relative, ScanStatus, relative } from './parts.tsx'
-import { version } from '../../version.ts'
+import { version } from '../../../version.ts'
 
 /**
  * The application frame.

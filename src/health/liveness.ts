@@ -1,7 +1,7 @@
 import { getDb } from '../db.ts'
 import { logEvent } from '../events.ts'
 import { loopStalled, scheduleInfo } from '../scheduler.ts'
-import { version } from '../web/version.ts'
+import { version } from '../version.ts'
 
 /**
  * GET /health, for the container healthcheck: 503 when the database cannot be read or the

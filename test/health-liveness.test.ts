@@ -11,7 +11,7 @@ process.env.DATA_DIR = dir
 delete process.env.REPO_DIR
 
 const { health } = await import('../src/health/liveness.ts')
-const { version } = await import('../src/web/version.ts')
+const { version } = await import('../src/version.ts')
 const { getDb } = await import('../src/db.ts')
 
 after(() => rmSync(dir, { recursive: true, force: true }))

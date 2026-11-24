@@ -481,6 +481,7 @@ test('a failed review says so, with what it will do next', () => {
 test('the setup banner names what is missing', () => {
   assert.match(VIEWS['layout-setup']!, /REPO_DIR/)
   assert.match(VIEWS['layout-setup']!, /not configured yet/)
+  assert.match(VIEWS['layout-setup']!, /href="https:\/\/justmytwospence\.github\.io\/shipshape\/start\/quick-start\/"/)
 })
 
 test('the banner points at the switch, not at the top of the page it sits on', () => {

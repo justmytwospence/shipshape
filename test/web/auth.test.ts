@@ -183,7 +183,9 @@ test('missing or invalid authentication configuration fails closed, even in prod
       assert.equal(res.status, 503, JSON.stringify(config))
       assert.equal(res.headers.get('Cache-Control'), 'no-store')
       assert.match(res.headers.get('content-type') ?? '', /text\/html/)
-      assert.match(await res.text(), /SHIPSHAPE_PASSWORD/)
+      const page = await res.text()
+      assert.match(page, /SHIPSHAPE_PASSWORD/)
+      assert.match(page, /href="https:\/\/justmytwospence\.github\.io\/shipshape\/guides\/sign-in\/"/)
     }
     const health = await app.request('/health')
     assert.equal(health.status, 200)

@@ -1,5 +1,5 @@
 import { relative } from './views/ui/parts.tsx'
-import { DOCS_URL } from '../links.ts'
+import { QUICK_START_URL } from '../links.ts'
 
 /**
  * The getting-started checklist, as data: what a new install still needs, in order.
@@ -64,7 +64,7 @@ export function setupSteps(i: SetupInput): SetupState {
       : i.missing.length > 0
         ? {
             body: `Set ${i.missing.map((m) => m.name).join('; ')} on the shipshape container and restart it.`,
-            action: { kind: 'link' as const, href: DOCS_URL, label: 'Setup guide' },
+            action: { kind: 'link' as const, href: QUICK_START_URL, label: 'Setup guide' },
           }
         : i.composeFiles === 0
           ? {

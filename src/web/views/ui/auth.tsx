@@ -2,7 +2,7 @@ import type { FC, PropsWithChildren } from 'hono/jsx'
 import { THEME_SCRIPT } from '../../theme-script.ts'
 import { asset } from '../../assets.ts'
 import { Wordmark } from './icon.tsx'
-import { DOCS_URL } from '../../../links.ts'
+import { SIGN_IN_GUIDE_URL } from '../../../links.ts'
 
 /**
  * The pages that exist before anyone is signed in: the setup page, shown until a sign-in
@@ -93,8 +93,8 @@ export const SetupPage: FC<{ problems: string[] }> = ({ problems }) => (
       </section>
       <p class="opacity-80">
         Use one method, not both. Nothing else is reachable until this is fixed. Documentation:{' '}
-        <a class="link" href={DOCS_URL} rel="noopener noreferrer">
-          {DOCS_URL}
+        <a class="link" href={SIGN_IN_GUIDE_URL} rel="noopener noreferrer">
+          Sign-in guide
         </a>
       </p>
     </div>

@@ -3,7 +3,7 @@ import { THEME_SCRIPT } from '../../theme-script.ts'
 import { ZONE } from '../../time.ts'
 import { asset } from '../../assets.ts'
 import { SignOutForm } from './auth.tsx'
-import { DOCS_URL } from '../../../links.ts'
+import { DOCS_URL, QUICK_START_URL } from '../../../links.ts'
 import { Icon, Mark, Wordmark, type IconName } from './icon.tsx'
 import { ExtLink, Relative, ScanStatus, relative } from './parts.tsx'
 import { version } from '../../../version.ts'
@@ -447,7 +447,7 @@ const SetupBanner: FC<{ missing: { name: string; why: string }[] }> = ({ missing
         </li>
       ))}
     </ul>
-    <ExtLink href={DOCS_URL} class="link">
+    <ExtLink href={QUICK_START_URL} class="link">
       Setup guide
     </ExtLink>
   </div>

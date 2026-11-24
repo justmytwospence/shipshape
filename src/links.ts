@@ -172,3 +172,5 @@ export function safeHref(value: unknown): string | null {
 /** shipshape's own documentation, linked from the UI, notifications and commit bodies. */
 export const DOCS_URL = 'https://justmytwospence.github.io/shipshape/'
 export const FORKS_GUIDE_URL = `${DOCS_URL}guides/forks/`
+export const QUICK_START_URL = `${DOCS_URL}start/quick-start/`
+export const SIGN_IN_GUIDE_URL = `${DOCS_URL}guides/sign-in/`

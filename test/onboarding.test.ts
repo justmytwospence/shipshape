@@ -41,7 +41,11 @@ test('missing settings are named', () => {
     step(s, 'repo').body,
     'Set REPO_DIR; GITHUB_REPO or GIT_REMOTE_URL on the shipshape container and restart it.',
   )
-  assert.equal(step(s, 'repo').action?.kind, 'link')
+  assert.deepEqual(step(s, 'repo').action, {
+    kind: 'link',
+    href: 'https://justmytwospence.github.io/shipshape/start/quick-start/',
+    label: 'Setup guide',
+  })
 })
 
 test('no compose files says where it looked', () => {

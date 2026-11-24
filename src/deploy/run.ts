@@ -80,7 +80,7 @@ export interface DeployTarget {
    */
   pull?: boolean
   /**
-   * Services built from source before `up`: the forks (FORKS.md). Their `image:` is a
+   * Services built from source before `up`: the forks (the forks guide). Their `image:` is a
    * local name compose cannot pull, so the pull passes `--ignore-buildable` and an explicit
    * `compose build` runs first -- a failed build then touches no container and is reported
    * as a deploy failure. Resolved from the compose file when absent (`deployChange`); a
@@ -533,7 +533,7 @@ export function expectedRef(
 
 /**
  * The services of a stack that the compose file builds from source now: the forks
- * (FORKS.md), whose `image:` is a local name, and our own builds watched through their base
+ * (the forks guide), whose `image:` is a local name, and our own builds watched through their base
  * image (compose/dockerfile.ts), whose merged change is a `FROM` line only a build reads. A
  * plain unwatched `build:` service is never deployed by shipshape, so there is nothing to
  * build for one; a fork just retired has no `build:` block any more and drops out here,

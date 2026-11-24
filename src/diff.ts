@@ -30,7 +30,7 @@ export interface DiffHunk {
   lines: DiffLine[]
 }
 
-/** What a fork's change carries beyond its hunks (FORKS.md): the replay and its commits. */
+/** What a fork's change carries beyond its hunks (the forks guide): the replay and its commits. */
 export type ForkChange = Pick<ForkPrepared, 'kind' | 'sha' | 'tag' | 'forkUrl' | 'upstreamRef' | 'carried' | 'dropped' | 'waitsOn'>
 
 export type DiffResult = { hunks: DiffHunk[]; fork?: ForkChange } | { error: string }
@@ -83,7 +83,7 @@ export function buildUpdateDiff(updateId: number): DiffResult {
   }
 
   // A fork's change is the replay of our fixes onto the new release and the compose edit
-  // that pins the result -- known once the pull request pass has made the replay (FORKS.md).
+  // that pins the result -- known once the pull request pass has made the replay (the forks guide).
   if (row.detail === 'fork' || isForkService(row.stack, row.service)) {
     return forkDiff(row, src)
   }

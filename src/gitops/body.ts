@@ -1,4 +1,5 @@
 import type { UpdateGroup } from '../groups.ts'
+import { FORKS_GUIDE_URL } from '../links.ts'
 
 /**
  * What a pull request says.
@@ -51,7 +52,7 @@ export function changeText(
 }
 
 /**
- * What a fork's pull request carries beyond the version (FORKS.md): the replay that was
+ * What a fork's pull request carries beyond the version (the forks guide): the replay that was
  * pushed to the fork, the commits it kept, the ones it dropped as already upstream, and
  * where each reference the fork waits on stands. A `retire` has no replay: the fork is
  * replaced by the plain upstream image.
@@ -121,7 +122,7 @@ export function carriedFixesSection(g: UpdateGroup, forks: Map<number, ForkPrInf
       }
       lines.push(
         `> **Tidy the comment block by hand.** The service's comment still describes the fork; shipshape does not rewrite prose. ` +
-          `The \`homelab\` branch on the fork can go once this is merged (FORKS.md, "Retiring a fork").`,
+          `The branch shipshape pushed to the fork (\`forks.branch\`) can go once this has shipped: ${FORKS_GUIDE_URL}#retiring-a-fork.`,
         '',
       )
       continue

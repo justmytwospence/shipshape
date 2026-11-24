@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 /**
- * Deploying a fork (FORKS.md): its image is a local build, so the deploy builds it first,
+ * Deploying a fork (the forks guide): its image is a local build, so the deploy builds it first,
  * never asks a registry for it, and a rollback puts the previous build back without
  * building anything.
  */

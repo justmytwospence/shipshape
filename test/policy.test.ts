@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { PolicySchema } from '../src/config.ts'
 import { classFor, foldGroupClass, foldGroupMagnitude, normaliseClass, repositoryOf, shortRepository } from '../src/policy.ts'
 
 /**
@@ -69,4 +70,12 @@ test('repositoryOf names the registry and repository, never the tag or digest', 
   assert.equal(repositoryOf('postgres:17'), 'docker.io/library/postgres')
   assert.equal(repositoryOf('python:3.13-slim@sha256:' + 'a'.repeat(64)), 'docker.io/library/python')
   assert.equal(shortRepository('ghcr.io/agentgateway/agentgateway:v1.6.0'), 'agentgateway')
+})
+
+test('forks default to the shipshape branch and tag prefix, and refuse what git would', () => {
+  assert.deepEqual(PolicySchema.parse({}).forks, { branch: 'shipshape', tag_prefix: 'shipshape/' })
+  for (const forks of [{ branch: '-x' }, { branch: 'a..b' }, { branch: 'a b' }, { tag_prefix: '../' }]) {
+    assert.equal(PolicySchema.safeParse({ forks }).success, false, JSON.stringify(forks))
+  }
+  assert.equal(PolicySchema.safeParse({ forks: { branch: 'homelab', tag_prefix: 'homelab/' } }).success, true)
 })

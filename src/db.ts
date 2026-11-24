@@ -836,7 +836,7 @@ const MIGRATIONS: { id: string; sql: string }[] = [
     id: '028-forks',
     sql: `
     -- A service running our own build of an upstream image while an upstream fix waits
-    -- (FORKS.md). fork_upstream is the image the fork is based on, as the label spells
+    -- (the forks guide). fork_upstream is the image the fork is based on, as the label spells
     -- it; the registry/repository/current_tag columns describe THAT image for a fork, and
     -- image_ref keeps the local build name. fork_waits_on is a JSON array of the upstream
     -- references (owner/repo#N) the fork exists for. NULL on everything that is not a fork.

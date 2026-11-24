@@ -4,7 +4,7 @@ import { parse } from 'yaml'
 import { bumpFork, readForkPin, retireFork } from '../src/compose/fork-edit.ts'
 
 /**
- * Moving a fork's pins (FORKS.md) in compose text, and nothing else.
+ * Moving a fork's pins (the forks guide) in compose text, and nothing else.
  *
  * The fixture is the shape of the one real fork, grimmory in books/, copied rather than
  * read so this test is about the editor and not about the live file.
@@ -27,7 +27,7 @@ const FIXTURE = `services:
 
   grimmory:
     container_name: grimmory
-    # FORK (FORKS.md): runs our \`homelab\` branch of justmytwospence/grimmory = upstream
+    # FORK: runs our \`shipshape\` branch of justmytwospence/grimmory = upstream
     # v3.3.3 + the Kobo reading-statistics fix (grimmory-tools/grimmory#2952). Retire it
     # once shipshape reports #2952 released. Deploy with \`up -d --build grimmory\`.
     build:
@@ -178,7 +178,7 @@ test('retireFork removes build: and the fork labels, and sets the upstream image
   assert.equal(g.container_name, 'grimmory')
   assert.deepEqual(g.networks, ['grimmory', 'traefik'])
   // The prose is left for a person, and the neighbours are untouched.
-  assert.ok(r.text.includes('# FORK (FORKS.md)'))
+  assert.ok(r.text.includes('# FORK:'))
   assert.deepEqual(parse(r.text).services.mariadb, parse(FIXTURE).services.mariadb)
   assert.deepEqual(parse(r.text).services.shelfmark, parse(FIXTURE).services.shelfmark)
   // Line-level: the build block (5 lines) and two labels went; one line changed.

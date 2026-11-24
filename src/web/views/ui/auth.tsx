@@ -2,15 +2,13 @@ import type { FC, PropsWithChildren } from 'hono/jsx'
 import { THEME_SCRIPT } from '../../theme-script.ts'
 import { asset } from '../../assets.ts'
 import { Wordmark } from './icon.tsx'
+import { DOCS_URL } from '../../../links.ts'
 
 /**
  * The pages that exist before anyone is signed in: the setup page, shown until a sign-in
  * method is configured, and the sign-in page. Standalone documents rather than `Layout`:
  * no htmx, no app.js, no service worker, and nothing that reads the database.
  */
-
-export const DOCS_URL = 'https://justmytwospence.github.io/shipshape/'
-export const FORKS_GUIDE_URL = `${DOCS_URL}guides/forks/`
 
 export const AuthShell: FC<PropsWithChildren<{ title: string }>> = ({ title, children }) => (
   <html lang="en">

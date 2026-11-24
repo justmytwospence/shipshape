@@ -1,12 +1,13 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { env } from '../config.ts'
+import { FORKS_GUIDE_URL } from '../links.ts'
 import { authorArgs, git } from '../gitops/repo.ts'
 import { parseForkRef } from '../upstream/forks.ts'
 import { compareKeys, sameVersion, versionKey } from '../versions/key.ts'
 
 /**
- * Carrying a fork's fixes onto a new upstream release (FORKS.md).
+ * Carrying a fork's fixes onto a new upstream release (the forks guide).
  *
  * A fork is the upstream release we already run plus the commits we carry on top of it.
  * Moving it to a newer release means replaying exactly those commits onto the new tag,
@@ -32,8 +33,8 @@ import { compareKeys, sameVersion, versionKey } from '../versions/key.ts'
  * The replay is reproducible: each commit keeps its author and its committer date, and
  * shipshape is the committer, so the same inputs give the same sha and the same tag --
  * a second run for the same update pushes nothing new. Every deployed commit stays
- * reachable through its `homelab/<version>-<sha>` tag, so a rollback can rebuild the
- * previous pin, and the `homelab` branch is moved to the newest replay with a lease on
+ * reachable through its `<forks.tag_prefix><version>-<sha>` tag, so a rollback can rebuild the
+ * previous pin, and the `forks.branch` branch is moved to the newest replay with a lease on
  * the tip that was fetched, never a bare force.
  */
 
@@ -74,12 +75,16 @@ export interface PrepareForkInput {
   workDir?: string
   /** Only decide and replay; never push. The tests' and the preview's mode. */
   dryRun?: boolean
+  /** The fork branch moved to each replay (`forks.branch`). */
+  branch: string
+  /** The prefix of the tag each replay is published under (`forks.tag_prefix`). */
+  tagPrefix: string
 }
 
 export type PrepareForkResult =
   | {
       kind: 'bump'
-      /** The replayed head, pushed to the fork as `tag` and as the `homelab` branch. */
+      /** The replayed head, pushed to the fork as `tag` and as `forks.branch`. */
       sha: string
       short: string
       tag: string
@@ -159,7 +164,7 @@ export async function prepareFork(input: PrepareForkInput): Promise<PrepareForkR
   const carried = await commitsBetween(dir, baseRef.sha, input.pinnedSha)
   const merge = carried.find((c) => c.parents > 1)
   if (merge) {
-    return refuse(`the fork carries a merge commit (${merge.short} ${merge.subject}); replay it by hand, FORKS.md`)
+    return refuse(`the fork carries a merge commit (${merge.short} ${merge.subject}); replay it by hand (${FORKS_GUIDE_URL})`)
   }
   const equivalent = await alreadyUpstream(dir, targetRef.sha, input.pinnedSha, baseRef.sha)
   const shipped = shippedRefs(input.waitsOn, input.targetTag)
@@ -223,7 +228,7 @@ export async function prepareFork(input: PrepareForkInput): Promise<PrepareForkR
 
   const sha = (await git(dir, ['rev-parse', 'HEAD'])).stdout
   const short = sha.slice(0, input.shortLength ?? 7)
-  const tag = `homelab/${input.targetTag}-${short}`
+  const tag = `${input.tagPrefix}${input.targetTag}-${short}`
 
   // 5. Publish: the tag first, so the commit is reachable whatever happens to the branch.
   const forkTags = await listRefs(dir, FK)
@@ -237,11 +242,11 @@ export async function prepareFork(input: PrepareForkInput): Promise<PrepareForkR
       const pushed = await git(dir, ['push', 'fork', `${sha}:refs/tags/${tag}`], { remote: 'github', allowFail: true })
       if (pushed.exitCode !== 0) return refuse(pushRefusal(input.forkUrl, pushed.stderr))
     }
-    const branch = (await git(dir, ['rev-parse', '--verify', '-q', 'refs/remotes/fork/homelab'], { allowFail: true })).stdout
+    const branch = (await git(dir, ['rev-parse', '--verify', '-q', `refs/remotes/fork/${input.branch}`], { allowFail: true })).stdout
     if (branch !== sha) {
       const args = branch
-        ? ['push', `--force-with-lease=refs/heads/homelab:${branch}`, 'fork', `${sha}:refs/heads/homelab`]
-        : ['push', 'fork', `${sha}:refs/heads/homelab`]
+        ? ['push', `--force-with-lease=refs/heads/${input.branch}:${branch}`, 'fork', `${sha}:refs/heads/${input.branch}`]
+        : ['push', 'fork', `${sha}:refs/heads/${input.branch}`]
       const moved = await git(dir, args, { remote: 'github', allowFail: true })
       if (moved.exitCode !== 0) return refuse(pushRefusal(input.forkUrl, moved.stderr))
     }
@@ -267,7 +272,7 @@ async function ensureClone(dir: string, forkUrl: string, upstreamUrl: string): P
   await setRemote(dir, 'fork', forkUrl)
   await setRemote(dir, 'upstream', upstreamUrl)
   // Tags namespaced per side, branches only for the fork: the replay needs upstream's
-  // tags and the fork's `homelab` tip, nothing else.
+  // tags and the fork's branch tip, nothing else.
   await git(dir, ['fetch', '--no-tags', '--prune', 'upstream', `+refs/tags/*:${UP}*`], {
     remote: 'github',
     timeoutMs: 600_000,

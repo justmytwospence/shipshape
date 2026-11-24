@@ -76,7 +76,7 @@ const CommitLine: FC<{ c: { sha: string; short: string; subject: string; author:
 )
 
 /**
- * What a fork's change carries beyond its hunks (FORKS.md): the replay pushed to the fork,
+ * What a fork's change carries beyond its hunks (the forks guide): the replay pushed to the fork,
  * the fixes kept, the ones dropped as already upstream, and what the fork still waits on.
  * A retire has no replay and says what the fork is replaced with.
  */

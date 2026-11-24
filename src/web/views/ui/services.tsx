@@ -5,7 +5,7 @@ import { GroupHeader, UpdateRow } from './update.tsx'
 import type { UpdateView } from '../../../updates/queries.ts'
 import type { LinkPreview } from '../../../resolver/preview.ts'
 import type { UnwatchableReason } from '../../../compose/scan.ts'
-import { FORKS_GUIDE_URL } from './auth.tsx'
+import { FORKS_GUIDE_URL } from '../../../links.ts'
 
 /**
  * Every service shipshape can see, and what it has been told about each one.

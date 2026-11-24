@@ -7,7 +7,7 @@ import { KNOWN_LABELS, parseWaitsOn, scanRepo } from '../src/compose/scan.ts'
 import { actionsFor, refusalFor } from '../src/updates/actions.ts'
 
 /**
- * A fork (FORKS.md) is a `build:` service that is watched anyway: its `ref` is the
+ * A fork (the forks guide) is a `build:` service that is watched anyway: its `ref` is the
  * upstream image named by `shipshape.fork.upstream`, its references are read from
  * `shipshape.fork.waits-on`, and its tier is held whatever else the labels say.
  */

@@ -129,7 +129,7 @@ export interface ScannedService {
    */
   labelProblems: string[]
   /**
-   * Our own build of an upstream image, carrying a fix upstream has not released (FORKS.md).
+   * Our own build of an upstream image, carrying a fix upstream has not released (the forks guide).
    * `upstream` is the image the fork is based on, as it stood in `image:` before the fork;
    * `waitsOn` the upstream issues or PRs the fork exists for, each `owner/repo#N`. When
    * set, `ref` is parsed from `upstream` rather than from `image:` -- the local build name

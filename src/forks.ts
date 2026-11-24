@@ -12,9 +12,10 @@ import {
 import { releaseIndex } from './upstream/releases.ts'
 import { compareKeys, sameVersion, versionKey, type VersionKey } from './versions/key.ts'
 import { LIVE_STATES, sqlIn } from './updates/state.ts'
+import { FORKS_GUIDE_URL } from './links.ts'
 
 /**
- * What shipshape does about a fork, beyond listing its upstream's releases (FORKS.md).
+ * What shipshape does about a fork, beyond listing its upstream's releases (the forks guide).
  *
  * Once per scan per fork, after detection: each reference the fork waits on is resolved
  * upstream (`upstream/forks.ts`), the answer is kept in `fork_refs` so the Services page
@@ -104,7 +105,7 @@ export async function recordForkConflict(
       '',
       `- ${c.detail}`,
       '',
-      `Nothing was shipped. Rebase the fork's homelab branch onto ${c.toTag} by hand and move the pinned sha in the compose file, or drop the commit -- FORKS.md, "When a rebase conflicts". shipshape tries again once the pin or the target changes.`,
+      `Nothing was shipped. Rebase the fork's carried commits onto ${c.toTag} by hand and move the pinned sha in the compose file, or drop the commit (${FORKS_GUIDE_URL}#when-a-rebase-conflicts). shipshape tries again once the pin or the target changes.`,
     ].join('\n'),
     priority: 3,
     tags: ['fork'],
@@ -388,13 +389,13 @@ async function settleIncident(svc: ScannedService, refs: ForkRefRow[]): Promise<
           `Every fix the ${svc.service} fork carries has shipped upstream, past ${base}:`,
           ...verdict.refs.map((r) => `- ${r.ref}: released in ${r.releasedIn}`),
           '',
-          `Put the upstream image back at ${newestOf(verdict.refs)?.tag ?? 'that release'} and drop the fork labels -- FORKS.md, "Retiring a fork".`,
+          `Put the upstream image back at ${newestOf(verdict.refs)?.tag ?? 'that release'} and drop the fork labels (${FORKS_GUIDE_URL}#retiring-a-fork).`,
         ]
       : [
           `The ${svc.service} fork has no upstream path for ${verdict.refs.length === 1 ? 'a fix it carries' : 'fixes it carries'}:`,
           ...verdict.refs.map((r) => `- ${r.ref}: closed without a fix${r.detail ? ` (${r.detail})` : ''}`),
           '',
-          'Nothing upstream will release this. Decide whether to keep carrying it, resubmit, or drop it -- FORKS.md.',
+          `Nothing upstream will release this. Decide whether to keep carrying it, resubmit, or drop it (${FORKS_GUIDE_URL}).`,
         ]
   // Where to go: the release that carries the last fix, or the reference that has none.
   const newest = verdict.kind === 'retire' ? newestOf(verdict.refs) : null

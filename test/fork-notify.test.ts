@@ -146,7 +146,7 @@ test('a release that carries every fix sends one incident, and the same scan tom
   assert.equal(sent.priority, 3)
   assert.equal(sent.title, 'app fork can retire')
   assert.match(String(sent.message), /o\/r#1: released in v1\.3\.0/)
-  assert.match(String(sent.message), /Retiring a fork/)
+  assert.match(String(sent.message), /guides\/forks\/#retiring-a-fork/)
   assert.equal(sent.click, 'https://github.com/o/r/releases/tag/v1.3.0')
   assert.equal(forkRefs('books', 'app')[0]!.state, 'released')
 

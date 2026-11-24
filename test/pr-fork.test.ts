@@ -36,7 +36,7 @@ const UPSTREAM = `ghcr.io/grimmory-tools/grimmory:v3.3.3@${OLD_DIGEST}`
 
 const COMPOSE = `services:
   grimmory:
-    # FORK (FORKS.md): v3.3.3 plus the Kobo fix (grimmory-tools/grimmory#2952).
+    # FORK: v3.3.3 plus the Kobo fix (grimmory-tools/grimmory#2952).
     build:
       context: https://github.com/justmytwospence/grimmory.git#${OLD_SHA}
       args:
@@ -110,6 +110,11 @@ function deps(result: PrepareForkResult, over: Partial<{ digest: string | null; 
     inputs,
     deps: {
       prepareFork: async (input: PrepareForkInput) => {
+        if (inputs.length === 0) {
+          // The policy here has no `forks` key, so the defaults apply.
+          assert.equal(input.branch, 'shipshape')
+          assert.equal(input.tagPrefix, 'shipshape/')
+        }
         inputs.push(input)
         return result
       },
@@ -148,6 +153,8 @@ test('a fork group builds its branch through bumpFork, from the replay it was ha
       targetTag: 'v3.5.1',
       waitsOn: [{ ref: 'grimmory-tools/grimmory#2952', state: 'merged-unreleased', releasedIn: null }],
       shortLength: 7,
+      branch: 'shipshape',
+      tagPrefix: 'shipshape/',
     },
   )
 

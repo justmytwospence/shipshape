@@ -3,7 +3,7 @@ import type { Pair, Scalar, YAMLMap } from 'yaml'
 import { setLabel } from './edit.ts'
 
 /**
- * Moving a fork (FORKS.md) onto a new upstream release in compose-file text, and provably
+ * Moving a fork (the forks guide) onto a new upstream release in compose-file text, and provably
  * nothing else.
  *
  * Same discipline as gitops/editor.ts and compose/edit.ts: these files are heavily

@@ -78,7 +78,7 @@ export interface ActionContext {
   /** From `images.current_tag`: whether the file still sits on the version we came from. */
   atFromTag?: boolean
   /**
-   * The service is a fork of its upstream image (FORKS.md). It changes no verb: shipping
+   * The service is a fork of its upstream image (the forks guide). It changes no verb: shipping
    * a fork rebases our fixes onto the new release, or retires the fork, and the deploy
    * builds it -- so every stage offers what it offers a plain image.
    */

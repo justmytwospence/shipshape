@@ -2,7 +2,7 @@ import { ghRequest, type GhResult } from './github.ts'
 
 /**
  * Where an upstream reference a fork waits on stands: is the fix merged, and has it
- * shipped in a release yet (FORKS.md, "What shipshape does with a fork").
+ * shipped in a release yet (the forks guide, "What shipshape does with a fork").
  *
  * Three GitHub questions, each through the one client so a rate limit is a rate limit and
  * not "no fix": what the reference is and whether it is closed; which commit fixed it (a

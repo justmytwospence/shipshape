@@ -184,7 +184,7 @@ test('unknown updates and missing services fail cleanly', () => {
 })
 
 /**
- * A fork's change (FORKS.md): nothing to show until the pull request pass has replayed the
+ * A fork's change (the forks guide): nothing to show until the pull request pass has replayed the
  * fork, then the whole edit -- the build pin, the args, the image, the upstream label --
  * as hunks, with the carried fixes beside them. A conflict says why there is nothing.
  */

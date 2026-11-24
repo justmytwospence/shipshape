@@ -384,6 +384,9 @@ export type Sink = z.infer<typeof SinkSchema>
 
 /** Exported so the defaults themselves can be asserted on; parse through
  *  `validatePolicyText` or `loadPolicy` in application code. */
+/** A prefix of a git tag name: no leading '-', no '..' or '//'. Empty is allowed. */
+const GIT_REF_PREFIX = /^(?!-)(?!.*\.\.)(?!.*\/\/)[A-Za-z0-9._/-]*$/
+
 export const PolicySchema = z.object({
   /**
    * The one switch: while this is on, shipshape ships and deploys nothing on its own.
@@ -578,6 +581,15 @@ export const PolicySchema = z.object({
         })
         .nullable()
         .default(null),
+    })
+    .prefault({}),
+  /** Where a fork's replayed fixes are published (src/forks/rebase.ts). */
+  forks: z
+    .object({
+      // The branch on the fork that is moved to each new replay, with a lease.
+      branch: z.string().refine(validBranch, 'a git branch name such as shipshape').default('shipshape'),
+      // Every replay is also tagged `<tag_prefix><upstream tag>-<short sha>`, so a rollback can rebuild it.
+      tag_prefix: z.string().regex(GIT_REF_PREFIX, 'a git tag prefix such as shipshape/').default('shipshape/'),
     })
     .prefault({}),
   /** Standing "always ship" decisions. Written by shipshape; readable and editable by you. */

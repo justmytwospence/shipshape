@@ -176,3 +176,7 @@ export function safeHref(value: unknown): string | null {
   if (u.username || u.password) return null
   return u.toString()
 }
+
+/** shipshape's own documentation, linked from the UI, notifications and commit bodies. */
+export const DOCS_URL = 'https://justmytwospence.github.io/shipshape/'
+export const FORKS_GUIDE_URL = `${DOCS_URL}guides/forks/`

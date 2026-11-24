@@ -15,7 +15,7 @@ import {
 } from './parts.tsx'
 import type { Milestone, UpdateView } from '../../../updates/queries.ts'
 import type { Verb } from '../../../updates/actions.ts'
-import { FORKS_GUIDE_URL } from './auth.tsx'
+import { FORKS_GUIDE_URL } from '../../../links.ts'
 
 /**
  * One update: as a row in a list, and as the pane you open from it.

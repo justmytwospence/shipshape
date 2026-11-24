@@ -78,6 +78,8 @@ const base = (w: World) => ({
   baseTag: 'v1.0.0',
   waitsOn: [],
   workDir: join(root, 'work', 'a'),
+  branch: 'homelab',
+  tagPrefix: 'homelab/',
 })
 
 test('a clean replay pushes a new sha, tagged, and moves homelab with a lease', async () => {
@@ -226,4 +228,22 @@ test('the helpers: work dir, upstream URL, tag matching, mentions, shipped refs'
     ),
     [{ ref: 'o/r#1', releasedIn: 'v1.1.0' }],
   )
+})
+
+test('the branch and the tag prefix are the caller\'s', async () => {
+  const w = world('named')
+  release(w, 'v1.1.0', 'other.txt', 'other, changed upstream\n')
+  const r = await prepareFork({
+    ...base(w),
+    workDir: join(root, 'work', 'g'),
+    targetTag: 'v1.1.0',
+    branch: 'carried',
+    tagPrefix: 'x/',
+  })
+  assert.equal(r.kind, 'bump', JSON.stringify(r))
+  if (r.kind !== 'bump') return
+  assert.equal(r.tag, `x/v1.1.0-${r.short}`)
+  const refs = forkRefs(w)
+  assert.ok(refs.includes(`refs/heads/carried ${r.sha}`), refs.join('\n'))
+  assert.ok(refs.some((l) => l.startsWith(`refs/tags/x/v1.1.0-${r.short} `)), refs.join('\n'))
 })

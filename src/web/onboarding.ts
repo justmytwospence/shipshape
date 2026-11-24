@@ -1,5 +1,5 @@
 import { relative } from './views/ui/parts.tsx'
-import { DOCS_URL } from './views/ui/auth.tsx'
+import { DOCS_URL } from '../links.ts'
 
 /**
  * The getting-started checklist, as data: what a new install still needs, in order.

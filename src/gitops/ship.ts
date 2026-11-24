@@ -87,7 +87,7 @@ export function eligibleGroups(policy: Policy): UpdateGroup[] {
   }
   // A fork whose last replay onto this very target conflicted, from this very pin, is
   // left alone: the replay would fail identically every poll. A changed pin or a newer
-  // target is a new attempt (FORKS.md, "When a rebase conflicts").
+  // target is a new attempt (the forks guide, "When a rebase conflicts").
   const candidates = wanted.filter((r) => {
     if (isGone(r)) return false
     if (!isFork(r.stack, r.service)) return true
@@ -350,6 +350,7 @@ async function buildForkMember(
       reason: `${who}: no upstream repository is known to rebase onto -- add a shipshape.source label naming it`,
     }
   }
+  const { forks } = loadPolicy().policy
   const prepared = await deps.prepareFork({
     forkUrl: pin.contextUrl,
     upstreamUrl,
@@ -358,6 +359,8 @@ async function buildForkMember(
     targetTag,
     waitsOn,
     shortLength: pin.shortSha.length,
+    branch: forks.branch,
+    tagPrefix: forks.tag_prefix,
   })
 
   switch (prepared.kind) {

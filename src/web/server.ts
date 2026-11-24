@@ -8,6 +8,7 @@ import { configured, env, gitBranch, gitCredentialName, loadPolicy, policyFileSt
 import { getDb, logEvent } from '../db.ts'
 import { serverHandle, type ServerHandle } from '../lifecycle.ts'
 import { version } from './version.ts'
+import { health } from '../health/liveness.ts'
 import { scanRepo, type ScannedService } from '../compose/scan.ts'
 import { buildUpdateDiff, type DiffHunk } from '../diff.ts'
 import { parseImageRef } from '../images/ref.ts'
@@ -212,7 +213,10 @@ export function createApp(): Hono {
   app.use('*', authMiddleware(auth))
   registerAuthRoutes(app, auth)
   if (auth.mode === 'password') pruneSessions(auth.password.fingerprint)
-  app.get('/health', (c) => c.json({ ok: true }))
+  app.get('/health', (c) => {
+    const h = health()
+    return c.json(h.body, h.status)
+  })
 
   app.use('/static/*', serveStatic({ root: './public', rewriteRequestPath: (p) => p.replace(/^\/static/, '') }))
 

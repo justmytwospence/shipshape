@@ -1,12 +1,13 @@
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { once } from 'node:events'
 import { serve } from '@hono/node-server'
 import { request as httpRequest } from 'node:http'
 import { socketBindings, TEST_ORIGIN, TEST_PROXY, TEST_USER } from '../helpers/trusted-proxy.ts'
+import { version } from '../../src/web/version.ts'
 
 let createApp: typeof import('../../src/web/server.ts').createApp
 let dir: string
@@ -146,7 +147,7 @@ test('missing or invalid authentication configuration fails closed, even in prod
     }
     const health = await app.request('/health')
     assert.equal(health.status, 200)
-    assert.deepEqual(await health.json(), { ok: true })
+    assert.deepEqual(await health.json(), { ok: true, version: version() })
   }
   delete process.env.NODE_ENV
 })
@@ -173,7 +174,7 @@ test('only exact GET /health is anonymous; HEAD and all other methods remain pro
   for (const app of [appWithConfig(), appWithConfig({})]) {
     const health = await app.request('/health?probe=1', { headers: { 'Remote-User': 'someone-else' } }, socketBindings('192.0.2.19'))
     assert.equal(health.status, 200)
-    assert.deepEqual(await health.json(), { ok: true })
+    assert.deepEqual(await health.json(), { ok: true, version: version() })
     for (const method of ['HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']) {
       assert.ok([403, 503].includes((await app.request('/health', { method })).status), method)
     }
@@ -196,6 +197,11 @@ test('the exact trusted peer and user work, including IPv4-mapped socket address
 
 test('every mutating UI route rejects a missing or foreign Origin despite valid proxy authentication', async () => {
   const app = appWithConfig()
+  // /health reads the database, so an earlier test may have opened it: then the refusals
+  // must leave it exactly as it was rather than never create it.
+  const dbFiles = ['shipshape.db', 'shipshape.db-wal'].map((f) => join(dir, f))
+  const stamp = () => dbFiles.map((f) => (existsSync(f) ? `${statSync(f).size}:${statSync(f).mtimeMs}` : '-')).join(' ')
+  const before = stamp()
   const routes = app.routes.filter((r) => unsafeMethods.includes(r.method))
   assert.ok(routes.length > 0)
   for (const { method, path } of routes) {
@@ -213,7 +219,7 @@ test('every mutating UI route rejects a missing or foreign Origin despite valid 
   for (const method of unsafeMethods) {
     assert.equal((await app.request('/not-a-route', { method, headers: identity }, socketBindings(TEST_PROXY))).status, 403)
   }
-  assert.equal(existsSync(join(dir, 'shipshape.db')), false, 'CSRF refusals never even open the database')
+  assert.equal(stamp(), before, 'CSRF refusals never write to the database')
 })
 
 test('all unsafe methods require an exact single Origin for every content type, including HTMX and JSON', async () => {
@@ -289,7 +295,7 @@ test('safe requests do not need Origin, and even foreign Origin does not change 
       assert.equal((await app.request('/csrf-probe', { method }, socketBindings(TEST_PROXY))).status, 403)
       const health = await app.request('/health?probe=1', { headers }, socketBindings('192.0.2.19'))
       assert.equal(health.status, 200)
-      assert.deepEqual(await health.json(), { ok: true })
+      assert.deepEqual(await health.json(), { ok: true, version: version() })
     }
   }
 })
@@ -452,7 +458,7 @@ test('the real Node adapter uses its socket, never a forged HTTP header', async 
     await res.text()
     const health = await fetch(`${base}/health`)
     assert.equal(health.status, 200)
-    assert.deepEqual(await health.json(), { ok: true })
+    assert.deepEqual(await health.json(), { ok: true, version: version() })
   }
 })
 

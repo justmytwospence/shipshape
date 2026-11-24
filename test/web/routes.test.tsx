@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { socketBindings, TEST_ORIGIN, TEST_PROXY, TEST_USER } from '../helpers/trusted-proxy.ts'
+import { version } from '../../src/web/version.ts'
 
 /**
  * Every route, actually served.
@@ -246,7 +247,7 @@ test('a verb asked for outside htmx lands on the update, not on a fragment', asy
 test('the health endpoint stays plain JSON for the container healthcheck', async () => {
   const res = await app.request('/health')
   assert.equal(res.status, 200)
-  assert.deepEqual(await res.json(), { ok: true })
+  assert.deepEqual(await res.json(), { ok: true, version: version() })
 })
 
 test('a toast survives the punctuation the messages are written with', async () => {

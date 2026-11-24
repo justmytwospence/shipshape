@@ -4,6 +4,7 @@ import { createMcpHandler } from '@modelcontextprotocol/server'
 import { Hono } from 'hono'
 import { env, MCP_TOKEN_MIN } from '../config.ts'
 import { logEvent } from '../db.ts'
+import { health } from '../health/liveness.ts'
 import { serverHandle, type ServerHandle } from '../lifecycle.ts'
 import { createServer } from './server.ts'
 
@@ -19,7 +20,10 @@ export function createMcpApp(token: string): Hono {
   const handler = createMcpHandler(createServer)
   const expected = createHash('sha256').update(token).digest()
   const app = new Hono()
-  app.get('/health', (c) => c.json({ ok: true }))
+  app.get('/health', (c) => {
+    const h = health()
+    return c.json(h.body, h.status)
+  })
   app.all('/mcp', (c) => {
     const m = /^Bearer\s+(\S+)$/i.exec(c.req.header('authorization') ?? '')
     // Hashing both sides makes the lengths equal, so the comparison is constant-time.

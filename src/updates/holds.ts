@@ -117,7 +117,7 @@ function verdictFor(row: HoldRow): VerdictRow {
  * Only a successful draft that changed files counts: a notes-only proposal leaves the change
  * at scope `tag-only`, and there is nothing to read.
  */
-export function draftedAt(updateId: number): string | null {
+function draftedAt(updateId: number): string | null {
   const row = getDb()
     .prepare(
       `SELECT MAX(pr2.created_at) AS at FROM proposals pr2

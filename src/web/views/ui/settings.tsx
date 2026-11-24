@@ -254,7 +254,7 @@ function withCode(text: string): unknown[] {
   )
 }
 
-export function slug(title: string): string {
+function slug(title: string): string {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, '-')
 }
 

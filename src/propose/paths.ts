@@ -43,8 +43,6 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 
 export type ProposeScope = 'none' | 'service' | 'compose-file' | 'compose-dir' | 'repo'
 
-export const SCOPES: ProposeScope[] = ['none', 'service', 'compose-file', 'compose-dir', 'repo']
-
 /**
  * Read `shipshape.propose`. Unset means `service`.
  *
@@ -127,7 +125,7 @@ export function resolveInRepo(relPath: string): string | null {
  * all. Structured files (YAML, JSON) get the path operations; everything else gets
  * anchored replacement.
  */
-export function isEditableType(relPath: string, content?: string): boolean {
+function isEditableType(relPath: string, content?: string): boolean {
   if (content !== undefined && content.includes('\0')) return false
   return !/\.(png|jpe?g|gif|webp|ico|pdf|zip|gz|tar|db|sqlite3?|woff2?|ttf|so|bin)$/i.test(relPath)
 }
@@ -152,7 +150,7 @@ export function isStructured(relPath: string): boolean {
  * from a sentence someone typed, at a rung that is the default, and the same edit there
  * has no such warrant.
  */
-export function isConfigType(relPath: string): boolean {
+function isConfigType(relPath: string): boolean {
   return /\.(ya?ml|json|xml|toml|ini|conf)$/i.test(relPath)
 }
 

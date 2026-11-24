@@ -30,7 +30,7 @@ import { FORKS_GUIDE_URL } from './links.ts'
  * is resolved, silently, when the condition stops holding or the fork labels go away.
  */
 
-export const FORK_INCIDENT_PREFIX = 'shipshape-fork-retire:'
+const FORK_INCIDENT_PREFIX = 'shipshape-fork-retire:'
 
 export const forkIncidentKey = (stack: string, service: string) => `${FORK_INCIDENT_PREFIX}${stack}/${service}`
 
@@ -39,7 +39,7 @@ export const forkIncidentKey = (stack: string, service: string) => `${FORK_INCID
  * applies to the new release. One incident per service, raised when the pull request pass
  * finds the conflict and resolved when a later replay succeeds or the update moves on.
  */
-export const FORK_CONFLICT_PREFIX = 'shipshape-fork-conflict:'
+const FORK_CONFLICT_PREFIX = 'shipshape-fork-conflict:'
 
 export const forkConflictKey = (stack: string, service: string) => `${FORK_CONFLICT_PREFIX}${stack}/${service}`
 

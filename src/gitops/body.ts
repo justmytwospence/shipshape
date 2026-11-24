@@ -1,6 +1,6 @@
 import { type UpdateGroup } from '../groups.ts'
 import { FORKS_GUIDE_URL } from '../links.ts'
-import { short, changeText } from '../updates/vocabulary.ts'
+import { short } from '../updates/vocabulary.ts'
 import { getDb } from '../db/index.ts'
 import { parseImageRef, displayName } from '../images/ref.ts'
 import { type UpdateHolds } from '../updates/holds.ts'
@@ -183,13 +183,6 @@ export function commitBody(
   if (built.forks.size > 0) lines.push('', carriedFixesSection(group, built.forks))
   if (built.bases.size > 0) lines.push('', baseImageSection(group, built.bases))
   return lines.join('\n')
-}
-
-
-
-/** The group and its versions, named even when it is one service. See `changeText`. */
-export function describe(g: UpdateGroup): string {
-  return changeText(g.members, { named: true }) ?? ''
 }
 
 

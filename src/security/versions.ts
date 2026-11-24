@@ -97,7 +97,7 @@ export interface Range {
   lte?: string
 }
 
-export function inRange(version: string, r: Range, type?: string): boolean {
+function inRange(version: string, r: Range, type?: string): boolean {
   if (r.gte !== undefined && compareVersions(version, r.gte, type) < 0) return false
   if (r.gt !== undefined && compareVersions(version, r.gt, type) <= 0) return false
   if (r.lt !== undefined && compareVersions(version, r.lt, type) >= 0) return false

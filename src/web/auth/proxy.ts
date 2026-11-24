@@ -25,7 +25,7 @@ export interface ProxyConfig {
 export type ProxyParse = { ok: true; config: ProxyConfig } | { ok: false; problems: string[] }
 
 /** Node's dual-stack listener can represent an IPv4 peer as IPv4-mapped IPv6. */
-export function socketAddress(address: string | undefined): string | undefined {
+function socketAddress(address: string | undefined): string | undefined {
   if (address?.startsWith('::ffff:') && isIP(address.slice(7)) === 4) {
     return address.slice(7)
   }

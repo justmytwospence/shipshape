@@ -8,7 +8,7 @@ process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'shipshape-test-'))
 
 const { rollbackPlan, revertCommand } = await import('../src/deploy/rollback.ts')
 const { getDb } = await import('../src/db/index.ts')
-const { failedTarget } = await import('../src/scan/persist.ts')
+const { refusedTarget } = await import('../src/scan/persist.ts')
 const { PolicySchema } = await import('../src/policy-schema.ts')
 import type { Verdict } from '../src/deploy/verify.ts'
 
@@ -101,7 +101,7 @@ beforeEach(() => getDb().exec(`DELETE FROM updates;`))
 
 test('a rolled-back version is remembered as failed', () => {
   update('failed', '2.0', 'crash loop')
-  const dead = failedTarget('demo', 'svc', '1.0', '2.0')
+  const dead = refusedTarget('demo', 'svc', '1.0', '2.0')
   assert.ok(dead)
   assert.equal(dead!.detail, 'crash loop')
 })
@@ -110,15 +110,15 @@ test('a newer version is not blocked by the failed one', () => {
   // The memory is per-target, not per-service: the point is to stop repeating one
   // specific broken upgrade, not to stop upgrading the service ever again.
   update('failed', '2.0')
-  assert.equal(failedTarget('demo', 'svc', '1.0', '2.1'), null)
+  assert.equal(refusedTarget('demo', 'svc', '1.0', '2.1'), null)
 })
 
 test('a live update is not mistaken for a tombstone', () => {
   update('detected', '2.0')
-  assert.equal(failedTarget('demo', 'svc', '1.0', '2.0'), null)
+  assert.equal(refusedTarget('demo', 'svc', '1.0', '2.0'), null)
 })
 
 test('the tombstone is scoped to its own service', () => {
   update('failed', '2.0')
-  assert.equal(failedTarget('demo', 'other', '1.0', '2.0'), null)
+  assert.equal(refusedTarget('demo', 'other', '1.0', '2.0'), null)
 })

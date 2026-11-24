@@ -14,7 +14,7 @@ import { checkUrl, publicAddress } from './hosts.ts'
  * this is a guard against a mistyped or pasted address, not against the operator.
  */
 
-export const MAX_BYTES = 2 * 1024 * 1024
+const MAX_BYTES = 2 * 1024 * 1024
 const TIMEOUT_MS = 20_000
 const MAX_REDIRECTS = 3
 const REFETCH_MS = 6 * 60 * 60_000

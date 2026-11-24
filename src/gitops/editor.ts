@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join } from 'node:path'
 import { execa } from 'execa'
 import { parseDocument, isScalar } from 'yaml'
 import { git } from './repo.ts'
@@ -174,9 +174,4 @@ export async function applyForkEdit(opts: {
     return { ok: false, reason: `compose rejected the edited file: ${String(cfg.stderr ?? '').slice(0, 200)}` }
   }
   return { ok: true, file: opts.composeFile }
-}
-
-/** Path of a compose file relative to a repo root, for the DB's stored value. */
-export function relPath(repoDir: string, abs: string): string {
-  return relative(repoDir, abs)
 }

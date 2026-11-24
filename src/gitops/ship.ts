@@ -41,7 +41,7 @@ import { eligibleGroups, statusesFor, groupStatus } from './eligible.ts'
  * ship pass reconsidering it every cycle, which it otherwise would until the
  * next scan noticed the file had moved.
  */
-export function retireGroup(group: UpdateGroup, reason: string): boolean {
+function retireGroup(group: UpdateGroup, reason: string): boolean {
   const db = getDb()
   const now = new Date().toISOString()
   // "Already applied" is exactly what a ship that was pushed and not yet recorded looks
@@ -80,7 +80,7 @@ export function retireGroup(group: UpdateGroup, reason: string): boolean {
   return false
 }
 
-export function failGroup(group: UpdateGroup, reason: string): boolean {
+function failGroup(group: UpdateGroup, reason: string): boolean {
   logEvent({
     level: 'warn',
     kind: 'ship',
@@ -495,7 +495,7 @@ export async function reconcilePushing(): Promise<{ landed: number; dropped: num
  * deploy. All in one transaction, so a crash cannot leave a merged change with nothing
  * queued -- which is how merges used to be lost, silently and permanently.
  */
-export async function recordShipped(prId: number, mergeSha: string, group: UpdateGroup, title: string): Promise<void> {
+async function recordShipped(prId: number, mergeSha: string, group: UpdateGroup, title: string): Promise<void> {
   const { policy } = loadPolicy()
   const db = getDb()
   const now = new Date().toISOString()

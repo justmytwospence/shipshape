@@ -112,7 +112,7 @@ export function projectName(stack: string, repoDir = env.repoDir): string {
  * name (`media/` can run as project `jellyfin`). Null when absent, unreadable, or built
  * from a variable this process cannot resolve the way compose would.
  */
-export function declaredName(file: string): string | null {
+function declaredName(file: string): string | null {
   let text: string
   try {
     text = readFileSync(file, 'utf8')

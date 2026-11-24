@@ -107,10 +107,10 @@ export async function runProposePass(only?: number): Promise<ProposeRunResult> {
 }
 
 /** How many times a draft that failed for a passing reason is tried before giving up. */
-export const DRAFT_ATTEMPTS = 3
+const DRAFT_ATTEMPTS = 3
 
 /** 15 minutes, then four times that each attempt, capped at a day. */
-export function nextDraftAt(attempts: number, now = Date.now()): string {
+function nextDraftAt(attempts: number, now = Date.now()): string {
   return backoffUntil(attempts, { baseMs: 15 * 60_000, capMs: 24 * 60 * 60_000 }, now)
 }
 

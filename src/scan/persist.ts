@@ -64,8 +64,6 @@ export function refusedTarget(
 }
 
 
-/** @deprecated the tombstone is no longer only about failure; use {@link refusedTarget}. */
-export const failedTarget = refusedTarget
 
 
 function supersede(id: number, detail: string): void {

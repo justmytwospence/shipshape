@@ -153,7 +153,7 @@ export async function runOffsiteAndWait(
 let jobs: { at: number; names: Set<string> } | null = null
 const JOBS_TTL_MS = 60 * 60_000
 
-export function offsiteJobs(): Set<string> | null {
+function offsiteJobs(): Set<string> | null {
   return jobs?.names ?? null
 }
 

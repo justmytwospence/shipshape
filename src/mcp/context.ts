@@ -56,7 +56,7 @@ export function apiUsage() {
   }
 }
 
-export function updateContext(id: number) {
+function updateContext(id: number) {
   const view = updateView(id)
   if (!view) throw new Error('Update not found')
   const found = contextFor(id)

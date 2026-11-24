@@ -17,7 +17,7 @@ import type { ServiceRowData, ForkRefLine, Provenance, ServiceDetailData } from 
  */
 
 
-export const FILTERS = [
+const FILTERS = [
   { key: 'all', label: 'All' },
   { key: 'watched', label: 'Watched' },
   { key: 'unwatched', label: 'Not watched' },
@@ -77,7 +77,7 @@ function statusOf(s: ServiceRowData): { label: string; cls: string; detail?: str
 }
 
 /** Where a row's own URL and pane request point. `ctx` names the list for the URL. */
-export const serviceHref = (svc: { stack: string; service: string }) =>
+const serviceHref = (svc: { stack: string; service: string }) =>
   `/services/${svc.stack}/${svc.service}`
 
 const SERVICE_COLS = 'lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1.7fr)_5rem_4.5rem_2.75rem_1.75rem]'
@@ -108,7 +108,7 @@ const ServiceListHeader: FC = () => (
  * One service, one line at lg and two on a phone: name · image:tag · status · policy ·
  * seen · check. The whole row is the link; the check button sits over its last cell.
  */
-export const ServiceRow: FC<{
+const ServiceRow: FC<{
   svc: ServiceRowData
   ctx: string
   grouped?: boolean

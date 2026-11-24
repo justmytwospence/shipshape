@@ -59,7 +59,7 @@ function variantOf(tag: string): string | null {
  * repository -- which is exactly how the second scan of the day got rate-limited by
  * ghcr.io. Negative answers are NOT cached: a release can gain an image tag later.
  */
-export async function tagExists(
+async function tagExists(
   registry: string,
   repository: string,
   tag: string,

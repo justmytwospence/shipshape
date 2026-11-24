@@ -15,10 +15,6 @@ import { contextFor, runVerb, type VerbResult } from './verbs.ts'
 export const STACK_VERBS = ['retry', 'rollback'] as const
 export type StackVerb = (typeof STACK_VERBS)[number]
 
-export function isStackVerb(v: string): v is StackVerb {
-  return (STACK_VERBS as readonly string[]).includes(v)
-}
-
 /** The update rows of a stack's newest deploy, lowest id first. */
 export function latestDeployUpdates(stack: string): number[] {
   const rows = getDb()

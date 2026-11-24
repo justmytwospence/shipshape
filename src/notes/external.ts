@@ -17,7 +17,7 @@ import { SECTION_CAP, fileVersion, sectionize, sectionsInRange, type Section } f
  * GitHub releases say, never instead of them.
  */
 
-export const EXTERNAL_CAP = 20_000
+const EXTERNAL_CAP = 20_000
 const DIRECTORY_FILES = 15
 
 export interface ExternalNotes {

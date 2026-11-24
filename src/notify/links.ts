@@ -38,7 +38,7 @@ export function verifyToken(token: string, secret: string, now = Date.now()): { 
 }
 
 /** A secret shorter than this is treated as unset: it would sign links that can be guessed. */
-export const ACTION_SECRET_MIN = 32
+const ACTION_SECRET_MIN = 32
 
 let warned = false
 

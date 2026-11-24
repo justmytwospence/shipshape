@@ -60,7 +60,7 @@ export function startScheduler(): void {
 }
 
 /** Busy while anything is in flight, so a deploy or a ship is not left waiting out the idle interval. */
-export function loopIntervalMs(): number {
+function loopIntervalMs(): number {
   const { policy } = loadPolicy()
   const open = (getDb().prepare(`SELECT COUNT(*) c FROM updates WHERE state = 'detected'`).get() as { c: number }).c > 0
   const busy = open || hasPendingDeploys() || hasDueRechecks()

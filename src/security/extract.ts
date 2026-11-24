@@ -160,7 +160,7 @@ async function screen(i: FeedIncident): Promise<boolean | null> {
 export type ExtractCall = (system: string, user: string, policy: Policy) => Promise<{ input: unknown } | { error: string }>
 
 /** The reader call. Injected in the tests. */
-export const callReader: ExtractCall = async (system, user, policy) => {
+const callReader: ExtractCall = async (system, user, policy) => {
   const model = policy.review.model
   const client = llmClient(2)
   const started = Date.now()
@@ -208,7 +208,7 @@ interface Due {
  * meaning nothing actionable about the software itself. Dropped in code, not only in the
  * prompt, because an update that only bumps one must never count as a security fix.
  */
-export const TRUST_STORE_NAMES = new Set(['certifi', 'ca-certificates', 'pip', 'uv', 'rustls-webpki', 'webpki-roots', 'webpki'])
+const TRUST_STORE_NAMES = new Set(['certifi', 'ca-certificates', 'pip', 'uv', 'rustls-webpki', 'webpki-roots', 'webpki'])
 
 /**
  * Whether an empty answer should be doubted rather than stored.
@@ -219,7 +219,7 @@ export const TRUST_STORE_NAMES = new Set(['certifi', 'ca-certificates', 'pip', '
  * 2026-10-24. Doubted too when the feed itself says which stacks are involved: an
  * incident tagged node or python is about software that runs in containers.
  */
-export function doubtEmpty(prior: Target[] | null, stacks: readonly string[] | null | undefined): boolean {
+function doubtEmpty(prior: Target[] | null, stacks: readonly string[] | null | undefined): boolean {
   return (prior !== null && prior.length > 0) || (stacks ?? []).length > 0
 }
 

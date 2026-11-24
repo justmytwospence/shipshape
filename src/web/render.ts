@@ -35,7 +35,7 @@ declare module 'hono' {
 }
 
 /** Missing configuration, passed into every page so the banner is unmissable. */
-export function missing(): { name: string; why: string }[] {
+function missing(): { name: string; why: string }[] {
   const s = configured()
   return s.ok ? [] : s.missing
 }
@@ -75,7 +75,7 @@ export const chrome = (c: Context): Chrome => {
  * attentionKind() looks for, counted rather than built; if the two ever disagree, the
  * list is right and this is the one to fix.
  */
-export const navCounts = (): NonNullable<Chrome['counts']> => {
+const navCounts = (): NonNullable<Chrome['counts']> => {
   const db = getDb()
   const one = (sql: string) => (db.prepare(sql).get() as { n: number }).n
   return {
@@ -92,7 +92,7 @@ export const navCounts = (): NonNullable<Chrome['counts']> => {
 }
 
 /** The diff, when there is one to show. */
-export const updateDiff = (id: number): unknown => {
+const updateDiff = (id: number): unknown => {
   try {
     const html = diffFragment(id)
     return html ? raw(html) : null
@@ -251,7 +251,7 @@ export const servicePane = (stack: string, service: string, ctx: ListCtx) => {
  * Two endpoints rendering the same panel is exactly how the two drift, and this one
  * carries the proposal block and the reference links -- the parts a reviewer reads.
  */
-export function diffFragment(id: number): string {
+function diffFragment(id: number): string {
 
         const result = buildUpdateDiff(id)
     const db = getDb()

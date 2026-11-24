@@ -142,7 +142,7 @@ function skipDecision(id: number): VerbResult {
 }
 
 /** Draft config changes for one update, and say what came of it. */
-export async function proposeForUpdate(id: number): Promise<VerbResult> {
+async function proposeForUpdate(id: number): Promise<VerbResult> {
   const r = await runProposePass(id)
   if (r.drafted > 0) return { ok: true, message: 'Drafted. The changes are on the update and ship with it.' }
   if (r.failed > 0) return { ok: false, message: 'Could not draft; see the activity log.' }

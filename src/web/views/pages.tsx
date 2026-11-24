@@ -80,7 +80,7 @@ const MAGNITUDES = [
 ]
 
 /** The filter asks the page itself for its list, so the URL it pushes reloads whole. */
-export const UpdatesToolbar: FC<{ stage: StageFilter; q: string; magnitude: string }> = ({
+const UpdatesToolbar: FC<{ stage: StageFilter; q: string; magnitude: string }> = ({
   stage,
   q,
   magnitude,

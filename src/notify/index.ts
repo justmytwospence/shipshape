@@ -26,11 +26,6 @@ export type { IncidentAction, IncidentStatus, Message, Priority } from './types.
 
 const wantsEvent = (sink: Sink, cls: EventClass): boolean => !sink.events || sink.events.includes(cls)
 
-export function incidentsConfigured(): boolean {
-  const { policy } = loadPolicy()
-  return policy.notify.sinks.some((s) => s.type === 'webhook' && endpointOf(s))
-}
-
 export async function notify(opts: Message): Promise<void> {
   const { policy } = loadPolicy()
   const cls: EventClass = opts.eventClass ?? 'system'

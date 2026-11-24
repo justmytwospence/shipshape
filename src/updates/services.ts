@@ -296,7 +296,7 @@ function forkSection(
 }
 
 /** The line under `notes`: which label applies, and why one was ignored. */
-export function notesNote(s: SourceInfo, me: { stack: string; service: string }): string | undefined {
+function notesNote(s: SourceInfo, me: { stack: string; service: string }): string | undefined {
   const parts: string[] = []
   if (s.invalidChangelog) {
     parts.push(`shipshape.changelog "${s.invalidChangelog.value}" ignored: ${s.invalidChangelog.reason}`)
@@ -323,7 +323,7 @@ const TIER_WORDS: Partial<Record<string, string>> = {
  * The line under `upstream`: where the answer came from, and anything about it worth
  * acting on. Several can apply at once, so they are joined.
  */
-export function upstreamNote(s: SourceInfo, me: { stack: string; service: string }): string | undefined {
+function upstreamNote(s: SourceInfo, me: { stack: string; service: string }): string | undefined {
   const parts: string[] = []
   if (s.invalidLabel) {
     parts.push(`shipshape.source "${s.invalidLabel.value}" ignored: ${s.invalidLabel.reason}`)

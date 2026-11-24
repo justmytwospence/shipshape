@@ -241,7 +241,7 @@ function baseDiff(row: { stack: string; service: string; image: string; to_tag: 
  * Hunks between two texts, by line. The fork edit touches a handful of lines and removes
  * a block, so a plain longest-common-subsequence over lines is enough and exact.
  */
-export function lineDiff(file: string, before: string, after: string, label: string): DiffHunk[] {
+function lineDiff(file: string, before: string, after: string, label: string): DiffHunk[] {
   const a = before.split('\n')
   const b = after.split('\n')
   // lcs[i][j] = length of the LCS of a[i..] and b[j..]

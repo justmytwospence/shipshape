@@ -151,7 +151,7 @@ async function scanBody(trigger: 'cron' | 'manual'): Promise<ScanResult> {
  * "Check now" button, so both paths behave identically -- including the isolation: a
  * failure here is recorded against that service and never propagates.
  */
-export async function scanOne(svc: ScannedService, policy: Policy): Promise<string> {
+async function scanOne(svc: ScannedService, policy: Policy): Promise<string> {
   let d: Detection
   try {
     d = await detect(svc)

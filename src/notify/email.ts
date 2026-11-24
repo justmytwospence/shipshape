@@ -43,12 +43,6 @@ function mailer(): Transporter {
   return transport
 }
 
-/** Drop the pooled connection, so a corrected SMTP_URL takes effect on the next send. */
-export function reset(): void {
-  transport?.close?.()
-  transport = null
-}
-
 export interface Mail {
   subject: string
   text: string
@@ -84,13 +78,4 @@ export async function send(mail: Mail): Promise<{ ok: boolean; error?: string }>
     })
     return { ok: false, error }
   }
-}
-
-/** Minimal HTML escaping, for the bodies assembled in digest.ts. */
-export function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
 }

@@ -329,7 +329,7 @@ export const GroupHeader: FC<{
  * Why a person is needed, in the words the card uses, and what a standing rule already
  * waived. Nothing when the update simply ships on its own.
  */
-export const HoldsBlock: FC<{ update: UpdateView }> = ({ update }) => {
+const HoldsBlock: FC<{ update: UpdateView }> = ({ update }) => {
   const waiting = update.shipStatus === 'waiting' && update.shipWhy
   if (update.holds.length === 0 && update.waived.length === 0 && !waiting && update.restorePoints.length === 0) return null
   return (
@@ -369,7 +369,7 @@ export const HoldsBlock: FC<{ update: UpdateView }> = ({ update }) => {
  * The review, as a bordered block rather than a card. The accent on the left is the
  * verdict's colour, so the block reads at a glance from across the pane.
  */
-export const VerdictBlock: FC<{ update: UpdateView }> = ({ update }) => {
+const VerdictBlock: FC<{ update: UpdateView }> = ({ update }) => {
   const v = update.verdict
   const label = verdictLabel(update)
   const accent =
@@ -510,7 +510,7 @@ const SCREEN_DECISION: Record<string, { text: string; cls: string }> = {
  * the affected package as it runs now, and as the new image carries it. Both read from
  * the images' own inventories, never from the advisory.
  */
-export const SecurityFixBlock: FC<{ update: UpdateView }> = ({ update }) => {
+const SecurityFixBlock: FC<{ update: UpdateView }> = ({ update }) => {
   const f = update.securityFix
   if (!f) return null
   return (
@@ -529,7 +529,7 @@ export const SecurityFixBlock: FC<{ update: UpdateView }> = ({ update }) => {
   )
 }
 
-export const ScreenBlock: FC<{ update: UpdateView }> = ({ update }) => {
+const ScreenBlock: FC<{ update: UpdateView }> = ({ update }) => {
   const s = update.screen
   if (!s) return null
   const decision = s.decision ? SCREEN_DECISION[s.decision] : null
@@ -622,7 +622,7 @@ function hostOf(url: string): string {
  * The passage of one update, as a rail. Details are clamped: the review summary has a
  * block of its own above, and repeating it in full here would swamp the history.
  */
-export const Timeline: FC<{ milestones: Milestone[] }> = ({ milestones }) => (
+const Timeline: FC<{ milestones: Milestone[] }> = ({ milestones }) => (
   <ol class="border-base-300 ml-1 space-y-2.5 border-l pl-4">
     {milestones.map((m) => (
       <li class={`relative ${m.future ? 'tl-future' : ''}`}>
@@ -653,7 +653,7 @@ export const Timeline: FC<{ milestones: Milestone[] }> = ({ milestones }) => (
  * Sticky: above the dock on a phone, at the top of the pane on a desktop -- so a long
  * changelog never puts the decision off screen in either direction.
  */
-export const ActionBar: FC<{
+const ActionBar: FC<{
   update: UpdateView
   target: string
   reply: string

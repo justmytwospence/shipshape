@@ -39,7 +39,7 @@ export interface Proposal {
  * given, and a second tool that described a slightly different vocabulary would be
  * enforcing a different thing while looking identical in review. There is one of these.
  */
-export const OPS_SCHEMA = {
+const OPS_SCHEMA = {
   type: 'array',
   description:
     'Compose changes to apply to this service. Empty when the update needs no config change.',
@@ -101,7 +101,7 @@ export const OPS_SCHEMA = {
 }
 
 /** The notes array, shared for the same reason the operations are. */
-export const NOTES_SCHEMA = {
+const NOTES_SCHEMA = {
   type: 'array',
   items: { type: 'string' },
   description:
@@ -242,7 +242,7 @@ function renderPrompt(i: ProposeInput, web: boolean): string {
  * than a copy of it. A second parser that was subtly more forgiving would be a second,
  * weaker boundary wearing the same name.
  */
-export function normaliseOps(raw: unknown): Op[] {
+function normaliseOps(raw: unknown): Op[] {
   const ops: Op[] = []
   for (const item of Array.isArray(raw) ? raw : []) {
     const o = item as Record<string, unknown>
@@ -302,7 +302,7 @@ export function normaliseOps(raw: unknown): Op[] {
 }
 
 /** Anything the model returns as a list of strings, with the non-strings dropped. */
-export function strings(v: unknown): string[] {
+function strings(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : []
 }
 

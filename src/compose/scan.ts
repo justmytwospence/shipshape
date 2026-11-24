@@ -200,7 +200,7 @@ export const KNOWN_LABELS = new Set([
 ])
 
 /** The labels of the pull-request era (v1): reported as such, and they narrow the class. */
-export const LEGACY_LABELS = ['policy', 'pr', 'claude'] as const
+const LEGACY_LABELS = ['policy', 'pr', 'claude'] as const
 
 /** Every `<stack>/<compose file>` plus the root compose file. */
 export function findComposeFiles(repoRoot: string): string[] {
@@ -408,7 +408,7 @@ function isRemoteContext(ctx: string): boolean {
  * built on. Refused in words when the Dockerfile is not a file of this repository, or its
  * base cannot be followed to a published reference that can be moved by editing it.
  */
-export function baseFor(
+function baseFor(
   repoRoot: string,
   composeFile: string,
   build: unknown,

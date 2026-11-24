@@ -136,7 +136,7 @@ export interface ExecResult {
 /** One docker invocation. Injected, so every reading below is testable with no daemon. */
 export type DockerExec = (args: string[]) => Promise<ExecResult>
 
-export const dockerExec: DockerExec = (args) =>
+const dockerExec: DockerExec = (args) =>
   execa('docker', args, { reject: false, timeout: 20_000, ...dockerEnvOptions() })
 
 /** The line of stderr that says what went wrong; docker puts it last. */

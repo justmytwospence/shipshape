@@ -72,7 +72,7 @@ export function screenSpendThisMonth(): number {
  * because a screen costs a twentieth of a cent and gives the releases feed something to
  * say about them. Digests and rolling tags are not -- there are no notes to read.
  */
-export function pendingScreens(limit: number, repoDir = env.repoDir, now = Date.now()): PendingScreen[] {
+function pendingScreens(limit: number, repoDir = env.repoDir, now = Date.now()): PendingScreen[] {
   const since = new Date(now - BACKFILL_DAYS * 86_400_000).toISOString()
   const rows = getDb()
     .prepare(

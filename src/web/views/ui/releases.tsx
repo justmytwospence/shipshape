@@ -44,7 +44,7 @@ const SHIPPED: ReadonlySet<string> = new Set(['merged', 'deploying', 'deployed',
  */
 const LINK = 'link link-hover tap inline-flex items-center'
 
-export const ReleaseRow: FC<{
+const ReleaseRow: FC<{
   release: ReleaseView
   /** The query that names the list this row lives in, so the URL can carry it. */
   ctx: string

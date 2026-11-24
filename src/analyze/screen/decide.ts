@@ -33,7 +33,7 @@ const noul = (instructions: string, yes: string, no: string): Question => ({
  * A changed default is worth knowing and never, by itself, work. It is still asked and
  * still shown; it no longer decides.
  */
-export const RISK_KEYS = [
+const RISK_KEYS = [
   'config_removed_or_renamed',
   'manual_step_required',
   'irreversible_migration',

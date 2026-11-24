@@ -40,7 +40,7 @@ export type FeedIncident = z.infer<typeof Incident>
 const Index = z.object({ incidents: z.array(z.unknown()) })
 
 /** The text an extraction reads. A change anywhere else in an incident does not re-run it. */
-export function versionsHash(i: FeedIncident): string {
+function versionsHash(i: FeedIncident): string {
   const text = JSON.stringify({
     product: i.product ?? '',
     affected: i.affectedVersions ?? [],

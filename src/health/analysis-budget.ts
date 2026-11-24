@@ -112,7 +112,7 @@ export function budgetHealth(): { ok: boolean; since?: string; unreviewed?: numb
  * one is a merge nobody read the changelog for, so holding it until 08:00 costs a night of
  * exactly the thing the tool is for.
  */
-export async function noteBudgetSpent(reading: BudgetReading): Promise<void> {
+async function noteBudgetSpent(reading: BudgetReading): Promise<void> {
   const now = Date.now()
   if (spent && now - spent.lastAlertAt < REMIND_MS) return
   const fresh = !spent
@@ -151,7 +151,7 @@ export async function noteBudgetSpent(reading: BudgetReading): Promise<void> {
 }
 
 /** Clear a standing exhaustion: the incident it opened is resolved, silently. */
-export async function noteBudgetAvailable(): Promise<void> {
+async function noteBudgetAvailable(): Promise<void> {
   if (!spent) return
   const since = spent.since
   const unreviewed = mergedUnreviewedSince(since)

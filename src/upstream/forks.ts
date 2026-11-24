@@ -91,7 +91,7 @@ const failure = (r: Extract<GhResult<unknown>, { ok: false }>): FixLookup => ({ 
  * same repository that mentioned it. An issue closed with neither, or as not planned, is
  * a decision for a person: the fork has no upstream fix on the way.
  */
-export async function fixingCommit(ref: ParsedRef): Promise<FixLookup> {
+async function fixingCommit(ref: ParsedRef): Promise<FixLookup> {
   const base = `/repos/${ref.repo}`
   const issue = await ghRequest<IssueBody>(`${base}/issues/${ref.number}`, {
     cacheKey: `github:${base}/issues/${ref.number}#fork`,

@@ -10,7 +10,7 @@ import { DOCS_URL } from '../../../links.ts'
  * no htmx, no app.js, no service worker, and nothing that reads the database.
  */
 
-export const AuthShell: FC<PropsWithChildren<{ title: string }>> = ({ title, children }) => (
+const AuthShell: FC<PropsWithChildren<{ title: string }>> = ({ title, children }) => (
   <html lang="en">
     <head>
       <meta charset="utf-8" />

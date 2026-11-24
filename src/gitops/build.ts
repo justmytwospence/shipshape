@@ -296,7 +296,7 @@ export async function upstreamRefAt(
 }
 
 
-export function rewriteRef(currentRef: string, toTag: string): string | null {
+function rewriteRef(currentRef: string, toTag: string): string | null {
   const ref = parseImageRef(currentRef)
   const at = toTag.indexOf('@')
   if (at === -1) return formatImageRef(ref, toTag, null)

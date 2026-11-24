@@ -124,7 +124,7 @@ export async function noteAuthFailure(reason: string): Promise<void> {
 }
 
 /** Clear a standing failure: the incident it opened is resolved, silently. */
-export async function noteAuthOk(): Promise<void> {
+async function noteAuthOk(): Promise<void> {
   if (!failing) return
   const since = failing.since
   failing = null

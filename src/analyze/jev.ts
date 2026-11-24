@@ -26,7 +26,7 @@ import { recordSpend, type CallMeta, type CallPurpose } from './claude.ts'
 const ENDPOINT = 'https://openrouter.ai/api/alpha/decisions'
 
 /** Pinned rather than an alias: the screen's thresholds were tuned against this version. */
-export const JEV_MODEL = 'typesafe/jev-1.13'
+const JEV_MODEL = 'typesafe/jev-1.13'
 /** The family every answer must come from before it is believed. */
 const JEV_FAMILY = 'jev-1.13'
 /** Published input rate, for the estimate when the gateway does not report a cost. */

@@ -10,10 +10,10 @@ import { join } from 'node:path'
  */
 
 /** Compose's own preference order. */
-export const COMPOSE_NAMES = ['compose.yaml', 'compose.yml', 'docker-compose.yml', 'docker-compose.yaml'] as const
+const COMPOSE_NAMES = ['compose.yaml', 'compose.yml', 'docker-compose.yml', 'docker-compose.yaml'] as const
 
 /** The override files Compose applies when no -f is given: the first that exists, only one. */
-export const OVERRIDE_NAMES = [
+const OVERRIDE_NAMES = [
   'compose.override.yml',
   'compose.override.yaml',
   'docker-compose.override.yml',
@@ -21,9 +21,9 @@ export const OVERRIDE_NAMES = [
 ] as const
 
 /** Directories never scanned as stacks. */
-export const SKIP_DIRS = new Set(['.git', '.claude', '.agents', 'bin', 'node_modules'])
+const SKIP_DIRS = new Set(['.git', '.claude', '.agents', 'bin', 'node_modules'])
 
-export function isFile(p: string): boolean {
+function isFile(p: string): boolean {
   try {
     return statSync(p).isFile()
   } catch {
@@ -31,7 +31,7 @@ export function isFile(p: string): boolean {
   }
 }
 
-export function isReadableDir(p: string): boolean {
+function isReadableDir(p: string): boolean {
   try {
     return statSync(p).isDirectory()
   } catch {

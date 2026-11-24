@@ -144,7 +144,7 @@ export function inventory(imageId: string): Package[] | null {
  * syft's own catalogers. A flat limit either gave up on the large ones every time or let a
  * stuck small one hold the queue. 2.5 minutes a gigabyte, at least 5, at most 40.
  */
-export async function timeoutFor(imageId: string, exec: Exec = run): Promise<number> {
+async function timeoutFor(imageId: string, exec: Exec = run): Promise<number> {
   const r = await exec('docker', ['image', 'inspect', '--format', '{{.Size}}', imageId])
   const bytes = Number(r.stdout.trim())
   const gb = Number.isFinite(bytes) && bytes > 0 ? bytes / 1e9 : 0

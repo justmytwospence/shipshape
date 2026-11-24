@@ -10,8 +10,8 @@ import { getDb } from '../../db/index.ts'
 
 export const SESSION_COOKIE = 'shipshape_session'
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60_000
-export const TOUCH_INTERVAL_MS = 5 * 60_000
-export const PRUNE_INTERVAL_MS = 24 * 60 * 60_000
+const TOUCH_INTERVAL_MS = 5 * 60_000
+const PRUNE_INTERVAL_MS = 24 * 60 * 60_000
 
 const hash = (token: string) => createHash('sha256').update(token).digest('hex')
 const iso = (ms: number) => new Date(ms).toISOString()

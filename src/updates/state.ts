@@ -33,9 +33,6 @@ export const LIVE_STATES: readonly UpdateState[] = ['detected', 'frozen']
  */
 export const REFUSED_STATES: readonly UpdateState[] = ['failed', 'skipped']
 
-/** States where the update is mid-flight and the UI should keep asking. */
-export const TRANSIENT_STATES: readonly UpdateState[] = ['deploying']
-
 export function isUpdateState(v: string): v is UpdateState {
   return (UPDATE_STATES as readonly string[]).includes(v)
 }

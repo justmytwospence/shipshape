@@ -76,7 +76,7 @@ export const ScanControls: FC<{ scan: InboxData['scan'] }> = ({ scan }) => (
 )
 
 /** What a new install still needs, in order; it ticks itself off on the Inbox's poll. */
-export const SetupChecklist: FC<{ setup: SetupState }> = ({ setup }) => (
+const SetupChecklist: FC<{ setup: SetupState }> = ({ setup }) => (
   <section aria-labelledby="setup-title" class="border-base-300 border-b px-3 py-3">
     <h2 id="setup-title" class="text-sm font-semibold">
       Getting started

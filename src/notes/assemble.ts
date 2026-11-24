@@ -80,7 +80,7 @@ export interface NotesEvidence {
   incomplete: boolean
 }
 
-export const RELEASES_CAP = 30_000
+const RELEASES_CAP = 30_000
 const COMMITS_SHOWN = 60
 const DIRECTORY_FILES = 15
 /** A release body this long says what changed; a changelog section for it would repeat it. */

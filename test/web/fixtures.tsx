@@ -120,7 +120,7 @@ function base(over: Partial<UpdateView>): UpdateView {
   }
 }
 
-export const UPDATES: Record<string, UpdateView> = {
+const UPDATES: Record<string, UpdateView> = {
   waiting: update(),
   // Put off for a week: still detected, out of the inbox, listed as parked.
   snoozed: update({
@@ -392,7 +392,7 @@ const SETTING_GROUPS = [
 ]
 
 /** A link preview that can be written, and one that cannot: both render, so the class gate covers both. */
-export const LINK_PREVIEW = {
+const LINK_PREVIEW = {
   stack: 'media',
   service: 'jellyfin',
   runningTag: '10.9.11',
@@ -424,7 +424,7 @@ export const LINK_PREVIEW = {
   values: { source: 'jellyfin/jellyfin', changelog: 'https://jellyfin.org/posts/' },
 }
 
-export const LINK_PREVIEW_REFUSED = {
+const LINK_PREVIEW_REFUSED = {
   ...LINK_PREVIEW,
   source: {
     ...LINK_PREVIEW.source,

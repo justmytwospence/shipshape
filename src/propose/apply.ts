@@ -41,7 +41,7 @@ export type ApplyOutcome =
   | { ok: false; reason: string }
 
 /** Top-level service keys a draft may never write: each widens what the container can reach on the host. */
-export const DENIED_SERVICE_KEYS = new Set([
+const DENIED_SERVICE_KEYS = new Set([
   'privileged',
   'cap_add',
   'devices',
@@ -60,7 +60,7 @@ export const DENIED_SERVICE_KEYS = new Set([
 ])
 
 /** A compose document: its root is a mapping with a `services` mapping. */
-export function isComposeDocument(text: string): boolean {
+function isComposeDocument(text: string): boolean {
   try {
     const doc = parseYaml(text) as unknown
     if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return false

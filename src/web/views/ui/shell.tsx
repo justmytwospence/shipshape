@@ -25,7 +25,7 @@ import { version } from '../../../version.ts'
 
 export type NavKey = 'inbox' | 'updates' | 'services' | 'activity' | 'settings' | 'status'
 
-export const NAV: { key: NavKey; href: string; label: string; icon: IconName }[] = [
+const NAV: { key: NavKey; href: string; label: string; icon: IconName }[] = [
   { key: 'inbox', href: '/', label: 'Inbox', icon: 'inbox' },
   { key: 'updates', href: '/updates', label: 'Updates', icon: 'updates' },
   { key: 'services', href: '/services', label: 'Services', icon: 'services' },

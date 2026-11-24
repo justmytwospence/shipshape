@@ -135,7 +135,7 @@ const FLAG_LABEL: Record<string, string> = {
 
 
 /** The screen's answers, shaped for the page. Null when there is nothing to show. */
-export function screenView(image: string, fromTag: string, toTag: string): ScreenView | null {
+function screenView(image: string, fromTag: string, toTag: string): ScreenView | null {
   const mode = loadPolicy().policy.review.screen
   if (mode === 'off') return null
   const s = screenFor(image, fromTag, toTag)

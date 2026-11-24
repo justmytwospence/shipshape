@@ -44,7 +44,7 @@ export interface PassResult {
   fixes: number
 }
 
-export async function runSecurityPass(force = false): Promise<PassResult | null> {
+async function runSecurityPass(force = false): Promise<PassResult | null> {
   const { policy } = loadPolicy()
   if (policy.security.mode === 'off' || running) return null
   running = true

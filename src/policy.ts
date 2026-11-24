@@ -320,7 +320,7 @@ export function shipStatus(i: ShipInput): ShipStatus {
 }
 
 /** `3 days`, `5 hours`, `20 minutes`: the largest unit that fits. */
-export function ageWords(ms: number): string {
+function ageWords(ms: number): string {
   const m = Math.max(0, Math.floor(ms / 60_000))
   if (m < 60) return `${m} minute${m === 1 ? '' : 's'}`
   const h = Math.floor(m / 60)

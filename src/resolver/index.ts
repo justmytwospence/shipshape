@@ -5,7 +5,6 @@ import { resetLsioMemo } from './lsio.ts'
 import { compose, readRow, isStale, currentTagFor, type ResolutionRow, writeResolution } from './cache.ts'
 import { lookUpImage } from './tiers.ts'
 
-export { normaliseSourceUrl, parseChangelogLabel, parseSourceLabel, type ChangelogTarget } from './labels.ts'
 
 /**
  * Image -> upstream source repository, and the one way to ask.

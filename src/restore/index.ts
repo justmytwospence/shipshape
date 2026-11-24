@@ -53,7 +53,7 @@ export interface RestoreIo {
 
 const DUMP_TIMEOUT_MS = 15 * 60_000
 
-export const realRestoreIo: RestoreIo = {
+const realRestoreIo: RestoreIo = {
   async containerId(stack, service) {
     const args = ['compose', ...fileArgs(stack), 'ps', '-q', service]
     const r = await execa('docker', args, { cwd: env.repoDir, reject: false, timeout: 30_000, ...dockerEnvOptions() })

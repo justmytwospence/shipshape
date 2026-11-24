@@ -25,7 +25,7 @@ export const NOTE_CAP = 6_000
 /** For everything together, comfortably inside Jev's per-request context. */
 export const TOTAL_CAP = 40_000
 /** Bullet lines the screen is asked about one by one. Two questions each. */
-export const LINE_CAP = 60
+const LINE_CAP = 60
 
 /** Headings and text that usually carry the part worth reading. */
 const PRIORITY = /break|upgrad|migrat|deprecat|remov|security|vulnerab|cve-/i

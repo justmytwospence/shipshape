@@ -61,7 +61,7 @@ export class RegistryError extends Error {
 
 /** Budget exhaustion is not an error in the normal sense -- it is a "come back later",
  *  and callers degrade rather than fail. */
-export class BudgetExhausted extends RegistryError {}
+class BudgetExhausted extends RegistryError {}
 
 export interface FetchOpts {
   method?: 'GET' | 'HEAD'
@@ -289,7 +289,7 @@ export function touchCache(key: string): void {
   getDb().prepare(`UPDATE http_cache SET fetched_at = ? WHERE url = ?`).run(new Date().toISOString(), key)
 }
 
-export function readCachedBody(key: string): string | null {
+function readCachedBody(key: string): string | null {
   return readCache(key)?.body ?? null
 }
 

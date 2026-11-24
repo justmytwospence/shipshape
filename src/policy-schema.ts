@@ -323,7 +323,7 @@ export type Policy = z.infer<typeof PolicySchema>
  * that says something nothing obeys is worse than one that is refused. `convert-v1`
  * rewrites them.
  */
-export const RETIRED_KEYS = [
+const RETIRED_KEYS = [
   'merge_method',
   'defaults',
   'merge',

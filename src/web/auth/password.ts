@@ -12,10 +12,10 @@ import { browserOrigin } from './proxy.ts'
  * socket address and in total.
  */
 
-export const MIN_PASSWORD_LENGTH = 12
-export const MAX_PASSWORD_LENGTH = 1024
-export const LIMIT_PER_ADDRESS = 5
-export const LIMIT_GLOBAL = 30
+const MIN_PASSWORD_LENGTH = 12
+const MAX_PASSWORD_LENGTH = 1024
+const LIMIT_PER_ADDRESS = 5
+const LIMIT_GLOBAL = 30
 export const LIMIT_WINDOW_MS = 15 * 60_000
 
 export class LoginLimiter {
@@ -75,7 +75,7 @@ export type PasswordParse = { ok: true; config: PasswordConfig } | { ok: false; 
  * created on first use. Keyed, so a copy of the database alone is no help in guessing the
  * password; per install, so two installs with one password do not share fingerprints.
  */
-export function fingerprintKey(dataDir: string): { ok: true; key: Buffer } | { ok: false; problem: string } {
+function fingerprintKey(dataDir: string): { ok: true; key: Buffer } | { ok: false; problem: string } {
   const file = join(dataDir, 'session-key')
   try {
     mkdirSync(dataDir, { recursive: true, mode: 0o700 })

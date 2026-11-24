@@ -52,7 +52,7 @@ const TYPES: Record<Exclude<Ecosystem, 'any'>, string[]> = {
  * The name as compared. PyPI treats `-`, `_` and `.` as one (PEP 503); everything is
  * compared case-insensitively.
  */
-export function normaliseName(name: string, type?: string): string {
+function normaliseName(name: string, type?: string): string {
   const n = name.trim().toLowerCase()
   return type === 'python' || type === 'pypi' ? n.replace(/[-_.]+/g, '-') : n
 }

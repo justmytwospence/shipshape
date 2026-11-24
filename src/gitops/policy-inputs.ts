@@ -15,7 +15,7 @@ import { parseImageRef } from '../images/ref.ts'
  * When a release was published: the registry's own date where it gave one, else when
  * shipshape first saw the tag, else when the update was detected. Exported for the tests.
  */
-export function releasedAt(r: { image: string; to_tag: string; detected_at: string }): string {
+function releasedAt(r: { image: string; to_tag: string; detected_at: string }): string {
   const ref = parseImageRef(r.image)
   const tag = r.to_tag.split('@')[0]!
   const row = getDb()
@@ -52,7 +52,7 @@ export function cooldownFor(
  * at three a minute and a provider having a bad hour, and is short enough that an outage
  * degrades to "no evidence" rather than freezing every update.
  */
-export const REVIEW_WAIT_MS = 6 * 60 * 60_000
+const REVIEW_WAIT_MS = 6 * 60 * 60_000
 
 /** Whether a review can be expected to arrive at all: it is on, a provider is set, money is left. */
 export function reviewExpected(policy: Policy): boolean {

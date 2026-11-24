@@ -78,7 +78,7 @@ export function eligibleGroups(policy: Policy): UpdateGroup[] {
  * One tap on a stack's card approves every update in it at the same instant; those ship
  * together, as one merge commit and one deploy, rather than one per image.
  */
-export function mergeApproved(groups: UpdateGroup[]): UpdateGroup[] {
+function mergeApproved(groups: UpdateGroup[]): UpdateGroup[] {
   const ids = groups.flatMap((g) => g.members.map((m) => m.id))
   if (ids.length === 0) return groups
   const approvedAt = new Map(

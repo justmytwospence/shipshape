@@ -4,12 +4,14 @@ on:
   push:
     branches: [main]
   pull_request:
+  # release.yml runs the same checks on the tagged commit before publishing it.
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,14 +20,75 @@ jobs:
     # (bin/check-test-prereqs.mjs says so when a machine lacks them). No daemon is used.
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
+      # --ignore-scripts: without it `npm ci` compiles better-sqlite3 from source, and the
+      # tests would run against that build instead of the prebuilt binary the image ships.
       - run: npm ci --ignore-scripts
       - run: npx biome ci .
       - run: npm run typecheck
       - run: npm test
       - run: npm audit --omit=dev --audit-level=high
+
+  image:
+    # Builds the image for both platforms and smoke-tests each, without pushing anything.
+    # arm64 runs under QEMU: the Dockerfile's build stage runs on the runner's own
+    # platform, so only the runtime stage's `apk add` and the smoke test are emulated.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v4
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@v4
+      - name: Build linux/amd64
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: shipshape:ci-amd64
+          build-args: |
+            VERSION=0.0.0-ci
+            REVISION=${{ github.sha }}
+          cache-from: type=gha,scope=amd64
+          cache-to: type=gha,scope=amd64,mode=max
+      - name: Build linux/arm64
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/arm64
+          load: true
+          tags: shipshape:ci-arm64
+          build-args: |
+            VERSION=0.0.0-ci
+            REVISION=${{ github.sha }}
+          cache-from: |
+            type=gha,scope=amd64
+            type=gha,scope=arm64
+          cache-to: type=gha,scope=arm64,mode=max
+      - run: bash .github/scripts/smoke-image.sh shipshape:ci-amd64 linux/amd64
+      - run: bash .github/scripts/smoke-image.sh shipshape:ci-arm64 linux/arm64
+
+  edge:
+    # Every commit on main that passes is published as ghcr.io/<repo>:edge and :sha-<short>.
+    needs: [check, image]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    uses: ./.github/workflows/publish.yml
+    with:
+      release: false
